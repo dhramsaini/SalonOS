@@ -1,9 +1,2741 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>SalonOS</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SalonOS — Premium Management Suite</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#07070e;--surface:#0d0d16;--surface2:#13131e;--surface3:#191926;--surface4:#1f1f2e;
+  --border:#222236;--border2:#2c2c44;--border3:#38384e;
+  --text:#eeeef8;--text2:#8888b0;--text3:#50506a;--text4:#333350;
+  --gold:#c49a2a;--gold2:#e8b84b;--gold3:#f5d47a;--gold4:#fff0c0;
+  --emerald:#22c77e;--rose:#ff4f6d;--sky:#3b9eff;--violet:#9b6cf8;
+  --amber:#ff9f43;--teal:#00d2c8;--indigo:#6c7de8;
+  --font:'Outfit',sans-serif;--font2:'Cormorant Garamond',serif;
+  --r:6px;--r2:10px;--r3:14px;--r4:20px;
+  --sidebar-w:248px;
+  --shadow:0 4px 24px rgba(0,0,0,0.5);
+  --shadow2:0 8px 40px rgba(0,0,0,0.7);
+  --glow-gold:0 0 20px rgba(196,154,42,0.15);
+}
+
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.5;overflow-x:hidden}
+
+/* ═══════════════ SCROLLBAR ═══════════════ */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--border3)}
+
+/* ═══════════════ APP LAYOUT ═══════════════ */
+.app{display:flex;height:100vh;overflow:hidden;position:relative}
+
+/* ═══════════════ MOBILE OVERLAY ═══════════════ */
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99;backdrop-filter:blur(2px)}
+@media(max-width:768px){
+  .sidebar-overlay.show{display:block}
+  .sidebar{transform:translateX(-100%);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1)!important}
+  .sidebar.open{transform:translateX(0)!important}
+  .main{width:100%!important;margin-left:0!important}
+}
+
+/* ═══════════════ SIDEBAR ═══════════════ */
+.sidebar{
+  width:var(--sidebar-w);flex-shrink:0;
+  background:var(--surface);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+  position:relative;z-index:100;
+  transition:width 0.3s cubic-bezier(0.4,0,0.2,1);
+}
+.sidebar::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:200px;
+  background:radial-gradient(ellipse at top left,rgba(196,154,42,0.06) 0%,transparent 70%);
+  pointer-events:none;
+}
+
+.sidebar-logo{
+  padding:22px 20px 18px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:12px;
+  position:relative;flex-shrink:0;
+}
+.logo-icon{
+  width:36px;height:36px;border-radius:10px;
+  background:linear-gradient(135deg,var(--gold) 0%,var(--gold2) 100%);
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;flex-shrink:0;
+  box-shadow:0 2px 12px rgba(196,154,42,0.35);
+}
+.logo-text-wrap{flex:1;min-width:0}
+.logo-name{font-family:var(--font2);font-size:20px;font-weight:600;color:var(--gold2);letter-spacing:0.02em;line-height:1}
+.logo-sub{font-size:9px;color:var(--text3);letter-spacing:0.2em;text-transform:uppercase;margin-top:3px}
+
+.sidebar-nav{flex:1;overflow-y:auto;padding:10px 0 10px}
+.nav-section-label{
+  padding:14px 20px 6px;
+  font-size:9px;color:var(--text3);
+  letter-spacing:0.2em;text-transform:uppercase;font-weight:600;
+}
+.nav-item{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 18px 9px 20px;
+  cursor:pointer;transition:all 0.15s;
+  color:var(--text2);font-size:13px;font-weight:400;
+  border-left:2px solid transparent;
+  margin:1px 0;position:relative;
+  border-radius:0;
+}
+.nav-item:hover{background:var(--surface2);color:var(--text)}
+.nav-item.active{
+  background:linear-gradient(90deg,rgba(196,154,42,0.12) 0%,transparent 100%);
+  color:var(--gold2);border-left-color:var(--gold);
+}
+.nav-item.active .nav-icon{color:var(--gold)}
+.nav-icon{width:18px;text-align:center;font-size:15px;flex-shrink:0}
+.nav-label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-badge{
+  background:var(--rose);color:#fff;
+  font-size:9px;font-weight:700;
+  padding:1px 5px;border-radius:10px;
+  flex-shrink:0;
+}
+
+.nav-divider{height:1px;background:var(--border);margin:8px 20px}
+
+.outlet-item{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 18px 8px 20px;
+  cursor:pointer;transition:all 0.15s;
+  color:var(--text3);font-size:12px;
+  border-left:2px solid transparent;margin:1px 0;
+}
+.outlet-item:hover{background:var(--surface2);color:var(--text2)}
+.outlet-item.active{
+  background:rgba(59,158,255,0.08);color:var(--sky);
+  border-left-color:var(--sky);
+}
+.outlet-dot{
+  width:7px;height:7px;border-radius:50%;flex-shrink:0;
+  background:var(--emerald);box-shadow:0 0 6px var(--emerald);
+}
+.outlet-dot.inactive{background:var(--text3);box-shadow:none}
+
+.sidebar-user{
+  padding:14px 18px;border-top:1px solid var(--border);flex-shrink:0;
+  background:var(--surface2);
+}
+.user-card{display:flex;align-items:center;gap:10px;cursor:pointer}
+.user-avatar{
+  width:34px;height:34px;border-radius:10px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--gold),var(--violet));
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;color:#fff;
+  box-shadow:0 2px 8px rgba(155,108,248,0.3);
+}
+.user-name{font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-role{font-size:10px;color:var(--text3)}
+.user-status{
+  margin-left:auto;display:flex;align-items:center;gap:4px;
+  font-size:10px;color:var(--emerald);flex-shrink:0;
+}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--emerald);box-shadow:0 0 6px var(--emerald);animation:pulse 2s infinite}
+
+/* ═══════════════ MAIN ═══════════════ */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* ═══════════════ TOPBAR ═══════════════ */
+.topbar{
+  height:58px;background:var(--surface);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 24px;gap:16px;
+  flex-shrink:0;position:relative;
+}
+.topbar-hamburger{
+  display:none;background:none;border:none;cursor:pointer;
+  color:var(--text2);font-size:20px;padding:4px;
+  border-radius:var(--r);transition:all 0.15s;
+}
+.topbar-hamburger:hover{background:var(--surface2);color:var(--text)}
+@media(max-width:768px){.topbar-hamburger{display:flex;align-items:center;justify-content:center}}
+
+.topbar-breadcrumb{
+  display:flex;flex-direction:column;
+}
+.topbar-route{font-size:11px;color:var(--text3);letter-spacing:0.05em}
+.topbar-page{font-family:var(--font2);font-size:16px;color:var(--text);font-weight:500;line-height:1.2}
+
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.topbar-fy{
+  background:var(--surface2);border:1px solid var(--border2);
+  border-radius:var(--r);padding:5px 10px;
+  color:var(--text2);font-family:var(--font);font-size:11px;
+  cursor:pointer;outline:none;
+}
+.topbar-fy:focus{border-color:var(--gold)}
+.topbar-date{font-size:11px;color:var(--text3);white-space:nowrap}
+.topbar-live{
+  display:flex;align-items:center;gap:5px;
+  background:rgba(34,199,126,0.08);border:1px solid rgba(34,199,126,0.2);
+  border-radius:20px;padding:3px 10px;
+  font-size:10px;color:var(--emerald);font-weight:500;
+}
+.topbar-notif{
+  width:32px;height:32px;border-radius:var(--r);
+  background:var(--surface2);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:15px;color:var(--text2);
+  transition:all 0.15s;position:relative;
+}
+.topbar-notif:hover{border-color:var(--border2);color:var(--text)}
+.notif-badge{
+  position:absolute;top:-3px;right:-3px;
+  width:14px;height:14px;border-radius:50%;
+  background:var(--rose);border:2px solid var(--surface);
+  font-size:8px;font-weight:700;color:#fff;
+  display:flex;align-items:center;justify-content:center;
+}
+
+/* ═══════════════ CONTENT ═══════════════ */
+.content{flex:1;overflow-y:auto;padding:24px}
+@media(max-width:768px){.content{padding:16px}}
+
+/* ═══════════════ BUTTONS ═══════════════ */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:8px 16px;border-radius:var(--r);border:none;
+  cursor:pointer;font-family:var(--font);font-size:12px;font-weight:500;
+  transition:all 0.15s;white-space:nowrap;
+}
+.btn-primary{
+  background:linear-gradient(135deg,var(--gold) 0%,var(--gold2) 100%);
+  color:#1a1008;font-weight:600;
+  box-shadow:0 2px 12px rgba(196,154,42,0.3);
+}
+.btn-primary:hover{background:linear-gradient(135deg,var(--gold2) 0%,var(--gold3) 100%);box-shadow:0 4px 16px rgba(196,154,42,0.4);transform:translateY(-1px)}
+.btn-ghost{background:transparent;border:1px solid var(--border2);color:var(--text2)}
+.btn-ghost:hover{background:var(--surface2);color:var(--text);border-color:var(--border3)}
+.btn-danger{background:rgba(255,79,109,0.15);border:1px solid rgba(255,79,109,0.35);color:var(--rose)}
+.btn-danger:hover{background:rgba(255,79,109,0.25);border-color:rgba(255,79,109,0.5)}
+.btn-success{background:rgba(34,199,126,0.15);border:1px solid rgba(34,199,126,0.35);color:var(--emerald)}
+.btn-success:hover{background:rgba(34,199,126,0.25)}
+.btn-sm{padding:5px 10px;font-size:11px;gap:4px}
+.btn-xs{padding:3px 8px;font-size:10px;gap:3px}
+.btn-icon{padding:6px;border-radius:var(--r);width:30px;height:30px}
+
+/* ═══════════════ CARDS ═══════════════ */
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r3);padding:20px;
+  transition:border-color 0.2s;
+}
+.card:hover{border-color:var(--border2)}
+.card-sm{padding:14px 16px}
+.card-title{
+  font-size:12px;font-weight:600;color:var(--text);
+  margin-bottom:16px;display:flex;align-items:center;gap:8px;
+  text-transform:uppercase;letter-spacing:0.06em;
+}
+.card-title .ct-icon{font-size:14px}
+
+/* ═══════════════ METRIC CARDS ═══════════════ */
+.kpi-card{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:var(--r3);padding:18px 20px;
+  position:relative;overflow:hidden;
+  transition:all 0.2s;cursor:default;
+}
+.kpi-card:hover{border-color:var(--border2);transform:translateY(-2px);box-shadow:var(--shadow)}
+.kpi-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  border-radius:var(--r3) var(--r3) 0 0;
+}
+.kpi-card.gold::before{background:linear-gradient(90deg,var(--gold),var(--gold3))}
+.kpi-card.emerald::before{background:linear-gradient(90deg,var(--emerald),#5ef5a8)}
+.kpi-card.sky::before{background:linear-gradient(90deg,var(--sky),#7ac4ff)}
+.kpi-card.violet::before{background:linear-gradient(90deg,var(--violet),#c4a8ff)}
+.kpi-card.rose::before{background:linear-gradient(90deg,var(--rose),#ff8fa8)}
+.kpi-card.amber::before{background:linear-gradient(90deg,var(--amber),#ffd09f)}
+.kpi-card.teal::before{background:linear-gradient(90deg,var(--teal),#7ff6f3)}
+.kpi-card.indigo::before{background:linear-gradient(90deg,var(--indigo),#a8b4f8)}
+.kpi-bg-icon{
+  position:absolute;top:12px;right:14px;
+  font-size:32px;opacity:0.06;pointer-events:none;
+}
+.kpi-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.12em;font-weight:600;margin-bottom:8px}
+.kpi-value{font-family:var(--font2);font-size:26px;font-weight:600;color:var(--text);line-height:1}
+.kpi-change{font-size:11px;margin-top:6px;display:flex;align-items:center;gap:4px}
+.kpi-change.up{color:var(--emerald)}
+.kpi-change.down{color:var(--rose)}
+.kpi-change.neutral{color:var(--text3)}
+.kpi-sub{font-size:11px;color:var(--text3);margin-top:6px}
+
+/* ═══════════════ GRIDS ═══════════════ */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px}
+@media(max-width:1100px){.grid4{grid-template-columns:1fr 1fr}}
+@media(max-width:900px){.grid3{grid-template-columns:1fr 1fr}}
+@media(max-width:640px){.grid2,.grid3,.grid4{grid-template-columns:1fr}}
+
+/* ═══════════════ TABLE ═══════════════ */
+.table-wrap{overflow-x:auto;border-radius:var(--r2)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{
+  padding:10px 14px;text-align:left;font-size:10px;font-weight:600;
+  color:var(--text3);text-transform:uppercase;letter-spacing:0.1em;
+  background:var(--surface2);border-bottom:1px solid var(--border);
+  white-space:nowrap;position:sticky;top:0;z-index:1;
+}
+td{padding:11px 14px;color:var(--text2);border-bottom:1px solid var(--border)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,0.02);color:var(--text)}
+tbody tr{transition:background 0.1s}
+
+/* ═══════════════ BADGES ═══════════════ */
+.badge{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:3px 9px;border-radius:20px;
+  font-size:10px;font-weight:600;letter-spacing:0.04em;
+  white-space:nowrap;
+}
+.badge-emerald{background:rgba(34,199,126,0.12);color:var(--emerald);border:1px solid rgba(34,199,126,0.2)}
+.badge-rose{background:rgba(255,79,109,0.12);color:var(--rose);border:1px solid rgba(255,79,109,0.2)}
+.badge-gold{background:rgba(196,154,42,0.12);color:var(--gold2);border:1px solid rgba(196,154,42,0.2)}
+.badge-sky{background:rgba(59,158,255,0.12);color:var(--sky);border:1px solid rgba(59,158,255,0.2)}
+.badge-violet{background:rgba(155,108,248,0.12);color:var(--violet);border:1px solid rgba(155,108,248,0.2)}
+.badge-amber{background:rgba(255,159,67,0.12);color:var(--amber);border:1px solid rgba(255,159,67,0.2)}
+.badge-teal{background:rgba(0,210,200,0.12);color:var(--teal);border:1px solid rgba(0,210,200,0.2)}
+.badge-gray{background:rgba(136,136,176,0.08);color:var(--text2);border:1px solid var(--border)}
+.badge-indigo{background:rgba(108,125,232,0.12);color:var(--indigo);border:1px solid rgba(108,125,232,0.2)}
+
+/* ═══════════════ FORMS ═══════════════ */
+.form-group{margin-bottom:0}
+.form-group label{
+  display:block;font-size:10px;font-weight:600;
+  color:var(--text3);text-transform:uppercase;letter-spacing:0.1em;
+  margin-bottom:6px;
+}
+.form-control{
+  width:100%;background:var(--surface3);
+  border:1px solid var(--border2);border-radius:var(--r);
+  padding:9px 12px;color:var(--text);
+  font-family:var(--font);font-size:13px;outline:none;
+  transition:border-color 0.15s,box-shadow 0.15s;
+}
+.form-control:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(196,154,42,0.1)}
+.form-control::placeholder{color:var(--text4)}
+select.form-control{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2350506a'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+textarea.form-control{resize:vertical}
+.form-row{display:grid;gap:14px;margin-bottom:14px}
+.form-row.cols2{grid-template-columns:1fr 1fr}
+.form-row.cols3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:560px){.form-row.cols2,.form-row.cols3{grid-template-columns:1fr}}
+
+/* ═══════════════ MODAL ═══════════════ */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,0.8);
+  display:flex;align-items:center;justify-content:center;
+  z-index:1000;backdrop-filter:blur(4px);
+  animation:fadeIn 0.15s ease;
+}
+.modal{
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:var(--r4);padding:28px;width:580px;
+  max-width:94vw;max-height:88vh;overflow-y:auto;
+  box-shadow:var(--shadow2);
+  animation:slideUp 0.2s ease;
+}
+.modal-lg{width:700px}
+.modal-header{
+  display:flex;align-items:flex-start;justify-content:space-between;
+  margin-bottom:22px;padding-bottom:16px;
+  border-bottom:1px solid var(--border);
+}
+.modal-title{font-family:var(--font2);font-size:20px;color:var(--text);font-weight:600}
+.modal-close{
+  background:var(--surface2);border:1px solid var(--border);
+  width:28px;height:28px;border-radius:var(--r);
+  cursor:pointer;color:var(--text2);font-size:14px;
+  display:flex;align-items:center;justify-content:center;
+  transition:all 0.15s;flex-shrink:0;
+}
+.modal-close:hover{background:var(--surface3);color:var(--text)}
+.modal-actions{
+  display:flex;gap:10px;justify-content:flex-end;
+  margin-top:22px;padding-top:16px;border-top:1px solid var(--border);
+}
+
+/* ═══════════════ TABS ═══════════════ */
+.tab-bar{
+  display:flex;gap:2px;background:var(--surface2);
+  border-radius:var(--r2);padding:3px;
+  margin-bottom:20px;overflow-x:auto;
+  border:1px solid var(--border);
+  flex-shrink:0;
+}
+.tab-btn{
+  padding:6px 14px;border-radius:7px;border:none;
+  background:transparent;color:var(--text3);
+  cursor:pointer;font-family:var(--font);font-size:12px;font-weight:500;
+  transition:all 0.15s;white-space:nowrap;
+}
+.tab-btn.active{background:var(--surface);color:var(--gold2);box-shadow:0 1px 4px rgba(0,0,0,0.4)}
+.tab-btn:hover:not(.active){color:var(--text)}
+
+/* ═══════════════ PROGRESS ═══════════════ */
+.progress{height:5px;background:var(--surface3);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;border-radius:3px;transition:width 0.6s cubic-bezier(0.4,0,0.2,1)}
+
+/* ═══════════════ TOGGLE ═══════════════ */
+.toggle{width:38px;height:22px;background:var(--border2);border-radius:11px;position:relative;cursor:pointer;transition:background 0.2s;flex-shrink:0}
+.toggle.on{background:var(--emerald)}
+.toggle::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;background:#fff;border-radius:50%;transition:left 0.2s;box-shadow:0 1px 4px rgba(0,0,0,0.3)}
+.toggle.on::after{left:19px}
+
+/* ═══════════════ PAGE HEADER ═══════════════ */
+.page-header{margin-bottom:22px}
+.page-title{font-family:var(--font2);font-size:24px;color:var(--text);font-weight:600;margin-bottom:4px}
+.page-sub{font-size:12px;color:var(--text3)}
+.section-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+
+/* ═══════════════ SEARCH ═══════════════ */
+.search-wrap{
+  display:flex;align-items:center;gap:8px;
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:var(--r);padding:8px 12px;
+  transition:border-color 0.15s;flex:1;min-width:180px;
+}
+.search-wrap:focus-within{border-color:var(--gold)}
+.search-wrap input{background:none;border:none;outline:none;color:var(--text);font-family:var(--font);font-size:13px;flex:1;width:100%}
+.search-wrap input::placeholder{color:var(--text4)}
+.search-icon{color:var(--text3);font-size:13px;flex-shrink:0}
+
+/* ═══════════════ STAT ROWS ═══════════════ */
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)}
+.stat-row:last-child{border-bottom:none}
+.divider{height:1px;background:var(--border);margin:16px 0}
+
+/* ═══════════════ EMPTY STATE ═══════════════ */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 24px;text-align:center}
+.empty-icon{font-size:44px;margin-bottom:16px;opacity:0.35}
+.empty-title{font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px}
+.empty-sub{font-size:12px;color:var(--text3);max-width:300px;line-height:1.7}
+
+/* ═══════════════ DUE ITEMS ═══════════════ */
+.due-item{
+  display:flex;align-items:center;gap:14px;
+  padding:14px 16px;border-radius:var(--r2);margin-bottom:8px;
+  border-left:3px solid transparent;background:var(--surface2);
+  transition:all 0.15s;
+}
+.due-item:hover{background:var(--surface3)}
+.due-item.overdue{border-left-color:var(--rose);background:rgba(255,79,109,0.04)}
+.due-item.soon{border-left-color:var(--amber)}
+.due-item.ok{border-left-color:var(--emerald)}
+.due-item.done{border-left-color:var(--border);opacity:0.6}
+
+/* ═══════════════ ATTENDANCE GRID ═══════════════ */
+.att-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.att-day{aspect-ratio:1;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;cursor:pointer;transition:all 0.1s;letter-spacing:0}
+.att-day:hover{opacity:0.8;transform:scale(1.1)}
+.att-present{background:rgba(34,199,126,0.2);color:var(--emerald)}
+.att-absent{background:rgba(255,79,109,0.15);color:var(--rose)}
+.att-half{background:rgba(196,154,42,0.15);color:var(--gold2)}
+.att-off{background:var(--surface3);color:var(--text3)}
+.att-hd{background:rgba(59,158,255,0.12);color:var(--sky)}
+.att-null{background:transparent}
+
+/* ═══════════════ TOAST ═══════════════ */
+.toast-container{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{
+  background:var(--surface2);border:1px solid var(--border2);
+  border-radius:var(--r2);padding:12px 16px;
+  min-width:260px;max-width:380px;
+  display:flex;align-items:center;gap:10px;
+  box-shadow:var(--shadow2);animation:toastIn 0.25s ease-out;
+  pointer-events:all;font-size:13px;
+}
+.toast.success{border-left:3px solid var(--emerald)}
+.toast.error{border-left:3px solid var(--rose)}
+.toast.warning{border-left:3px solid var(--amber)}
+.toast.info{border-left:3px solid var(--sky)}
+.toast-msg{flex:1;line-height:1.4;color:var(--text)}
+.toast-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:0;line-height:1;flex-shrink:0}
+.toast-close:hover{color:var(--text)}
+
+/* ═══════════════ ANIMATIONS ═══════════════ */
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toastIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes countUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn 0.25s ease-out}
+.slide-up{animation:slideUp 0.25s ease-out}
+
+/* ═══════════════ SVG CHART HELPERS ═══════════════ */
+.chart-tooltip{
+  background:var(--surface2);border:1px solid var(--border2);
+  border-radius:var(--r);padding:8px 12px;
+  font-size:11px;pointer-events:none;
+  box-shadow:var(--shadow);white-space:nowrap;
+}
+
+/* ═══════════════ MISC ═══════════════ */
+.mono{font-family:'Courier New',monospace;font-size:11px}
+.text-gold{color:var(--gold2)}
+.text-emerald{color:var(--emerald)}
+.text-rose{color:var(--rose)}
+.text-sky{color:var(--sky)}
+.text-violet{color:var(--violet)}
+.text-amber{color:var(--amber)}
+.text-muted{color:var(--text3)}
+.fw600{font-weight:600}
+.fs11{font-size:11px}
+.fs12{font-size:12px}
+.fs13{font-size:13px}
+
+/* ═══════════════ LOGIN PAGE ═══════════════ */
+.login-page{
+  display:flex;min-height:100vh;
+  background:var(--bg);position:relative;overflow:hidden;
+}
+.login-left{
+  flex:1;display:flex;flex-direction:column;
+  justify-content:center;padding:60px;
+  background:linear-gradient(145deg,#0a0a16 0%,#10101e 100%);
+  position:relative;overflow:hidden;
+}
+.login-left::before{
+  content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(circle at 20% 30%,rgba(196,154,42,0.08) 0%,transparent 50%),
+    radial-gradient(circle at 80% 70%,rgba(155,108,248,0.06) 0%,transparent 50%);
+}
+.login-orb{
+  position:absolute;border-radius:50%;filter:blur(60px);opacity:0.6;
+}
+.login-orb1{width:300px;height:300px;top:-80px;left:-80px;background:rgba(196,154,42,0.12)}
+.login-orb2{width:400px;height:400px;bottom:-100px;right:-100px;background:rgba(155,108,248,0.08)}
+.login-brand{position:relative;z-index:1}
+.login-logo{font-family:var(--font2);font-size:40px;font-weight:600;color:var(--gold2);margin-bottom:12px;letter-spacing:0.02em}
+.login-tagline{font-size:14px;color:var(--text2);max-width:360px;line-height:1.7;margin-bottom:40px}
+.login-features{position:relative;z-index:1}
+.login-feature{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.login-feat-icon{
+  width:36px;height:36px;border-radius:10px;
+  background:rgba(196,154,42,0.1);border:1px solid rgba(196,154,42,0.2);
+  display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;
+}
+.login-feat-text{font-size:13px;color:var(--text2)}
+.login-feat-text strong{color:var(--text);display:block;font-size:14px;margin-bottom:2px}
+
+.login-right{
+  width:460px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  padding:40px;background:var(--surface);
+  border-left:1px solid var(--border);
+}
+.login-card{width:100%;max-width:380px}
+.login-card-title{font-family:var(--font2);font-size:26px;color:var(--text);font-weight:600;margin-bottom:6px}
+.login-card-sub{font-size:12px;color:var(--text3);margin-bottom:28px}
+.login-form .form-group{margin-bottom:16px}
+.login-form label{font-size:12px;color:var(--text2);text-transform:none;letter-spacing:0}
+.login-form .form-control{font-size:14px;padding:11px 14px}
+.login-submit{
+  width:100%;padding:12px;
+  background:linear-gradient(135deg,var(--gold) 0%,var(--gold2) 100%);
+  border:none;border-radius:var(--r2);
+  color:#1a1008;font-family:var(--font);font-size:14px;font-weight:700;
+  cursor:pointer;transition:all 0.2s;
+  box-shadow:0 4px 16px rgba(196,154,42,0.35);
+  letter-spacing:0.04em;
+}
+.login-submit:hover{transform:translateY(-2px);box-shadow:0 6px 24px rgba(196,154,42,0.45)}
+.login-submit:active{transform:translateY(0)}
+.login-demo{
+  margin-top:20px;padding:12px 14px;
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:var(--r2);font-size:11px;color:var(--text3);
+  line-height:1.6;
+}
+.login-err{
+  background:rgba(255,79,109,0.08);border:1px solid rgba(255,79,109,0.25);
+  border-radius:var(--r);padding:10px 14px;
+  color:var(--rose);font-size:12px;margin-bottom:14px;
+}
+@media(max-width:768px){
+  .login-left{display:none}
+  .login-right{width:100%;border-left:none;background:var(--bg)}
+  .login-card{max-width:360px}
+}
+
+/* ═══════════════ OUTLET BACK BAR ═══════════════ */
+.outlet-bar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:var(--r2);padding:10px 16px;margin-bottom:16px;
+}
+.outlet-bar-name{font-size:14px;color:var(--gold2);font-weight:600}
+.outlet-bar-back{
+  margin-left:auto;font-size:11px;color:var(--text3);
+  cursor:pointer;display:flex;align-items:center;gap:4px;
+  padding:4px 10px;border-radius:var(--r);
+  transition:all 0.15s;
+}
+.outlet-bar-back:hover{background:var(--surface3);color:var(--text2)}
+
+/* ═══════════════ SUMMARY BAR ═══════════════ */
+.summary-row{
+  display:flex;gap:0;border-radius:var(--r2);
+  overflow:hidden;border:1px solid var(--border);
+  margin-bottom:18px;background:var(--surface2);
+}
+.summary-item{
+  flex:1;padding:14px 16px;text-align:center;
+  border-right:1px solid var(--border);
+}
+.summary-item:last-child{border-right:none}
+.summary-val{font-family:var(--font2);font-size:20px;font-weight:600;color:var(--text)}
+.summary-lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.1em;margin-top:3px}
+
+/* ═══════════════ REPORT CARDS ═══════════════ */
+.report-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r3);padding:20px;cursor:pointer;
+  transition:all 0.2s;
+}
+.report-card:hover{border-color:var(--gold);background:var(--surface2);transform:translateY(-2px);box-shadow:var(--glow-gold)}
+.report-card .rc-icon{font-size:28px;margin-bottom:10px}
+.report-card .rc-title{font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px}
+.report-card .rc-sub{font-size:11px;color:var(--text3)}
+
+/* ═══════════════ COMPLIANCE ═══════════════ */
+.compliance-item{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 14px;border-radius:var(--r2);margin-bottom:6px;
+  background:var(--surface2);border:1px solid var(--border);
+}
+.compliance-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+</style>
 </head>
 <body>
-  <h1>SalonOS is Live ✅</h1>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<script>
+const {useState,useEffect,useRef,useCallback,useMemo}=React;
+
+// ══════════════════════════════════════════
+// GLOBAL DATA
+// ══════════════════════════════════════════
+const SALONS_INIT=[
+  {id:1,name:'Luxe Studio — Connaught Place',city:'New Delhi',state:'Delhi',pin:'110001',gst:'07AABCU9603R1ZP',pan:'AABCU9603R',type:'Owned',manager:'Priya Sharma',phone:'9876543210',email:'luxe@salonos.in',status:'Active',est:'2019-03-15'},
+  {id:2,name:'Glow & Co — Sector 18',city:'Noida',state:'UP',pin:'201301',gst:'09AABCU9603R1ZP',pan:'AABCU9603R',type:'Franchise',manager:'Rahul Mehta',phone:'9876543211',email:'glow@salonos.in',status:'Active',est:'2020-08-01'},
+  {id:3,name:'Studio 9 — Cyber Hub',city:'Gurugram',state:'Haryana',pin:'122002',gst:'06AABCU9603R1ZP',pan:'AABCU9603R',type:'Owned',manager:'Anita Verma',phone:'9876543212',email:'studio9@salonos.in',status:'Active',est:'2021-01-20'},
+  {id:4,name:'Élan Salon — Indiranagar',city:'Bengaluru',state:'Karnataka',pin:'560038',gst:'29AABCU9603R1ZP',pan:'AABCU9603R',type:'Franchise',manager:'Suresh Kumar',phone:'9876543213',email:'elan@salonos.in',status:'Inactive',est:'2018-06-10'},
+];
+const EMPLOYEES=[
+  {id:'E001',name:'Meera Joshi',fatherName:'Suresh Joshi',mobile:'9811001122',email:'meera@salonos.in',address:'B-12, Lajpat Nagar, New Delhi - 110024',desig:'Senior Stylist',dept:'Hair',doj:'2020-01-15',dol:'',weeklyOff:'Sunday',basic:18000,hra:7200,conv:1600,special:3200,gross:30000,pf:true,esic:true,pan:'ABCPJ1234K',aadhar:'1234 5678 9012',bankName:'HDFC Bank',accountNo:'50100123456789',ifsc:'HDFC0001234',accountHolder:'Meera Joshi',status:'Active',panFile:null,aadharFile:null},
+  {id:'E002',name:'Arjun Singh',fatherName:'Balwinder Singh',mobile:'9822002233',email:'arjun@salonos.in',address:'C-45, Vasant Kunj, New Delhi - 110070',desig:'Makeup Artist',dept:'Beauty',doj:'2021-03-10',dol:'',weeklyOff:'Monday',basic:15000,hra:6000,conv:1600,special:2400,gross:25000,pf:true,esic:true,pan:'BCQPS5678L',aadhar:'2345 6789 0123',bankName:'SBI',accountNo:'40234567890',ifsc:'SBIN0001234',accountHolder:'Arjun Singh',status:'Active',panFile:null,aadharFile:null},
+  {id:'E003',name:'Kavya Reddy',fatherName:'Ravi Reddy',mobile:'9833003344',email:'kavya@salonos.in',address:'Flat 203, Kondapur, Hyderabad - 500084',desig:'Nail Technician',dept:'Nail Art',doj:'2022-06-01',dol:'',weeklyOff:'Tuesday',basic:12000,hra:4800,conv:1600,special:1600,gross:20000,pf:false,esic:true,pan:'CDRQK9012M',aadhar:'3456 7890 1234',bankName:'Axis Bank',accountNo:'9120010012345',ifsc:'UTIB0001234',accountHolder:'Kavya Reddy',status:'Active',panFile:null,aadharFile:null},
+  {id:'E004',name:'Deepak Nair',fatherName:'Krishna Nair',mobile:'9844004455',email:'deepak@salonos.in',address:'Flat 401, Malad West, Mumbai - 400064',desig:'Receptionist',dept:'Admin',doj:'2019-09-20',dol:'',weeklyOff:'Wednesday',basic:14000,hra:5600,conv:1600,special:2800,gross:24000,pf:true,esic:true,pan:'DESQN3456N',aadhar:'4567 8901 2345',bankName:'ICICI Bank',accountNo:'123401501234',ifsc:'ICIC0001234',accountHolder:'Deepak Nair',status:'Active',panFile:null,aadharFile:null},
+  {id:'E005',name:'Pooja Patel',fatherName:'Ramesh Patel',mobile:'9855005566',email:'pooja@salonos.in',address:'10, Navrangpura, Ahmedabad - 380009',desig:'Junior Stylist',dept:'Hair',doj:'2023-02-14',dol:'',weeklyOff:'Sunday',basic:10000,hra:4000,conv:1600,special:1400,gross:17000,pf:false,esic:true,pan:'EFTRP7890P',aadhar:'5678 9012 3456',bankName:'Bank of Baroda',accountNo:'26200100123456',ifsc:'BARB0NAVRNG',accountHolder:'Pooja Patel',status:'Active',panFile:null,aadharFile:null},
+];
+const VENDORS_INIT=[
+  {id:'V001',name:"L'Oréal India Pvt Ltd",cat:'Products',address:'4th Floor, DLF Centre, New Delhi',gst:'27AABCL1234R1ZP',terms:'30 days',contact:'Rohit Sharma',phone:'9811234567',status:'Active'},
+  {id:'V002',name:'Wella Professional',cat:'Products',address:'Andheri East, Mumbai',gst:'07AABCW5678R1ZP',terms:'45 days',contact:'Nisha Patel',phone:'9822345678',status:'Active'},
+  {id:'V003',name:'SparkleClean Services',cat:'Housekeeping',address:'Okhla Phase II, New Delhi',gst:'07AABCS9012R1ZP',terms:'15 days',contact:'Ramesh Gupta',phone:'9833456789',status:'Active'},
+  {id:'V004',name:'TechFix Equipment Co',cat:'Equipment',address:'Nehru Place, New Delhi',gst:'07AABCT3456R1ZP',terms:'60 days',contact:'Ajay Kapoor',phone:'9844567890',status:'Active'},
+];
+const SALES_DATA=[
+  {date:'2024-01-15',service:42000,product:8500,membership:5000,gift:2000,totalRev:57500,salaries:18000,rent:10667,elec:6000,cosmetics:4500,misc:3200,incentives:2000,totalExp:44367,net:13133},
+  {date:'2024-01-16',service:38500,product:6200,membership:0,gift:0,totalRev:44700,salaries:18000,rent:10667,elec:6000,cosmetics:4500,misc:2800,incentives:1800,totalExp:43767,net:933},
+  {date:'2024-01-17',service:51000,product:9800,membership:8000,gift:3500,totalRev:72300,salaries:18000,rent:10667,elec:6000,cosmetics:4500,misc:3600,incentives:2500,totalExp:45267,net:27033},
+  {date:'2024-01-18',service:29000,product:4400,membership:0,gift:1000,totalRev:34400,salaries:18000,rent:10667,elec:6000,cosmetics:4500,misc:2500,incentives:1200,totalExp:42867,net:-8467},
+  {date:'2024-01-19',service:47500,product:11200,membership:6000,gift:4000,totalRev:68700,salaries:18000,rent:10667,elec:6000,cosmetics:4500,misc:3400,incentives:2200,totalExp:44767,net:23933},
+  {date:'2024-01-20',service:65000,product:14800,membership:9000,gift:5500,totalRev:94300,salaries:18000,rent:10667,elec:6000,cosmetics:4500,misc:4200,incentives:3000,totalExp:46367,net:47933},
+  {date:'2024-01-22',service:55000,product:12000,membership:7000,gift:2500,totalRev:76500,salaries:18000,rent:10667,elec:6000,cosmetics:4500,misc:3800,incentives:2600,totalExp:45567,net:30933},
+];
+const DUE_DATES_INIT=[
+  {id:1,type:'PF Challan',desc:'Jan 2024 PF deposit',due:'2024-02-15',status:'overdue',salon:'All outlets',amount:38400},
+  {id:2,type:'ESIC Challan',desc:'Jan 2024 ESIC payment',due:'2024-02-21',status:'soon',salon:'All outlets',amount:17100},
+  {id:3,type:'GST Filing',desc:'GSTR-1 January 2024',due:'2024-02-11',status:'done',salon:'Luxe Studio',amount:0},
+  {id:4,type:'PT Payment',desc:'Professional Tax Feb 2024',due:'2024-02-28',status:'ok',salon:'All outlets',amount:5400},
+  {id:5,type:'Vendor Payment',desc:"L'Oréal invoice #4521",due:'2024-02-10',status:'overdue',salon:'Glow & Co',amount:45000},
+  {id:6,type:'Salary Disbursement',desc:'January 2024 salaries',due:'2024-02-05',status:'done',salon:'All outlets',amount:416500},
+  {id:7,type:'TDS Payment',desc:'Q3 TDS deposit',due:'2024-02-07',status:'soon',salon:'All outlets',amount:24000},
+];
+const ADVANCES_INIT=[
+  {id:'A001',emp:'Meera Joshi',date:'2024-01-05',amount:10000,reason:'Medical emergency',approvedBy:'Priya Sharma',repayment:2000,outstanding:8000,status:'Active'},
+  {id:'A002',emp:'Arjun Singh',date:'2024-01-12',amount:5000,reason:'Personal',approvedBy:'Priya Sharma',repayment:5000,outstanding:0,status:'Recovered'},
+  {id:'A003',emp:'Deepak Nair',date:'2024-01-20',amount:15000,reason:'House rent',approvedBy:'Priya Sharma',repayment:3000,outstanding:12000,status:'Active'},
+];
+const PENALTIES_INIT=[
+  {id:'P001',emp:'Kavya Reddy',date:'2024-01-08',type:'Late arrival',amount:500,approvedBy:'Priya Sharma',month:'Jan 2024',remarks:'3rd occurrence'},
+  {id:'P002',emp:'Arjun Singh',date:'2024-01-15',type:'Uniform violation',amount:200,approvedBy:'Priya Sharma',month:'Jan 2024',remarks:'1st occurrence'},
+  {id:'P003',emp:'Pooja Patel',date:'2024-01-22',type:'Absent without notice',amount:1000,approvedBy:'Priya Sharma',month:'Jan 2024',remarks:'Deducted from salary'},
+];
+const COLLECTION=[
+  {date:'2024-01-15',expected:57500,cash:18000,card:23500,upi:16000,actual:57500,diff:0},
+  {date:'2024-01-16',expected:44700,cash:15200,card:18400,upi:10800,actual:44400,diff:-300},
+  {date:'2024-01-17',expected:72300,cash:22000,card:32800,upi:17200,actual:72000,diff:-300},
+  {date:'2024-01-18',expected:34400,cash:12000,card:14200,upi:8100,actual:34300,diff:-100},
+  {date:'2024-01-19',expected:68700,cash:24000,card:28500,upi:16100,actual:68600,diff:-100},
+];
+
+// ══════════════════════════════════════════
+// TOAST SYSTEM
+// ══════════════════════════════════════════
+let _addToast=null;
+function useToast(){
+  const add=(msg,type='success',dur=3500)=>{if(_addToast)_addToast(msg,type,dur);};
+  return{toast:add,success:(m)=>add(m,'success'),error:(m)=>add(m,'error'),warn:(m)=>add(m,'warning'),info:(m)=>add(m,'info')};
+}
+function ToastContainer({toasts,remove}){
+  if(!toasts.length)return null;
+  const icons={success:'✓',error:'✗',warning:'⚠',info:'ℹ'};
+  const colors={success:'var(--emerald)',error:'var(--rose)',warning:'var(--amber)',info:'var(--sky)'};
+  return React.createElement('div',{className:'toast-container'},
+    toasts.map(t=>React.createElement('div',{key:t.id,className:'toast '+t.type},
+      React.createElement('span',{style:{fontSize:15,color:colors[t.type]||colors.info,flexShrink:0}},icons[t.type]||'ℹ'),
+      React.createElement('span',{className:'toast-msg'},t.msg),
+      React.createElement('button',{className:'toast-close',onClick:()=>remove(t.id)},'✕')
+    ))
+  );
+}
+
+// ══════════════════════════════════════════
+// EXPORT HELPERS
+// ══════════════════════════════════════════
+function exportExcel(data,headers,filename){
+  if(typeof XLSX==='undefined'){alert('Export library not loaded. Please check internet connection.');return;}
+  const ws=XLSX.utils.json_to_sheet(data.map(r=>{const o={};headers.forEach((h,i)=>o[h]=r[i]);return o;}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
+  XLSX.writeFile(wb,filename+'.xlsx');
+}
+function exportPDF(title,headers,rows,filename){
+  if(typeof jspdf==='undefined'&&typeof window.jspdf==='undefined'){alert('PDF library not loaded.');return;}
+  const {jsPDF}=window.jspdf||jspdf;
+  const doc=new jsPDF({orientation:'landscape',format:'a4'});
+  doc.setFont('helvetica','bold');doc.setFontSize(16);
+  doc.text(title,14,16);
+  doc.setFontSize(9);doc.setFont('helvetica','normal');
+  doc.setTextColor(120);doc.text('Generated: '+new Date().toLocaleDateString('en-IN'),14,24);
+  doc.autoTable({head:[headers],body:rows,startY:30,styles:{fontSize:8,cellPadding:3},headStyles:{fillColor:[196,154,42],textColor:[26,16,8],fontStyle:'bold'},alternateRowStyles:{fillColor:[20,20,30]},theme:'striped'});
+  doc.save(filename+'.pdf');
+}
+
+// ══════════════════════════════════════════
+// SVG CHART COMPONENTS
+// ══════════════════════════════════════════
+function AreaChart({data,width,height,color,fill}){
+  if(!data||data.length<2)return null;
+  const max=Math.max(...data);const min=Math.min(...data);
+  const range=max-min||1;
+  const pad={t:10,r:4,b:4,l:4};
+  const w=width||400;const h=height||80;
+  const pts=data.map((v,i)=>{
+    const x=pad.l+(i/(data.length-1))*(w-pad.l-pad.r);
+    const y=pad.t+((max-v)/range)*(h-pad.t-pad.b);
+    return[x,y];
+  });
+  const linePath='M'+pts.map(p=>p.join(',')).join(' L');
+  const fillPath=linePath+` L${pts[pts.length-1][0]},${h} L${pts[0][0]},${h} Z`;
+  return React.createElement('svg',{width:w,height:h,viewBox:`0 0 ${w} ${h}`,style:{overflow:'visible'}},
+    React.createElement('defs',null,
+      React.createElement('linearGradient',{id:'ag'+color.replace('#',''),x1:'0',y1:'0',x2:'0',y2:'1'},
+        React.createElement('stop',{offset:'0%',stopColor:color,stopOpacity:'0.35'}),
+        React.createElement('stop',{offset:'100%',stopColor:color,stopOpacity:'0'})
+      )
+    ),
+    React.createElement('path',{d:fillPath,fill:`url(#ag${color.replace('#','')})`,stroke:'none'}),
+    React.createElement('path',{d:linePath,fill:'none',stroke:color,strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'})
+  );
+}
+
+function BarChartSVG({data,labels,colors,height}){
+  const h=height||120;const w=500;
+  const max=Math.max(...data,1);
+  const barW=Math.floor((w-40)/data.length)-6;
+  return React.createElement('svg',{viewBox:`0 0 ${w} ${h+30}`,style:{width:'100%',overflow:'visible'}},
+    data.map((v,i)=>{
+      const x=20+i*((w-40)/data.length)+3;
+      const bh=Math.max(4,(v/max)*(h-20));
+      const y=h-bh;
+      const c=Array.isArray(colors)?colors[i%colors.length]:colors;
+      return React.createElement('g',{key:i},
+        React.createElement('rect',{x,y,width:barW,height:bh,rx:3,fill:c,opacity:0.85}),
+        React.createElement('text',{x:x+barW/2,y:y-4,textAnchor:'middle',fontSize:9,fill:'#8888b0'},v>=1000?Math.round(v/1000)+'k':v),
+        React.createElement('text',{x:x+barW/2,y:h+16,textAnchor:'middle',fontSize:9,fill:'#50506a'},labels[i]||i)
+      );
+    })
+  );
+}
+
+function DonutChart({segments,size}){
+  const s=size||120;const cx=s/2;const cy=s/2;const r=(s/2)-14;
+  const total=segments.reduce((a,b)=>a+b.value,0)||1;
+  let angle=-90;
+  const arcs=segments.map(seg=>{
+    const pct=seg.value/total;const sweep=pct*360;
+    const start=angle;angle+=sweep;
+    const sr=(start*Math.PI)/180;const er=((start+sweep)*Math.PI)/180;
+    const x1=cx+r*Math.cos(sr);const y1=cy+r*Math.sin(sr);
+    const x2=cx+r*Math.cos(er);const y2=cy+r*Math.sin(er);
+    const lg=sweep>180?1:0;
+    return{path:`M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${lg},1 ${x2},${y2} Z`,color:seg.color,label:seg.label,value:seg.value,pct:Math.round(pct*100)};
+  });
+  return React.createElement('svg',{width:s,height:s,viewBox:`0 0 ${s} ${s}`},
+    React.createElement('circle',{cx,cy,r:r-2,fill:'var(--surface3)'}),
+    arcs.map((a,i)=>React.createElement('path',{key:i,d:a.path,fill:a.color,stroke:'var(--surface)',strokeWidth:2,opacity:0.88})),
+    React.createElement('circle',{cx,cy,r:r*0.5,fill:'var(--surface2)'})
+  );
+}
+
+// ══════════════════════════════════════════
+// LOGIN PAGE
+// ══════════════════════════════════════════
+function LoginPage({onLogin}){
+  const [email,setEmail]=useState('admin@salonos.in');
+  const [pass,setPass]=useState('Admin@2024');
+  const [err,setErr]=useState('');
+  const [loading,setLoading]=useState(false);
+  const handleLogin=()=>{
+    if(!email||!pass){setErr('Please enter your credentials.');return;}
+    setLoading(true);setErr('');
+    setTimeout(()=>{
+      if(pass.length>=4){onLogin({name:'Rajesh Gupta',role:'Super Admin',email});}
+      else{setErr('Invalid credentials. Please try again.');setLoading(false);}
+    },700);
+  };
+  const handleKey=(e)=>{if(e.key==='Enter')handleLogin();};
+  return React.createElement('div',{className:'login-page'},
+    // LEFT PANEL
+    React.createElement('div',{className:'login-left'},
+      React.createElement('div',{className:'login-orb login-orb1'}),
+      React.createElement('div',{className:'login-orb login-orb2'}),
+      React.createElement('div',{className:'login-brand'},
+        React.createElement('div',{className:'login-logo'},'SalonOS'),
+        React.createElement('div',{className:'login-tagline'},'The complete management suite for modern salon chains — payroll, attendance, analytics, and compliance in one place.')
+      ),
+      React.createElement('div',{className:'login-features'},
+        [['📊','Master Dashboard','Consolidated analytics across all outlets'],
+         ['💰','Payroll Engine','Salary, advances, penalties & statutory compliance'],
+         ['📋','Attendance Register','Click-to-edit attendance with export'],
+         ['🏪','Multi-Outlet','Manage owned & franchise outlets from one login']
+        ].map(([icon,title,sub])=>React.createElement('div',{key:title,className:'login-feature'},
+          React.createElement('div',{className:'login-feat-icon'},icon),
+          React.createElement('div',{className:'login-feat-text'},
+            React.createElement('strong',null,title),sub
+          )
+        ))
+      )
+    ),
+    // RIGHT PANEL
+    React.createElement('div',{className:'login-right'},
+      React.createElement('div',{className:'login-card slide-up'},
+        React.createElement('div',{className:'login-card-title'},'Welcome back'),
+        React.createElement('div',{className:'login-card-sub'},'Sign in to your SalonOS account'),
+        React.createElement('div',{className:'login-form'},
+          React.createElement('div',{className:'form-group',style:{marginBottom:16}},
+            React.createElement('label',null,'Email Address'),
+            React.createElement('input',{className:'form-control',value:email,onChange:e=>setEmail(e.target.value),onKeyDown:handleKey,placeholder:'admin@salonos.in',autoComplete:'email'})
+          ),
+          React.createElement('div',{className:'form-group',style:{marginBottom:20}},
+            React.createElement('label',null,'Password'),
+            React.createElement('input',{className:'form-control',type:'password',value:pass,onChange:e=>setPass(e.target.value),onKeyDown:handleKey,placeholder:'••••••••',autoComplete:'current-password'})
+          ),
+          err&&React.createElement('div',{className:'login-err'},err),
+          React.createElement('button',{className:'login-submit',onClick:handleLogin,disabled:loading},
+            loading?'Signing in…':'Sign In →'
+          ),
+          React.createElement('div',{className:'login-demo'},
+            React.createElement('div',{style:{fontSize:10,fontWeight:600,color:'var(--text3)',marginBottom:4,textTransform:'uppercase',letterSpacing:'0.1em'}},'Demo Credentials'),
+            React.createElement('div',null,'📧 admin@salonos.in'),
+            React.createElement('div',null,'🔑 Admin@2024')
+          )
+        )
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// MASTER DASHBOARD
+// ══════════════════════════════════════════
+function MasterDashboard({selFY,setSelFY,FYS}){
+  const {toast}=useToast();
+  const months12=['May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr'];
+  const revenueData=[285000,312000,298000,345000,389000,412000,435000,398000,421000,456000,482000,467000];
+  const expenseData=[198000,215000,205000,238000,264000,281000,298000,272000,289000,312000,328000,318000];
+  const profitData=revenueData.map((r,i)=>r-expenseData[i]);
+
+  const donutSegs=[
+    {label:'Salaries',value:472000,color:'var(--violet)'},
+    {label:'Rent',value:128000,color:'var(--sky)'},
+    {label:'Cosmetics',value:84000,color:'var(--teal)'},
+    {label:'Electricity',value:56000,color:'var(--amber)'},
+    {label:'Marketing',value:38000,color:'var(--rose)'},
+    {label:'Other',value:60000,color:'var(--text3)'},
+  ];
+  const donutTotal=donutSegs.reduce((a,b)=>a+b.value,0);
+
+  const kpis=[
+    {label:'Total Revenue',val:'₹46.58L',icon:'💰',color:'gold',change:'+8.4%',up:true,sub:'vs last month'},
+    {label:'Net Profit',val:'₹15.44L',icon:'📈',color:'emerald',change:'+12.1%',up:true,sub:'33.1% margin'},
+    {label:'Total Expenses',val:'₹31.14L',icon:'📊',color:'violet',change:'+5.2%',up:false,sub:'vs last month'},
+    {label:'Active Staff',val:'47',icon:'👥',color:'sky',sub:'Across 3 active outlets'},
+  ];
+
+  const outlets=[
+    {name:'Luxe Studio — CP',rev:467000,target:500000,color:'var(--gold)'},
+    {name:'Glow & Co — Noida',rev:312000,target:380000,color:'var(--sky)'},
+    {name:'Studio 9 — Gurugram',rev:285000,target:320000,color:'var(--teal)'},
+  ];
+
+  const compliance=[
+    {text:'PF Challan overdue — ₹38,400',color:'var(--rose)',dot:'var(--rose)'},
+    {text:'TDS payment due in 5 days',color:'var(--amber)',dot:'var(--amber)'},
+    {text:'ESIC due Feb 21 — ₹17,100',color:'var(--amber)',dot:'var(--amber)'},
+    {text:'GSTR-1 January filed ✓',color:'var(--emerald)',dot:'var(--emerald)'},
+    {text:'Salary disbursed ✓',color:'var(--emerald)',dot:'var(--emerald)'},
+  ];
+
+  const doExportPDF=()=>{
+    try{
+      exportPDF('SalonOS — Master Dashboard Report',
+        ['Month','Revenue (₹)','Expenses (₹)','Profit (₹)'],
+        months12.map((m,i)=>[m,revenueData[i].toLocaleString(),expenseData[i].toLocaleString(),profitData[i].toLocaleString()]),
+        'SalonOS_Dashboard_'+selFY.replace('-','_')
+      );toast('Dashboard exported as PDF','success');
+    }catch(e){toast('PDF export failed: '+e.message,'error');}
+  };
+  const doExportExcel=()=>{
+    try{
+      exportExcel(months12.map((m,i)=>['M','R','E','P'].map((k,j)=>j===0?m:j===1?revenueData[i]:j===2?expenseData[i]:profitData[i])),
+        ['Month','Revenue','Expenses','Net Profit'],
+        'SalonOS_Dashboard_'+selFY.replace('-','_')
+      );toast('Dashboard exported as Excel','success');
+    }catch(e){toast('Excel export failed: '+e.message,'error');}
+  };
+
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',{className:'page-header',style:{marginBottom:0}},
+        React.createElement('div',{className:'page-title'},'Master Dashboard'),
+        React.createElement('div',{className:'page-sub'},'Consolidated analytics — '+selFY)
+      ),
+      React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
+        React.createElement('select',{className:'form-control',style:{width:'auto',fontSize:12},value:selFY,onChange:e=>setSelFY(e.target.value)},
+          FYS.map(f=>React.createElement('option',{key:f},'FY '+f))
+        ),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:doExportExcel},'⬇ Excel'),
+        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:doExportPDF},'⬇ PDF')
+      )
+    ),
+    // KPI row
+    React.createElement('div',{className:'grid4',style:{marginBottom:18}},
+      kpis.map(k=>React.createElement('div',{key:k.label,className:'kpi-card '+k.color},
+        React.createElement('div',{className:'kpi-bg-icon'},k.icon),
+        React.createElement('div',{className:'kpi-label'},k.label),
+        React.createElement('div',{className:'kpi-value'},k.val),
+        k.change
+          ?React.createElement('div',{className:'kpi-change '+(k.up?'up':'down')},k.change+' ',React.createElement('span',{style:{color:'var(--text3)'}},k.sub))
+          :React.createElement('div',{className:'kpi-sub'},k.sub)
+      ))
+    ),
+    // Charts row
+    React.createElement('div',{className:'grid2',style:{marginBottom:18}},
+      // Revenue Trend
+      React.createElement('div',{className:'card'},
+        React.createElement('div',{className:'card-title'},React.createElement('span',{className:'ct-icon'},'📈'),'Revenue vs Expenses — 12 Month'),
+        React.createElement('div',{style:{position:'relative',height:130,marginBottom:8}},
+          React.createElement(BarChartSVG,{
+            data:revenueData.map(v=>Math.round(v/1000)),
+            labels:months12,
+            colors:months12.map((_,i)=>i===11?'var(--gold)':'var(--sky)'),
+            height:110
+          })
+        ),
+        React.createElement('div',{style:{display:'flex',gap:16,marginTop:8}},
+          React.createElement('div',{style:{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'var(--text3)'}},React.createElement('div',{style:{width:10,height:10,borderRadius:2,background:'var(--sky)'}}), 'Revenue'),
+          React.createElement('div',{style:{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'var(--text3)'}},React.createElement('div',{style:{width:10,height:10,borderRadius:2,background:'var(--gold)'}}), 'Current Month')
+        )
+      ),
+      // Outlet Performance
+      React.createElement('div',{className:'card'},
+        React.createElement('div',{className:'card-title'},React.createElement('span',{className:'ct-icon'},'🏪'),'Outlet Performance — Jan 2024'),
+        outlets.map((o,i)=>{
+          const pct=Math.round((o.rev/o.target)*100);
+          return React.createElement('div',{key:o.name,style:{marginBottom:14}},
+            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:5,alignItems:'center'}},
+              React.createElement('span',{style:{fontSize:12,color:'var(--text2)',fontWeight:500}},o.name.split('—')[0].trim()),
+              React.createElement('div',{style:{textAlign:'right'}},
+                React.createElement('span',{style:{fontSize:13,color:'var(--text)',fontWeight:600}},'₹'+(o.rev/1000).toFixed(0)+'k'),
+                React.createElement('span',{style:{fontSize:10,color:'var(--text3)',marginLeft:6}},pct+'% of target')
+              )
+            ),
+            React.createElement('div',{className:'progress'},
+              React.createElement('div',{className:'progress-fill',style:{width:pct+'%',background:o.color}})
+            )
+          );
+        }),
+        React.createElement('div',{className:'divider'}),
+        React.createElement('div',{style:{display:'flex',gap:16,flexWrap:'wrap'}},
+          [{l:'Avg Margin',v:'33%',c:'var(--emerald)'},{l:'MoM Growth',v:'+8.4%',c:'var(--emerald)'},{l:'Avg Ticket',v:'₹1,240',c:'var(--text)'}].map(s=>
+            React.createElement('div',{key:s.l,style:{textAlign:'center',flex:1}},
+              React.createElement('div',{style:{fontSize:18,fontWeight:700,fontFamily:'var(--font2)',color:s.c}},s.v),
+              React.createElement('div',{style:{fontSize:9,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.08em',marginTop:2}},s.l)
+            )
+          )
+        )
+      )
+    ),
+    // Bottom row
+    React.createElement('div',{className:'grid3'},
+      // Expense breakdown
+      React.createElement('div',{className:'card'},
+        React.createElement('div',{className:'card-title'},React.createElement('span',{className:'ct-icon'},'💸'),'Expense Breakdown'),
+        React.createElement('div',{style:{display:'flex',gap:16,alignItems:'center'}},
+          React.createElement(DonutChart,{segments:donutSegs,size:110}),
+          React.createElement('div',{style:{flex:1}},
+            donutSegs.map(s=>React.createElement('div',{key:s.label,style:{display:'flex',alignItems:'center',gap:6,marginBottom:5}},
+              React.createElement('div',{style:{width:8,height:8,borderRadius:2,background:s.color,flexShrink:0}}),
+              React.createElement('span',{style:{fontSize:11,color:'var(--text3)',flex:1}},s.label),
+              React.createElement('span',{style:{fontSize:11,fontWeight:600,color:'var(--text)'}},Math.round(s.value/donutTotal*100)+'%')
+            ))
+          )
+        )
+      ),
+      // Salary summary
+      React.createElement('div',{className:'card'},
+        React.createElement('div',{className:'card-title'},React.createElement('span',{className:'ct-icon'},'💰'),'Salary Summary'),
+        [['Gross Payable','₹4,72,000','var(--text)'],
+         ['PF (Employer 12%)','₹38,400','var(--text2)'],
+         ['ESIC (Employer)','₹17,100','var(--text2)'],
+         ['PT Deductions','₹5,400','var(--text2)'],
+         ['Net Disbursed','₹4,16,500','var(--emerald)']
+        ].map(([k,v,c])=>React.createElement('div',{key:k,className:'stat-row'},
+          React.createElement('span',{style:{fontSize:12,color:'var(--text3)'}},k),
+          React.createElement('span',{style:{fontSize:12,fontWeight:600,color:c}},v)
+        ))
+      ),
+      // Compliance
+      React.createElement('div',{className:'card'},
+        React.createElement('div',{className:'card-title'},React.createElement('span',{className:'ct-icon'},'⚠'),'Compliance Tracker'),
+        compliance.map((c,i)=>React.createElement('div',{key:i,className:'compliance-item'},
+          React.createElement('div',{className:'compliance-dot',style:{background:c.dot,boxShadow:`0 0 6px ${c.dot}`}}),
+          React.createElement('span',{style:{fontSize:12,color:c.color}},c.text)
+        ))
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// MASTER SHEET (Salon Management)
+// ══════════════════════════════════════════
+function MasterSheet({onSelect,salons,setSalons}){
+  const BLANK={name:'',city:'',state:'',pin:'',gst:'',pan:'',type:'Owned',manager:'',phone:'',email:'',status:'Active',est:new Date().toISOString().slice(0,10)};
+  const [showModal,setShowModal]=useState(false);
+  const [showDelete,setShowDelete]=useState(null);
+  const [editItem,setEditItem]=useState(null);
+  const [form,setForm]=useState(BLANK);
+  const [search,setSearch]=useState('');
+  const {toast}=useToast();
+  const fc=k=>e=>setForm(f=>({...f,[k]:e.target.type==='checkbox'?e.target.checked:e.target.value}));
+  const nextId=()=>Math.max(0,...salons.map(s=>Number(s.id)||0))+1;
+  const openAdd=()=>{setForm({...BLANK});setEditItem(null);setShowModal(true);};
+  const openEdit=s=>{setForm({...s});setEditItem(s);setShowModal(true);};
+  const save=()=>{
+    if(!form.name.trim()){toast('Salon name is required','error');return;}
+    if(!form.city.trim()){toast('City is required','error');return;}
+    if(editItem){setSalons(p=>p.map(s=>s.id===editItem.id?{...form,id:editItem.id}:s));toast('Salon updated','success');}
+    else{setSalons(p=>[...p,{...form,id:nextId()}]);toast('Salon added successfully','success');}
+    setShowModal(false);
+  };
+  const filtered=salons.filter(s=>!search||[s.name,s.city,s.manager].join(' ').toLowerCase().includes(search.toLowerCase()));
+  const FG=(label,children)=>React.createElement('div',{className:'form-group'},React.createElement('label',null,label),children);
+  const INP=props=>React.createElement('input',{className:'form-control',...props});
+  const SEL=(value,onChange,opts)=>React.createElement('select',{className:'form-control',value,onChange},opts.map(o=>React.createElement('option',{key:o},o)));
+
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Master Sheet'),React.createElement('div',{className:'page-sub'},'All registered salon outlets')),
+      React.createElement('button',{className:'btn btn-primary',onClick:openAdd},'＋ Add Salon')
+    ),
+    React.createElement('div',{className:'grid4',style:{marginBottom:18}},
+      [{l:'Total Outlets',v:salons.length,c:'sky'},{l:'Active',v:salons.filter(s=>s.status==='Active').length,c:'emerald'},
+       {l:'Owned',v:salons.filter(s=>s.type==='Owned').length,c:'gold'},{l:'Franchise',v:salons.filter(s=>s.type==='Franchise').length,c:'violet'}
+      ].map(m=>React.createElement('div',{key:m.l,className:'kpi-card '+m.c},
+        React.createElement('div',{className:'kpi-label'},m.l),
+        React.createElement('div',{className:'kpi-value'},m.v)
+      ))
+    ),
+    React.createElement('div',{style:{display:'flex',gap:10,marginBottom:16,alignItems:'center',flexWrap:'wrap'}},
+      React.createElement('div',{className:'search-wrap'},
+        React.createElement('span',{className:'search-icon'},'🔍'),
+        React.createElement('input',{placeholder:'Search by name, city or manager…',value:search,onChange:e=>setSearch(e.target.value)})
+      ),
+      React.createElement('span',{style:{fontSize:11,color:'var(--text3)',whiteSpace:'nowrap'}},filtered.length+' of '+salons.length+' outlets')
+    ),
+    React.createElement('div',{className:'card'},
+      filtered.length===0
+        ?React.createElement('div',{className:'empty-state'},React.createElement('div',{className:'empty-icon'},'🏪'),React.createElement('div',{className:'empty-title'},'No salons found'),React.createElement('div',{className:'empty-sub'},'Add your first outlet to get started.'))
+        :React.createElement('div',{className:'table-wrap'},
+          React.createElement('table',null,
+            React.createElement('thead',null,React.createElement('tr',null,
+              ['Salon Name','Location','Type','GST / PAN','Manager','Phone','Status','Actions'].map(h=>React.createElement('th',{key:h},h))
+            )),
+            React.createElement('tbody',null,filtered.map(s=>
+              React.createElement('tr',{key:s.id},
+                React.createElement('td',null,
+                  React.createElement('div',{style:{fontWeight:600,color:'var(--text)',fontSize:13}},s.name),
+                  React.createElement('div',{style:{fontSize:10,color:'var(--text3)',marginTop:2}},'Est. '+s.est)
+                ),
+                React.createElement('td',null,
+                  React.createElement('div',{style:{fontSize:12,color:'var(--text)'}},s.city),
+                  React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},s.state+(s.pin?' – '+s.pin:''))
+                ),
+                React.createElement('td',null,React.createElement('span',{className:'badge '+(s.type==='Owned'?'badge-sky':'badge-violet')},s.type)),
+                React.createElement('td',null,
+                  React.createElement('div',{className:'mono',style:{color:'var(--text2)'}},s.gst||'—'),
+                  s.pan&&React.createElement('div',{className:'mono',style:{marginTop:2}},s.pan)
+                ),
+                React.createElement('td',null,
+                  React.createElement('div',{style:{fontWeight:500,fontSize:12,color:'var(--text)'}},s.manager),
+                  s.email&&React.createElement('div',{style:{fontSize:10,color:'var(--text3)'}},s.email)
+                ),
+                React.createElement('td',{className:'mono'},s.phone||'—'),
+                React.createElement('td',null,React.createElement('span',{className:'badge '+(s.status==='Active'?'badge-emerald':'badge-gray')},s.status)),
+                React.createElement('td',null,
+                  React.createElement('div',{style:{display:'flex',gap:6}},
+                    React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>onSelect(s)},'Open'),
+                    React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>openEdit(s)},'Edit'),
+                    React.createElement('button',{className:'btn btn-danger btn-xs btn-icon',onClick:()=>setShowDelete(s)},'🗑')
+                  )
+                )
+              )
+            ))
+          )
+        )
+    ),
+    showModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowModal(false)},
+      React.createElement('div',{className:'modal modal-lg',onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-header'},
+          React.createElement('div',{className:'modal-title'},editItem?'Edit Salon':'Add New Salon'),
+          React.createElement('button',{className:'modal-close',onClick:()=>setShowModal(false)},'✕')
+        ),
+        React.createElement('div',{className:'form-row cols2'},FG('Salon Name *',INP({value:form.name,onChange:fc('name'),placeholder:'e.g. Luxe Studio — CP'})),FG('Outlet Type',SEL(form.type,fc('type'),['Owned','Franchise']))),
+        React.createElement('div',{className:'form-row cols3'},FG('City *',INP({value:form.city,onChange:fc('city')})),FG('State',INP({value:form.state,onChange:fc('state')})),FG('PIN Code',INP({value:form.pin,onChange:fc('pin'),placeholder:'110001'}))),
+        React.createElement('div',{className:'form-row cols2'},FG('GST Number',INP({value:form.gst,onChange:fc('gst'),placeholder:'07AABCX1234R1ZP',style:{textTransform:'uppercase'}})),FG('PAN Number',INP({value:form.pan,onChange:fc('pan'),placeholder:'AABCX1234R',style:{textTransform:'uppercase'}}))),
+        React.createElement('div',{className:'form-row cols2'},FG('Manager Name',INP({value:form.manager,onChange:fc('manager')})),FG('Phone',INP({value:form.phone,onChange:fc('phone'),placeholder:'98xxxxxxxx'}))),
+        React.createElement('div',{className:'form-row cols3'},FG('Email',INP({type:'email',value:form.email,onChange:fc('email'),placeholder:'outlet@company.com'})),FG('Established',INP({type:'date',value:form.est,onChange:fc('est')})),FG('Status',SEL(form.status,fc('status'),['Active','Inactive']))),
+        React.createElement('div',{className:'modal-actions'},
+          React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowModal(false)},'Cancel'),
+          editItem&&React.createElement('button',{className:'btn btn-danger',onClick:()=>{setShowModal(false);setShowDelete(editItem);}},'Delete'),
+          React.createElement('button',{className:'btn btn-primary',onClick:save},editItem?'Save Changes':'Add Salon')
+        )
+      )
+    ),
+    showDelete&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowDelete(null)},
+      React.createElement('div',{className:'modal',style:{width:420},onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-header'},
+          React.createElement('div',{className:'modal-title',style:{color:'var(--rose)'}},'Delete Salon?'),
+          React.createElement('button',{className:'modal-close',onClick:()=>setShowDelete(null)},'✕')
+        ),
+        React.createElement('div',{style:{fontSize:13,color:'var(--text2)',lineHeight:1.7,marginBottom:20}},
+          'Are you sure you want to permanently delete ',React.createElement('strong',{style:{color:'var(--text)'}},showDelete.name),'? This action cannot be undone.'
+        ),
+        React.createElement('div',{className:'modal-actions'},
+          React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowDelete(null)},'Cancel'),
+          React.createElement('button',{className:'btn btn-danger',onClick:()=>{setSalons(p=>p.filter(s=>s.id!==showDelete.id));setShowDelete(null);toast('Salon deleted','warning');}},'Yes, Delete')
+        )
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// OUTLET DASHBOARD
+// ══════════════════════════════════════════
+function OutletDashboard({salon}){
+  const today=new Date();
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const [selMonth,setSelMonth]=useState(today.getMonth());
+  const seed=m=>(m+1)*salon.id*17;
+  const rnd=(base,v,s)=>{let x=Math.sin(s)*10000;x=x-Math.floor(x);return Math.round(base*(1+(x-0.5)*v));};
+  const mData=m=>{const s=seed(m);
+    const svc=rnd(380000,0.35,s+1),prod=rnd(68000,0.3,s+2),mem=rnd(45000,0.4,s+3),gift=rnd(9000,0.5,s+4);
+    const rev=svc+prod+mem+gift;
+    const sal=rnd(188000,0.05,s+5),rent=32000,elec=rnd(20000,0.25,s+6),cos=rnd(35000,0.3,s+7),mkt=rnd(9000,0.4,s+8),misc=rnd(12000,0.5,s+9),inc=rnd(28000,0.3,s+10);
+    const exp=sal+rent+elec+cos+mkt+misc+inc;const net=rev-exp;
+    const cash=rnd(rev*0.32,0.1,s+11),card=rnd(rev*0.41,0.08,s+12),upi=rev-cash-card;
+    return{svc,prod,mem,gift,rev,sal,rent,elec,cos,mkt,misc,inc,exp,net,cash,card,upi,gm:Math.round((net/rev)*100)};
+  };
+  const cur=mData(selMonth);
+  const prev=mData((selMonth-1+12)%12);
+  const trend12=Array.from({length:12},(_,i)=>mData((selMonth-11+i+12)%12).rev);
+  const pct=(a,b)=>b>0?Math.round(((a-b)/b)*100):0;
+
+  const kpis=[
+    {label:'Total Revenue',val:'₹'+Math.round(cur.rev/1000)+'k',color:'gold',change:pct(cur.rev,prev.rev),icon:'💰'},
+    {label:'Net Profit',val:'₹'+Math.round(cur.net/1000)+'k',color:'emerald',change:pct(cur.net,prev.net),icon:'📈'},
+    {label:'Gross Margin',val:cur.gm+'%',color:'sky',change:pct(cur.gm,Math.round((prev.net/prev.rev)*100)),icon:'📊'},
+    {label:'Total Expenses',val:'₹'+Math.round(cur.exp/1000)+'k',color:'violet',change:pct(cur.exp,prev.exp),icon:'💸'},
+  ];
+
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},salon.name.split('—')[0].trim()),React.createElement('div',{className:'page-sub'},'Outlet analytics dashboard')),
+      React.createElement('select',{className:'form-control',style:{width:'auto',fontSize:12},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},
+        months.map((m,i)=>React.createElement('option',{key:m,value:i},m+' '+today.getFullYear()))
+      )
+    ),
+    React.createElement('div',{className:'grid4',style:{marginBottom:18}},
+      kpis.map(k=>React.createElement('div',{key:k.label,className:'kpi-card '+k.color},
+        React.createElement('div',{className:'kpi-bg-icon'},k.icon),
+        React.createElement('div',{className:'kpi-label'},k.label),
+        React.createElement('div',{className:'kpi-value'},k.val),
+        React.createElement('div',{className:'kpi-change '+(k.change>=0?'up':'down')},
+          (k.change>=0?'+':'')+k.change+'% ',React.createElement('span',{style:{color:'var(--text3)'}},'vs last month')
+        )
+      ))
+    ),
+    React.createElement('div',{className:'grid2',style:{marginBottom:18}},
+      React.createElement('div',{className:'card'},
+        React.createElement('div',{className:'card-title'},React.createElement('span',{className:'ct-icon'},'📈'),'Revenue Trend — 12 Months'),
+        React.createElement(AreaChart,{data:trend12,width:400,height:80,color:'#c49a2a'})
+      ),
+      React.createElement('div',{className:'card'},
+        React.createElement('div',{className:'card-title'},React.createElement('span',{className:'ct-icon'},'💳'),'Payment Mode Split'),
+        React.createElement('div',{style:{display:'flex',alignItems:'center',gap:20}},
+          React.createElement(DonutChart,{segments:[
+            {label:'Cash',value:cur.cash,color:'var(--gold)'},
+            {label:'Card',value:cur.card,color:'var(--sky)'},
+            {label:'UPI',value:cur.upi,color:'var(--teal)'},
+          ],size:100}),
+          React.createElement('div',{style:{flex:1}},
+            [['Cash',cur.cash,'var(--gold)'],['Card',cur.card,'var(--sky)'],['UPI',cur.upi,'var(--teal)']].map(([l,v,c])=>
+              React.createElement('div',{key:l,style:{display:'flex',justifyContent:'space-between',padding:'7px 0',borderBottom:'1px solid var(--border)'}},
+                React.createElement('span',{style:{fontSize:12,color:'var(--text2)',display:'flex',alignItems:'center',gap:6}},
+                  React.createElement('div',{style:{width:8,height:8,borderRadius:2,background:c}}),l
+                ),
+                React.createElement('span',{style:{fontSize:12,fontWeight:600,color:c}},'₹'+Math.round(v/1000)+'k')
+              )
+            )
+          )
+        )
+      )
+    ),
+    React.createElement('div',{className:'grid2'},
+      React.createElement('div',{className:'card'},
+        React.createElement('div',{className:'card-title'},React.createElement('span',{className:'ct-icon'},'💰'),'Revenue Breakdown'),
+        [['Services',cur.svc,'var(--gold)'],['Products',cur.prod,'var(--sky)'],['Memberships',cur.mem,'var(--teal)'],['Gift Cards',cur.gift,'var(--violet)']].map(([l,v,c])=>
+          React.createElement('div',{key:l,style:{marginBottom:10}},
+            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:4}},
+              React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},l),
+              React.createElement('span',{style:{fontSize:12,fontWeight:600,color:'var(--text)'}},'₹'+v.toLocaleString())
+            ),
+            React.createElement('div',{className:'progress'},
+              React.createElement('div',{className:'progress-fill',style:{width:Math.round(v/cur.rev*100)+'%',background:c}})
+            )
+          )
+        )
+      ),
+      React.createElement('div',{className:'card'},
+        React.createElement('div',{className:'card-title'},React.createElement('span',{className:'ct-icon'},'💸'),'Expense Summary'),
+        [['Salaries',cur.sal,'var(--violet)'],['Rent',cur.rent,'var(--sky)'],['Cosmetics',cur.cos,'var(--teal)'],['Electricity',cur.elec,'var(--amber)'],['Marketing',cur.mkt,'var(--rose)'],['Incentives',cur.inc,'var(--gold)'],['Misc',cur.misc,'var(--text3)']].map(([l,v,c])=>
+          React.createElement('div',{key:l,className:'stat-row'},
+            React.createElement('span',{style:{fontSize:12,color:'var(--text3)'}},l),
+            React.createElement('span',{style:{fontSize:12,fontWeight:600,color:c}},'₹'+v.toLocaleString())
+          )
+        )
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// MASTER SALARY SHEET (Employee Management)
+// ══════════════════════════════════════════
+function MasterSalarySheet(){
+  const [employees,setEmployees]=useState(EMPLOYEES);
+  const [search,setSearch]=useState('');
+  const [statusFilter,setStatusFilter]=useState('All');
+  const [showModal,setShowModal]=useState(false);
+  const [editEmp,setEditEmp]=useState(null);
+  const [activeTab,setActiveTab]=useState('personal');
+  const [showDelete,setShowDelete]=useState(null);
+  const {toast}=useToast();
+  const BLANK={id:'',name:'',fatherName:'',mobile:'',email:'',address:'',desig:'',dept:'Hair',doj:'',dol:'',weeklyOff:'Sunday',basic:0,hra:0,conv:0,special:0,gross:0,pf:false,esic:false,pan:'',aadhar:'',bankName:'',accountNo:'',ifsc:'',accountHolder:'',status:'Active',panFile:null,aadharFile:null};
+  const [form,setForm]=useState(BLANK);
+  const nextId=()=>'E'+String(Math.max(0,...employees.map(e=>parseInt(e.id.slice(1))||0))+1).padStart(3,'0');
+  const fc=k=>e=>setForm(f=>({...f,[k]:e.target.type==='checkbox'?e.target.checked:e.target.value}));
+  const openAdd=()=>{setForm({...BLANK,id:nextId()});setEditEmp(null);setActiveTab('personal');setShowModal(true);};
+  const openEdit=emp=>{setForm({...emp});setEditEmp(emp);setActiveTab('personal');setShowModal(true);};
+  const save=()=>{
+    if(!form.name.trim()){toast('Full name is required','error');return;}
+    if(!form.desig.trim()){toast('Designation is required','error');return;}
+    if(editEmp){setEmployees(p=>p.map(e=>e.id===editEmp.id?{...form}:e));toast('Employee updated','success');}
+    else{setEmployees(p=>[...p,{...form,id:form.id||nextId()}]);toast('Employee added','success');}
+    setShowModal(false);
+  };
+
+  const filtered=employees.filter(e=>{
+    const ms=!search||[e.name,e.id,e.desig,e.dept].join(' ').toLowerCase().includes(search.toLowerCase());
+    const msf=statusFilter==='All'||e.status===statusFilter;
+    return ms&&msf;
+  });
+
+  const doExportExcel=()=>{
+    try{
+      const rows=filtered.map(e=>[e.id,e.name,e.desig,e.dept,e.doj,e.status,e.gross,e.basic,e.hra,e.conv,e.special,e.pf?'Yes':'No',e.esic?'Yes':'No',e.bankName,e.accountNo,e.ifsc,e.pan,e.aadhar,e.mobile,e.email]);
+      exportExcel(rows,['Emp ID','Name','Designation','Department','DOJ','Status','Gross CTC','Basic','HRA','Conveyance','Special','PF','ESIC','Bank Name','Account No','IFSC','PAN','Aadhaar','Mobile','Email'],'SalonOS_Employees');
+      toast('Excel exported','success');
+    }catch(e){toast('Export failed: '+e.message,'error');}
+  };
+  const doExportPDF=()=>{
+    try{
+      exportPDF('Employee Master List',['ID','Name','Designation','Dept','DOJ','Status','Gross CTC'],
+        filtered.map(e=>[e.id,e.name,e.desig,e.dept,e.doj,e.status,'₹'+Number(e.gross).toLocaleString()]),'SalonOS_Employees');
+      toast('PDF exported','success');
+    }catch(e){toast('Export failed: '+e.message,'error');}
+  };
+
+  const DEPT_COLORS={Hair:'badge-sky',Beauty:'badge-violet',Nail:'badge-teal','Nail Art':'badge-teal',Admin:'badge-gold',Operations:'badge-amber',Skin:'badge-rose',Other:'badge-gray'};
+  const STATUS_COLORS={Active:'badge-emerald',Inactive:'badge-gray','On Notice':'badge-amber',Resigned:'badge-rose'};
+
+  const MODAL_TABS=[{id:'personal',label:'👤 Personal'},{id:'employment',label:'💼 Employment'},{id:'bank',label:'🏦 Bank'}];
+  const FG=(label,children)=>React.createElement('div',{className:'form-group'},React.createElement('label',null,label),children);
+  const INP=props=>React.createElement('input',{className:'form-control',...props});
+  const SEL=(val,onChange,opts)=>React.createElement('select',{className:'form-control',value:val,onChange},opts.map(o=>React.createElement('option',{key:o},o)));
+
+  const personalFields=()=>React.createElement('div',null,
+    React.createElement('div',{className:'form-row cols3'},FG('Employee ID',INP({value:form.id,onChange:fc('id'),placeholder:'Auto-generated'})),FG('Full Name *',INP({value:form.name,onChange:fc('name'),placeholder:'Full name'})),FG("Father's Name",INP({value:form.fatherName,onChange:fc('fatherName')}))),
+    React.createElement('div',{className:'form-row cols3'},FG('Mobile',INP({value:form.mobile,onChange:fc('mobile'),placeholder:'98xxxxxxxx'})),FG('Email',INP({type:'email',value:form.email,onChange:fc('email')})),FG('Status',SEL(form.status,fc('status'),['Active','Inactive','On Notice','Resigned']))),
+    React.createElement('div',{className:'form-row'},FG('Address',React.createElement('textarea',{className:'form-control',rows:2,value:form.address,onChange:fc('address'),style:{resize:'vertical'}}))),
+    React.createElement('div',{className:'form-row cols2'},FG('PAN Card No',INP({value:form.pan,onChange:fc('pan'),placeholder:'ABCDE1234F',style:{textTransform:'uppercase'}})),FG('Aadhaar No',INP({value:form.aadhar,onChange:fc('aadhar'),placeholder:'XXXX XXXX XXXX'})))
+  );
+  const employmentFields=()=>React.createElement('div',null,
+    React.createElement('div',{className:'form-row cols3'},FG('Designation *',INP({value:form.desig,onChange:fc('desig'),placeholder:'e.g. Senior Stylist'})),FG('Department',SEL(form.dept,fc('dept'),['Hair','Beauty','Nail Art','Skin','Admin','Operations','Other'])),FG('Weekly Off',SEL(form.weeklyOff,fc('weeklyOff'),['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']))),
+    React.createElement('div',{className:'form-row cols2'},FG('Date of Joining *',INP({type:'date',value:form.doj,onChange:fc('doj')})),FG('Date of Left',INP({type:'date',value:form.dol,onChange:fc('dol')}))),
+    React.createElement('div',{style:{background:'var(--surface3)',borderRadius:'var(--r2)',padding:14,marginBottom:14}},
+      React.createElement('div',{style:{fontSize:11,fontWeight:600,color:'var(--text3)',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.08em'}},'Salary Components (₹/month)'),
+      React.createElement('div',{className:'form-row cols2'},FG('Basic Salary',INP({type:'number',value:form.basic,onChange:fc('basic')})),FG('HRA',INP({type:'number',value:form.hra,onChange:fc('hra')}))),
+      React.createElement('div',{className:'form-row cols2'},FG('Conveyance',INP({type:'number',value:form.conv,onChange:fc('conv')})),FG('Special Allowance',INP({type:'number',value:form.special,onChange:fc('special')}))),
+      React.createElement('div',{className:'form-row cols2'},
+        FG('Gross CTC (auto)',React.createElement('input',{className:'form-control',readOnly:true,value:'₹'+(Number(form.basic)+Number(form.hra)+Number(form.conv)+Number(form.special)).toLocaleString(),style:{color:'var(--gold2)',fontWeight:600}})),
+        FG('Statutory',
+          React.createElement('div',{style:{display:'flex',gap:20,marginTop:6}},
+            React.createElement('label',{style:{display:'flex',alignItems:'center',gap:7,fontSize:12,color:'var(--text2)',cursor:'pointer'}},React.createElement('input',{type:'checkbox',checked:form.pf,onChange:fc('pf'),style:{accentColor:'var(--gold)'}}),'PF'),
+            React.createElement('label',{style:{display:'flex',alignItems:'center',gap:7,fontSize:12,color:'var(--text2)',cursor:'pointer'}},React.createElement('input',{type:'checkbox',checked:form.esic,onChange:fc('esic'),style:{accentColor:'var(--gold)'}}),'ESIC')
+          )
+        )
+      )
+    )
+  );
+  const bankFields=()=>React.createElement('div',null,
+    React.createElement('div',{className:'form-row cols2'},FG('Bank Name',INP({value:form.bankName,onChange:fc('bankName'),placeholder:'e.g. HDFC Bank'})),FG('Account Holder Name',INP({value:form.accountHolder,onChange:fc('accountHolder')}))),
+    React.createElement('div',{className:'form-row cols2'},FG('Account Number',INP({value:form.accountNo,onChange:fc('accountNo')})),FG('IFSC Code',INP({value:form.ifsc,onChange:fc('ifsc'),placeholder:'HDFC0001234',style:{textTransform:'uppercase'}})))
+  );
+
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Master Salary Sheet'),React.createElement('div',{className:'page-sub'},'Employee roster with CTC & bank details')),
+      React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--emerald)',borderColor:'rgba(34,199,126,0.4)'},onClick:doExportExcel},'⬇ Excel'),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--rose)',borderColor:'rgba(255,79,109,0.4)'},onClick:doExportPDF},'⬇ PDF'),
+        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openAdd},'＋ Add Employee')
+      )
+    ),
+    React.createElement('div',{className:'grid4',style:{marginBottom:18}},
+      [{l:'Total Employees',v:employees.length,c:'sky'},{l:'Active',v:employees.filter(e=>e.status==='Active').length,c:'emerald'},
+       {l:'Total Gross CTC',v:'₹'+Math.round(employees.reduce((s,e)=>s+Number(e.gross||0),0)/1000)+'k',c:'gold'},{l:'On PF',v:employees.filter(e=>e.pf).length,c:'violet'}
+      ].map(m=>React.createElement('div',{key:m.l,className:'kpi-card '+m.c},React.createElement('div',{className:'kpi-label'},m.l),React.createElement('div',{className:'kpi-value'},m.v)))
+    ),
+    React.createElement('div',{style:{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}},
+      React.createElement('div',{className:'search-wrap'},React.createElement('span',{className:'search-icon'},'🔍'),React.createElement('input',{placeholder:'Search by name, ID or designation…',value:search,onChange:e=>setSearch(e.target.value)})),
+      React.createElement('select',{className:'form-control',style:{width:'auto'},value:statusFilter,onChange:e=>setStatusFilter(e.target.value)},
+        ['All','Active','Inactive','On Notice','Resigned'].map(s=>React.createElement('option',{key:s},s))
+      ),
+      React.createElement('span',{style:{fontSize:11,color:'var(--text3)',whiteSpace:'nowrap'}},filtered.length+'/'+employees.length+' employees')
+    ),
+    React.createElement('div',{className:'card'},
+      filtered.length===0
+        ?React.createElement('div',{className:'empty-state'},React.createElement('div',{className:'empty-icon'},'👤'),React.createElement('div',{className:'empty-title'},'No employees found'))
+        :React.createElement('div',{className:'table-wrap'},
+          React.createElement('table',null,
+            React.createElement('thead',null,React.createElement('tr',null,
+              ['Emp ID','Employee','Designation','DOJ','Gross CTC','Bank','Statutory','Status','Actions'].map(h=>React.createElement('th',{key:h},h))
+            )),
+            React.createElement('tbody',null,filtered.map(e=>
+              React.createElement('tr',{key:e.id},
+                React.createElement('td',null,React.createElement('span',{className:'mono',style:{color:'var(--gold2)'}},e.id)),
+                React.createElement('td',null,
+                  React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10}},
+                    React.createElement('div',{style:{width:32,height:32,borderRadius:8,background:'linear-gradient(135deg,var(--gold),var(--violet))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#fff',flexShrink:0}},e.name.slice(0,2).toUpperCase()),
+                    React.createElement('div',null,
+                      React.createElement('div',{style:{fontWeight:600,fontSize:13,color:'var(--text)'}},e.name),
+                      React.createElement('div',{style:{fontSize:10,color:'var(--text3)',marginTop:1}},e.dept)
+                    )
+                  )
+                ),
+                React.createElement('td',null,React.createElement('span',{style:{fontSize:12,color:'var(--text)'}},e.desig)),
+                React.createElement('td',null,React.createElement('span',{style:{fontSize:11,color:'var(--text2)'}},e.doj||'—')),
+                React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,fontSize:13,color:'var(--gold2)'}},'₹'+Number(e.gross||0).toLocaleString())),
+                React.createElement('td',null,
+                  e.bankName?React.createElement('div',null,
+                    React.createElement('div',{style:{fontSize:11,color:'var(--text)',fontWeight:500}},e.bankName),
+                    React.createElement('div',{className:'mono',style:{marginTop:1}},e.accountNo?'••••'+String(e.accountNo).slice(-4):'—')
+                  ):'—'
+                ),
+                React.createElement('td',null,
+                  React.createElement('div',{style:{display:'flex',gap:4}},
+                    e.pf&&React.createElement('span',{className:'badge badge-gold',style:{fontSize:9}},'PF'),
+                    e.esic&&React.createElement('span',{className:'badge badge-sky',style:{fontSize:9}},'ESIC')
+                  )
+                ),
+                React.createElement('td',null,React.createElement('span',{className:'badge '+(STATUS_COLORS[e.status]||'badge-gray')},e.status)),
+                React.createElement('td',null,
+                  React.createElement('div',{style:{display:'flex',gap:5}},
+                    React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>openEdit(e)},'Edit'),
+                    React.createElement('button',{className:'btn btn-danger btn-xs btn-icon',onClick:()=>setShowDelete(e)},'🗑')
+                  )
+                )
+              )
+            ))
+          )
+        )
+    ),
+    // ADD/EDIT MODAL
+    showModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowModal(false)},
+      React.createElement('div',{className:'modal modal-lg',onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-header'},
+          React.createElement('div',{className:'modal-title'},editEmp?'Edit — '+editEmp.name:'Add New Employee'),
+          React.createElement('button',{className:'modal-close',onClick:()=>setShowModal(false)},'✕')
+        ),
+        React.createElement('div',{className:'tab-bar'},
+          MODAL_TABS.map(t=>React.createElement('button',{key:t.id,className:'tab-btn '+(activeTab===t.id?'active':''),onClick:()=>setActiveTab(t.id)},t.label))
+        ),
+        activeTab==='personal'&&personalFields(),
+        activeTab==='employment'&&employmentFields(),
+        activeTab==='bank'&&bankFields(),
+        React.createElement('div',{className:'modal-actions'},
+          React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowModal(false)},'Cancel'),
+          React.createElement('button',{className:'btn btn-primary',onClick:save},editEmp?'Save Changes':'Add Employee')
+        )
+      )
+    ),
+    // DELETE MODAL
+    showDelete&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowDelete(null)},
+      React.createElement('div',{className:'modal',style:{width:400},onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-header'},
+          React.createElement('div',{className:'modal-title',style:{color:'var(--rose)'}},'Remove Employee?'),
+          React.createElement('button',{className:'modal-close',onClick:()=>setShowDelete(null)},'✕')
+        ),
+        React.createElement('div',{style:{fontSize:13,color:'var(--text2)',lineHeight:1.7,marginBottom:16}},
+          'Remove ',React.createElement('strong',{style:{color:'var(--text)'}},showDelete.name),' from the roster? This cannot be undone.'
+        ),
+        React.createElement('div',{className:'modal-actions'},
+          React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowDelete(null)},'Cancel'),
+          React.createElement('button',{className:'btn btn-danger',onClick:()=>{setEmployees(p=>p.filter(e=>e.id!==showDelete.id));setShowDelete(null);toast('Employee removed','warning');}},'Remove')
+        )
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// DAILY SALES SHEET
+// ══════════════════════════════════════════
+function DailySalesSheet(){
+  const [data,setData]=useState(SALES_DATA);
+  const [showModal,setShowModal]=useState(false);
+  const BLANK={date:'',service:0,product:0,membership:0,gift:0,totalRev:0,salaries:0,rent:0,elec:0,cosmetics:0,misc:0,incentives:0,totalExp:0,net:0};
+  const [form,setForm]=useState(BLANK);
+  const {toast}=useToast();
+  const fc=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
+  const calc=f=>{const rev=+f.service+(+f.product)+(+f.membership)+(+f.gift);const exp=+f.salaries+(+f.rent)+(+f.elec)+(+f.cosmetics)+(+f.misc)+(+f.incentives);return{...f,totalRev:rev,totalExp:exp,net:rev-exp};};
+  const save=()=>{if(!form.date){toast('Date is required','error');return;}setData(p=>[...p,calc(form)]);setShowModal(false);toast('Entry saved','success');};
+  const totals={rev:data.reduce((s,r)=>s+r.totalRev,0),exp:data.reduce((s,r)=>s+r.totalExp,0),net:data.reduce((s,r)=>s+r.net,0)};
+  const doExport=()=>{try{exportExcel(data.map(r=>[r.date,r.service,r.product,r.membership,r.gift,r.totalRev,r.salaries,r.rent,r.elec,r.cosmetics,r.misc,r.incentives,r.totalExp,r.net]),['Date','Service','Product','Membership','Gift Card','Total Revenue','Salaries','Rent','Electricity','Cosmetics','Misc','Incentives','Total Expenses','Net'],'Daily_Sales');toast('Exported','success');}catch(e){toast('Export failed','error');}};
+  const FG=(l,c)=>React.createElement('div',{className:'form-group'},React.createElement('label',null,l),c);
+  const NI=(k,ph)=>React.createElement('input',{type:'number',className:'form-control',value:form[k],onChange:e=>{const v=+e.target.value;setForm(f=>{const n={...f,[k]:v};return calc(n);})},placeholder:ph||'0'});
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Daily Sales & Expenses'),React.createElement('div',{className:'page-sub'},'Date-wise revenue and expense entries')),
+      React.createElement('div',{style:{display:'flex',gap:8}},
+        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--emerald)',borderColor:'rgba(34,199,126,0.4)'},onClick:doExport},'⬇ Export'),
+        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{setForm(BLANK);setShowModal(true);}},'＋ Add Entry')
+      )
+    ),
+    React.createElement('div',{className:'summary-row'},
+      [{l:'Total Revenue',v:'₹'+Math.round(totals.rev/1000)+'k'},{l:'Total Expenses',v:'₹'+Math.round(totals.exp/1000)+'k'},{l:'Net Profit',v:'₹'+Math.round(totals.net/1000)+'k'},{l:'Days Recorded',v:data.length}].map(s=>
+        React.createElement('div',{key:s.l,className:'summary-item'},React.createElement('div',{className:'summary-val'},s.v),React.createElement('div',{className:'summary-lbl'},s.l))
+      )
+    ),
+    React.createElement('div',{className:'card'},
+      React.createElement('div',{className:'table-wrap'},
+        React.createElement('table',null,
+          React.createElement('thead',null,React.createElement('tr',null,
+            ['Date','Service','Product','Membership','Gift Card','Total Revenue','Total Expenses','Net Profit'].map(h=>React.createElement('th',{key:h},h))
+          )),
+          React.createElement('tbody',null,data.map((r,i)=>
+            React.createElement('tr',{key:i},
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:500,color:'var(--text)',fontSize:12}},r.date)),
+              React.createElement('td',null,'₹'+r.service.toLocaleString()),
+              React.createElement('td',null,'₹'+r.product.toLocaleString()),
+              React.createElement('td',null,'₹'+(r.membership||0).toLocaleString()),
+              React.createElement('td',null,'₹'+(r.gift||0).toLocaleString()),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:600,color:'var(--gold2)'}},'₹'+r.totalRev.toLocaleString())),
+              React.createElement('td',null,'₹'+r.totalExp.toLocaleString()),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:r.net>=0?'var(--emerald)':'var(--rose)'}},(r.net>=0?'₹':'–₹')+Math.abs(r.net).toLocaleString()))
+            )
+          ))
+        )
+      )
+    ),
+    showModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowModal(false)},
+      React.createElement('div',{className:'modal modal-lg',onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},'Add Daily Entry'),React.createElement('button',{className:'modal-close',onClick:()=>setShowModal(false)},'✕')),
+        React.createElement('div',{className:'form-row'},FG('Date *',React.createElement('input',{type:'date',className:'form-control',value:form.date,onChange:fc('date')}))),
+        React.createElement('div',{style:{fontSize:11,color:'var(--text3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8}},'Revenue (₹)'),
+        React.createElement('div',{className:'form-row cols2'},FG('Services',NI('service')),FG('Products',NI('product'))),
+        React.createElement('div',{className:'form-row cols2'},FG('Memberships',NI('membership')),FG('Gift Cards',NI('gift'))),
+        React.createElement('div',{style:{fontSize:11,color:'var(--text3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8,marginTop:4}},'Expenses (₹)'),
+        React.createElement('div',{className:'form-row cols3'},FG('Salaries',NI('salaries')),FG('Rent',NI('rent')),FG('Electricity',NI('elec'))),
+        React.createElement('div',{className:'form-row cols3'},FG('Cosmetics',NI('cosmetics')),FG('Incentives',NI('incentives')),FG('Misc',NI('misc'))),
+        React.createElement('div',{style:{background:'var(--surface3)',borderRadius:'var(--r2)',padding:14,marginBottom:4,display:'flex',gap:20,flexWrap:'wrap'}},
+          [{l:'Total Revenue',v:'₹'+form.totalRev.toLocaleString(),c:'var(--gold2)'},{l:'Total Expenses',v:'₹'+form.totalExp.toLocaleString(),c:'var(--rose)'},{l:'Net Profit',v:'₹'+form.net.toLocaleString(),c:form.net>=0?'var(--emerald)':'var(--rose)'}].map(s=>
+            React.createElement('div',{key:s.l,style:{flex:1}},React.createElement('div',{style:{fontSize:9,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:3}},s.l),React.createElement('div',{style:{fontSize:18,fontWeight:700,fontFamily:'var(--font2)',color:s.c}},s.v))
+          )
+        ),
+        React.createElement('div',{className:'modal-actions'},React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowModal(false)},'Cancel'),React.createElement('button',{className:'btn btn-primary',onClick:save},'Save Entry'))
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// ATTENDANCE SHEET
+// ══════════════════════════════════════════
+function AttendanceSheet(){
+  const today=new Date();
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const [selMonth,setSelMonth]=useState(today.getMonth());
+  const [selYear,setSelYear]=useState(today.getFullYear());
+  const [viewMode,setViewMode]=useState('grid');
+  const [selEmp,setSelEmp]=useState(EMPLOYEES[0].id);
+  const [attData,setAttData]=useState(()=>{
+    const d={};
+    EMPLOYEES.forEach(e=>{
+      const rng=((seed)=>{let s=seed;return()=>{s=Math.sin(s)*10000;return s-Math.floor(s);}})(e.id.charCodeAt(1));
+      d[e.id]=Array.from({length:31},(_,i)=>{
+        const day=i+1;if(day>30)return null;
+        const r=rng();if(day%7===0||day%7===6)return 'off';
+        if(r<0.07)return 'absent';if(r<0.12)return 'half';if(r<0.15)return 'hd';return 'present';
+      });
+    });return d;
+  });
+  const daysInMonth=new Date(selYear,selMonth+1,0).getDate();
+  const STATUS_LABELS={present:'P',absent:'A',half:'H',off:'–',hd:'HD'};
+  const STATUS_CSS={present:'att-present',absent:'att-absent',half:'att-half',off:'att-off',hd:'att-hd'};
+  const {toast}=useToast();
+  const toggleStatus=(empId,dayIdx)=>{
+    setAttData(prev=>{
+      const cycle=['present','absent','half','off','hd'];
+      const cur=prev[empId]||Array(31).fill(null);const next=[...cur];
+      const ci=cycle.indexOf(next[dayIdx]);next[dayIdx]=cycle[(ci+1)%cycle.length];
+      return{...prev,[empId]:next};
+    });
+  };
+  const empDays=attData[selEmp]||Array(31).fill(null);
+  const present=empDays.slice(0,daysInMonth).filter(d=>d==='present').length;
+  const absent=empDays.slice(0,daysInMonth).filter(d=>d==='absent').length;
+  const half=empDays.slice(0,daysInMonth).filter(d=>d==='half').length;
+  const lop=(absent+half*0.5).toFixed(1);
+
+  const doExport=()=>{
+    try{
+      const rows=EMPLOYEES.map(e=>{
+        const days=attData[e.id]||Array(31).fill(null);const sl=days.slice(0,daysInMonth);
+        const P=sl.filter(d=>d==='present').length,A=sl.filter(d=>d==='absent').length,H=sl.filter(d=>d==='half').length,O=sl.filter(d=>d==='off').length;
+        return[e.id,e.name,e.desig,...sl.map(d=>STATUS_LABELS[d||'']||'—'),P,A,H,O,(A+H*0.5).toFixed(1)];
+      });
+      exportExcel(rows,['ID','Name','Designation',...Array.from({length:daysInMonth},(_,i)=>String(i+1)),'Present','Absent','Half','Off','LOP'],'Attendance_'+months[selMonth]+'_'+selYear);
+      toast('Attendance exported','success');
+    }catch(e){toast('Export failed','error');}
+  };
+
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Attendance Register'),React.createElement('div',{className:'page-sub'},'Click any cell to toggle attendance status')),
+      React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},months.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))),
+        React.createElement('div',{className:'tab-bar',style:{marginBottom:0,display:'inline-flex'}},
+          [{id:'grid',label:'Individual'},{id:'register',label:'Register'}].map(t=>React.createElement('button',{key:t.id,className:'tab-btn '+(viewMode===t.id?'active':''),onClick:()=>setViewMode(t.id)},t.label))
+        ),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--emerald)',borderColor:'rgba(34,199,126,0.4)'},onClick:doExport},'⬇ Export')
+      )
+    ),
+    // Legend
+    React.createElement('div',{style:{display:'flex',gap:12,marginBottom:14,flexWrap:'wrap'}},
+      [['P','Present','att-present'],['A','Absent','att-absent'],['H','Half Day','att-half'],['–','Week Off','att-off'],['HD','Holiday','att-hd']].map(([code,label,css])=>
+        React.createElement('div',{key:label,style:{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'var(--text3)'}},
+          React.createElement('div',{className:'att-day '+css,style:{width:24,height:24,fontSize:9,aspectRatio:'auto',borderRadius:4,padding:2}},code),label
+        )
+      )
+    ),
+    viewMode==='grid'
+      ?React.createElement('div',{className:'grid2'},
+        // Employee list
+        React.createElement('div',{className:'card'},
+          React.createElement('div',{className:'card-title'},'Employees'),
+          EMPLOYEES.map(e=>{
+            const days=attData[e.id]||[];const P=days.slice(0,daysInMonth).filter(d=>d==='present').length;
+            const A=days.slice(0,daysInMonth).filter(d=>d==='absent').length;
+            return React.createElement('div',{key:e.id,
+              style:{padding:'10px 12px',borderRadius:'var(--r)',cursor:'pointer',marginBottom:3,
+                background:selEmp===e.id?'var(--surface3)':'transparent',
+                borderLeft:'2px solid '+(selEmp===e.id?'var(--gold)':'transparent')},
+              onClick:()=>setSelEmp(e.id)},
+              React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
+                React.createElement('div',null,
+                  React.createElement('div',{style:{fontWeight:500,fontSize:13,color:selEmp===e.id?'var(--gold2)':'var(--text)'}},e.name),
+                  React.createElement('div',{style:{fontSize:10,color:'var(--text3)',marginTop:1}},e.desig)
+                ),
+                React.createElement('div',{style:{display:'flex',gap:8,fontSize:11}},
+                  React.createElement('span',{style:{color:'var(--emerald)'}},P+'P'),
+                  React.createElement('span',{style:{color:'var(--rose)'}},A+'A')
+                )
+              )
+            );
+          })
+        ),
+        // Calendar grid for selected employee
+        React.createElement('div',{className:'card'},
+          React.createElement('div',{className:'card-title'},EMPLOYEES.find(e=>e.id===selEmp)?.name+' — '+months[selMonth]+' '+selYear),
+          React.createElement('div',{className:'att-grid'},
+            Array.from({length:daysInMonth},(_,i)=>i).map(i=>{
+              const val=empDays[i]||'null';
+              return React.createElement('div',{key:i,className:'att-day '+(STATUS_CSS[val]||'att-null'),onClick:()=>toggleStatus(selEmp,i),title:'Day '+(i+1)},
+                val!=='null'?STATUS_LABELS[val]||'':i+1
+              );
+            })
+          ),
+          React.createElement('div',{className:'divider'}),
+          React.createElement('div',{style:{display:'flex',gap:16,flexWrap:'wrap'}},
+            [{l:'Present',v:present,c:'var(--emerald)'},{l:'Absent',v:absent,c:'var(--rose)'},{l:'Half Day',v:half,c:'var(--gold2)'},{l:'LOP Days',v:lop,c:'var(--amber)'}].map(s=>
+              React.createElement('div',{key:s.l,style:{textAlign:'center',flex:1}},
+                React.createElement('div',{style:{fontSize:22,fontWeight:700,fontFamily:'var(--font2)',color:s.c}},s.v),
+                React.createElement('div',{style:{fontSize:9,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.08em',marginTop:2}},s.l)
+              )
+            )
+          )
+        )
+      )
+      // Register view (horizontal table)
+      :React.createElement('div',{className:'card',style:{overflowX:'auto'}},
+        React.createElement('table',{style:{minWidth:800}},
+          React.createElement('thead',null,React.createElement('tr',null,
+            [React.createElement('th',{key:'name',style:{minWidth:140}},'Employee'),...Array.from({length:daysInMonth},(_,i)=>React.createElement('th',{key:i,style:{minWidth:28,textAlign:'center',fontSize:9,padding:'8px 2px'}},i+1))].flat()
+          )),
+          React.createElement('tbody',null,EMPLOYEES.map(e=>{
+            const days=attData[e.id]||Array(31).fill(null);
+            return React.createElement('tr',{key:e.id},
+              React.createElement('td',null,React.createElement('div',{style:{fontWeight:500,fontSize:12,color:'var(--text)',whiteSpace:'nowrap'}},e.name),React.createElement('div',{style:{fontSize:9,color:'var(--text3)'}},e.desig)),
+              ...Array.from({length:daysInMonth},(_,i)=>{
+                const val=days[i];
+                return React.createElement('td',{key:i,style:{padding:'4px 2px',textAlign:'center',cursor:'pointer'},onClick:()=>toggleStatus(e.id,i)},
+                  React.createElement('div',{className:'att-day '+(STATUS_CSS[val]||'att-null'),style:{width:22,height:22,margin:'auto',fontSize:8}},STATUS_LABELS[val]||'')
+                );
+              })
+            );
+          }))
+        )
+      )
+  );
+}
+
+// ══════════════════════════════════════════
+// SALARY WORKING SHEET
+// ══════════════════════════════════════════
+function SalaryWorkingSheet(){
+  const [month,setMonth]=useState('January 2024');
+  const {toast}=useToast();
+  const rows=EMPLOYEES.map(e=>{
+    const workDays=26;const pDays=23;const lop=3;
+    const basic=Math.round(e.basic*pDays/workDays);const hra=Math.round(e.hra*pDays/workDays);const conv=Math.round(e.conv*pDays/workDays);const special=Math.round(e.special*pDays/workDays);
+    const gross=basic+hra+conv+special;const pf=e.pf?Math.round(basic*0.12):0;const esic=e.esic&&gross<=21000?Math.round(gross*0.0075):0;
+    const netPay=gross-pf-esic;
+    return{...e,pDays,lop,basic,hra,conv,special,gross,pf,esic,netPay};
+  });
+  const totals=rows.reduce((a,r)=>({gross:a.gross+r.gross,pf:a.pf+r.pf,esic:a.esic+r.esic,net:a.net+r.netPay}),{gross:0,pf:0,esic:0,net:0});
+  const doExport=()=>{
+    try{
+      exportExcel(rows.map(r=>[r.id,r.name,r.desig,r.pDays,r.lop,r.basic,r.hra,r.conv,r.special,r.gross,r.pf,r.esic,r.netPay]),
+        ['Emp ID','Name','Designation','Days Present','LOP','Basic','HRA','Conveyance','Special','Gross Earned','PF Dedn','ESIC Dedn','Net Payable'],'Salary_Working');
+      toast('Salary sheet exported','success');
+    }catch(e){toast('Export failed','error');}
+  };
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Salary Working Sheet'),React.createElement('div',{className:'page-sub'},'Monthly salary computation with statutory deductions')),
+      React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center'}},
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:month,onChange:e=>setMonth(e.target.value)},['January 2024','February 2024','March 2024'].map(m=>React.createElement('option',{key:m},m))),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--emerald)',borderColor:'rgba(34,199,126,0.4)'},onClick:doExport},'⬇ Export Excel')
+      )
+    ),
+    React.createElement('div',{className:'summary-row'},
+      [{l:'Gross Payable',v:'₹'+totals.gross.toLocaleString()},{l:'PF Deduction',v:'₹'+totals.pf.toLocaleString()},{l:'ESIC Deduction',v:'₹'+totals.esic.toLocaleString()},{l:'Net Disbursable',v:'₹'+totals.net.toLocaleString()}].map(s=>
+        React.createElement('div',{key:s.l,className:'summary-item'},React.createElement('div',{className:'summary-val'},s.v),React.createElement('div',{className:'summary-lbl'},s.l))
+      )
+    ),
+    React.createElement('div',{className:'card'},
+      React.createElement('div',{className:'table-wrap'},
+        React.createElement('table',null,
+          React.createElement('thead',null,React.createElement('tr',null,
+            ['Emp ID','Name','Desig','Days P','LOP','Basic','HRA','Conv','Special','Gross','PF','ESIC','Net Pay'].map(h=>React.createElement('th',{key:h},h))
+          )),
+          React.createElement('tbody',null,
+            rows.map(r=>React.createElement('tr',{key:r.id},
+              React.createElement('td',null,React.createElement('span',{className:'mono',style:{color:'var(--gold2)'}},r.id)),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:600,color:'var(--text)',fontSize:12}},r.name)),
+              React.createElement('td',null,React.createElement('span',{style:{fontSize:11,color:'var(--text2)'}},r.desig)),
+              React.createElement('td',null,r.pDays),
+              React.createElement('td',null,React.createElement('span',{style:{color:r.lop>0?'var(--rose)':'var(--text3)'}},r.lop)),
+              React.createElement('td',null,'₹'+r.basic.toLocaleString()),
+              React.createElement('td',null,'₹'+r.hra.toLocaleString()),
+              React.createElement('td',null,'₹'+r.conv.toLocaleString()),
+              React.createElement('td',null,'₹'+r.special.toLocaleString()),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:600,color:'var(--gold2)'}},'₹'+r.gross.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{style:{color:'var(--violet)'}},r.pf>0?'₹'+r.pf.toLocaleString():'—')),
+              React.createElement('td',null,React.createElement('span',{style:{color:'var(--sky)'}},r.esic>0?'₹'+r.esic.toLocaleString():'—')),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:'var(--emerald)'}},'₹'+r.netPay.toLocaleString()))
+            )),
+            React.createElement('tr',{style:{background:'var(--surface3)'}},
+              React.createElement('td',{colSpan:9,style:{fontWeight:700,color:'var(--text)',fontSize:12}},'TOTALS'),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:'var(--gold2)'}},'₹'+totals.gross.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:'var(--violet)'}},'₹'+totals.pf.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:'var(--sky)'}},'₹'+totals.esic.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:'var(--emerald)'}},'₹'+totals.net.toLocaleString()))
+            )
+          )
+        )
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// INCENTIVE WORKING SHEET
+// ══════════════════════════════════════════
+function IncentiveWorkingSheet(){
+  const [data,setData]=useState([
+    {emp:'Meera Joshi',target:120000,achieved:138500,rate:3,incentive:4155,status:'Approved'},
+    {emp:'Arjun Singh',target:90000,achieved:97200,rate:2.5,incentive:2430,status:'Approved'},
+    {emp:'Kavya Reddy',target:60000,achieved:54000,rate:2,incentive:0,status:'Below target'},
+    {emp:'Deepak Nair',target:0,achieved:0,rate:0,incentive:1500,status:'Fixed incentive'},
+    {emp:'Pooja Patel',target:45000,achieved:48000,rate:2,incentive:960,status:'Approved'},
+  ]);
+  const STATUS_COLORS={'Approved':'badge-emerald','Below target':'badge-rose','Fixed incentive':'badge-sky'};
+  const total=data.reduce((s,r)=>s+r.incentive,0);
+  const {toast}=useToast();
+  const doExport=()=>{try{exportExcel(data.map(r=>[r.emp,r.target,r.achieved,r.rate+'%',r.incentive,r.status]),['Employee','Target (₹)','Achieved (₹)','Rate','Incentive (₹)','Status'],'Incentive_Working');toast('Exported','success');}catch(e){toast('Failed','error');}};
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Incentive Working Sheet'),React.createElement('div',{className:'page-sub'},'Monthly incentive computation per employee')),
+      React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--emerald)',borderColor:'rgba(34,199,126,0.4)'},onClick:doExport},'⬇ Export')
+    ),
+    React.createElement('div',{className:'summary-row',style:{marginBottom:16}},
+      [{l:'Total Incentive',v:'₹'+total.toLocaleString()},{l:'Employees Qualifying',v:data.filter(r=>r.incentive>0).length},{l:'Avg Incentive',v:'₹'+Math.round(total/data.length).toLocaleString()},{l:'Below Target',v:data.filter(r=>r.status==='Below target').length}].map(s=>
+        React.createElement('div',{key:s.l,className:'summary-item'},React.createElement('div',{className:'summary-val'},s.v),React.createElement('div',{className:'summary-lbl'},s.l))
+      )
+    ),
+    React.createElement('div',{className:'card'},
+      React.createElement('div',{className:'table-wrap'},
+        React.createElement('table',null,
+          React.createElement('thead',null,React.createElement('tr',null,['Employee','Target (₹)','Achieved (₹)','Achievement %','Rate %','Incentive Earned','Status'].map(h=>React.createElement('th',{key:h},h)))),
+          React.createElement('tbody',null,data.map((r,i)=>{
+            const pct=r.target>0?Math.round(r.achieved/r.target*100):null;
+            return React.createElement('tr',{key:i},
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:600,color:'var(--text)',fontSize:13}},r.emp)),
+              React.createElement('td',null,r.target>0?'₹'+r.target.toLocaleString():'—'),
+              React.createElement('td',null,r.achieved>0?'₹'+r.achieved.toLocaleString():'—'),
+              React.createElement('td',null,pct!==null?React.createElement('span',{style:{color:pct>=100?'var(--emerald)':'var(--rose)',fontWeight:600}},pct+'%'):'—'),
+              React.createElement('td',null,r.rate>0?r.rate+'%':'—'),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,fontSize:14,color:r.incentive>0?'var(--gold2)':'var(--text3)'}},'₹'+r.incentive.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{className:'badge '+(STATUS_COLORS[r.status]||'badge-gray')},r.status))
+            );
+          }))
+        )
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// DAILY INCENTIVE SHEET
+// ══════════════════════════════════════════
+function DailyIncentiveSheet(){
+  const data=[
+    {date:'2024-01-20',emp:'Meera Joshi',service:'Keratin Treatment',target:5000,achieved:6200,rate:3,incentive:186},
+    {date:'2024-01-20',emp:'Arjun Singh',service:'Bridal Makeup',target:4000,achieved:4800,rate:2.5,incentive:120},
+    {date:'2024-01-19',emp:'Meera Joshi',service:'Hair Color',target:5000,achieved:5500,rate:3,incentive:165},
+    {date:'2024-01-19',emp:'Pooja Patel',service:'Hair Cut',target:2000,achieved:2400,rate:2,incentive:48},
+  ];
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Daily Incentive Sheet'),React.createElement('div',{className:'page-sub'},'Date-wise service incentive entries')),
+      React.createElement('button',{className:'btn btn-primary btn-sm'},'＋ Add Entry')
+    ),
+    React.createElement('div',{className:'card'},
+      React.createElement('div',{className:'table-wrap'},
+        React.createElement('table',null,
+          React.createElement('thead',null,React.createElement('tr',null,['Date','Employee','Service Type','Target','Achieved','Rate %','Incentive','Status'].map(h=>React.createElement('th',{key:h},h)))),
+          React.createElement('tbody',null,data.map((r,i)=>
+            React.createElement('tr',{key:i},
+              React.createElement('td',null,React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},r.date)),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},r.emp)),
+              React.createElement('td',null,r.service),
+              React.createElement('td',null,'₹'+r.target.toLocaleString()),
+              React.createElement('td',null,React.createElement('span',{style:{color:'var(--emerald)',fontWeight:500}},'₹'+r.achieved.toLocaleString())),
+              React.createElement('td',null,r.rate+'%'),
+              React.createElement('td',null,React.createElement('span',{style:{color:'var(--gold2)',fontWeight:700}},'₹'+r.incentive)),
+              React.createElement('td',null,React.createElement('span',{className:'badge badge-emerald'},'Computed'))
+            )
+          ))
+        )
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// ADVANCE SHEET
+// ══════════════════════════════════════════
+function AdvanceSheet(){
+  const [advances,setAdvances]=useState(ADVANCES_INIT);
+  const [showModal,setShowModal]=useState(false);
+  const BLANK={emp:'',date:'',amount:0,reason:'',approvedBy:'',repayment:0,outstanding:0,status:'Active'};
+  const [form,setForm]=useState(BLANK);
+  const {toast}=useToast();
+  const fc=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
+  const save=()=>{if(!form.emp){toast('Select employee','error');return;}const nextId='A'+String(Math.max(0,...advances.map(a=>parseInt(a.id.slice(1))||0))+1).padStart(3,'0');setAdvances(p=>[...p,{...form,id:nextId,outstanding:Number(form.amount)-Number(form.repayment)}]);setShowModal(false);toast('Advance recorded','success');};
+  const totalOutstanding=advances.filter(a=>a.status==='Active').reduce((s,a)=>s+a.outstanding,0);
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Advances'),React.createElement('div',{className:'page-sub'},'Employee advance loans & recovery tracker')),
+      React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{setForm(BLANK);setShowModal(true);}},'＋ Add Advance')
+    ),
+    React.createElement('div',{className:'summary-row',style:{marginBottom:16}},
+      [{l:'Total Advanced',v:'₹'+advances.reduce((s,a)=>s+a.amount,0).toLocaleString()},{l:'Total Recovered',v:'₹'+advances.reduce((s,a)=>s+a.repayment,0).toLocaleString()},{l:'Outstanding',v:'₹'+totalOutstanding.toLocaleString()},{l:'Active Cases',v:advances.filter(a=>a.status==='Active').length}].map(s=>
+        React.createElement('div',{key:s.l,className:'summary-item'},React.createElement('div',{className:'summary-val'},s.v),React.createElement('div',{className:'summary-lbl'},s.l))
+      )
+    ),
+    React.createElement('div',{className:'card'},
+      React.createElement('div',{className:'table-wrap'},
+        React.createElement('table',null,
+          React.createElement('thead',null,React.createElement('tr',null,['ID','Employee','Date','Amount','Reason','Approved By','Repaid','Outstanding','Status'].map(h=>React.createElement('th',{key:h},h)))),
+          React.createElement('tbody',null,advances.map(a=>
+            React.createElement('tr',{key:a.id},
+              React.createElement('td',null,React.createElement('span',{className:'mono',style:{color:'var(--gold2)'}},a.id)),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:600,color:'var(--text)',fontSize:13}},a.emp)),
+              React.createElement('td',null,React.createElement('span',{style:{fontSize:12}},a.date)),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},'₹'+a.amount.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},a.reason)),
+              React.createElement('td',null,React.createElement('span',{style:{fontSize:12}},a.approvedBy)),
+              React.createElement('td',null,React.createElement('span',{style:{color:'var(--emerald)',fontWeight:500}},'₹'+a.repayment.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:a.outstanding>0?'var(--amber)':'var(--emerald)'}},'₹'+a.outstanding.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{className:'badge '+(a.status==='Recovered'?'badge-emerald':'badge-gold')},a.status))
+            )
+          ))
+        )
+      )
+    ),
+    showModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowModal(false)},
+      React.createElement('div',{className:'modal',onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},'Add Advance'),React.createElement('button',{className:'modal-close',onClick:()=>setShowModal(false)},'✕')),
+        React.createElement('div',{className:'form-row cols2'},
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Employee *'),React.createElement('select',{className:'form-control',value:form.emp,onChange:fc('emp')},React.createElement('option',{value:''},'Select employee…'),EMPLOYEES.map(e=>React.createElement('option',{key:e.id},e.name)))),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Date *'),React.createElement('input',{type:'date',className:'form-control',value:form.date,onChange:fc('date')}))
+        ),
+        React.createElement('div',{className:'form-row cols2'},
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Amount (₹)'),React.createElement('input',{type:'number',className:'form-control',value:form.amount,onChange:fc('amount')})),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Repaid till date (₹)'),React.createElement('input',{type:'number',className:'form-control',value:form.repayment,onChange:fc('repayment')}))
+        ),
+        React.createElement('div',{className:'form-row cols2'},
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Reason'),React.createElement('input',{className:'form-control',value:form.reason,onChange:fc('reason'),placeholder:'Reason for advance'})),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Approved By'),React.createElement('input',{className:'form-control',value:form.approvedBy,onChange:fc('approvedBy')}))
+        ),
+        React.createElement('div',{className:'modal-actions'},React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowModal(false)},'Cancel'),React.createElement('button',{className:'btn btn-primary',onClick:save},'Add Advance'))
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// PENALTY SHEET
+// ══════════════════════════════════════════
+function PenaltySheet(){
+  const [penalties,setPenalties]=useState(PENALTIES_INIT);
+  const [showModal,setShowModal]=useState(false);
+  const BLANK={emp:'',date:'',type:'Late arrival',amount:0,approvedBy:'',month:'Jan 2024',remarks:''};
+  const [form,setForm]=useState(BLANK);
+  const {toast}=useToast();
+  const fc=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
+  const save=()=>{if(!form.emp){toast('Select employee','error');return;}const nextId='P'+String(Math.max(0,...penalties.map(p=>parseInt(p.id.slice(1))||0))+1).padStart(3,'0');setPenalties(p=>[...p,{...form,id:nextId}]);setShowModal(false);toast('Penalty added','success');};
+  const total=penalties.reduce((s,p)=>s+p.amount,0);
+  const TYPES=['Late arrival','Absent without notice','Uniform violation','Gross misconduct','Other'];
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Penalties'),React.createElement('div',{className:'page-sub'},'Employee penalty tracker')),
+      React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{setForm(BLANK);setShowModal(true);}},'＋ Add Penalty')
+    ),
+    React.createElement('div',{className:'summary-row',style:{marginBottom:16}},
+      [{l:'Total Penalties',v:penalties.length},{l:'Total Amount',v:'₹'+total.toLocaleString()},{l:'This Month',v:penalties.filter(p=>p.month==='Jan 2024').length},{l:'Avg Penalty',v:'₹'+Math.round(total/penalties.length).toLocaleString()}].map(s=>
+        React.createElement('div',{key:s.l,className:'summary-item'},React.createElement('div',{className:'summary-val'},s.v),React.createElement('div',{className:'summary-lbl'},s.l))
+      )
+    ),
+    React.createElement('div',{className:'card'},
+      React.createElement('div',{className:'table-wrap'},
+        React.createElement('table',null,
+          React.createElement('thead',null,React.createElement('tr',null,['ID','Employee','Date','Type','Amount','Month','Remarks','Approved By'].map(h=>React.createElement('th',{key:h},h)))),
+          React.createElement('tbody',null,penalties.map(p=>
+            React.createElement('tr',{key:p.id},
+              React.createElement('td',null,React.createElement('span',{className:'mono',style:{color:'var(--rose)'}},p.id)),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:600,color:'var(--text)',fontSize:13}},p.emp)),
+              React.createElement('td',null,React.createElement('span',{style:{fontSize:12}},p.date)),
+              React.createElement('td',null,React.createElement('span',{className:'badge badge-rose',style:{fontSize:10}},p.type)),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:'var(--rose)'}},'₹'+p.amount.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{style:{fontSize:11,color:'var(--text3)'}},p.month)),
+              React.createElement('td',null,React.createElement('span',{style:{fontSize:11,color:'var(--text2)'}},p.remarks)),
+              React.createElement('td',null,React.createElement('span',{style:{fontSize:11}},p.approvedBy))
+            )
+          ))
+        )
+      )
+    ),
+    showModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowModal(false)},
+      React.createElement('div',{className:'modal',onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},'Add Penalty'),React.createElement('button',{className:'modal-close',onClick:()=>setShowModal(false)},'✕')),
+        React.createElement('div',{className:'form-row cols2'},
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Employee *'),React.createElement('select',{className:'form-control',value:form.emp,onChange:fc('emp')},React.createElement('option',{value:''},'Select…'),EMPLOYEES.map(e=>React.createElement('option',{key:e.id},e.name)))),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Date'),React.createElement('input',{type:'date',className:'form-control',value:form.date,onChange:fc('date')}))
+        ),
+        React.createElement('div',{className:'form-row cols2'},
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Type'),React.createElement('select',{className:'form-control',value:form.type,onChange:fc('type')},TYPES.map(t=>React.createElement('option',{key:t},t)))),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Amount (₹)'),React.createElement('input',{type:'number',className:'form-control',value:form.amount,onChange:fc('amount')}))
+        ),
+        React.createElement('div',{className:'form-row cols2'},
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Month'),React.createElement('input',{className:'form-control',value:form.month,onChange:fc('month'),placeholder:'e.g. Jan 2024'})),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Approved By'),React.createElement('input',{className:'form-control',value:form.approvedBy,onChange:fc('approvedBy')}))
+        ),
+        React.createElement('div',{className:'form-row'},React.createElement('div',{className:'form-group'},React.createElement('label',null,'Remarks'),React.createElement('input',{className:'form-control',value:form.remarks,onChange:fc('remarks')}))),
+        React.createElement('div',{className:'modal-actions'},React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowModal(false)},'Cancel'),React.createElement('button',{className:'btn btn-primary',onClick:save},'Add Penalty'))
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// VENDOR SHEET
+// ══════════════════════════════════════════
+function VendorSheet(){
+  const [vendors,setVendors]=useState(VENDORS_INIT);
+  const [showModal,setShowModal]=useState(false);
+  const [edit,setEdit]=useState(null);
+  const BLANK={id:'',name:'',cat:'Products',address:'',gst:'',terms:'30 days',contact:'',phone:'',status:'Active'};
+  const [form,setForm]=useState(BLANK);
+  const {toast}=useToast();
+  const fc=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
+  const nextId=()=>'V'+String(Math.max(0,...vendors.map(v=>parseInt(v.id.slice(1))||0))+1).padStart(3,'0');
+  const save=()=>{if(!form.name){toast('Vendor name required','error');return;}if(edit){setVendors(p=>p.map(v=>v.id===edit.id?{...form}:v));toast('Vendor updated','success');}else{setVendors(p=>[...p,{...form,id:nextId()}]);toast('Vendor added','success');}setShowModal(false);};
+  const CAT_COLORS={Products:'badge-sky',Housekeeping:'badge-teal',Equipment:'badge-violet',Utilities:'badge-amber',Marketing:'badge-rose',Other:'badge-gray'};
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Vendors'),React.createElement('div',{className:'page-sub'},'Vendor directory and payment tracker')),
+      React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{setForm(BLANK);setEdit(null);setShowModal(true);}},'＋ Add Vendor')
+    ),
+    React.createElement('div',{className:'card'},
+      React.createElement('div',{className:'table-wrap'},
+        React.createElement('table',null,
+          React.createElement('thead',null,React.createElement('tr',null,['Vendor ID','Name','Category','GST Number','Contact','Phone','Terms','Status','Actions'].map(h=>React.createElement('th',{key:h},h)))),
+          React.createElement('tbody',null,vendors.map(v=>
+            React.createElement('tr',{key:v.id},
+              React.createElement('td',null,React.createElement('span',{className:'mono',style:{color:'var(--gold2)'}},v.id)),
+              React.createElement('td',null,React.createElement('div',{style:{fontWeight:600,color:'var(--text)',fontSize:13}},v.name),v.address&&React.createElement('div',{style:{fontSize:10,color:'var(--text3)',marginTop:1}},v.address)),
+              React.createElement('td',null,React.createElement('span',{className:'badge '+(CAT_COLORS[v.cat]||'badge-gray')},v.cat)),
+              React.createElement('td',null,React.createElement('span',{className:'mono'},v.gst||'—')),
+              React.createElement('td',null,React.createElement('span',{style:{fontSize:12}},v.contact)),
+              React.createElement('td',null,React.createElement('span',{className:'mono',style:{fontSize:11}},v.phone)),
+              React.createElement('td',null,React.createElement('span',{className:'badge badge-gold'},v.terms)),
+              React.createElement('td',null,React.createElement('span',{className:'badge '+(v.status==='Active'?'badge-emerald':'badge-gray')},v.status)),
+              React.createElement('td',null,
+                React.createElement('div',{style:{display:'flex',gap:5}},
+                  React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setForm({...v});setEdit(v);setShowModal(true);}},'Edit'),
+                  React.createElement('button',{className:'btn btn-danger btn-xs btn-icon',onClick:()=>{setVendors(p=>p.filter(x=>x.id!==v.id));toast('Vendor removed','warning');}},'🗑')
+                )
+              )
+            )
+          ))
+        )
+      )
+    ),
+    showModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowModal(false)},
+      React.createElement('div',{className:'modal',onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},edit?'Edit Vendor':'Add Vendor'),React.createElement('button',{className:'modal-close',onClick:()=>setShowModal(false)},'✕')),
+        React.createElement('div',{className:'form-row cols2'},React.createElement('div',{className:'form-group'},React.createElement('label',null,'Vendor Name *'),React.createElement('input',{className:'form-control',value:form.name,onChange:fc('name')})),React.createElement('div',{className:'form-group'},React.createElement('label',null,'Category'),React.createElement('select',{className:'form-control',value:form.cat,onChange:fc('cat')},['Products','Housekeeping','Equipment','Utilities','Marketing','Other'].map(c=>React.createElement('option',{key:c},c))))),
+        React.createElement('div',{className:'form-row'},React.createElement('div',{className:'form-group'},React.createElement('label',null,'Address'),React.createElement('textarea',{className:'form-control',rows:2,value:form.address,onChange:fc('address'),style:{resize:'vertical'}}))),
+        React.createElement('div',{className:'form-row cols2'},React.createElement('div',{className:'form-group'},React.createElement('label',null,'GST Number'),React.createElement('input',{className:'form-control',value:form.gst,onChange:fc('gst'),style:{textTransform:'uppercase'}})),React.createElement('div',{className:'form-group'},React.createElement('label',null,'Payment Terms'),React.createElement('select',{className:'form-control',value:form.terms,onChange:fc('terms')},['7 days','15 days','30 days','45 days','60 days','Advance'].map(t=>React.createElement('option',{key:t},t))))),
+        React.createElement('div',{className:'form-row cols2'},React.createElement('div',{className:'form-group'},React.createElement('label',null,'Contact Person'),React.createElement('input',{className:'form-control',value:form.contact,onChange:fc('contact')})),React.createElement('div',{className:'form-group'},React.createElement('label',null,'Phone'),React.createElement('input',{className:'form-control',value:form.phone,onChange:fc('phone')}))),
+        React.createElement('div',{className:'form-row cols2'},React.createElement('div',{className:'form-group'},React.createElement('label',null,'Vendor ID (auto if blank)'),React.createElement('input',{className:'form-control',value:form.id,onChange:fc('id'),placeholder:'e.g. V005'})),React.createElement('div',{className:'form-group'},React.createElement('label',null,'Status'),React.createElement('select',{className:'form-control',value:form.status,onChange:fc('status')},['Active','Inactive'].map(s=>React.createElement('option',{key:s},s))))),
+        React.createElement('div',{className:'modal-actions'},React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowModal(false)},'Cancel'),React.createElement('button',{className:'btn btn-primary',onClick:save},edit?'Save Changes':'Add Vendor'))
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// DUE DATES
+// ══════════════════════════════════════════
+function DueDateSheet(){
+  const [items,setItems]=useState(DUE_DATES_INIT);
+  const [showModal,setShowModal]=useState(false);
+  const BLANK={type:'',desc:'',due:'',salon:'All outlets',amount:0,status:'ok'};
+  const [form,setForm]=useState(BLANK);
+  const {toast}=useToast();
+  const fc=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
+  const save=()=>{if(!form.type||!form.due){toast('Type and due date required','error');return;}const nextId=Math.max(0,...items.map(i=>i.id||0))+1;setItems(p=>[...p,{...form,id:nextId}]);setShowModal(false);toast('Due date added','success');};
+  const toggleDone=id=>setItems(p=>p.map(i=>i.id===id?{...i,status:i.status==='done'?'ok':'done'}:i));
+  const STATUS_CLASSES={overdue:'overdue',soon:'soon',ok:'ok',done:'done'};
+  const STATUS_ICONS={overdue:'🔴',soon:'🟠',ok:'🟢',done:'✅'};
+  const sorted=[...items].sort((a,b)=>a.status==='done'?1:b.status==='done'?-1:a.status==='overdue'?-1:b.status==='overdue'?1:0);
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Due Dates'),React.createElement('div',{className:'page-sub'},'Compliance calendar & deadline tracker')),
+      React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{setForm(BLANK);setShowModal(true);}},'＋ Add Due Date')
+    ),
+    React.createElement('div',{className:'summary-row',style:{marginBottom:16}},
+      [{l:'Overdue',v:items.filter(i=>i.status==='overdue').length,c:'var(--rose)'},{l:'Due Soon',v:items.filter(i=>i.status==='soon').length,c:'var(--amber)'},{l:'On Track',v:items.filter(i=>i.status==='ok').length,c:'var(--sky)'},{l:'Completed',v:items.filter(i=>i.status==='done').length,c:'var(--emerald)'}].map(s=>
+        React.createElement('div',{key:s.l,className:'summary-item'},React.createElement('div',{className:'summary-val',style:{color:s.c}},s.v),React.createElement('div',{className:'summary-lbl'},s.l))
+      )
+    ),
+    sorted.map(item=>React.createElement('div',{key:item.id,className:'due-item '+(STATUS_CLASSES[item.status]||'ok')},
+      React.createElement('div',{style:{fontSize:20}},(STATUS_ICONS[item.status]||'📅')),
+      React.createElement('div',{style:{flex:1}},
+        React.createElement('div',{style:{fontWeight:600,fontSize:13,color:'var(--text)',marginBottom:2}},item.type),
+        React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},item.desc+' · '+item.salon)
+      ),
+      item.amount>0&&React.createElement('div',{style:{fontSize:12,fontWeight:600,color:'var(--text)',textAlign:'right',marginRight:8}},
+        '₹'+item.amount.toLocaleString()
+      ),
+      React.createElement('div',{style:{textAlign:'right',marginRight:8}},
+        React.createElement('div',{style:{fontSize:11,color:'var(--text2)',fontWeight:500}},item.due),
+        React.createElement('span',{className:'badge '+(item.status==='overdue'?'badge-rose':item.status==='soon'?'badge-amber':item.status==='done'?'badge-emerald':'badge-sky')},item.status.charAt(0).toUpperCase()+item.status.slice(1))
+      ),
+      React.createElement('button',{className:'btn btn-ghost btn-xs',onClick:()=>toggleDone(item.id)},item.status==='done'?'Undo':'Mark Done')
+    )),
+    showModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowModal(false)},
+      React.createElement('div',{className:'modal',onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},'Add Due Date'),React.createElement('button',{className:'modal-close',onClick:()=>setShowModal(false)},'✕')),
+        React.createElement('div',{className:'form-row cols2'},React.createElement('div',{className:'form-group'},React.createElement('label',null,'Type *'),React.createElement('input',{className:'form-control',value:form.type,onChange:fc('type'),placeholder:'e.g. PF Challan'})),React.createElement('div',{className:'form-group'},React.createElement('label',null,'Due Date *'),React.createElement('input',{type:'date',className:'form-control',value:form.due,onChange:fc('due')}))),
+        React.createElement('div',{className:'form-row'},React.createElement('div',{className:'form-group'},React.createElement('label',null,'Description'),React.createElement('input',{className:'form-control',value:form.desc,onChange:fc('desc')}))),
+        React.createElement('div',{className:'form-row cols2'},React.createElement('div',{className:'form-group'},React.createElement('label',null,'Outlet'),React.createElement('input',{className:'form-control',value:form.salon,onChange:fc('salon')})),React.createElement('div',{className:'form-group'},React.createElement('label',null,'Amount (₹)'),React.createElement('input',{type:'number',className:'form-control',value:form.amount,onChange:fc('amount')}))),
+        React.createElement('div',{className:'form-row'},React.createElement('div',{className:'form-group'},React.createElement('label',null,'Status'),React.createElement('select',{className:'form-control',value:form.status,onChange:fc('status')},['ok','soon','overdue','done'].map(s=>React.createElement('option',{key:s},s))))),
+        React.createElement('div',{className:'modal-actions'},React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowModal(false)},'Cancel'),React.createElement('button',{className:'btn btn-primary',onClick:save},'Add'))
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// COLLECTION RECONCILIATION
+// ══════════════════════════════════════════
+function CollectionReco(){
+  const data=COLLECTION;
+  const totals=data.reduce((a,r)=>({expected:a.expected+r.expected,cash:a.cash+r.cash,card:a.card+r.card,upi:a.upi+r.upi,actual:a.actual+r.actual,diff:a.diff+r.diff}),{expected:0,cash:0,card:0,upi:0,actual:0,diff:0});
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'page-header'},
+      React.createElement('div',{className:'page-title'},'Collection Reconciliation'),
+      React.createElement('div',{className:'page-sub'},'Daily payment mode verification')
+    ),
+    React.createElement('div',{className:'summary-row',style:{marginBottom:16}},
+      [{l:'Expected',v:'₹'+totals.expected.toLocaleString()},{l:'Collected (Cash)',v:'₹'+totals.cash.toLocaleString()},{l:'Collected (Card)',v:'₹'+totals.card.toLocaleString()},{l:'Collected (UPI)',v:'₹'+totals.upi.toLocaleString()},{l:'Difference',v:(totals.diff>=0?'':'–')+'₹'+Math.abs(totals.diff).toLocaleString()}].map(s=>
+        React.createElement('div',{key:s.l,className:'summary-item'},React.createElement('div',{className:'summary-val'},s.v),React.createElement('div',{className:'summary-lbl'},s.l))
+      )
+    ),
+    React.createElement('div',{className:'card'},
+      React.createElement('div',{className:'table-wrap'},
+        React.createElement('table',null,
+          React.createElement('thead',null,React.createElement('tr',null,['Date','Expected (₹)','Cash','Card','UPI','Actual Total','Difference'].map(h=>React.createElement('th',{key:h},h)))),
+          React.createElement('tbody',null,data.map((r,i)=>
+            React.createElement('tr',{key:i},
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:500,fontSize:12}},r.date)),
+              React.createElement('td',null,'₹'+r.expected.toLocaleString()),
+              React.createElement('td',null,'₹'+r.cash.toLocaleString()),
+              React.createElement('td',null,'₹'+r.card.toLocaleString()),
+              React.createElement('td',null,'₹'+r.upi.toLocaleString()),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:600,color:'var(--gold2)'}},'₹'+r.actual.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:r.diff===0?'var(--emerald)':r.diff>0?'var(--sky)':'var(--rose)'}},r.diff===0?'✓ Balanced':(r.diff>0?'+':'')+r.diff))
+            )
+          ))
+        )
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// P&L STATEMENT
+// ══════════════════════════════════════════
+function PnLSheet({selFY}){
+  const months=['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar'];
+  const seed=m=>(m+1)*23;const rnd=(b,v,s)=>{let x=Math.sin(s)*10000;x=x-Math.floor(x);return Math.round(b*(1+(x-0.5)*v));};
+  const mData=m=>({svc:rnd(380000,0.35,seed(m)+1),prod:rnd(68000,0.3,seed(m)+2),mem:rnd(45000,0.4,seed(m)+3),sal:rnd(188000,0.05,seed(m)+5),rent:32000,elec:rnd(20000,0.25,seed(m)+6),cos:rnd(35000,0.3,seed(m)+7),mkt:rnd(9000,0.4,seed(m)+8),inc:rnd(28000,0.3,seed(m)+11)});
+  const data=months.map((m,i)=>{const d=mData(i);const rev=d.svc+d.prod+d.mem;const exp=d.sal+d.rent+d.elec+d.cos+d.mkt+d.inc;return{m,rev,exp,gross:rev-exp,gm:Math.round(((rev-exp)/rev)*100)};});
+  const totals=data.reduce((a,r)=>({rev:a.rev+r.rev,exp:a.exp+r.exp,gross:a.gross+r.gross}),{rev:0,exp:0,gross:0});
+  const {toast}=useToast();
+  const doExport=()=>{try{exportExcel(data.map(r=>[r.m,r.rev,r.exp,r.gross,r.gm+'%']),['Month','Revenue','Expenses','Gross Profit','Margin'],'PnL_'+selFY);toast('Exported','success');}catch(e){toast('Failed','error');}};
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'P&L Statement'),React.createElement('div',{className:'page-sub'},'FY '+selFY+' — Monthly profit & loss')),
+      React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--emerald)',borderColor:'rgba(34,199,126,0.4)'},onClick:doExport},'⬇ Export Excel')
+    ),
+    React.createElement('div',{className:'summary-row',style:{marginBottom:18}},
+      [{l:'Total Revenue',v:'₹'+Math.round(totals.rev/100000).toFixed(1)+'L'},{l:'Total Expenses',v:'₹'+Math.round(totals.exp/100000).toFixed(1)+'L'},{l:'Gross Profit',v:'₹'+Math.round(totals.gross/100000).toFixed(1)+'L'},{l:'Avg Margin',v:Math.round(totals.gross/totals.rev*100)+'%'}].map(s=>
+        React.createElement('div',{key:s.l,className:'summary-item'},React.createElement('div',{className:'summary-val'},s.v),React.createElement('div',{className:'summary-lbl'},s.l))
+      )
+    ),
+    React.createElement('div',{className:'card',style:{marginBottom:18}},
+      React.createElement('div',{className:'card-title'},React.createElement('span',{className:'ct-icon'},'📈'),'Annual Revenue vs Profit Trend'),
+      React.createElement(BarChartSVG,{data:data.map(d=>Math.round(d.rev/1000)),labels:months,colors:data.map(d=>d.gm>=30?'var(--emerald)':'var(--sky)'),height:120})
+    ),
+    React.createElement('div',{className:'card'},
+      React.createElement('div',{className:'table-wrap'},
+        React.createElement('table',null,
+          React.createElement('thead',null,React.createElement('tr',null,['Month','Revenue (₹)','Expenses (₹)','Gross Profit (₹)','Margin %'].map(h=>React.createElement('th',{key:h},h)))),
+          React.createElement('tbody',null,
+            data.map(r=>React.createElement('tr',{key:r.m},
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},r.m)),
+              React.createElement('td',null,React.createElement('span',{style:{color:'var(--gold2)',fontWeight:500}},'₹'+r.rev.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{style:{color:'var(--text2)'}},'₹'+r.exp.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:r.gross>=0?'var(--emerald)':'var(--rose)'}},'₹'+r.gross.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{className:'badge '+(r.gm>=30?'badge-emerald':r.gm>=20?'badge-gold':'badge-rose')},r.gm+'%'))
+            )),
+            React.createElement('tr',{style:{background:'var(--surface3)'}},
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:'var(--text)'}},selFY+' TOTAL')),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:'var(--gold2)'}},'₹'+totals.rev.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700}},'₹'+totals.exp.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:'var(--emerald)'}},'₹'+totals.gross.toLocaleString())),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:'var(--emerald)'}},Math.round(totals.gross/totals.rev*100)+'%'))
+            )
+          )
+        )
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// REPORTS HUB
+// ══════════════════════════════════════════
+function ReportsHub(){
+  const reports=[
+    {icon:'💰',title:'Payroll Report',sub:'Monthly salary disbursement summary',tag:'badge-gold'},
+    {icon:'📋',title:'Attendance Report',sub:'Employee attendance & LOP analysis',tag:'badge-sky'},
+    {icon:'📈',title:'Sales Report',sub:'Revenue by outlet, category, date',tag:'badge-emerald'},
+    {icon:'💸',title:'Expense Report',sub:'Category-wise expense breakdown',tag:'badge-rose'},
+    {icon:'⚖️',title:'Statutory Report',sub:'PF, ESIC, PT compliance summary',tag:'badge-violet'},
+    {icon:'🏪',title:'Outlet Comparison',sub:'Side-by-side outlet performance',tag:'badge-teal'},
+    {icon:'👥',title:'Staff Analytics',sub:'Attendance, incentives, penalties',tag:'badge-indigo'},
+    {icon:'📊',title:'P&L Summary',sub:'Annual profit & loss at a glance',tag:'badge-amber'},
+  ];
+  const {toast}=useToast();
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'page-header'},
+      React.createElement('div',{className:'page-title'},'Reports Hub'),
+      React.createElement('div',{className:'page-sub'},'Generate and export detailed reports')
+    ),
+    React.createElement('div',{className:'grid4'},
+      reports.map(r=>React.createElement('div',{key:r.title,className:'report-card',onClick:()=>toast('Generating '+r.title+'…','info')},
+        React.createElement('div',{className:'rc-icon'},r.icon),
+        React.createElement('div',{className:'rc-title'},r.title),
+        React.createElement('div',{className:'rc-sub'},r.sub),
+        React.createElement('div',{style:{marginTop:12}},React.createElement('span',{className:'badge '+r.tag},'Generate'))
+      ))
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// USER MANAGEMENT
+// ══════════════════════════════════════════
+function UserManagement(){
+  // ── Constants ──
+  const ALL_OUTLETS=SALONS_INIT.map(s=>({id:s.id,name:s.name.split('—')[0].trim()}));
+  const ALL_TABS=[
+    {id:'outlet-dashboard',label:'Dashboard'},
+    {id:'master-salary',label:'Master Salary'},
+    {id:'daily-sales',label:'Daily Sales'},
+    {id:'daily-incentive',label:'Daily Incentive'},
+    {id:'attendance',label:'Attendance'},
+    {id:'salary-working',label:'Salary Working'},
+    {id:'incentive-working',label:'Incentive Working'},
+    {id:'advance',label:'Advances'},
+    {id:'penalty',label:'Penalties'},
+    {id:'vendors',label:'Vendors'},
+    {id:'due-dates',label:'Due Dates'},
+    {id:'collection',label:'Collection Reco'},
+  ];
+  const ACCESS_ROLES=['Super Admin','Editor','Viewer','No Access'];
+  const ACCESS_COLORS={'Super Admin':'badge-gold',Editor:'badge-sky',Viewer:'badge-emerald','No Access':'badge-gray'};
+  const ACCESS_DESC={'Super Admin':'Full access to everything — all outlets, all tabs, all settings.','Editor':'Can view and edit data in permitted outlets/tabs.','Viewer':'Read-only access to permitted outlets/tabs.','No Access':'Blocked from all outlet data.'};
+
+  const mkBlank=()=>({
+    id:Date.now(),name:'',email:'',role:'',access:'Viewer',status:'Active',last:'Just now',
+    outletScope:'all',           // 'all' | 'selected'
+    outletIds:[],                // selected outlet IDs
+    tabScope:'all',              // 'all' | 'selected'
+    tabIds:[],                   // selected tab IDs
+    outletTabMap:{},             // {outletId: 'all'|tabId[]}
+  });
+
+  const SEED_USERS=[
+    {id:1,name:'Rajesh Gupta',email:'rajesh@salonos.in',role:'Super Admin',access:'Super Admin',status:'Active',last:'Today',outletScope:'all',outletIds:[],tabScope:'all',tabIds:[],outletTabMap:{}},
+    {id:2,name:'Priya Sharma',email:'priya@salonos.in',role:'Salon Manager',access:'Editor',status:'Active',last:'2h ago',outletScope:'selected',outletIds:[1,2],tabScope:'all',tabIds:[],outletTabMap:{1:'all',2:'all'}},
+    {id:3,name:'Amit Verma',email:'amit@salonos.in',role:'Accountant',access:'Viewer',status:'Active',last:'Yesterday',outletScope:'selected',outletIds:[1],tabScope:'selected',tabIds:['salary-working','attendance','advance'],outletTabMap:{1:['salary-working','attendance','advance']}},
+    {id:4,name:'Sunita Rao',email:'sunita@salonos.in',role:'HR Manager',access:'Editor',status:'Active',last:'3 days ago',outletScope:'all',outletIds:[],tabScope:'selected',tabIds:['master-salary','attendance','advance','penalty'],outletTabMap:{}},
+    {id:5,name:'Ravi Kumar',email:'ravi@salonos.in',role:'Auditor',access:'Viewer',status:'Inactive',last:'2 weeks ago',outletScope:'selected',outletIds:[3],tabScope:'selected',tabIds:['daily-sales','collection'],outletTabMap:{3:['daily-sales','collection']}},
+  ];
+  const [users,setUsers]=useState(SEED_USERS);
+  const [showModal,setShowModal]=useState(false);
+  const [editUser,setEditUser]=useState(null);
+  const [showDelete,setShowDelete]=useState(null);
+  const [form,setForm]=useState(mkBlank());
+  const [modalTab,setModalTab]=useState('info');
+  const [expandedOutlet,setExpandedOutlet]=useState(null);
+  const {toast}=useToast();
+
+  const fc=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
+
+  // ── Outlet / Tab helpers ──
+  const toggleOutlet=id=>setForm(f=>{
+    const cur=f.outletIds;
+    const next=cur.includes(id)?cur.filter(x=>x!==id):[...cur,id];
+    const map={...f.outletTabMap};
+    if(!next.includes(id))delete map[id];
+    else if(!map[id])map[id]='all';
+    return{...f,outletIds:next,outletTabMap:map};
+  });
+  const setOutletTabScope=(oid,scope)=>setForm(f=>({...f,outletTabMap:{...f.outletTabMap,[oid]:scope}}));
+  const toggleOutletTab=(oid,tid)=>setForm(f=>{
+    const cur=Array.isArray(f.outletTabMap[oid])?f.outletTabMap[oid]:[];
+    const next=cur.includes(tid)?cur.filter(x=>x!==tid):[...cur,tid];
+    return{...f,outletTabMap:{...f.outletTabMap,[oid]:next}};
+  });
+  const toggleGlobalTab=tid=>setForm(f=>{
+    const cur=f.tabIds;
+    const next=cur.includes(tid)?cur.filter(x=>x!==tid):[...cur,tid];
+    return{...f,tabIds:next};
+  });
+
+  // ── Access summary string for table ──
+  const accessSummary=u=>{
+    if(u.access==='Super Admin')return'All outlets — all tabs';
+    if(u.outletScope==='all'){
+      if(u.tabScope==='all')return'All outlets — all tabs';
+      return'All outlets — '+u.tabIds.length+' tabs';
+    }
+    const names=u.outletIds.map(id=>ALL_OUTLETS.find(o=>o.id===id)?.name||'').filter(Boolean);
+    return names.length===0?'No outlets':names.join(', ').slice(0,38)+(names.join(', ').length>38?'…':'');
+  };
+
+  // ── Save ──
+  const save=()=>{
+    if(!form.name.trim()){toast('Full name is required','error');return;}
+    if(!form.email.trim()){toast('Email is required','error');return;}
+    if(editUser){setUsers(p=>p.map(u=>u.id===editUser.id?{...form}:u));toast('User updated','success');}
+    else{setUsers(p=>[...p,{...form,id:Date.now(),last:'Just now'}]);toast('User created & invite sent','success');}
+    setShowModal(false);
+  };
+  const openAdd=()=>{setForm(mkBlank());setEditUser(null);setModalTab('info');setExpandedOutlet(null);setShowModal(true);};
+  const openEdit=u=>{setForm({...u});setEditUser(u);setModalTab('info');setExpandedOutlet(null);setShowModal(true);};
+
+  // ── Render outlet-tab permission panel ──
+  const renderOutletTabPanel=()=>{
+    if(form.access==='Super Admin')return React.createElement('div',{style:{textAlign:'center',padding:'32px 0',color:'var(--text3)'}},
+      React.createElement('div',{style:{fontSize:28,marginBottom:8}},'👑'),
+      React.createElement('div',{style:{fontSize:13,color:'var(--gold2)',fontWeight:600}},'Super Admin'),
+      React.createElement('div',{style:{fontSize:12,marginTop:4}},'Has unrestricted access to all outlets and tabs.')
+    );
+    if(form.access==='No Access')return React.createElement('div',{style:{textAlign:'center',padding:'32px 0',color:'var(--text3)'}},
+      React.createElement('div',{style:{fontSize:28,marginBottom:8}},'🚫'),
+      React.createElement('div',{style:{fontSize:12}},'This user will not be able to access any outlet data.')
+    );
+
+    return React.createElement('div',null,
+      // Outlet scope toggle
+      React.createElement('div',{style:{marginBottom:16}},
+        React.createElement('div',{style:{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8}},'Outlet Access Scope'),
+        React.createElement('div',{style:{display:'flex',gap:8}},
+          ['all','selected'].map(s=>React.createElement('button',{key:s,
+            className:'btn '+(form.outletScope===s?'btn-primary':'btn-ghost')+' btn-sm',
+            onClick:()=>setForm(f=>({...f,outletScope:s}))},
+            s==='all'?'🏪 All Outlets':'🎯 Selected Outlets'
+          ))
+        )
+      ),
+
+      // If ALL outlets — show global tab scope
+      form.outletScope==='all'&&React.createElement('div',{style:{background:'var(--surface3)',borderRadius:'var(--r2)',padding:14,marginBottom:14}},
+        React.createElement('div',{style:{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:10}},'Tab Access — Applies to All Outlets'),
+        React.createElement('div',{style:{display:'flex',gap:8,marginBottom:12}},
+          ['all','selected'].map(s=>React.createElement('button',{key:s,
+            className:'btn '+(form.tabScope===s?'btn-primary':'btn-ghost')+' btn-sm',
+            onClick:()=>setForm(f=>({...f,tabScope:s}))},
+            s==='all'?'All Tabs':'Select Tabs'
+          ))
+        ),
+        form.tabScope==='selected'&&React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}},
+          ALL_TABS.map(t=>React.createElement('label',{key:t.id,style:{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:'var(--r)',background:'var(--surface2)',cursor:'pointer',border:'1px solid '+(form.tabIds.includes(t.id)?'var(--gold)':'var(--border)')}},
+            React.createElement('input',{type:'checkbox',checked:form.tabIds.includes(t.id),onChange:()=>toggleGlobalTab(t.id),style:{accentColor:'var(--gold)'}}),
+            React.createElement('span',{style:{fontSize:12,color:form.tabIds.includes(t.id)?'var(--gold2)':'var(--text2)'}},t.label)
+          ))
+        )
+      ),
+
+      // If SELECTED outlets — show outlet checkboxes + per-outlet tab config
+      form.outletScope==='selected'&&React.createElement('div',null,
+        React.createElement('div',{style:{fontSize:10,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8}},'Select Outlets & Configure Tab Access'),
+        ALL_OUTLETS.map(o=>React.createElement('div',{key:o.id,style:{marginBottom:8,borderRadius:'var(--r2)',border:'1px solid '+(form.outletIds.includes(o.id)?'var(--gold)':'var(--border)'),overflow:'hidden'}},
+          // Outlet header row
+          React.createElement('div',{style:{
+            display:'flex',alignItems:'center',gap:10,padding:'10px 14px',
+            background:form.outletIds.includes(o.id)?'rgba(196,154,42,0.06)':'var(--surface2)',
+            cursor:'pointer'
+          },onClick:()=>toggleOutlet(o.id)},
+            React.createElement('input',{type:'checkbox',checked:form.outletIds.includes(o.id),readOnly:true,style:{accentColor:'var(--gold)',cursor:'pointer'}}),
+            React.createElement('span',{style:{fontSize:13,fontWeight:600,color:form.outletIds.includes(o.id)?'var(--gold2)':'var(--text)',flex:1}},o.name),
+            form.outletIds.includes(o.id)&&React.createElement('span',{
+              style:{fontSize:11,color:'var(--text3)',display:'flex',alignItems:'center',gap:4},
+              onClick:e=>{e.stopPropagation();setExpandedOutlet(expandedOutlet===o.id?null:o.id);}
+            },
+              'Configure tabs ',expandedOutlet===o.id?'▲':'▼'
+            )
+          ),
+          // Tab config for this outlet (expanded)
+          form.outletIds.includes(o.id)&&expandedOutlet===o.id&&React.createElement('div',{style:{padding:'12px 14px',background:'var(--surface)',borderTop:'1px solid var(--border)'}},
+            React.createElement('div',{style:{display:'flex',gap:8,marginBottom:10}},
+              React.createElement('div',{style:{fontSize:11,color:'var(--text3)',alignSelf:'center',flex:1}},'Tab access for this outlet:'),
+              ['all','selected'].map(s=>React.createElement('button',{key:s,
+                className:'btn '+(form.outletTabMap[o.id]===s||(!Array.isArray(form.outletTabMap[o.id])&&s==='all')?'btn-primary':'btn-ghost')+' btn-xs',
+                onClick:()=>setOutletTabScope(o.id,s==='all'?'all':[])},
+                s==='all'?'All Tabs':'Select'
+              ))
+            ),
+            Array.isArray(form.outletTabMap[o.id])&&React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5}},
+              ALL_TABS.map(t=>{
+                const checked=Array.isArray(form.outletTabMap[o.id])&&form.outletTabMap[o.id].includes(t.id);
+                return React.createElement('label',{key:t.id,style:{display:'flex',alignItems:'center',gap:7,padding:'6px 9px',borderRadius:'var(--r)',background:'var(--surface2)',cursor:'pointer',border:'1px solid '+(checked?'var(--sky)':'var(--border)')}},
+                  React.createElement('input',{type:'checkbox',checked,onChange:()=>toggleOutletTab(o.id,t.id),style:{accentColor:'var(--sky)'}}),
+                  React.createElement('span',{style:{fontSize:11,color:checked?'var(--sky)':'var(--text3)'}},t.label)
+                );
+              })
+            )
+          )
+        ))
+      )
+    );
+  };
+
+  // ── Chip summary for access column ──
+  const renderAccessChips=u=>{
+    if(u.access==='Super Admin')return React.createElement('span',{className:'badge badge-gold'},'👑 Super Admin');
+    if(u.access==='No Access')return React.createElement('span',{className:'badge badge-gray'},'🚫 No Access');
+    return React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:3}},
+      React.createElement('span',{className:'badge '+(ACCESS_COLORS[u.access]||'badge-gray'),style:{width:'fit-content'}},u.access),
+      React.createElement('span',{style:{fontSize:10,color:'var(--text3)',maxWidth:180}},accessSummary(u))
+    );
+  };
+
+  return React.createElement('div',{className:'fade-in'},
+    // ── Header ──
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'User Management'),React.createElement('div',{className:'page-sub'},'Manage access roles, outlet permissions & tab visibility')),
+      React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openAdd},'＋ Add User')
+    ),
+
+    // ── KPI Row ──
+    React.createElement('div',{className:'grid4',style:{marginBottom:18}},
+      [{l:'Total Users',v:users.length,c:'sky'},{l:'Active',v:users.filter(u=>u.status==='Active').length,c:'emerald'},
+       {l:'Editors',v:users.filter(u=>u.access==='Editor').length,c:'gold'},{l:'Viewers',v:users.filter(u=>u.access==='Viewer').length,c:'violet'}
+      ].map(m=>React.createElement('div',{key:m.l,className:'kpi-card '+m.c},React.createElement('div',{className:'kpi-label'},m.l),React.createElement('div',{className:'kpi-value'},m.v)))
+    ),
+
+    // ── Table ──
+    React.createElement('div',{className:'card'},
+      React.createElement('div',{className:'table-wrap'},
+        React.createElement('table',null,
+          React.createElement('thead',null,React.createElement('tr',null,
+            ['User','Email','Role','Access Level & Scope','Status','Last Active','Actions'].map(h=>React.createElement('th',{key:h},h))
+          )),
+          React.createElement('tbody',null,users.map(u=>
+            React.createElement('tr',{key:u.id},
+              React.createElement('td',null,
+                React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10}},
+                  React.createElement('div',{style:{width:34,height:34,borderRadius:9,background:'linear-gradient(135deg,var(--gold),var(--violet))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#fff',flexShrink:0}},u.name.slice(0,2).toUpperCase()),
+                  React.createElement('span',{style:{fontWeight:600,fontSize:13,color:'var(--text)',whiteSpace:'nowrap'}},u.name)
+                )
+              ),
+              React.createElement('td',null,React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},u.email)),
+              React.createElement('td',null,React.createElement('span',{style:{fontSize:12,color:'var(--text)'}},u.role)),
+              React.createElement('td',null,renderAccessChips(u)),
+              React.createElement('td',null,React.createElement('span',{className:'badge '+(u.status==='Active'?'badge-emerald':'badge-gray')},u.status)),
+              React.createElement('td',null,React.createElement('span',{style:{fontSize:11,color:'var(--text3)'}},u.last)),
+              React.createElement('td',null,
+                React.createElement('div',{style:{display:'flex',gap:5}},
+                  React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>openEdit(u)},'✏ Edit'),
+                  React.createElement('button',{className:'btn btn-danger btn-xs btn-icon',style:{padding:'4px 8px',fontSize:11},onClick:()=>setShowDelete(u)},'🗑')
+                )
+              )
+            )
+          ))
+        )
+      )
+    ),
+
+    // ── DELETE CONFIRM MODAL ──
+    showDelete&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowDelete(null)},
+      React.createElement('div',{className:'modal',style:{width:420},onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-header'},
+          React.createElement('div',{className:'modal-title',style:{color:'var(--rose)'}},'Remove User?'),
+          React.createElement('button',{className:'modal-close',onClick:()=>setShowDelete(null)},'✕')
+        ),
+        React.createElement('div',{style:{display:'flex',alignItems:'center',gap:14,background:'rgba(255,79,109,0.06)',border:'1px solid rgba(255,79,109,0.2)',borderRadius:'var(--r2)',padding:'14px',marginBottom:18}},
+          React.createElement('div',{style:{width:40,height:40,borderRadius:10,background:'linear-gradient(135deg,var(--gold),var(--violet))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:700,color:'#fff',flexShrink:0}},showDelete.name.slice(0,2).toUpperCase()),
+          React.createElement('div',null,
+            React.createElement('div',{style:{fontWeight:600,fontSize:14,color:'var(--text)'}},showDelete.name),
+            React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginTop:2}},showDelete.email+' · '+showDelete.role)
+          )
+        ),
+        React.createElement('div',{style:{fontSize:13,color:'var(--text2)',lineHeight:1.7,marginBottom:6}},'Removing this user will revoke all outlet and tab access immediately. This cannot be undone.'),
+        React.createElement('div',{className:'modal-actions'},
+          React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowDelete(null)},'Cancel'),
+          React.createElement('button',{className:'btn btn-danger',onClick:()=>{setUsers(p=>p.filter(u=>u.id!==showDelete.id));setShowDelete(null);toast(showDelete.name+' removed','warning');}},'Yes, Remove User')
+        )
+      )
+    ),
+
+    // ── ADD / EDIT MODAL ──
+    showModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowModal(false)},
+      React.createElement('div',{className:'modal',style:{width:680,maxHeight:'88vh',overflowY:'auto'},onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-header'},
+          React.createElement('div',null,
+            React.createElement('div',{className:'modal-title'},editUser?'Edit User — '+editUser.name:'Add New User'),
+            React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:3}},editUser?'Update details, access level and outlet/tab permissions':'Fill in details and configure what this user can access')
+          ),
+          React.createElement('button',{className:'modal-close',onClick:()=>setShowModal(false)},'✕')
+        ),
+
+        // Modal tabs
+        React.createElement('div',{className:'tab-bar'},
+          [{id:'info',label:'👤 User Info'},{id:'access',label:'🔐 Access Level'},{id:'outlets',label:'🏪 Outlet & Tab Permissions'}].map(t=>
+            React.createElement('button',{key:t.id,className:'tab-btn '+(modalTab===t.id?'active':''),onClick:()=>setModalTab(t.id)},t.label)
+          )
+        ),
+
+        // ── Tab: Info ──
+        modalTab==='info'&&React.createElement('div',null,
+          React.createElement('div',{className:'form-row cols2'},
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'Full Name *'),React.createElement('input',{className:'form-control',value:form.name,onChange:fc('name'),placeholder:'Full name'})),
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'Email *'),React.createElement('input',{type:'email',className:'form-control',value:form.email,onChange:fc('email'),placeholder:'email@company.com'}))
+          ),
+          React.createElement('div',{className:'form-row cols2'},
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'Role / Designation'),React.createElement('input',{className:'form-control',value:form.role,onChange:fc('role'),placeholder:'e.g. Accountant, HR Manager'})),
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'Status'),React.createElement('select',{className:'form-control',value:form.status,onChange:fc('status')},['Active','Inactive'].map(s=>React.createElement('option',{key:s},s))))
+          )
+        ),
+
+        // ── Tab: Access Level ──
+        modalTab==='access'&&React.createElement('div',null,
+          React.createElement('div',{style:{marginBottom:14,fontSize:12,color:'var(--text3)'}},
+            'Choose the base permission level. Then configure outlet & tab permissions in the next tab.'
+          ),
+          ACCESS_ROLES.map(role=>React.createElement('div',{key:role,
+            style:{
+              display:'flex',alignItems:'flex-start',gap:14,padding:'14px 16px',borderRadius:'var(--r2)',
+              marginBottom:8,cursor:'pointer',transition:'all 0.15s',
+              background:form.access===role?'rgba(196,154,42,0.06)':'var(--surface2)',
+              border:'1px solid '+(form.access===role?'var(--gold)':'var(--border)')
+            },
+            onClick:()=>setForm(f=>({...f,access:role}))
+          },
+            React.createElement('div',{style:{width:20,height:20,borderRadius:'50%',border:'2px solid '+(form.access===role?'var(--gold)':'var(--border2)'),background:form.access===role?'var(--gold)':'transparent',flexShrink:0,marginTop:2,display:'flex',alignItems:'center',justifyContent:'center'}},
+              form.access===role&&React.createElement('div',{style:{width:8,height:8,borderRadius:'50%',background:'#fff'}})
+            ),
+            React.createElement('div',{style:{flex:1}},
+              React.createElement('div',{style:{fontWeight:600,fontSize:13,color:form.access===role?'var(--gold2)':'var(--text)',marginBottom:3}},role),
+              React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},ACCESS_DESC[role])
+            ),
+            React.createElement('span',{className:'badge '+(ACCESS_COLORS[role]||'badge-gray')},role)
+          ))
+        ),
+
+        // ── Tab: Outlets & Tabs ──
+        modalTab==='outlets'&&React.createElement('div',null,renderOutletTabPanel()),
+
+        // Modal actions
+        React.createElement('div',{className:'modal-actions'},
+          React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowModal(false)},'Cancel'),
+          modalTab!=='info'&&React.createElement('button',{className:'btn btn-ghost',onClick:()=>setModalTab(modalTab==='outlets'?'access':'info')},'← Back'),
+          modalTab!=='outlets'&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setModalTab(modalTab==='info'?'access':'outlets')},'Next →'),
+          React.createElement('button',{className:'btn btn-primary',onClick:save},editUser?'💾 Save Changes':'✓ Create User')
+        )
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// MASTER SETTINGS
+// ══════════════════════════════════════════
+function MasterSettings(){
+  const [toggles,setToggles]=useState({pf:true,esic:true,pt:true,tds:true,lwf:false,gratuity:true});
+  const Toggle=({k,label,desc})=>React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 0',borderBottom:'1px solid var(--border)'}},
+    React.createElement('div',null,
+      React.createElement('div',{style:{fontSize:13,color:'var(--text)',fontWeight:500}},label),
+      desc&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:2}},desc)
+    ),
+    React.createElement('div',{className:'toggle '+(toggles[k]?'on':''),onClick:()=>setToggles(t=>({...t,[k]:!t[k]}))})
+  );
+  const {toast}=useToast();
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'page-header'},React.createElement('div',{className:'page-title'},'Master Settings'),React.createElement('div',{className:'page-sub'},'Global configuration and statutory provisions')),
+    React.createElement('div',{className:'grid2'},
+      React.createElement('div',{className:'card'},
+        React.createElement('div',{className:'card-title'},React.createElement('span',{className:'ct-icon'},'⚖️'),'Statutory Provisions'),
+        React.createElement(Toggle,{k:'pf',label:'Provident Fund (PF)',desc:'12% of Basic Salary — employer contribution'}),
+        React.createElement(Toggle,{k:'esic',label:'ESIC',desc:'Applicable below ₹21,000 gross per month'}),
+        React.createElement(Toggle,{k:'pt',label:'Professional Tax (PT)',desc:'State-wise slab deductions'}),
+        React.createElement(Toggle,{k:'tds',label:'TDS on Salary',desc:'Section 192 of Income Tax Act'}),
+        React.createElement(Toggle,{k:'lwf',label:'Labour Welfare Fund (LWF)',desc:'State-specific applicability'}),
+        React.createElement(Toggle,{k:'gratuity',label:'Gratuity',desc:'4.81% of Basic + DA after 5 years'})
+      ),
+      React.createElement('div',null,
+        React.createElement('div',{className:'card',style:{marginBottom:16}},
+          React.createElement('div',{className:'card-title'},React.createElement('span',{className:'ct-icon'},'💰'),'Salary Configuration'),
+          React.createElement('div',{className:'form-row cols2'},
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'Salary Cycle'),React.createElement('select',{className:'form-control'},React.createElement('option',null,'Monthly — Last working day'),React.createElement('option',null,'Monthly — 5th of next month'))),
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'FY Start Month'),React.createElement('select',{className:'form-control'},React.createElement('option',null,'April (Indian FY)'),React.createElement('option',null,'January (Calendar year)')))
+          ),
+          React.createElement('div',{className:'form-row cols2'},
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'PF Wage Ceiling (₹)'),React.createElement('input',{className:'form-control',defaultValue:'15000',type:'number'})),
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'ESIC Wage Ceiling (₹)'),React.createElement('input',{className:'form-control',defaultValue:'21000',type:'number'}))
+          ),
+          React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>toast('Settings saved','success')},'Save Changes')
+        ),
+        React.createElement('div',{className:'card'},
+          React.createElement('div',{className:'card-title'},React.createElement('span',{className:'ct-icon'},'📋'),'Leave Policy'),
+          React.createElement('div',{className:'form-row cols3'},
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'Earned Leave (days/yr)'),React.createElement('input',{className:'form-control',defaultValue:'15',type:'number'})),
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'Casual Leave'),React.createElement('input',{className:'form-control',defaultValue:'12',type:'number'})),
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'Sick Leave'),React.createElement('input',{className:'form-control',defaultValue:'7',type:'number'}))
+          ),
+          React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>toast('Leave policy saved','success')},'Save Changes')
+        )
+      )
+    )
+  );
+}
+
+// ══════════════════════════════════════════
+// ROOT APP
+// ══════════════════════════════════════════
+function App(){
+  const [loggedIn,setLoggedIn]=useState(false);
+  const [user,setUser]=useState(null);
+  const [activePage,setActivePage]=useState('dashboard');
+  const [selectedSalon,setSelectedSalon]=useState(null);
+  const [salonTab,setSalonTab]=useState('outlet-dashboard');
+  const [toasts,setToasts]=useState([]);
+  const [salons,setSalons]=useState(SALONS_INIT);
+  const [selFY,setSelFY]=useState('2024-25');
+  const [sidebarOpen,setSidebarOpen]=useState(false);
+  const FYS=['2022-23','2023-24','2024-25','2025-26','2026-27'];
+
+  const addToast=useCallback((msg,type='success',dur=3500)=>{
+    const id=Date.now()+Math.random();
+    setToasts(p=>[...p,{id,msg,type}]);
+    setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),dur);
+  },[]);
+  _addToast=addToast;
+  const removeToast=id=>setToasts(p=>p.filter(t=>t.id!==id));
+
+  const handleLogin=u=>{setUser(u);setLoggedIn(true);addToast('Welcome back, '+u.name.split(' ')[0]+'! 👋','success');};
+  const handleSelectSalon=s=>{setSelectedSalon(s);setActivePage('salon');setSalonTab('outlet-dashboard');setSidebarOpen(false);};
+  const navTo=page=>{setActivePage(page);setSelectedSalon(null);setSidebarOpen(false);};
+
+  if(!loggedIn)return React.createElement(React.Fragment,null,
+    React.createElement(ToastContainer,{toasts,remove:removeToast}),
+    React.createElement(LoginPage,{onLogin:handleLogin})
+  );
+
+  const GLOBAL_NAV=[
+    {id:'dashboard',label:'Master Dashboard',icon:'📊'},
+    {id:'master-sheet',label:'Master Sheet',icon:'🏪'},
+    {id:'reports',label:'Reports Hub',icon:'📋'},
+    {id:'pnl',label:'P&L Statement',icon:'📈'},
+    {id:'users',label:'User Management',icon:'👥'},
+    {id:'settings',label:'Settings',icon:'⚙️'},
+  ];
+  const SALON_TABS=[
+    {id:'outlet-dashboard',label:'Dashboard'},
+    {id:'master-salary',label:'Master Salary'},
+    {id:'daily-sales',label:'Daily Sales'},
+    {id:'daily-incentive',label:'Daily Incentive'},
+    {id:'attendance',label:'Attendance'},
+    {id:'salary-working',label:'Salary Working'},
+    {id:'incentive-working',label:'Incentive Working'},
+    {id:'advance',label:'Advances'},
+    {id:'penalty',label:'Penalties'},
+    {id:'vendors',label:'Vendors'},
+    {id:'due-dates',label:'Due Dates'},
+    {id:'collection',label:'Collection Reco'},
+  ];
+  const SALON_COMP={
+    'outlet-dashboard':()=>React.createElement(OutletDashboard,{salon:selectedSalon}),
+    'master-salary':MasterSalarySheet,
+    'daily-sales':DailySalesSheet,
+    'daily-incentive':DailyIncentiveSheet,
+    'attendance':AttendanceSheet,
+    'salary-working':SalaryWorkingSheet,
+    'incentive-working':IncentiveWorkingSheet,
+    'advance':AdvanceSheet,
+    'penalty':PenaltySheet,
+    'vendors':VendorSheet,
+    'due-dates':DueDateSheet,
+    'collection':CollectionReco,
+  };
+
+  const renderPage=()=>{
+    switch(activePage){
+      case 'dashboard':return React.createElement(MasterDashboard,{selFY,setSelFY,FYS});
+      case 'master-sheet':return React.createElement(MasterSheet,{onSelect:handleSelectSalon,salons,setSalons});
+      case 'pnl':return React.createElement(PnLSheet,{selFY});
+      case 'reports':return React.createElement(ReportsHub,null);
+      case 'users':return React.createElement(UserManagement,null);
+      case 'settings':return React.createElement(MasterSettings,null);
+      case 'salon':{
+        const Comp=SALON_COMP[salonTab]||MasterSalarySheet;
+        return React.createElement('div',{className:'fade-in'},
+          React.createElement('div',{className:'outlet-bar'},
+            React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8}},
+              React.createElement('div',{style:{width:8,height:8,borderRadius:'50%',background:'var(--emerald)',boxShadow:'0 0 6px var(--emerald)'}}),
+              React.createElement('span',{style:{fontSize:11,color:'var(--text3)'}},'Outlet:'),
+              React.createElement('span',{className:'outlet-bar-name'},selectedSalon?.name)
+            ),
+            React.createElement('div',{className:'outlet-bar-back',onClick:()=>navTo('master-sheet')},'← Back to Master Sheet')
+          ),
+          React.createElement('div',{className:'tab-bar'},
+            SALON_TABS.map(t=>React.createElement('button',{key:t.id,className:'tab-btn '+(salonTab===t.id?'active':''),onClick:()=>setSalonTab(t.id)},t.label))
+          ),
+          React.createElement(Comp,null)
+        );
+      }
+      default:return null;
+    }
+  };
+
+  const overdueDues=DUE_DATES_INIT.filter(d=>d.status==='overdue').length;
+
+  return React.createElement(React.Fragment,null,
+    React.createElement(ToastContainer,{toasts,remove:removeToast}),
+    // Mobile overlay
+    React.createElement('div',{className:'sidebar-overlay '+(sidebarOpen?'show':''),onClick:()=>setSidebarOpen(false)}),
+    React.createElement('div',{className:'app'},
+      // SIDEBAR
+      React.createElement('div',{className:'sidebar '+(sidebarOpen?'open':'')},
+        // Logo
+        React.createElement('div',{className:'sidebar-logo'},
+          React.createElement('div',{className:'logo-icon'},'💈'),
+          React.createElement('div',{className:'logo-text-wrap'},
+            React.createElement('div',{className:'logo-name'},'SalonOS'),
+            React.createElement('div',{className:'logo-sub'},'Management Suite')
+          )
+        ),
+        // Nav
+        React.createElement('div',{className:'sidebar-nav'},
+          React.createElement('div',{className:'nav-section-label'},'Global'),
+          GLOBAL_NAV.map(n=>React.createElement('div',{key:n.id,className:'nav-item '+(activePage===n.id&&!selectedSalon?'active':''),onClick:()=>navTo(n.id)},
+            React.createElement('span',{className:'nav-icon'},n.icon),
+            React.createElement('span',{className:'nav-label'},n.label),
+            n.id==='dashboard'&&overdueDues>0&&React.createElement('span',{className:'nav-badge'},overdueDues)
+          )),
+          React.createElement('div',{className:'nav-divider'}),
+          React.createElement('div',{className:'nav-section-label'},'Outlets'),
+          salons.map(s=>React.createElement('div',{key:s.id,className:'outlet-item '+(activePage==='salon'&&selectedSalon?.id===s.id?'active':''),onClick:()=>handleSelectSalon(s)},
+            React.createElement('div',{className:'outlet-dot '+(s.status!=='Active'?'inactive':'')}),
+            React.createElement('span',{className:'nav-label'},s.name.split('—')[0].trim()),
+            s.type==='Franchise'&&React.createElement('span',{style:{fontSize:9,color:'var(--text3)',flexShrink:0,marginLeft:2}},'F')
+          ))
+        ),
+        // User
+        React.createElement('div',{className:'sidebar-user'},
+          React.createElement('div',{className:'user-card'},
+            React.createElement('div',{className:'user-avatar'},user?.name?.slice(0,2).toUpperCase()),
+            React.createElement('div',{style:{flex:1,minWidth:0}},
+              React.createElement('div',{className:'user-name'},user?.name),
+              React.createElement('div',{className:'user-role'},user?.role)
+            ),
+            React.createElement('div',{className:'user-status'},
+              React.createElement('div',{className:'status-dot'}),
+              'Live'
+            )
+          )
+        )
+      ),
+      // MAIN
+      React.createElement('div',{className:'main'},
+        // Topbar
+        React.createElement('div',{className:'topbar'},
+          React.createElement('button',{className:'topbar-hamburger',onClick:()=>setSidebarOpen(s=>!s)},'☰'),
+          React.createElement('div',{className:'topbar-breadcrumb'},
+            React.createElement('div',{className:'topbar-route'},activePage==='salon'&&selectedSalon?'SalonOS / Outlets':('SalonOS')),
+            React.createElement('div',{className:'topbar-page'},activePage==='salon'&&selectedSalon?selectedSalon.name.split('—')[0].trim():GLOBAL_NAV.find(n=>n.id===activePage)?.label||'SalonOS')
+          ),
+          React.createElement('div',{className:'topbar-right'},
+            React.createElement('select',{className:'topbar-fy',value:selFY,onChange:e=>setSelFY(e.target.value)},FYS.map(f=>React.createElement('option',{key:f},'FY '+f))),
+            React.createElement('div',{className:'topbar-date'},new Date().toLocaleDateString('en-IN',{weekday:'short',month:'short',day:'numeric'})),
+            React.createElement('div',{className:'topbar-notif',onClick:()=>addToast('No new notifications','info')},
+              '🔔',
+              overdueDues>0&&React.createElement('div',{className:'notif-badge'},overdueDues)
+            ),
+            React.createElement('div',{className:'topbar-live'},
+              React.createElement('div',{style:{width:6,height:6,borderRadius:'50%',background:'var(--emerald)',boxShadow:'0 0 6px var(--emerald)',animation:'pulse 2s infinite'}}),
+              'Live'
+            )
+          )
+        ),
+        // Content
+        React.createElement('div',{className:'content'},renderPage())
+      )
+    )
+  );
+}
+
+ReactDOM.render(React.createElement(App,null),document.getElementById('root'));
+</script>
 </body>
 </html>
