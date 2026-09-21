@@ -1270,8 +1270,8 @@ function safeLocalSet(key,value){
 // resolves last-write-wins, same as this app has always behaved locally,
 // just shared across devices now instead of trapped in one browser.
 // ============================================================================
-const SUPABASE_URL='';
-const SUPABASE_ANON_KEY='';
+const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
 const CDN_SUPABASE_URL='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
 let _supabaseClient=null;
@@ -4308,6 +4308,66 @@ function savePasswordOverride(email,password){
     all[email.toLowerCase()]=password;
     safeLocalSet(PW_OVERRIDE_KEY,JSON.stringify(all));
   }catch(e){}
+}
+// ── Cloud password-reset landing page — Supabase's "Send password recovery" email links back to
+// this same site with a one-time recovery token in the URL. Without a screen that actually reads
+// that token, the app has no way to know it should be asking for a new password at all — it would
+// just show the ordinary login page, silently ignoring the whole reason the person is here. App()
+// below detects the recovery link (isPasswordRecoveryLink()) and renders this instead of the
+// normal login gate; supabase-js consumes the token from the URL automatically once its client is
+// created, so submitting here just needs a plain auth.updateUser() call.
+function isPasswordRecoveryLink(){
+  return typeof window!=='undefined' && /type=recovery/.test(window.location.hash);
+}
+function ResetPasswordPage(){
+  const [pass,setPass]=useState('');
+  const [pass2,setPass2]=useState('');
+  const [showPass,setShowPass]=useState(false);
+  const [err,setErr]=useState('');
+  const [busy,setBusy]=useState(false);
+  const [done,setDone]=useState(false);
+  const submit=async(e)=>{
+    e.preventDefault();
+    setErr('');
+    if(pass.length<6){setErr('Password must be at least 6 characters.');return;}
+    if(pass!==pass2){setErr('Passwords do not match.');return;}
+    setBusy(true);
+    try{
+      const supa=await getSupabaseClient();
+      const{error}=await supa.auth.updateUser({password:pass});
+      if(error){setErr(error.message||'Could not update password.');setBusy(false);return;}
+      setDone(true);
+      // Strip the recovery token from the URL so refreshing lands on the ordinary login page,
+      // not back on this screen — then bounce there after a moment to confirm sign-in with it.
+      window.history.replaceState(null,'',window.location.pathname+window.location.search);
+      try{await supa.auth.signOut();}catch(e2){}
+      setTimeout(()=>{window.location.reload();},2000);
+    }catch(err){setErr(err.message||'Could not update password — check your internet connection.');setBusy(false);}
+  };
+  return React.createElement('div',{className:'login-page'},
+    React.createElement('div',{className:'login-card fade-in',style:{width:420}},
+      React.createElement('div',{className:'login-logo'},'SalonOS'),
+      React.createElement('div',{className:'login-tagline'},done?'Password updated':'Set a new password'),
+      done
+        ?React.createElement('div',{style:{textAlign:'center',color:'var(--text2)',fontSize:13,lineHeight:1.6}},
+            'Your password has been updated. Taking you to the sign-in page…')
+        :React.createElement('form',{className:'login-form',onSubmit:submit},
+            React.createElement('div',{className:'form-group'},
+              React.createElement('label',null,'New Password'),
+              React.createElement('div',{style:{position:'relative'}},
+                React.createElement('input',{className:'form-control',type:showPass?'text':'password',value:pass,onChange:e=>setPass(e.target.value),autoFocus:true,style:{paddingRight:40}}),
+                React.createElement('button',{type:'button',onClick:()=>setShowPass(s=>!s),style:{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:14}},showPass?'🙈':'👁')
+              )
+            ),
+            React.createElement('div',{className:'form-group'},
+              React.createElement('label',null,'Confirm New Password'),
+              React.createElement('input',{className:'form-control',type:showPass?'text':'password',value:pass2,onChange:e=>setPass2(e.target.value)})
+            ),
+            err&&React.createElement('div',{style:{color:'var(--red)',fontSize:12.5,marginBottom:12}},err),
+            React.createElement('button',{type:'submit',className:'btn btn-primary'+(busy?' btn-loading':''),disabled:busy,style:{width:'100%',padding:'10px'}},'Set Password')
+          )
+    )
+  );
 }
 function LoginPage({onLogin}){
   const ACCOUNTS=loadUserAccounts();
@@ -29323,6 +29383,7 @@ function App(){
     return ()=>window.removeEventListener('keydown',onKey);
   },[]);
 
+  if(CLOUD_SYNC_ENABLED&&isPasswordRecoveryLink())return React.createElement(ResetPasswordPage,null);
   if(!loggedIn)return React.createElement(LoginPage,{onLogin:handleLogin});
   if(syncing)return React.createElement('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100vh',gap:14,color:'var(--text2)',fontSize:13}},
     React.createElement('div',{style:{width:34,height:34,border:'3px solid var(--border2)',borderTopColor:'var(--accent)',borderRadius:'50%',animation:'btn-spin 700ms linear infinite'}}),
