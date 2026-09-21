@@ -622,8 +622,12 @@ kbd{background:var(--bg4);border:1px solid var(--border2);border-radius:4px;padd
   .sidebar.open{transform:translateX(0)}
   .sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:199;animation:modalOverlayIn 0.18s ease-out}
   .sidebar-backdrop.show{display:block}
-  .topbar{padding:0 12px;gap:10px}
-  .topbar-right{gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  /* The topbar has a fixed height at desktop widths, but its right-side cluster (search, FY
+     selector, date, role badge, sign out) doesn't fit in one row below ~900px — flex-wrap alone
+     just overflows the fixed-height box and visually overlaps whatever renders under it. Letting
+     the topbar itself grow (auto height, wrap) makes it push the page content down instead. */
+  .topbar{height:auto;min-height:56px;flex-wrap:wrap;padding:8px 12px;gap:10px}
+  .topbar-right{gap:6px;flex-wrap:wrap;justify-content:flex-end;padding:4px 0}
   .content{padding:14px}
   .grid4{grid-template-columns:1fr 1fr}
   .grid3{grid-template-columns:1fr 1fr}
