@@ -1636,7 +1636,10 @@ function DynamicDonutChart({segments,size=150,thickness=20,formatValue,centerLab
   const [hover,setHover]=useState(null);
   const [mounted,setMounted]=useState(false);
   useEffect(()=>{const t=setTimeout(()=>setMounted(true),30);return()=>clearTimeout(t);},[]);
-  const total=Math.max(1,segments.reduce((s,x)=>s+(x.value||0),0));
+  // realTotal is what's actually shown (so an empty chart honestly reads ₹0, not a fake ₹1);
+  // total stays floored to 1 only to keep the arc-angle and percentage math below from dividing by zero.
+  const realTotal=segments.reduce((s,x)=>s+(x.value||0),0);
+  const total=Math.max(1,realTotal);
   const r=(size-thickness)/2,C=2*Math.PI*r;
   const fmt=formatValue||(v=>'₹'+Math.round(v).toLocaleString('en-IN'));
   let acc=0;
@@ -1663,7 +1666,7 @@ function DynamicDonutChart({segments,size=150,thickness=20,formatValue,centerLab
           React.createElement('div',{style:{fontSize:16,fontWeight:700,fontFamily:'var(--font2)',color:segments[hover].color}},Math.round(segments[hover].value/total*100)+'%')
         ):React.createElement(React.Fragment,null,
           centerLabel&&React.createElement('div',{style:{fontSize:10,color:'var(--text3)'}},centerLabel),
-          React.createElement('div',{style:{fontSize:15,fontWeight:700,fontFamily:'var(--font2)',color:'var(--text)'}},fmt(total))
+          React.createElement('div',{style:{fontSize:15,fontWeight:700,fontFamily:'var(--font2)',color:'var(--text)'}},fmt(realTotal))
         )
       )
     ),
