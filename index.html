@@ -5543,8 +5543,28 @@ function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup}={}){
 
 function UserManagement(){
   const {toast}=useToast();
-  const [users,setUsers]=useState(()=>loadUserAccounts());
-  useEffect(()=>{saveUserAccounts(users);},[users]);
+  // Cloud mode: the account list IS the `profiles` table (real Supabase logins) — mutated only
+  // through Supabase calls (create-user Edge Function / direct profile updates), never written
+  // straight to local state, then re-pulled with refreshCloudUsers() so the table always reflects
+  // what's actually in the database. Local mode keeps the original plaintext-list behavior as-is.
+  const [localUsers,setLocalUsers]=useState(()=>loadUserAccounts());
+  useEffect(()=>{if(!CLOUD_SYNC_ENABLED)saveUserAccounts(localUsers);},[localUsers]);
+  const [cloudUsers,setCloudUsers]=useState([]);
+  const [cloudBusy,setCloudBusy]=useState(false);
+  const refreshCloudUsers=useCallback(async()=>{
+    if(!CLOUD_SYNC_ENABLED)return;
+    const supa=await getSupabaseClient();
+    const{data,error}=await supa.from('profiles').select('*').order('created_at',{ascending:true});
+    if(!error&&data)setCloudUsers(data.map(p=>({
+      id:p.id,name:p.name,email:p.email,role:p.role,access:p.access,
+      outletIds:p.outlet_ids||[],
+      outletAccess:Object.fromEntries((p.outlet_ids||[]).map(oid=>[oid,'View and Edit'])),
+      sheetAccessByOutlet:{},status:p.status
+    })));
+  },[]);
+  useEffect(()=>{refreshCloudUsers();},[refreshCloudUsers]);
+  const users=CLOUD_SYNC_ENABLED?cloudUsers:localUsers;
+  const setUsers=CLOUD_SYNC_ENABLED?(()=>{}):setLocalUsers;
   const [showModal,setShowModal]=useState(false);
   const [editId,setEditId]=useState(null);
   const [showDelete,setShowDelete]=useState(null);
@@ -5625,13 +5645,46 @@ function UserManagement(){
     setForm({name:u.name,email:u.email,password:'',role:u.role,access:u.access,status:u.status,sheetAccessByOutlet,outletAccess});
     setEditId(u.id);setShowModal(true);
   };
-  const save=()=>{
+  const save=async()=>{
     if(!form.name.trim())return toast('Name is required','error');
     if(!form.email.trim()||!form.email.includes('@'))return toast('Enter a valid email','error');
     if(!editId&&!form.password.trim())return toast('Set a password for this new user','error');
     if(form.password&&form.password.length<6)return toast('Password must be at least 6 characters','error');
     const emailTaken=users.some(u=>u.email.toLowerCase()===form.email.trim().toLowerCase()&&u.id!==editId);
     if(emailTaken)return toast('A user with that email already exists','error');
+
+    if(CLOUD_SYNC_ENABLED){
+      setCloudBusy(true);
+      try{
+        const supa=await getSupabaseClient();
+        if(editId){
+          // Role/access/outlets only — changing another person's password needs the same admin
+          // privileges as creating one, which stays server-side (see create-user). They reset
+          // their own via "Forgot password?" on the login screen instead.
+          const{error}=await supa.from('profiles').update({
+            name:form.name.trim(),role:form.role.trim()||'Data Entry User',access:form.access,
+            outlet_ids:outletIdsFromAccess(form.outletAccess),status:form.status
+          }).eq('id',editId);
+          if(error){toast(error.message||'Could not update user','error');setCloudBusy(false);return;}
+          toast('User updated','success');
+        }else{
+          const{data,error}=await supa.functions.invoke('create-user',{body:{
+            email:form.email.trim(),password:form.password.trim(),name:form.name.trim(),
+            role:form.role.trim()||'Data Entry User',access:form.access,outlet_ids:outletIdsFromAccess(form.outletAccess)
+          }});
+          const fnErr=error||(data&&data.error);
+          if(fnErr){toast((fnErr.message||fnErr)||'Could not create user','error');setCloudBusy(false);return;}
+          toast('User added — they can log in now with the email and password just set','success');
+        }
+        await refreshCloudUsers();
+        setShowModal(false);
+      }catch(err){
+        toast(err.message||'Could not save — check your internet connection','error');
+      }
+      setCloudBusy(false);
+      return;
+    }
+
     if(editId){
       setUsers(prev=>prev.map(u=>u.id===editId?{...u,name:form.name.trim(),email:form.email.trim(),role:form.role.trim()||u.role,access:form.access,status:form.status,sheetAccessByOutlet:form.sheetAccessByOutlet,outletAccess:form.outletAccess,outletIds:outletIdsFromAccess(form.outletAccess),password:form.password.trim()?form.password.trim():u.password}:u));
       toast('User updated','success');
@@ -5642,12 +5695,33 @@ function UserManagement(){
     }
     setShowModal(false);
   };
-  const toggleStatus=(u)=>{
+  const toggleStatus=async(u)=>{
+    if(CLOUD_SYNC_ENABLED){
+      const supa=await getSupabaseClient();
+      const nextStatus=u.status==='Active'?'Inactive':'Active';
+      const{error}=await supa.from('profiles').update({status:nextStatus}).eq('id',u.id);
+      if(error){toast(error.message||'Could not update status','error');return;}
+      await refreshCloudUsers();
+      toast('User '+(u.status==='Active'?'deactivated — they can no longer log in':'reactivated'),'info');
+      return;
+    }
     setUsers(prev=>prev.map(x=>x.id===u.id?{...x,status:x.status==='Active'?'Inactive':'Active'}:x));
     toast('User '+(u.status==='Active'?'deactivated — they can no longer log in':'reactivated'),'info');
   };
-  const removeUser=(id)=>{
+  const removeUser=async(id)=>{
     if(users.length<=1){toast('Can\'t remove the last account — that would lock everyone out','error');setShowDelete(null);return;}
+    if(CLOUD_SYNC_ENABLED){
+      // Deleting the actual login needs the same admin privileges as creating one — deactivating
+      // is the safe, always-available action from here; ask for a real delete separately if
+      // that's specifically needed (a small follow-up to the create-user Edge Function).
+      const supa=await getSupabaseClient();
+      const{error}=await supa.from('profiles').update({status:'Inactive'}).eq('id',id);
+      setShowDelete(null);
+      if(error){toast(error.message||'Could not deactivate user','error');return;}
+      await refreshCloudUsers();
+      toast('User deactivated — they can no longer log in. (Full deletion isn\'t wired up yet; ask if you need that too.)','info');
+      return;
+    }
     setUsers(prev=>prev.filter(u=>u.id!==id));
     setShowDelete(null);
     toast('User removed','info');
@@ -5813,7 +5887,7 @@ function UserManagement(){
         React.createElement('div',{style:{fontSize:11,color:'var(--text3)',margin:'14px 0',lineHeight:1.5}},'This is a real account — it can log in with the email and password set here, and shows up on the Login screen immediately.'),
         React.createElement('div',{className:'modal-actions'},
           React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowModal(false)},'Cancel'),
-          React.createElement('button',{className:'btn btn-primary',onClick:save},editId?'Save Changes':'Create User')
+          React.createElement('button',{className:'btn btn-primary'+(cloudBusy?' btn-loading':''),disabled:cloudBusy,onClick:save},editId?'Save Changes':'Create User')
         )
       )
     ),
