@@ -4417,7 +4417,9 @@ function LoginPage({onLogin}){
       const{data:profile,error:profErr}=await supa.from('profiles').select('*').eq('id',data.user.id).single();
       if(profErr||!profile){setErr('Signed in, but no profile is set up for this account yet — ask your Super Admin to add one in Supabase.');await supa.auth.signOut();return;}
       if(profile.status==='Inactive'){setErr('This account has been deactivated. Contact your Super Admin.');await supa.auth.signOut();return;}
-      onLogin({id:profile.id,name:profile.name,email:data.user.email,role:profile.role,access:profile.access,outletIds:profile.outlet_ids||[],status:profile.status});
+      onLogin({id:profile.id,name:profile.name,email:data.user.email,role:profile.role,access:profile.access,outletIds:profile.outlet_ids||[],status:profile.status,
+        outletAccess:(profile.outlet_access&&Object.keys(profile.outlet_access).length)?profile.outlet_access:Object.fromEntries((profile.outlet_ids||[]).map(oid=>[oid,'View and Edit'])),
+        sheetAccessByOutlet:profile.sheet_access_by_outlet||{}});
     }catch(err){
       setErr(err.message||'Could not sign in — check your internet connection and try again.');
       if(e&&e.currentTarget&&window.flashButton)window.flashButton(e.currentTarget,'error');
@@ -5638,8 +5640,11 @@ function UserManagement(){
     if(!error&&data)setCloudUsers(data.map(p=>({
       id:p.id,name:p.name,email:p.email,role:p.role,access:p.access,
       outletIds:p.outlet_ids||[],
-      outletAccess:Object.fromEntries((p.outlet_ids||[]).map(oid=>[oid,'View and Edit'])),
-      sheetAccessByOutlet:{},status:p.status
+      // outlet_access / sheet_access_by_outlet are real jsonb columns on profiles (see
+      // supabase_schema.sql) — fall back to "every granted outlet is full Edit, no sheet-level
+      // restriction" only for a profile saved before these columns existed.
+      outletAccess:(p.outlet_access&&Object.keys(p.outlet_access).length)?p.outlet_access:Object.fromEntries((p.outlet_ids||[]).map(oid=>[oid,'View and Edit'])),
+      sheetAccessByOutlet:p.sheet_access_by_outlet||{},status:p.status
     })));
   },[]);
   useEffect(()=>{refreshCloudUsers();},[refreshCloudUsers]);
@@ -5743,14 +5748,16 @@ function UserManagement(){
           // their own via "Forgot password?" on the login screen instead.
           const{error}=await supa.from('profiles').update({
             name:form.name.trim(),role:form.role.trim()||'Data Entry User',access:form.access,
-            outlet_ids:outletIdsFromAccess(form.outletAccess),status:form.status
+            outlet_ids:outletIdsFromAccess(form.outletAccess),status:form.status,
+            outlet_access:form.outletAccess,sheet_access_by_outlet:form.sheetAccessByOutlet
           }).eq('id',editId);
           if(error){toast(error.message||'Could not update user','error');setCloudBusy(false);return;}
           toast('User updated','success');
         }else{
           const{data,error}=await supa.functions.invoke('create-user',{body:{
             email:form.email.trim(),password:form.password.trim(),name:form.name.trim(),
-            role:form.role.trim()||'Data Entry User',access:form.access,outlet_ids:outletIdsFromAccess(form.outletAccess)
+            role:form.role.trim()||'Data Entry User',access:form.access,outlet_ids:outletIdsFromAccess(form.outletAccess),
+            outlet_access:form.outletAccess,sheet_access_by_outlet:form.sheetAccessByOutlet
           }});
           const fnErr=error||(data&&data.error);
           if(fnErr){toast((fnErr.message||fnErr)||'Could not create user','error');setCloudBusy(false);return;}
