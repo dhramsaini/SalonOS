@@ -4381,12 +4381,14 @@ function ResetPasswordPage(){
 }
 function LoginPage({onLogin}){
   const ACCOUNTS=loadUserAccounts();
-  // Prefilled with the Super Admin login so the form isn't blank on first load. If that account's
-  // password has since been changed via "Forgot password?", prefill the current one instead.
+  // Prefilled with the built-in demo Super Admin login only in local (non-cloud) mode, so the
+  // form isn't blank on first load there. Once cloud sync is configured, that demo account has
+  // no matching Supabase user — prefilling it just showed real visitors credentials that would
+  // fail to sign in, so the fields start blank instead and everyone types their real login.
   const overridesAtLoad=loadPasswordOverrides();
   const defaultAccount=ACCOUNTS[0];
-  const [email,setEmail]=useState(defaultAccount.email);
-  const [pass,setPass]=useState(overridesAtLoad[defaultAccount.email.toLowerCase()]||defaultAccount.password);
+  const [email,setEmail]=useState(CLOUD_SYNC_ENABLED?'':defaultAccount.email);
+  const [pass,setPass]=useState(CLOUD_SYNC_ENABLED?'':(overridesAtLoad[defaultAccount.email.toLowerCase()]||defaultAccount.password));
   const [showPass,setShowPass]=useState(false);
   const [err,setErr]=useState('');
   const [showExit,setShowExit]=useState(false);
@@ -4426,7 +4428,22 @@ function LoginPage({onLogin}){
     else{setErr('Invalid email or password.');if(e&&e.currentTarget&&window.flashButton)window.flashButton(e.currentTarget,'error');}
   };
   const openForgot=()=>{setShowForgot(true);setForgotStep('email');setForgotEmail(email);setForgotErr('');setNewPass('');setNewPass2('');};
+  // Cloud mode has a real mailbox behind it (Supabase Auth), so "Forgot password?" sends an
+  // actual reset email instead of the old local-only override — that local flow never touched
+  // the real cloud account at all, so clicking it here used to silently do nothing useful.
+  const submitForgotEmailCloud=async()=>{
+    if(!forgotEmail.trim()){setForgotErr('Enter your email address.');return;}
+    setForgotErr('');setCloudBusy(true);
+    try{
+      const supa=await getSupabaseClient();
+      await supa.auth.resetPasswordForEmail(forgotEmail.trim(),{redirectTo:window.location.origin+window.location.pathname});
+      setForgotStep('sent');
+    }catch(err){
+      setForgotErr(err.message||'Could not send the reset email — check your internet connection and try again.');
+    }finally{setCloudBusy(false);}
+  };
   const submitForgotEmail=()=>{
+    if(CLOUD_SYNC_ENABLED){submitForgotEmailCloud();return;}
     const acct=ACCOUNTS.find(u=>u.email.toLowerCase()===forgotEmail.trim().toLowerCase());
     if(!acct){setForgotErr('No SalonOS account found with that email.');return;}
     setForgotErr('');setForgotStep('reset');
@@ -4469,7 +4486,8 @@ function LoginPage({onLogin}){
       React.createElement('div',{className:'modal',style:{width:400},onClick:e=>e.stopPropagation()},
         React.createElement('div',{className:'modal-title'},'Reset your password'),
         forgotStep==='email'&&React.createElement(React.Fragment,null,
-          React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:14,lineHeight:1.5}},'This app has no mail server, so recovery works locally: confirm your account email, then set a new password right here.'),
+          React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:14,lineHeight:1.5}},
+            CLOUD_SYNC_ENABLED?'Enter your account email and we\'ll send you a reset link.':'This app has no mail server, so recovery works locally: confirm your account email, then set a new password right here.'),
           React.createElement('div',{className:'form-group',style:{marginBottom:14}},
             React.createElement('label',null,'Email Address'),
             React.createElement('input',{className:'form-control',value:forgotEmail,autoFocus:true,onChange:e=>setForgotEmail(e.target.value),onKeyDown:e=>e.key==='Enter'&&submitForgotEmail(),placeholder:'you@yourcompany.com'})
@@ -4477,7 +4495,13 @@ function LoginPage({onLogin}){
           forgotErr&&React.createElement('div',{style:{color:'var(--red)',fontSize:12,marginBottom:12}},forgotErr),
           React.createElement('div',{className:'modal-actions'},
             React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowForgot(false)},'Cancel'),
-            React.createElement('button',{className:'btn btn-primary',onClick:submitForgotEmail},'Continue')
+            React.createElement('button',{className:'btn btn-primary',disabled:cloudBusy,onClick:submitForgotEmail},cloudBusy?'Sending…':'Continue')
+          )
+        ),
+        forgotStep==='sent'&&React.createElement(React.Fragment,null,
+          React.createElement('div',{style:{fontSize:12,color:'var(--text2)',marginBottom:16,lineHeight:1.5}},'📧 If an account exists for '+forgotEmail+', a reset link has been sent. Open it to set a new password.'),
+          React.createElement('div',{className:'modal-actions'},
+            React.createElement('button',{className:'btn btn-primary',onClick:()=>setShowForgot(false)},'Done')
           )
         ),
         forgotStep==='reset'&&React.createElement(React.Fragment,null,
@@ -4553,69 +4577,119 @@ function GettingStarted({onAddSalon,isAdmin}){
   );
 }
 
-function MasterDashboard(){
-  const months=['Jul','Aug','Sep','Oct','Nov','Dec','Jan'];
-  const revenue=[285000,312000,298000,345000,389000,412000,398000];
-  const maxV=Math.max(...revenue);
+function MasterDashboard({selFY,setSelFY,FYS}){
+  const [selOutlet,setSelOutlet]=useState('all');
+  const activeSalons=SALONS.filter(s=>s.status==='Active');
+  const targetSalons=selOutlet==='all'?activeSalons:activeSalons.filter(s=>String(s.id)===String(selOutlet));
+  const today=new Date();
+
+  // Every figure below is computed live from the same real accounting/attendance engine that
+  // powers the per-outlet Dashboard and P&L (plBuild / swWorkingsFor / statutoryDeductionsFor) —
+  // this used to be a screen of fixed placeholder numbers that never changed no matter what data
+  // existed. Months with no real entries naturally contribute ₹0, so nothing here is fabricated.
+  const fyAgg=(sid)=>{
+    let revenue=0,expenses=0,netProfit=0,salaries=0,pfEr=0,esicEr=0,netDisbursed=0,lopDays=0,attSum=0,attCount=0;
+    const monthly=PG_MONTHS.map((abbr,mi)=>{
+      const d=plBuild(sid,selFY,mi);
+      revenue+=d.revenue;expenses+=d.direct+d.opex;netProfit+=d.pbt;
+      const incentives=d.sections[2].lines.filter(l=>l.group==='Employee Monthly Incentive'||l.group==='Employee Daily Incentive').reduce((s,l)=>s+l.amt,0);
+      salaries+=d.sections[2].tot-incentives;
+      const year=Number(pgYear(selFY,mi)),month=(mi+3)%12;
+      const sw=swWorkingsFor(sid,year,month);
+      sw.forEach(w=>{netDisbursed+=w.net;lopDays+=w.lop;});
+      if(sw.length){attSum+=sw.reduce((s,w)=>s+(w.daysInMonth?w.totalDays/w.daysInMonth*100:0),0);attCount+=sw.length;}
+      statutoryDeductionsFor(sid,year,month).forEach(x=>{pfEr+=x.pfEr;esicEr+=x.esicEr;});
+      return{abbr,revenue:d.revenue};
+    });
+    return{revenue,expenses,netProfit,salaries,pfEr,esicEr,netDisbursed,lopDays,attSum,attCount,monthly};
+  };
+
+  const aggs=targetSalons.map(s=>({salon:s,...fyAgg(Number(s.id))}));
+  const totals=aggs.reduce((t,a)=>({
+    revenue:t.revenue+a.revenue,expenses:t.expenses+a.expenses,netProfit:t.netProfit+a.netProfit,
+    salaries:t.salaries+a.salaries,pfEr:t.pfEr+a.pfEr,esicEr:t.esicEr+a.esicEr,
+    netDisbursed:t.netDisbursed+a.netDisbursed,lopDays:t.lopDays+a.lopDays,
+    attSum:t.attSum+a.attSum,attCount:t.attCount+a.attCount
+  }),{revenue:0,expenses:0,netProfit:0,salaries:0,pfEr:0,esicEr:0,netDisbursed:0,lopDays:0,attSum:0,attCount:0});
+
+  const activeStaffCount=targetSalons.reduce((s,salon)=>
+    s+getEmployeesForMonth(today.getFullYear(),today.getMonth(),Number(salon.id)).filter(e=>e.status==='Active').length,0);
+
+  const onLeaveToday=targetSalons.reduce((s,salon)=>{
+    const emps=getEmployeesForMonth(today.getFullYear(),today.getMonth(),Number(salon.id)).filter(e=>e.status==='Active');
+    const attStore=loadAttendance(Number(salon.id));
+    return s+emps.filter(e=>{
+      const rec=attStore[attMonthKey(e.id,today.getFullYear(),today.getMonth())];
+      const days=(rec&&rec.days)||[];
+      return days[today.getDate()-1]==='absent';
+    }).length;
+  },0);
+
+  const fmtL=(v)=>'₹'+(v/100000).toFixed(2)+'L';
+  const revMonthly=PG_MONTHS.map((abbr,mi)=>({label:abbr,value:aggs.reduce((s,a)=>s+(a.monthly[mi]?a.monthly[mi].revenue:0),0)}));
+  const avgAttPct=totals.attCount?Math.round(totals.attSum/totals.attCount):0;
+
   return React.createElement('div',{className:'fade-in'},
     React.createElement('div',{className:'page-title'},'Master Dashboard'),
-    React.createElement('div',{className:'page-sub'},'Consolidated analytics across all outlets'),
+    React.createElement('div',{className:'page-sub'},'Consolidated analytics across all outlets — FY '+selFY),
     React.createElement('div',{style:{display:'flex',gap:10,marginBottom:20,flexWrap:'wrap'}},
-      React.createElement('select',{className:'form-control',style:{width:'auto'}},
-        React.createElement('option',null,'All Outlets'),
-        SALONS.map(s=>React.createElement('option',{key:s.id},s.name))
+      React.createElement('select',{className:'form-control',style:{width:'auto'},value:selOutlet,onChange:e=>setSelOutlet(e.target.value)},
+        React.createElement('option',{value:'all'},'All Outlets'),
+        activeSalons.map(s=>React.createElement('option',{key:s.id,value:s.id},s.name))
       ),
-      React.createElement('select',{className:'form-control',style:{width:'auto'}},
-        React.createElement('option',null,'January 2024'),
-        React.createElement('option',null,'Last 3 months'),
-        React.createElement('option',null,'Last 6 months')
-      ),
-      React.createElement('button',{className:'btn btn-primary btn-sm'},'⬇ Export PDF'),
-      React.createElement('button',{className:'btn btn-ghost btn-sm'},'⬇ Export Excel')
+      React.createElement('select',{className:'form-control',style:{width:'auto'},value:selFY,onChange:e=>setSelFY(e.target.value)},
+        FYS.map(f=>React.createElement('option',{key:f,value:f},'FY '+f))
+      )
+    ),
+    activeSalons.length===0&&React.createElement('div',{className:'card',style:{marginBottom:16,color:'var(--text3)',fontSize:13}},
+      'No active outlets yet — figures below will fill in as soon as an outlet and its data are added.'
     ),
     React.createElement('div',{className:'grid4',style:{marginBottom:16}},
-      [{label:'Total Revenue',val:'₹15.82L',color:'blue',change:'↑ 8.4% vs last month',up:true},
-       {label:'Net Profit',val:'₹5.44L',color:'green',change:'↑ 12.1% vs last month',up:true},
-       {label:'Total Expenses',val:'₹10.38L',color:'amber',change:'↑ 5.2% vs last month',up:false},
-       {label:'Active Staff',val:'47',color:'purple',sub:'Across 3 active outlets'}].map(m=>
+      [{label:'Total Revenue',val:fmtL(totals.revenue),color:'blue'},
+       {label:'Net Profit',val:fmtL(totals.netProfit),color:'green'},
+       {label:'Total Expenses',val:fmtL(totals.expenses),color:'amber'},
+       {label:'Active Staff',val:String(activeStaffCount),color:'purple',sub:'Across '+targetSalons.length+' active outlet'+(targetSalons.length===1?'':'s')}].map(m=>
         React.createElement('div',{key:m.label,className:`metric-card ${m.color}`},
           React.createElement('div',{className:'metric-label'},m.label),
           React.createElement('div',{className:'metric-value'},m.val),
-          m.change?React.createElement('div',{className:`metric-change ${m.up?'up':'down'}`},m.change):
-          React.createElement('div',{className:'metric-sub'},m.sub)
+          m.sub&&React.createElement('div',{className:'metric-sub'},m.sub)
         )
       )
     ),
     React.createElement('div',{className:'grid2',style:{marginBottom:16}},
       React.createElement('div',{className:'card'},
-        React.createElement('div',{className:'card-title'},'📈 Monthly Revenue Trend'),
+        React.createElement('div',{className:'card-title'},'📈 Monthly Revenue Trend — FY '+selFY),
         React.createElement(DynamicBarChart,{
-          data:revenue.map((v,i)=>({label:months[i],value:v})),
+          data:revMonthly,
           height:150,highlightLast:true,
           formatValue:v=>'₹'+Math.round(v).toLocaleString('en-IN')
         })
       ),
       React.createElement('div',{className:'card'},
-        React.createElement('div',{className:'card-title'},'🏪 Outlet Performance'),
-        SALONS.filter(s=>s.status==='Active').map((s,i)=>{
-          const vals=[398000,312000,285000];const pct=[82,64,58];
-          const colors=['var(--accent)','var(--blue)','var(--teal)'];
-          return React.createElement('div',{key:s.id,style:{marginBottom:14}},
+        React.createElement('div',{className:'card-title'},'🏪 Outlet Performance — FY '+selFY),
+        aggs.length===0?React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},'No outlets to show.'):
+        (()=>{
+          const palette=['var(--accent)','var(--blue)','var(--teal)','var(--purple)','var(--green)'];
+          const maxV=Math.max(...aggs.map(a=>a.revenue),1);
+          return aggs.map((a,i)=>React.createElement('div',{key:a.salon.id,style:{marginBottom:14}},
             React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:4}},
-              React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},s.name.split('—')[0].trim()),
-              React.createElement('span',{style:{fontSize:12,color:'var(--text)',fontWeight:500}},`₹${(vals[i]/1000).toFixed(0)}k`)
+              React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},a.salon.name.split('—')[0].trim()),
+              React.createElement('span',{style:{fontSize:12,color:'var(--text)',fontWeight:500}},fmtL(a.revenue))
             ),
             React.createElement('div',{className:'progress'},
-              React.createElement('div',{className:'progress-fill',style:{width:`${pct[i]}%`,background:colors[i]}})
+              React.createElement('div',{className:'progress-fill',style:{width:Math.round(a.revenue/maxV*100)+'%',background:palette[i%palette.length]}})
             )
-          );
-        })
+          ));
+        })()
       )
     ),
-    React.createElement('div',{className:'grid3'},
+    React.createElement('div',{className:'grid2'},
       React.createElement('div',{className:'card card-sm'},
-        React.createElement('div',{className:'card-title'},'💰 Salary Summary'),
-        [['Gross payable','₹4,72,000'],['PF (Employer)','₹38,400'],['ESIC (Employer)','₹17,100'],['Net disbursed','₹4,16,500']].map(([k,v],i)=>
+        React.createElement('div',{className:'card-title'},'💰 Salary Summary — FY '+selFY),
+        [['Gross payable','₹'+Math.round(totals.salaries).toLocaleString('en-IN')],
+         ['PF (Employer)','₹'+Math.round(totals.pfEr).toLocaleString('en-IN')],
+         ['ESIC (Employer)','₹'+Math.round(totals.esicEr).toLocaleString('en-IN')],
+         ['Net disbursed','₹'+Math.round(totals.netDisbursed).toLocaleString('en-IN')]].map(([k,v],i)=>
           React.createElement('div',{key:k,className:'stat-row'},
             React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},k),
             React.createElement('span',{style:{fontSize:12,fontWeight:i===3?600:400,color:i===3?'var(--green)':'var(--text)'}},v)
@@ -4623,20 +4697,13 @@ function MasterDashboard(){
         )
       ),
       React.createElement('div',{className:'card card-sm'},
-        React.createElement('div',{className:'card-title'},'📊 Attendance Overview'),
-        [['Avg attendance','91.4%','green'],['Total LOP days','23 days',''],['Late arrivals','18 instances',''],['On leave today','3 employees','']].map(([k,v,c])=>
+        React.createElement('div',{className:'card-title'},'📊 Attendance Overview — FY '+selFY),
+        [['Avg attendance',avgAttPct+'%','green'],['Total LOP days',Math.round(totals.lopDays)+' days',''],['On leave today',onLeaveToday+' employee'+(onLeaveToday===1?'':'s'),'']].map(([k,v,c])=>
           React.createElement('div',{key:k,className:'stat-row'},
             React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},k),
             React.createElement('span',{style:{fontSize:12,color:c?`var(--${c})`:'var(--text)',fontWeight:c?500:400}},v)
           )
         )
-      ),
-      React.createElement('div',{className:'card card-sm'},
-        React.createElement('div',{className:'card-title'},'⚠ Compliance Alerts'),
-        React.createElement('div',{style:{fontSize:12,color:'var(--red)',padding:'6px 0',borderBottom:'1px solid var(--border)'}},'• PF Challan overdue — ₹38,400'),
-        React.createElement('div',{style:{fontSize:12,color:'var(--orange)',padding:'6px 0',borderBottom:'1px solid var(--border)'}},'• ESIC due in 3 days'),
-        React.createElement('div',{style:{fontSize:12,color:'var(--orange)',padding:'6px 0',borderBottom:'1px solid var(--border)'}},'• TDS payment due in 5 days'),
-        React.createElement('div',{style:{fontSize:12,color:'var(--green)',padding:'6px 0'}},'• GST filing completed ✓')
       )
     )
   );
