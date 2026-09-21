@@ -29607,7 +29607,7 @@ function App(){
           React.createElement('button',{className:'topbar-icon-btn',onClick:logout},React.createElement(IconLogOut,null),React.createElement('span',null,'Sign Out'))
         )
       ),
-      backupOverdue&&!backupBannerDismissed&&React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'10px 20px',background:'rgba(255,159,67,0.12)',borderBottom:'1px solid rgba(255,159,67,0.35)',fontSize:12.5,color:'var(--text)'}},
+      !CLOUD_SYNC_ENABLED&&backupOverdue&&!backupBannerDismissed&&React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'10px 20px',background:'rgba(255,159,67,0.12)',borderBottom:'1px solid rgba(255,159,67,0.35)',fontSize:12.5,color:'var(--text)'}},
         React.createElement('div',null,
           React.createElement('span',{style:{marginRight:6}},'⚠'),
           backupDaysOverdue===null
