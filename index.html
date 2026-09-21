@@ -1248,13 +1248,30 @@ function safeLocalSet(key,value){
     return true;
   }
   catch(e){
-    if(!_storageWriteErrorShown){
-      _storageWriteErrorShown=true;
+    // Throttled, not a one-time-ever flag — a boolean that stayed true forever meant every write
+    // failure after the very first one in a session was completely silent, so someone who missed
+    // or dismissed that first toast would have every later edit across every screen fail to save
+    // with zero indication anything was wrong. A few seconds' throttle still avoids spamming a
+    // toast per keystroke while a save keeps failing, without going silent forever.
+    if(!_storageWriteErrorShown||Date.now()-_storageWriteErrorShown>15000){
+      _storageWriteErrorShown=Date.now();
       try{if(_addToast)_addToast("Couldn't save — browser storage is full or unavailable. Go to Master Settings → Backup & Restore and export a backup, then free up space.",'error',10000);}catch(e2){}
     }
     return false;
   }
 }
+// Keeps this tab's read cache from serving stale data after ANOTHER tab/window of this same app
+// writes a key — without this, cachedLocalGet() here could keep returning what was true before
+// that other tab's save, and a screen that re-reads that key (e.g. on remount) would silently
+// undo the other tab's change the next time it wrote its own (unrelated) state back out.
+// Same-tab writes don't fire this event by design (the browser only dispatches 'storage' to
+// OTHER tabs), so safeLocalSet's own cache update above still handles same-tab consistency.
+try{
+  window.addEventListener('storage',(e)=>{
+    if(e.key==null)return; // localStorage.clear() — nothing safe to reconcile key-by-key
+    _lsReadCache[e.key]=e.newValue;
+  });
+}catch(e){}
 
 // ============================================================================
 // ── CLOUD SYNC (Supabase) — Phase 2 of going live ──────────────────────────
@@ -3133,6 +3150,14 @@ function swWorkingsFor(salonId,year,month){
   const cols=loadSWCols(salonId);
   const teaCfg=loadTeaConfig(salonId);
   const swMeta=loadSWMeta(salonId);
+  // Fetched once here (not just later, inline, for PT) so PF/ESIC below can also honor it —
+  // Master Salary's own CTC card already refuses to show employer PF/ESIC once an outlet is
+  // de-registered (see epfEmployerContributionFor), but this sheet used to keep deducting and
+  // booking both regardless, checking only the employee's own pf/esic flag. An outlet turning
+  // PF or ESIC off should stop it everywhere, not just on one screen.
+  const salonRec=getSalonRecordById(salonId);
+  const pfApplicableAtSalon=!!(salonRec&&salonRec.pfApplicable);
+  const esicApplicableAtSalon=!!(salonRec&&salonRec.esicApplicable);
   // Mem Inc / Prod Inc shown here are pulled straight from Incentive Working's own calculation
   // (incWorkingsFor) — never recomputed separately — so the two sheets can never disagree on the
   // same employee's incentive figures. Employees Incentive Working excludes (Helper,
@@ -3171,28 +3196,31 @@ function swWorkingsFor(salonId,year,month){
     // bug, since it made the employee's own deduction disagree with the employer's contribution
     // for the exact same wage base.
     const pfWageBase=e.pfOnActualBasic?e.basic:Math.min(e.basic,15000);
-    const pfAutoAmt=e.pf?Math.round(pfWageBase*0.12):0;
+    const pfAutoAmt=(pfApplicableAtSalon&&e.pf)?Math.round(pfWageBase*0.12):0;
     // PF (Emp) can be manually overridden per employee per month, same pattern as ESIC below —
     // e.g. to match a slightly different rounding the EPFO portal itself produced. Falls back to
     // the standard 12%-of-wage-base calculation whenever no override is set.
     const swMForPf=swMeta[attMonthKey(e.id,year,month)];
     const pfOverridden=swMForPf&&swMForPf.pfOverride!=null&&swMForPf.pfOverride!=='';
     const pfEmp=cols.pfEmp?(pfOverridden?Number(swMForPf.pfOverride)||0:pfAutoAmt):0;
-    // Employer's EPF contribution — same wage base as pfEmp above (see comment there).
-    const pfEr=e.pf?Math.round(pfWageBase*0.12):0;
-    const esicAutoAmt=e.esic&&e.gross<=21000?Math.round(e.gross*0.0075):0;
+    // Employer's EPF contribution — same wage base as pfEmp above (see comment there). Gated on
+    // pfApplicableAtSalon same as pfAutoAmt: previously only checked e.pf, so an employee whose
+    // record still had pf:true from before their outlet turned PF off kept being deducted and
+    // costed here even though Master Salary's own CTC card (epfEmployerContributionFor) already
+    // correctly showed ₹0 for them — the two screens could permanently disagree.
+    const pfEr=(pfApplicableAtSalon&&e.pf)?Math.round(pfWageBase*0.12):0;
+    const esicAutoAmt=(esicApplicableAtSalon&&e.esic&&e.gross<=21000)?Math.round(e.gross*0.0075):0;
     // ESIC (Emp) can be manually overridden per employee per month — e.g. to match a slightly
     // different rounding the actual ESIC portal produced — via the click-to-edit popup on Salary
     // Working. Falls back to the standard 0.75%-of-Gross calculation whenever no override is set.
     const swMForEsic=swMeta[attMonthKey(e.id,year,month)];
     const esicOverridden=swMForEsic&&swMForEsic.esicOverride!=null&&swMForEsic.esicOverride!=='';
     const esicEmp=cols.esic?(esicOverridden?Number(swMForEsic.esicOverride)||0:esicAutoAmt):0;
-    const esicEr=e.esic&&e.gross<=21000?Math.round(e.gross*0.0325):0;
+    const esicEr=(esicApplicableAtSalon&&e.esic&&e.gross<=21000)?Math.round(e.gross*0.0325):0;
     // Professional Tax — auto-applied whenever the outlet's own state levies PT (see
     // PT_APPLICABLE_STATES), computed from that state's slabs against Gross Salary. Employee's
     // own `pt` flag is forced true/false to match state applicability (see Master Salary and
     // Outlet forms), so this doesn't re-check e.pt — the state alone decides it.
-    const salonRec=getSalonRecordById(salonId);
     const ptAutoAmt=ptAmountFor(salonId,salonRec?.state,e.gross,month);
     // PT (Professional Tax) can be manually overridden per employee per month, same pattern as
     // ESIC/PF above — e.g. for an employee whose actual PT differs from the standard state slab
@@ -3258,23 +3286,29 @@ function statutoryDeductionsFor(salonId,year,month){
   const EMPLOYEES=getEmployeesForMonth(year,month,salonId);
   const swMeta=loadSWMeta(salonId);
   const salonRec=getSalonRecordById(salonId);
+  // Same outlet-level gate as swWorkingsFor (see its comment) — an outlet with PF/ESIC turned
+  // off should show ₹0 here too, not just keep reporting whatever an employee's own leftover
+  // pf/esic flag says.
+  const pfApplicableAtSalon=!!(salonRec&&salonRec.pfApplicable);
+  const esicApplicableAtSalon=!!(salonRec&&salonRec.esicApplicable);
   return EMPLOYEES.map(e=>{
     const swM=swMeta[attMonthKey(e.id,year,month)]||{};
     const pfWageBase=e.pfOnActualBasic?e.basic:Math.min(e.basic,15000);
-    const pfAutoAmt=e.pf?Math.round(pfWageBase*0.12):0;
+    const pfAutoAmt=(pfApplicableAtSalon&&e.pf)?Math.round(pfWageBase*0.12):0;
     const pfEmp=(swM.pfOverride!=null&&swM.pfOverride!=='')?Number(swM.pfOverride)||0:pfAutoAmt;
-    const pfEr=e.pf?Math.round(pfWageBase*0.12):0; // employer side isn't separately overridden
+    const pfEr=(pfApplicableAtSalon&&e.pf)?Math.round(pfWageBase*0.12):0; // employer side isn't separately overridden
     // EPS (Pension), EDLI, and Admin Charges all use the ₹15,000 statutory wage ceiling
     // regardless of pfOnActualBasic — that election only raises the EPF contribution itself,
     // never these three, per EPFO's own "pay" definition for Accounts 2/10/21/22.
     const epsWageBase=Math.min(e.basic,15000);
-    const eps=e.pf?Math.round(epsWageBase*0.0833):0; // EPS = 8.33% of wage, capped ₹15,000 (≈₹1,250 max)
+    const pfOn=pfApplicableAtSalon&&e.pf;
+    const eps=pfOn?Math.round(epsWageBase*0.0833):0; // EPS = 8.33% of wage, capped ₹15,000 (≈₹1,250 max)
     const pfErEpf=Math.max(0,pfEr-eps); // Employer's EPF share = Employer 12% − EPS diverted out of it (≈3.67%)
-    const edli=e.pf?Math.round(epsWageBase*0.005):0; // EDLI — 0.5% of wage, capped ₹15,000, employer-only
-    const adminChargeRaw=e.pf?Math.round(epsWageBase*0.005):0; // Admin Charges — 0.5%, capped ₹15,000; the ₹500/month establishment minimum is applied once, across all employees, in statutoryCellsForMonth below, not per employee
-    const esicAutoAmt=e.esic&&e.gross<=21000?Math.round(e.gross*0.0075):0;
+    const edli=pfOn?Math.round(epsWageBase*0.005):0; // EDLI — 0.5% of wage, capped ₹15,000, employer-only
+    const adminChargeRaw=pfOn?Math.round(epsWageBase*0.005):0; // Admin Charges — 0.5%, capped ₹15,000; the ₹500/month establishment minimum is applied once, across all employees, in statutoryCellsForMonth below, not per employee
+    const esicAutoAmt=(esicApplicableAtSalon&&e.esic&&e.gross<=21000)?Math.round(e.gross*0.0075):0;
     const esicEmp=(swM.esicOverride!=null&&swM.esicOverride!=='')?Number(swM.esicOverride)||0:esicAutoAmt;
-    const esicEr=e.esic&&e.gross<=21000?Math.round(e.gross*0.0325):0;
+    const esicEr=(esicApplicableAtSalon&&e.esic&&e.gross<=21000)?Math.round(e.gross*0.0325):0;
     const ptAutoAmt=ptAmountFor(salonId,salonRec?.state,e.gross,month);
     const ptAmt=(swM.ptOverride!=null&&swM.ptOverride!=='')?Number(swM.ptOverride)||0:ptAutoAmt;
     const tdsAmt=(swM.tdsAmount!=null&&swM.tdsAmount!=='')?Number(swM.tdsAmount)||0:0;
@@ -5784,12 +5818,20 @@ function UserManagement(){
   };
   const toggleStatus=async(u)=>{
     if(CLOUD_SYNC_ENABLED){
-      const supa=await getSupabaseClient();
-      const nextStatus=u.status==='Active'?'Inactive':'Active';
-      const{error}=await supa.from('profiles').update({status:nextStatus}).eq('id',u.id);
-      if(error){toast(error.message||'Could not update status','error');return;}
-      await refreshCloudUsers();
-      toast('User '+(u.status==='Active'?'deactivated — they can no longer log in':'reactivated'),'info');
+      // Unlike save() above, this had no try/catch — if the Supabase CDN script failed to load
+      // (getSupabaseClient's loadScript call), the rejection went unhandled: the button looked
+      // like it did nothing, no toast, no error, nothing to tell the admin the deactivation
+      // never happened.
+      try{
+        const supa=await getSupabaseClient();
+        const nextStatus=u.status==='Active'?'Inactive':'Active';
+        const{error}=await supa.from('profiles').update({status:nextStatus}).eq('id',u.id);
+        if(error){toast(error.message||'Could not update status','error');return;}
+        await refreshCloudUsers();
+        toast('User '+(u.status==='Active'?'deactivated — they can no longer log in':'reactivated'),'info');
+      }catch(err){
+        toast(err.message||'Could not update status — check your internet connection','error');
+      }
       return;
     }
     setUsers(prev=>prev.map(x=>x.id===u.id?{...x,status:x.status==='Active'?'Inactive':'Active'}:x));
@@ -6084,7 +6126,13 @@ function OutletDashboard({salon,period}){
   const cmpB=monthData(cmpMonthB,cmpYear);
 
   const CmpRow=({label,a,b,isExpense})=>{
-    const diff=b-a;const pctDiff=a>0?Math.round((diff/a)*100):0;
+    const diff=b-a;
+    // a===0 with b>0 is a jump from nothing, not "no change" — forcing pctDiff to 0 there (the
+    // only way to dodge dividing by zero) used to render a flat "0%" on a line that actually
+    // went from ₹0 to a real amount. "New" reads honestly instead of a misleading flat number;
+    // a===0 and b===0 together is genuinely no change, so that case still correctly shows 0%.
+    const isNewFromZero=a===0&&b>0;
+    const pctDiff=a>0?Math.round((diff/a)*100):0;
     // Revenue lines: an increase is favourable (green). Expense lines: an increase is
     // UNFAVOURABLE (red) — the opposite direction, so isExpense flips which sign reads as
     // "good" instead of just coloring every increase green regardless of what the line is.
@@ -6093,7 +6141,7 @@ function OutletDashboard({salon,period}){
       React.createElement('span',{style:{fontSize:12,color:'var(--text2)',flex:1}},label),
       React.createElement('span',{style:{fontSize:12,textAlign:'right',minWidth:90}},'₹'+a.toLocaleString()),
       React.createElement('span',{style:{fontSize:12,textAlign:'right',minWidth:90}},'₹'+b.toLocaleString()),
-      React.createElement('span',{style:{fontSize:12,textAlign:'right',minWidth:70,fontWeight:600,color:arrowColor(displayPct)}},arrow(pctDiff))
+      React.createElement('span',{style:{fontSize:12,textAlign:'right',minWidth:70,fontWeight:600,color:isNewFromZero?arrowColor(isExpense?-1:1):arrowColor(displayPct)}},isNewFromZero?'New':arrow(pctDiff))
     );
   };
 
@@ -24585,6 +24633,11 @@ function ReportsHub(){
   const rev=d.svc+d.prod+d.mem+d.gift;
   const exp=d.salaries+d.rent+d.elec+d.cosmetics+d.mktg+d.rm+d.misc+d.inc;
   const net=rev-exp;
+  // Every "% of Revenue" figure below divides by rev with no zero-guard — a period with no
+  // revenue yet (or an outlet before its first sale) used to produce literal "NaN%"/"Infinity%"
+  // on screen AND in the exported CSV/PDF/Excel, since exportReport() below reuses this same
+  // unguarded division. pctSafe() is the single fix point for all of it.
+  const pctSafe=(a,b)=>(b?(a/b*100):0);
 
   // 6-month trend
   const trend=Array.from({length:6},(_,i)=>{
@@ -24615,21 +24668,21 @@ function ReportsHub(){
     if(type==='revenue'){
       rows.push(['"Category"','"Amount (₹)"','"% of Revenue"']);
       [['Cash Sale',d.svc],['Card Sale',d.prod],['UPI Sale',d.mem],['Other Income',d.gift]].forEach(([k,v])=>
-        rows.push(['"'+k+'"','"'+v+'"','"'+(v/rev*100).toFixed(1)+'%"'])
+        rows.push(['"'+k+'"','"'+v+'"','"'+pctSafe(v,rev).toFixed(1)+'%"'])
       );
       rows.push(['"TOTAL"','"'+rev+'"','"100%"']);
     }else if(type==='expense'){
       rows.push(['"Category"','"Amount (₹)"','"% of Revenue"']);
       [['Salaries',d.salaries],['Incentives',d.inc],['Rent',d.rent],['Electricity',d.elec],['Cosmetics',d.cosmetics],['Marketing',d.mktg],['R&M',d.rm],['Misc',d.misc]].forEach(([k,v])=>
-        rows.push(['"'+k+'"','"'+v+'"','"'+(v/rev*100).toFixed(1)+'%"'])
+        rows.push(['"'+k+'"','"'+v+'"','"'+pctSafe(v,rev).toFixed(1)+'%"'])
       );
-      rows.push(['"TOTAL"','"'+exp+'"','"'+(exp/rev*100).toFixed(1)+'%"']);
+      rows.push(['"TOTAL"','"'+exp+'"','"'+pctSafe(exp,rev).toFixed(1)+'%"']);
     }else if(type==='pl'){
       rows.push(['"Item"','"Amount (₹)"']);
       rows.push(['"Total Revenue"','"'+rev+'"']);
       rows.push(['"Total Expenses"','"'+exp+'"']);
       rows.push(['"Net Profit/Loss"','"'+net+'"']);
-      rows.push(['"Gross Margin %"','"'+(net/rev*100).toFixed(1)+'%"']);
+      rows.push(['"Gross Margin %"','"'+pctSafe(net,rev).toFixed(1)+'%"']);
     }else if(type==='salary'){
       rows.push(['"Emp ID"','"Name"','"Designation"','"Outlet"','"Gross Salary"','"PF Emp"','"ESIC"','"Net Salary"','"Status"']);
       realSalaryRows.forEach(e=>rows.push(['"'+e.id+'"','"'+e.name+'"','"'+e.desig+'"','"'+e.outletName+'"','"'+e.grossAfterLop+'"','"'+e.pfEmp+'"','"'+e.esicEmp+'"','"'+e.net+'"','"'+e.status+'"']));
@@ -24681,25 +24734,32 @@ function ReportsHub(){
     }catch(err){alert(err.message||'Could not build the Excel file — please try again.');}
   };
 
-  const Row=({label,val,pct,color})=>React.createElement('div',{style:{marginBottom:10}},
+  // Every caller passes pct as x/rev*100 with no guard against rev being 0 (a brand-new outlet,
+  // or any period with no revenue entered yet) — that division used to render literal "NaN%" or
+  // "Infinity%" here (and fed the same unguarded value into the CSV/PDF/Excel export below),
+  // same bug class already fixed once in the Master Dashboard and once in the donut chart.
+  // Sanitizing it once here, at render, covers every Row call site without touching each one.
+  const Row=({label,val,pct,color})=>{
+    const safePct=(pct!==undefined&&Number.isFinite(pct))?pct:(pct!==undefined?0:undefined);
+    return React.createElement('div',{style:{marginBottom:10}},
     React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:3}},
       React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},label),
       React.createElement('div',{style:{textAlign:'right'}},
         React.createElement('span',{style:{fontSize:12,fontWeight:600,color:color||'var(--text)'}},'₹'+val.toLocaleString()),
-        pct!==undefined&&React.createElement('span',{style:{fontSize:10,color:'var(--text3)',marginLeft:6}},(pct).toFixed(1)+'%')
+        safePct!==undefined&&React.createElement('span',{style:{fontSize:10,color:'var(--text3)',marginLeft:6}},(safePct).toFixed(1)+'%')
       )
     ),
-    pct!==undefined&&React.createElement('div',{style:{height:5,background:'var(--bg3)',borderRadius:3,overflow:'hidden'}},
-      React.createElement('div',{style:{height:'100%',width:Math.min(100,pct)+'%',background:color||'var(--accent)',borderRadius:3,transition:'width 0.4s'}})
+    safePct!==undefined&&React.createElement('div',{style:{height:5,background:'var(--bg3)',borderRadius:3,overflow:'hidden'}},
+      React.createElement('div',{style:{height:'100%',width:Math.min(100,safePct)+'%',background:color||'var(--accent)',borderRadius:3,transition:'width 0.4s'}})
     )
-  );
+  );};
 
   const outletLabel=selOutlet==='all'?'All Outlets':(SALONS.find(s=>String(s.id)===String(selOutlet))||{}).name;
   const reportsHubTitle='Reports Hub — '+MONTHS[selMonth]+' '+selYear+' — '+(outletLabel||'All Outlets').split('—')[0].trim();
   const reportsHubRows=[
     ['Cash Sale',d.svc],['Card Sale',d.prod],['UPI Sale',d.mem],['Other Income',d.gift],['Total Revenue',rev],
     ['Salaries',d.salaries],['Rent',d.rent],['Electricity',d.elec],['Cosmetics/Backbar',d.cosmetics],['Marketing',d.mktg],['Repair & Maintenance',d.rm],['Incentives',d.inc],['Miscellaneous',d.misc],['Total Expenses',exp],
-    ['Net Profit',net],['Gross Margin %',(net/rev*100).toFixed(1)+'%'],
+    ['Net Profit',net],['Gross Margin %',pctSafe(net,rev).toFixed(1)+'%'],
     ['Cash Collection',d.cash],['Card Collection',d.card],['UPI Collection',d.upi],
     ['Active Staff',d.staff],['Attendance %',d.att+'%']
   ];
@@ -24726,7 +24786,7 @@ function ReportsHub(){
 
     // KPI strip
     React.createElement('div',{className:'grid4',style:{marginBottom:20}},
-      [{l:'Total Revenue',v:'₹'+rev.toLocaleString(),c:'green'},{l:'Net Profit',v:'₹'+net.toLocaleString(),c:net>0?'teal':'red'},{l:'Total Expenses',v:'₹'+exp.toLocaleString(),c:'amber'},{l:'Gross Margin',v:(net/rev*100).toFixed(1)+'%',c:net/rev>0.15?'blue':'red'}].map(m=>
+      [{l:'Total Revenue',v:'₹'+rev.toLocaleString(),c:'green'},{l:'Net Profit',v:'₹'+net.toLocaleString(),c:net>0?'teal':'red'},{l:'Total Expenses',v:'₹'+exp.toLocaleString(),c:'amber'},{l:'Gross Margin',v:pctSafe(net,rev).toFixed(1)+'%',c:pctSafe(net,rev)>15?'blue':'red'}].map(m=>
         React.createElement('div',{key:m.l,className:'metric-card '+m.c},
           React.createElement('div',{className:'metric-label'},m.l),
           React.createElement('div',{className:'metric-value'},m.v)
@@ -24807,7 +24867,7 @@ function ReportsHub(){
       // P&L
       activeReport==='pl'&&React.createElement('div',null,
         React.createElement('div',{className:'grid4',style:{marginBottom:12}},
-          [{l:'Revenue',v:'₹'+rev.toLocaleString(),c:'green'},{l:'Expenses',v:'₹'+exp.toLocaleString(),c:'red'},{l:'Net P/L',v:(net>=0?'+':'')+'₹'+Math.abs(net).toLocaleString(),c:net>=0?'teal':'red'},{l:'Margin',v:(net/rev*100).toFixed(1)+'%',c:net/rev>0.15?'blue':'amber'}].map(m=>
+          [{l:'Revenue',v:'₹'+rev.toLocaleString(),c:'green'},{l:'Expenses',v:'₹'+exp.toLocaleString(),c:'red'},{l:'Net P/L',v:(net>=0?'+':'')+'₹'+Math.abs(net).toLocaleString(),c:net>=0?'teal':'red'},{l:'Margin',v:pctSafe(net,rev).toFixed(1)+'%',c:pctSafe(net,rev)>15?'blue':'amber'}].map(m=>
             React.createElement('div',{key:m.l,className:'metric-card '+m.c},React.createElement('div',{className:'metric-label'},m.l),React.createElement('div',{className:'metric-value'},m.v))
           )
         ),
@@ -29463,6 +29523,18 @@ function App(){
   // any real screen — otherwise the very first render after login would briefly show whatever
   // (possibly empty) data happened to already be cached in this browser.
   const [syncing,setSyncing]=useState(false);
+  // A page refresh (or the tab reloading after being backgrounded) restores loggedIn/user
+  // straight from sessionStorage above, bypassing handleLogin entirely — without this,
+  // _cloudSyncReady stays stuck at its initial false for the rest of this tab's life, and
+  // queueCloudPush silently no-ops on every single edit made after the refresh (see its guard
+  // near CLOUD_SYNC_ENABLED). This re-runs the same pull-and-mark-ready step handleLogin does,
+  // once, whenever the app mounts already logged in.
+  useEffect(()=>{
+    if(CLOUD_SYNC_ENABLED&&loggedIn&&!_cloudSyncReady){
+      setSyncing(true);
+      cloudPullAndHydrate().then(()=>setSyncing(false));
+    }
+  },[]);
   const handleLogin=async(u)=>{
     if(CLOUD_SYNC_ENABLED){
       setSyncing(true);
@@ -29677,11 +29749,22 @@ function App(){
     }
   };
 
+  // Same per-outlet sheet-permission filter as visibleSalonTabs above, but usable for ANY outlet
+  // (visibleSalonTabs is scoped to whichever outlet is currently open) — the command palette
+  // used to list every sheet of every outlet unfiltered, straight from SALON_TABS, which let
+  // Ctrl+K jump a user straight into a sheet their own permissions say "No Access" to, bypassing
+  // the tab bar being hidden (the only enforcement that existed before this).
+  const sheetsAllowedForSalon=(sn)=>{
+    if(!user||user.role==='Super Admin')return SALON_TABS;
+    const oa=(user.sheetAccessByOutlet&&user.sheetAccessByOutlet[sn.id])||user.sheetAccess||null;
+    const base=!oa?SALON_TABS:SALON_TABS.filter(t=>(oa[t.id]||'View Only')!=='No Access'||(isSummaryApproverRole(user)&&(t.id==='salary-working'||t.id==='incentive-working')));
+    return base.filter(t=>!isReportOnlyRole||REPORTS_ONLY_TAB_IDS.includes(t.id));
+  };
   const CMD_ACTIONS=[
     ...GLOBAL_NAV.map(n=>({label:n.label,group:'Go to',icon:n.icon,run:()=>setActivePage(n.id)})),
     ...accessibleSalons.map(sn=>({label:sn.name,group:'Outlet',icon:'💈',run:()=>handleSelectSalon(sn)})),
-    ...accessibleSalons.flatMap(sn=>SALON_TABS.map(t=>({label:sn.name.split('—')[0].trim()+' → '+t.label,group:'Sheet',icon:'📄',
-      run:()=>{setSelectedSalon(sn);setActivePage('salon');setSalonTab(t.id)}}))),
+    ...accessibleSalons.flatMap(sn=>sheetsAllowedForSalon(sn).map(t=>({label:sn.name.split('—')[0].trim()+' → '+t.label,group:'Sheet',icon:'📄',
+      run:()=>{setSelectedSalon(sn);setActivePage('salon');navToSalonTab(t.id);}}))),
     {label:'Sign out',group:'Account',icon:'⏻',run:logout},
   ];
 
