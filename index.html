@@ -4451,9 +4451,27 @@ function LoginPage({onLogin}){
       const{data:profile,error:profErr}=await supa.from('profiles').select('*').eq('id',data.user.id).single();
       if(profErr||!profile){setErr('Signed in, but no profile is set up for this account yet — ask your Super Admin to add one in Supabase.');await supa.auth.signOut();return;}
       if(profile.status==='Inactive'){setErr('This account has been deactivated. Contact your Super Admin.');await supa.auth.signOut();return;}
+      // Demo accounts (profiles.is_demo) are gated server-side by IP, not just by this being a
+      // shared public login — demo-access-check runs with the service-role key against a table
+      // this client can't read or write directly, so clearing localStorage/sessionStorage or
+      // using a different browser on the SAME network can't reset the 5-day window. A real
+      // customer profile always gets {allowed:true,isDemo:false} back immediately, untouched.
+      let demoDaysLeft=null;
+      if(profile.is_demo){
+        try{
+          const{data:gate,error:gateErr}=await supa.functions.invoke('demo-access-check',{body:{}});
+          const fnErr=gateErr||(gate&&gate.error);
+          if(fnErr){setErr('Could not verify demo access — check your internet connection and try again.');await supa.auth.signOut();return;}
+          if(!gate.allowed){setErr('This demo login is only available for 5 days from a given network, and that window has ended here. Please contact us to purchase SalonOS.');await supa.auth.signOut();return;}
+          demoDaysLeft=gate.daysLeft;
+        }catch(gateEx){
+          setErr('Could not verify demo access — check your internet connection and try again.');await supa.auth.signOut();return;
+        }
+      }
       onLogin({id:profile.id,name:profile.name,email:data.user.email,role:profile.role,access:profile.access,outletIds:profile.outlet_ids||[],status:profile.status,
         outletAccess:(profile.outlet_access&&Object.keys(profile.outlet_access).length)?profile.outlet_access:Object.fromEntries((profile.outlet_ids||[]).map(oid=>[oid,'View and Edit'])),
-        sheetAccessByOutlet:profile.sheet_access_by_outlet||{}});
+        sheetAccessByOutlet:profile.sheet_access_by_outlet||{},
+        isDemo:!!profile.is_demo,demoDaysLeft});
     }catch(err){
       setErr(err.message||'Could not sign in — check your internet connection and try again.');
       if(e&&e.currentTarget&&window.flashButton)window.flashButton(e.currentTarget,'error');
@@ -29664,7 +29682,12 @@ function App(){
         saveUserAccounts(stamped);
       }catch(e){}
     }
-    setActivePage(['Super Admin','Reviewer'].includes(u.role)?'collaboration':'collaboration');addToast('Welcome, '+u.name+'!','success')
+    setActivePage(['Super Admin','Reviewer'].includes(u.role)?'collaboration':'collaboration');
+    if(u.isDemo){
+      addToast('🎉 Demo Access — this login is available for 5 days only from your network'+(u.demoDaysLeft?' ('+u.demoDaysLeft+' day'+(u.demoDaysLeft===1?'':'s')+' left)':'')+'. Contact us to purchase SalonOS.','info',8000);
+    }else{
+      addToast('Welcome, '+u.name+'!','success');
+    }
   };
   const logout=()=>{
     sessionStorage.removeItem('salonos_user');setLoggedIn(false);setUser(null);
