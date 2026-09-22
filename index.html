@@ -4634,9 +4634,15 @@ function GettingStarted({onAddSalon,isAdmin}){
   );
 }
 
-function MasterDashboard({selFY,setSelFY,FYS}){
+function MasterDashboard({selFY,setSelFY,FYS,accessibleSalons}){
   const [selOutlet,setSelOutlet]=useState('all');
-  const activeSalons=SALONS.filter(s=>s.status==='Active');
+  // Scoped to accessibleSalons (the same outlet-permission list the sidebar/outlet switcher
+  // already uses), NOT the raw global SALONS — this used to aggregate every outlet's real
+  // revenue/expenses/staff into these cards regardless of the logged-in user's own outlet
+  // access, so a Data Entry User restricted to one outlet (or the sandboxed public demo
+  // account) could still read off company-wide financial totals just from this screen, without
+  // ever being able to open the other outlets directly.
+  const activeSalons=(accessibleSalons||SALONS).filter(s=>s.status==='Active');
   const targetSalons=selOutlet==='all'?activeSalons:activeSalons.filter(s=>String(s.id)===String(selOutlet));
   const today=new Date();
 
@@ -29841,7 +29847,7 @@ function App(){
     }
     if(activePage==='collaboration')return React.createElement(CollaborationReview,{user,salons:accessibleSalons,submissions,setSubmissions});
     if(activePage==='dashboard'&&salons.length===0)return React.createElement(GettingStarted,{onAddSalon:()=>setActivePage('master-sheet'),isAdmin});
-    if(activePage==='dashboard')return React.createElement(MasterDashboard,{selFY,setSelFY,FYS});
+    if(activePage==='dashboard')return React.createElement(MasterDashboard,{selFY,setSelFY,FYS,accessibleSalons});
     if(activePage==='master-sheet')return React.createElement(MasterSheet,{onSelect:handleSelectSalon,salons,setSalons:setSalonsAndSync,user});
     if(activePage==='pnl')return React.createElement(PnLSheet,null);
     if(activePage==='reports')return React.createElement(ReportsHub,{onNav:(p)=>setActivePage(p),onSalon:(s)=>handleSelectSalon(s)});
