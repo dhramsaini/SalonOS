@@ -11494,6 +11494,22 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     swTotalRow];
   const swBuildExcelBlob=()=>buildSalaryWorkingExcelBlob({title:swReportTitle,workings:exportWorkings,cols,metaFor,MONTHS,selMonth});
 
+  // ── Generate Salary — a deliberate, explicit action to jump straight to a chosen month's
+  // Salary Working, rather than only the plain month/year dropdowns already in the header above.
+  // The underlying figures are always live-computed from swWorkingsFor() the moment a month is
+  // selected (there's no separate batch/background "calculation" step to run), so this doesn't
+  // compute anything the dropdowns wouldn't already — it's the explicit, one-click "generate this
+  // month's salary" action, with a confirmation of how many employees it covers.
+  const [showGenerate,setShowGenerate]=useState(false);
+  const [genMonth,setGenMonth]=useState(selMonth);
+  const [genYear,setGenYear]=useState(selYear);
+  const openGenerate=()=>{setGenMonth(selMonth);setGenYear(selYear);setShowGenerate(true);};
+  const runGenerate=()=>{
+    setSelMonth(genMonth);setSelYear(genYear);setShowGenerate(false);
+    const n=getEmployeesForMonth(genYear,genMonth,salon?.id).length;
+    success('Salary generated for '+MONTHS[genMonth]+' '+genYear+' — '+n+' employee'+(n===1?'':'s'));
+  };
+
   const ColToggle=({k,label})=>React.createElement('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:11,color:cols[k]?'var(--text)':'var(--text3)',cursor:'pointer',padding:'4px 8px',background:cols[k]?'rgba(47,95,224,0.1)':'var(--bg3)',borderRadius:'var(--r)',border:'1px solid '+(cols[k]?'rgba(47,95,224,0.3)':'var(--border)')}},
     React.createElement('input',{type:'checkbox',checked:cols[k],onChange:()=>toggleCol(k)}),label
   );
@@ -11509,6 +11525,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
         swSearch&&React.createElement('span',{style:{fontSize:11,color:'var(--text3)'}},swVisibleWorkings.length+' of '+workings.length+' match'),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))),
+        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openGenerate},'🧮 Generate Salary'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:exportExcel},swSelectedIds.size>0?'⬇ Export Selected ('+swSelectedIds.size+')':'⬇ Export Excel'),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:'',title:'Generates a printable Challan from this month\'s Salary Working figures — opens in a new tab, ready to print or Save as PDF',onChange:e=>{if(e.target.value)generateChallan(e.target.value);e.target.value='';}},
           React.createElement('option',{value:''},'🧾 Generate Challan…'),
@@ -11537,6 +11554,23 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
         salarySummaryRec&&React.createElement('span',{className:'badge '+(salarySummaryRec.status==='Approved'?'badge-green':salarySummaryRec.status==='Returned'?'badge-red':'badge-amber'),
           title:salarySummaryRec.status==='Approved'?'Approved by '+salarySummaryRec.approvedBy+' on '+fmtDMY(salarySummaryRec.approvedAt.slice(0,10)):salarySummaryRec.status==='Returned'?'Returned'+(salarySummaryRec.remarks?': '+salarySummaryRec.remarks:''):'Sent '+fmtDMY(salarySummaryRec.sentAt.slice(0,10))+' by '+salarySummaryRec.sentBy+' — awaiting review'},
           salarySummaryRec.status==='Approved'?'✓ Summary Approved':salarySummaryRec.status==='Returned'?'↩ Summary Returned':'⏳ Summary Sent')
+      )
+    ),
+
+    showGenerate&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowGenerate(false)},
+      React.createElement('div',{className:'modal',style:{width:380},onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-title'},'🧮 Generate Salary'),
+        React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:14,lineHeight:1.5}},'Pick the month to compute Salary Working for — figures are calculated live from Attendance and Incentive Working, same as this sheet always does.'),
+        React.createElement('div',{className:'form-row cols2',style:{marginBottom:16}},
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Month'),
+            React.createElement('select',{className:'form-control',value:genMonth,onChange:e=>setGenMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m)))),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Year'),
+            React.createElement('select',{className:'form-control',value:genYear,onChange:e=>setGenYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))))
+        ),
+        React.createElement('div',{className:'modal-actions'},
+          React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowGenerate(false)},'Cancel'),
+          React.createElement('button',{className:'btn btn-primary',onClick:runGenerate},'Generate')
+        )
       )
     ),
 
@@ -12878,6 +12912,22 @@ function IncentiveWorkingCore({period,salon,user}={}){
   };
   const iwBuildExcelBlob=()=>buildIncentiveWorkingExcelBlob({title:iwReportTitle,incData:exportIncData,targetMult,includeBankDetails:cols.bankDetails});
 
+  // ── Generate Incentive — same explicit-action pattern as Salary Working's "Generate Salary"
+  // (see its comment): figures are always live-computed from incWorkingsFor() for whichever
+  // month/year is selected, so this doesn't run a separate calculation the header dropdowns
+  // wouldn't already trigger — it's a deliberate, one-click "generate this month" action instead
+  // of only the plain selects, with a confirmation of how many employees it covers (Helper and
+  // Housekeeper are excluded from Incentive Working itself, same as the rest of this sheet).
+  const [showIwGenerate,setShowIwGenerate]=useState(false);
+  const [iwGenMonth,setIwGenMonth]=useState(selMonth);
+  const [iwGenYear,setIwGenYear]=useState(selYear);
+  const openIwGenerate=()=>{setIwGenMonth(selMonth);setIwGenYear(selYear);setShowIwGenerate(true);};
+  const runIwGenerate=()=>{
+    setSelMonth(iwGenMonth);setSelYear(iwGenYear);setShowIwGenerate(false);
+    const n=getEmployeesForMonth(iwGenYear,iwGenMonth,salon?.id).filter(e=>e.desig!=='Helper'&&e.desig!=='Housekeeper').length;
+    success('Incentive generated for '+MONTHS[iwGenMonth]+' '+iwGenYear+' — '+n+' employee'+(n===1?'':'s'));
+  };
+
   return React.createElement('div',{className:'fade-in'},
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,
@@ -12887,6 +12937,7 @@ function IncentiveWorkingCore({period,salon,user}={}){
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))),
+        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openIwGenerate},'🧮 Generate Incentive'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowSettings(true)},'⚙ Incentive Rules & Settings'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},onClick:exportExcel},iwSelectedIds.size>0?'⬇ Export Selected ('+iwSelectedIds.size+')':'⬇ Export Excel'),
         React.createElement(ShareReportButton,{title:iwReportTitle,subtitle:'Incentive Working',getBodyHtml:iwReportBodyHtml,getSheetRows:iwReportSheetRows,buildExcelBlob:iwBuildExcelBlob,landscape:true}),
@@ -12903,6 +12954,23 @@ function IncentiveWorkingCore({period,salon,user}={}){
         incentiveSummaryRec&&React.createElement('span',{className:'badge '+(incentiveSummaryRec.status==='Approved'?'badge-green':incentiveSummaryRec.status==='Returned'?'badge-red':'badge-amber'),
           title:incentiveSummaryRec.status==='Approved'?'Approved by '+incentiveSummaryRec.approvedBy+' on '+fmtDMY(incentiveSummaryRec.approvedAt.slice(0,10)):incentiveSummaryRec.status==='Returned'?'Returned'+(incentiveSummaryRec.remarks?': '+incentiveSummaryRec.remarks:''):'Sent '+fmtDMY(incentiveSummaryRec.sentAt.slice(0,10))+' by '+incentiveSummaryRec.sentBy+' — awaiting review'},
           incentiveSummaryRec.status==='Approved'?'✓ Summary Approved':incentiveSummaryRec.status==='Returned'?'↩ Summary Returned':'⏳ Summary Sent')
+      )
+    ),
+
+    showIwGenerate&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowIwGenerate(false)},
+      React.createElement('div',{className:'modal',style:{width:380},onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-title'},'🧮 Generate Incentive'),
+        React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:14,lineHeight:1.5}},'Pick the month to compute Incentive Working for — figures are calculated live from each employee\'s Achieved entries, same as this sheet always does.'),
+        React.createElement('div',{className:'form-row cols2',style:{marginBottom:16}},
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Month'),
+            React.createElement('select',{className:'form-control',value:iwGenMonth,onChange:e=>setIwGenMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m)))),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Year'),
+            React.createElement('select',{className:'form-control',value:iwGenYear,onChange:e=>setIwGenYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))))
+        ),
+        React.createElement('div',{className:'modal-actions'},
+          React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowIwGenerate(false)},'Cancel'),
+          React.createElement('button',{className:'btn btn-primary',onClick:runIwGenerate},'Generate')
+        )
       )
     ),
 
