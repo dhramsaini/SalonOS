@@ -11499,11 +11499,28 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
   // The underlying figures are always live-computed from swWorkingsFor() the moment a month is
   // selected (there's no separate batch/background "calculation" step to run), so this doesn't
   // compute anything the dropdowns wouldn't already — it's the explicit, one-click "generate this
-  // month's salary" action, with a confirmation of how many employees it covers.
+  // month's salary" action. Before actually switching the sheet to that month, it first checks
+  // every active employee's Attendance for that month and shows anyone with unmarked days — Gross
+  // Salary is prorated as Salary ÷ Days in Month × Total Days Payable, so a day nobody marked
+  // present/absent/off/etc. silently understates that employee's Total Days (and so their pay)
+  // without this check ever calling it out.
   const [showGenerate,setShowGenerate]=useState(false);
+  const [genStep,setGenStep]=useState('pick'); // 'pick' | 'review'
   const [genMonth,setGenMonth]=useState(selMonth);
   const [genYear,setGenYear]=useState(selYear);
-  const openGenerate=()=>{setGenMonth(selMonth);setGenYear(selYear);setShowGenerate(true);};
+  const [genIncomplete,setGenIncomplete]=useState([]);
+  const openGenerate=()=>{setGenMonth(selMonth);setGenYear(selYear);setGenStep('pick');setShowGenerate(true);};
+  const checkAttendanceThenReview=()=>{
+    const emps=getEmployeesForMonth(genYear,genMonth,salon?.id).filter(e=>e.status==='Active');
+    const attStore=loadAttendance(salon?.id);
+    const incomplete=emps.map(e=>{
+      const rec=attStore[attMonthKey(e.id,genYear,genMonth)];
+      const s=attSummaryFor(e,genYear,genMonth,rec);
+      return{id:e.id,name:e.name,desig:e.desig,notMarked:s.notMarked};
+    }).filter(x=>x.notMarked>0).sort((a,b)=>b.notMarked-a.notMarked);
+    setGenIncomplete(incomplete);
+    setGenStep('review');
+  };
   const runGenerate=()=>{
     setSelMonth(genMonth);setSelYear(genYear);setShowGenerate(false);
     const n=getEmployeesForMonth(genYear,genMonth,salon?.id).length;
@@ -11558,18 +11575,48 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     ),
 
     showGenerate&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowGenerate(false)},
-      React.createElement('div',{className:'modal',style:{width:380},onClick:e=>e.stopPropagation()},
-        React.createElement('div',{className:'modal-title'},'🧮 Generate Salary'),
-        React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:14,lineHeight:1.5}},'Pick the month to compute Salary Working for — figures are calculated live from Attendance and Incentive Working, same as this sheet always does.'),
-        React.createElement('div',{className:'form-row cols2',style:{marginBottom:16}},
-          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Month'),
-            React.createElement('select',{className:'form-control',value:genMonth,onChange:e=>setGenMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m)))),
-          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Year'),
-            React.createElement('select',{className:'form-control',value:genYear,onChange:e=>setGenYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))))
+      React.createElement('div',{className:'modal',style:{width:440},onClick:e=>e.stopPropagation()},
+        genStep==='pick'&&React.createElement(React.Fragment,null,
+          React.createElement('div',{className:'modal-title'},'🧮 Generate Salary'),
+          React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:14,lineHeight:1.5}},'Pick the month to compute Salary Working for — figures are calculated live from Attendance and Incentive Working, same as this sheet always does.'),
+          React.createElement('div',{className:'form-row cols2',style:{marginBottom:16}},
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'Month'),
+              React.createElement('select',{className:'form-control',value:genMonth,onChange:e=>setGenMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m)))),
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'Year'),
+              React.createElement('select',{className:'form-control',value:genYear,onChange:e=>setGenYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))))
+          ),
+          React.createElement('div',{className:'modal-actions'},
+            React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowGenerate(false)},'Cancel'),
+            React.createElement('button',{className:'btn btn-primary',onClick:checkAttendanceThenReview},'Continue →')
+          )
         ),
-        React.createElement('div',{className:'modal-actions'},
-          React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowGenerate(false)},'Cancel'),
-          React.createElement('button',{className:'btn btn-primary',onClick:runGenerate},'Generate')
+        genStep==='review'&&React.createElement(React.Fragment,null,
+          React.createElement('div',{className:'modal-title'},'🧮 Generate Salary — '+MONTHS[genMonth]+' '+genYear),
+          genIncomplete.length===0
+            ?React.createElement('div',{style:{fontSize:12.5,color:'var(--green)',background:'rgba(76,175,125,0.1)',border:'1px solid rgba(76,175,125,0.3)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:16,lineHeight:1.5}},'✓ Attendance is fully marked for every active employee this month. Safe to generate.')
+            :React.createElement(React.Fragment,null,
+                React.createElement('div',{style:{fontSize:12.5,color:'var(--orange)',background:'rgba(255,159,67,0.1)',border:'1px solid rgba(255,159,67,0.3)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:12,lineHeight:1.5}},
+                  '⚠ '+genIncomplete.length+' employee'+(genIncomplete.length===1?'':'s')+' '+(genIncomplete.length===1?'has':'have')+' unmarked attendance days this month. Gross Salary is prorated by Total Days Payable, so their pay will be understated until these days are marked.'),
+                React.createElement('div',{style:{maxHeight:220,overflowY:'auto',border:'1px solid var(--border)',borderRadius:'var(--r)',marginBottom:16}},
+                  React.createElement('table',null,
+                    React.createElement('thead',null,React.createElement('tr',null,
+                      React.createElement('th',{style:{position:'sticky',top:0}},'Employee'),
+                      React.createElement('th',{style:{position:'sticky',top:0}},'Designation'),
+                      React.createElement('th',{style:{position:'sticky',top:0,textAlign:'right'}},'Days Not Marked')
+                    )),
+                    React.createElement('tbody',null,genIncomplete.map(e=>React.createElement('tr',{key:e.id},
+                      React.createElement('td',null,e.name),
+                      React.createElement('td',null,e.desig),
+                      React.createElement('td',{style:{textAlign:'right',color:'var(--orange)',fontWeight:600}},e.notMarked)
+                    )))
+                  )
+                )
+              ),
+          React.createElement('div',{className:'modal-actions',style:{flexWrap:'wrap'}},
+            React.createElement('button',{className:'btn btn-ghost',onClick:()=>setGenStep('pick')},'← Back'),
+            genIncomplete.length>0&&onNavTab&&React.createElement('button',{className:'btn btn-ghost',onClick:()=>{setShowGenerate(false);onNavTab('attendance');}},'Go to Attendance'),
+            React.createElement('button',{className:genIncomplete.length===0?'btn btn-primary':'btn btn-ghost',style:genIncomplete.length>0?{color:'var(--orange)',borderColor:'rgba(255,159,67,0.4)'}:undefined,onClick:runGenerate},genIncomplete.length===0?'Generate':'Generate Anyway')
+          )
         )
       )
     ),
