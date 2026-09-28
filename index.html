@@ -1317,11 +1317,34 @@ async function getSupabaseClient(){
 // server copy before the initial pull has even finished — flips true once
 // cloudPullAndHydrate() completes (or immediately, in local-only mode).
 let _cloudSyncReady=!CLOUD_SYNC_ENABLED;
+// ── Live cloud sync ────────────────────────────────────────────────────────────────────────────
+// The cloud (kv_store) is the source of truth; localStorage is only this browser's working cache.
+//  • Saves go up within ~0.6s, and never blindly: each push re-reads the server copy and, if another
+//    ID changed it since this browser last synced, MERGES the two (record by record for id-keyed
+//    lists like employees, field by field for plain objects) instead of overwriting their work.
+//    The write itself is conditional on the server copy not having changed in between (optimistic
+//    concurrency on updated_at), and re-merges on conflict.
+//  • Every 15s (and whenever the window regains focus) it checks which keys changed on the server
+//    and pulls just those, so other IDs' edits appear without logging out and back in.
+//  • The topbar shows the real cloud state — Saving… / Saved to cloud / NOT saved — rather than
+//    only "saved on this device".
 const _cloudPushTimers={};
 const _cloudPushFailedOnce={};
+const _cloudBase={};      // key -> the value this browser last saw on the server (merge base)
+const _cloudUpdatedAt={}; // key -> server updated_at for that value
+const _cloudDirty=new Set(); // keys edited here and not yet confirmed saved in the cloud
+let _cloudPushing=0;
+let _cloudStatus={state:'saved',lastSyncedAt:null,error:null};
+function setCloudStatus(patch){
+  _cloudStatus={..._cloudStatus,...patch};
+  try{window.dispatchEvent(new Event('salonos-cloud-status'));}catch(e){}
+}
+function refreshCloudStatus(){
+  if(_cloudDirty.size===0&&_cloudPushing===0)setCloudStatus({state:'saved',lastSyncedAt:Date.now(),error:null});
+  else if(_cloudStatus.state!=='error')setCloudStatus({state:'saving'});
+}
 // Keys saved on this device that haven't reached kv_store yet (no session, network error). Kept in
-// localStorage so they survive a reload/re-login and get pushed up BEFORE the next pull, instead
-// of being silently overwritten by the server copy and never seen from any other login.
+// localStorage so they survive a reload/re-login and get pushed up (merged) BEFORE the next pull.
 // (_v2: the first version of this list could also capture stale screen-mount writes made before the
 // initial pull finished — those must never be pushed, so any list saved under the old name is ignored.)
 const CLOUD_PENDING_KEY='salonos_cloud_pending_v2';
@@ -1336,28 +1359,266 @@ function markCloudPending(key,pending){
 // Fired when a push finds no valid Supabase session — the App shell listens and sends the user
 // back to the login screen, since everything else (user list, other IDs' data) is empty too.
 function notifyCloudSessionLost(){try{window.dispatchEvent(new Event('salonos-session-lost'));}catch(e){}}
-function queueCloudPush(key,value){
+// Fired after values from the cloud replace what's in this browser, so open screens can re-read.
+function notifyCloudDataChanged(keys){
+  try{window.dispatchEvent(new CustomEvent('salonos-cloud-data',{detail:{keys}}));}catch(e){}
+}
+function applyCloudValue(key,value){
+  try{localStorage.setItem(key,value);}catch(e){}
+  _lsReadCache[key]=value;
+}
+
+// ── Three-way merge: base = last value this browser synced, local = this browser's edit,
+// server = what's in the cloud now. Changes made on either side since base are both kept. ──
+function _jsonEq(a,b){return JSON.stringify(a)===JSON.stringify(b);}
+function _isPlainObj(v){return v!==null&&typeof v==='object'&&!Array.isArray(v);}
+function _idListOk(arr){
+  if(!Array.isArray(arr))return false;
+  const seen=new Set();
+  for(const it of arr){
+    if(!_isPlainObj(it)||it.id==null||it.id==='')return false;
+    const k=String(it.id);
+    if(seen.has(k))return false;
+    seen.add(k);
+  }
+  return true;
+}
+// Two IDs adding a record at the same moment can both pick the same next sequential id (E004,
+// A012, 7…). Keep both records: the local one gets the next free id.
+function _freshId(id,taken){
+  if(typeof id==='number'){let n=Math.max(0,...Array.from(taken).map(Number).filter(x=>!isNaN(x)))+1;return n;}
+  const m=/^(.*?)(\d+)$/.exec(String(id));
+  if(m){
+    const prefix=m[1],width=m[2].length;
+    let n=0;
+    taken.forEach(t=>{const mm=/^(.*?)(\d+)$/.exec(String(t));if(mm&&mm[1]===prefix)n=Math.max(n,Number(mm[2]));});
+    return prefix+String(n+1).padStart(width,'0');
+  }
+  let i=2;while(taken.has(String(id)+'-'+i))i++;
+  return String(id)+'-'+i;
+}
+function _mergeById(b,l,s){
+  const bMap=new Map((_idListOk(b)?b:[]).map(it=>[String(it.id),it]));
+  const sMap=new Map(s.map(it=>[String(it.id),it]));
+  const lIds=new Set(l.map(it=>String(it.id)));
+  const out=[],collided=[];
+  for(const li of l){
+    const id=String(li.id),bi=bMap.get(id),si=sMap.get(id);
+    if(si){
+      if(!bi&&!_jsonEq(li,si)){out.push(si);collided.push(li);} // both sides added a different record under the same id
+      else out.push(_mergeAny(bi,li,si));
+    }else if(bi){
+      if(!_jsonEq(li,bi))out.push(li); // deleted on the server but edited here — keep the edit
+    }else out.push(li); // added here
+  }
+  for(const si of s){
+    const id=String(si.id);
+    if(lIds.has(id))continue;
+    const bi=bMap.get(id);
+    if(bi){if(!_jsonEq(si,bi))out.push(si);} // deleted here — unless edited on the server since
+    else out.push(si); // added by another ID
+  }
+  const taken=new Set(out.map(it=>String(it.id)));
+  for(const li of collided){
+    const nid=_freshId(li.id,taken);
+    taken.add(String(nid));
+    out.push({...li,id:nid});
+  }
+  return out;
+}
+function _mergePrimitiveList(b,l,s){
+  const bs=new Set((Array.isArray(b)?b:[]).map(x=>JSON.stringify(x)));
+  const ss=new Set(s.map(x=>JSON.stringify(x)));
+  const ls=new Set(l.map(x=>JSON.stringify(x)));
+  const out=l.filter(x=>{const k=JSON.stringify(x);return ss.has(k)||!bs.has(k);}); // drop what the server deleted
+  s.forEach(x=>{const k=JSON.stringify(x);if(!ls.has(k)&&!bs.has(k))out.push(x);}); // add what the server added
+  return out;
+}
+function _mergeAny(b,l,s){
+  if(_jsonEq(l,s))return l;
+  if(b!==undefined&&_jsonEq(l,b))return s; // only the server changed
+  if(b!==undefined&&_jsonEq(s,b))return l; // only this browser changed
+  if(Array.isArray(l)&&Array.isArray(s)){
+    if(_idListOk(l)&&_idListOk(s))return _mergeById(b,l,s);
+    if(l.concat(s).every(x=>x===null||typeof x!=='object'))return _mergePrimitiveList(b,l,s);
+    return l;
+  }
+  if(_isPlainObj(l)&&_isPlainObj(s)){
+    const bo=_isPlainObj(b)?b:{};
+    const out={};
+    new Set([...Object.keys(l),...Object.keys(s)]).forEach(k=>{
+      const inL=Object.prototype.hasOwnProperty.call(l,k),inS=Object.prototype.hasOwnProperty.call(s,k),inB=Object.prototype.hasOwnProperty.call(bo,k);
+      if(inL&&inS)out[k]=_mergeAny(inB?bo[k]:undefined,l[k],s[k]);
+      else if(inL){if(!inB||!_jsonEq(l[k],bo[k]))out[k]=l[k];} // server deleted it: drop unless edited here
+      else{if(!inB||!_jsonEq(s[k],bo[k]))out[k]=s[k];}      // deleted here: drop unless edited on the server
+    });
+    return out;
+  }
+  return l; // plain values that both sides changed: this (latest) edit wins
+}
+function mergeCloudValues(baseStr,localStr,serverStr){
+  let b,l,s;
+  try{l=JSON.parse(localStr);s=JSON.parse(serverStr);}catch(e){return localStr;} // not JSON — latest edit wins
+  try{b=baseStr==null?undefined:JSON.parse(baseStr);}catch(e){b=undefined;}
+  return JSON.stringify(_mergeAny(b,l,s));
+}
+
+async function _cloudSession(){
+  const supa=await getSupabaseClient();
+  const{data:{session}}=await supa.auth.getSession();
+  return{supa,session};
+}
+// Pushes this browser's current value for one key, merged with whatever is in the cloud now.
+async function cloudPushKey(key){
+  const{supa,session}=await _cloudSession();
+  if(!session){notifyCloudSessionLost();throw new Error('Not signed in');}
+  for(let attempt=0;attempt<6;attempt++){
+    const local=localStorage.getItem(key);
+    if(local==null)return; // removed locally — removals aren't synced (same as before)
+    const{data:row,error:readErr}=await supa.from('kv_store').select('value,updated_at').eq('key',key).maybeSingle();
+    if(readErr)throw readErr;
+    let merged=local;
+    if(row&&row.value!=null&&row.value!==local&&row.value!==_cloudBase[key])
+      merged=mergeCloudValues(_cloudBase[key],local,row.value);
+    const now=new Date().toISOString();
+    let res;
+    if(row){
+      res=await supa.from('kv_store').update({value:merged,updated_at:now,updated_by:session.user.id}).eq('key',key).eq('updated_at',row.updated_at).select('key');
+    }else{
+      res=await supa.from('kv_store').insert({key,value:merged,updated_at:now,updated_by:session.user.id}).select('key');
+      if(res.error&&(res.error.code==='23505'||/duplicate/i.test(res.error.message||'')))continue; // another ID created it first — merge with theirs
+    }
+    if(res.error)throw res.error;
+    if(!res.data||!res.data.length)continue; // changed on the server between read and write — merge again
+    // Open screens still hold `local` in memory and their next edit builds on it, so `local` stays
+    // the merge base. If the merge pulled in other IDs' changes, the cloud now differs from this
+    // browser: leave _cloudUpdatedAt stale so the next update check brings the merged copy down
+    // (applied only at the moment the screen refreshes — see cloudApplyUpdates).
+    _cloudBase[key]=local;
+    _cloudUpdatedAt[key]=merged===local?now:null;
+    if(merged!==local)cloudCheckForUpdates();
+    return;
+  }
+  throw new Error('Too many simultaneous edits — will retry');
+}
+function queueCloudPush(key,value,delay){
   // Nothing written before the initial pull finishes is a real edit — it's a screen saving back the
   // stale cached copy it just loaded — so it must never be pushed or marked pending.
   if(!CLOUD_SYNC_ENABLED||key===CLOUD_PENDING_KEY||!_cloudSyncReady)return;
   markCloudPending(key,true);
+  _cloudDirty.add(key);
+  refreshCloudStatus();
   clearTimeout(_cloudPushTimers[key]);
   _cloudPushTimers[key]=setTimeout(async()=>{
+    delete _cloudPushTimers[key];
+    _cloudPushing++;
     try{
-      const supa=await getSupabaseClient();
-      const{data:{session}}=await supa.auth.getSession();
-      if(!session){notifyCloudSessionLost();return;} // session expired — key stays pending, pushed after the next login
-      const{error}=await supa.from('kv_store').upsert({key,value,updated_at:new Date().toISOString(),updated_by:session.user.id});
-      if(error)throw error;
-      markCloudPending(key,false);
+      await cloudPushKey(key);
+      _cloudPushing--;
       _cloudPushFailedOnce[key]=false;
+      if(!_cloudPushTimers[key]){_cloudDirty.delete(key);markCloudPending(key,false);} // no newer edit queued meanwhile
+      if(_cloudStatus.state==='error')setCloudStatus({state:'saving',error:null});
+      refreshCloudStatus();
     }catch(e){
+      _cloudPushing--;
+      setCloudStatus({state:'error',error:(e&&e.message)||'Network error'});
       if(!_cloudPushFailedOnce[key]){ // one toast per key per session — a flaky connection shouldn't spam every keystroke
         _cloudPushFailedOnce[key]=true;
-        try{if(_addToast)_addToast('Could not sync to the cloud — saved on this device, will retry on the next change','error',5000);}catch(e2){}
+        try{if(_addToast)_addToast('NOT saved to the cloud yet — kept on this device and retrying automatically. Don\'t close this tab until the top bar says "Saved to cloud".','error',8000);}catch(e2){}
       }
     }
-  },1500);
+  },delay==null?600:delay);
+}
+// Deleting an outlet used to clear only this browser — every key stayed in the cloud and came
+// straight back on the next login. kv_store doesn't allow row deletes, so a deleted key is stored
+// as NULL value, which every reader here treats as "doesn't exist" (and removes locally).
+async function cloudDeleteOutletData(salonId){
+  if(!CLOUD_SYNC_ENABLED||!_cloudSyncReady||salonId==null)return;
+  try{
+    const{supa,session}=await _cloudSession();
+    if(!session){notifyCloudSessionLost();return;}
+    const suffix='_outlet_'+salonId;
+    const{data,error}=await supa.from('kv_store').select('key').like('key','salonos_%'+suffix).not('value','is',null);
+    if(error)throw error;
+    for(const{key}of(data||[])){
+      if(!key.endsWith(suffix))continue; // LIKE treats "_" as a wildcard — only exact suffix matches
+      clearTimeout(_cloudPushTimers[key]);delete _cloudPushTimers[key];
+      _cloudDirty.delete(key);markCloudPending(key,false);
+      const now=new Date().toISOString();
+      const{error:e2}=await supa.from('kv_store').update({value:null,updated_at:now,updated_by:session.user.id}).eq('key',key);
+      if(e2)throw e2;
+      delete _cloudBase[key];_cloudUpdatedAt[key]=now;
+    }
+    refreshCloudStatus();
+  }catch(e){
+    try{if(_addToast)_addToast('Outlet removed here, but its data could not be deleted from the cloud: '+((e&&e.message)||'network error'),'error',8000);}catch(e2){}
+  }
+}
+// Retries anything still unsaved (after a network blip) — called by the periodic sync loop.
+function retryDirtyCloudKeys(){
+  _cloudDirty.forEach(key=>{if(!_cloudPushTimers[key])queueCloudPush(key,null,0);});
+}
+// Two steps, on purpose. Open screens hold their own in-memory copy of the data, and their next
+// save builds on that copy — so newer cloud data must only land in this browser at the exact
+// moment those screens re-mount and re-read it (the App shell does both together, and waits
+// while someone is typing or has a form open). cloudCheckForUpdates just looks (cheap: key +
+// updated_at only) and announces; cloudApplyUpdates downloads and writes, then the caller remounts.
+async function _cloudChangedKeys(supa){
+  const{data:stamps,error}=await supa.from('kv_store').select('key,updated_at');
+  if(error)throw error;
+  // Keys with unsaved edits here are skipped — their push re-reads and merges the server copy.
+  return(stamps||[]).filter(r=>_cloudUpdatedAt[r.key]!==r.updated_at&&!_cloudDirty.has(r.key)&&!_cloudPushTimers[r.key]).map(r=>r.key);
+}
+let _cloudCheckBusy=false;
+async function cloudCheckForUpdates(){
+  if(!CLOUD_SYNC_ENABLED||!_cloudSyncReady||_cloudCheckBusy)return;
+  _cloudCheckBusy=true;
+  try{
+    const{supa,session}=await _cloudSession();
+    if(!session){notifyCloudSessionLost();return;}
+    const changed=await _cloudChangedKeys(supa);
+    if(changed.length)notifyCloudDataChanged(changed);
+  }catch(e){
+    // A failed background check isn't data loss — the next tick retries. Saves report their own errors.
+  }finally{_cloudCheckBusy=false;}
+}
+// Downloads everything that changed and writes it into this browser. Returns the keys written;
+// the caller must re-mount the screens (and reload App-level state) right after, same tick.
+async function cloudApplyUpdates(){
+  if(!CLOUD_SYNC_ENABLED||!_cloudSyncReady)return[];
+  const{supa,session}=await _cloudSession();
+  if(!session){notifyCloudSessionLost();return[];}
+  const changed=await _cloudChangedKeys(supa);
+  const rows=[];
+  for(let i=0;i<changed.length;i+=50){
+    const{data,error}=await supa.from('kv_store').select('key,value,updated_at').in('key',changed.slice(i,i+50));
+    if(error)throw error;
+    rows.push(...(data||[]));
+  }
+  const applied=[];
+  rows.forEach(row=>{ // synchronous from here on — no await between writing and the caller's remount
+    if(_cloudDirty.has(row.key)||_cloudPushTimers[row.key])return;
+    _cloudUpdatedAt[row.key]=row.updated_at;
+    if(row.value==null){ // deleted in the cloud (e.g. another ID deleted an outlet)
+      delete _cloudBase[row.key];
+      if(localStorage.getItem(row.key)!=null){cachedLocalRemove(row.key);applied.push(row.key);}
+      return;
+    }
+    _cloudBase[row.key]=row.value;
+    if(localStorage.getItem(row.key)!==row.value){applyCloudValue(row.key,row.value);applied.push(row.key);}
+  });
+  return applied;
+}
+let _cloudLoopStarted=false;
+function startCloudSyncLoop(){
+  if(!CLOUD_SYNC_ENABLED||_cloudLoopStarted)return;
+  _cloudLoopStarted=true;
+  setInterval(()=>{if(document.visibilityState==='visible'){retryDirtyCloudKeys();cloudCheckForUpdates();}},15000);
+  window.addEventListener('focus',()=>cloudCheckForUpdates());
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')cloudCheckForUpdates();});
+  window.addEventListener('online',()=>{retryDirtyCloudKeys();cloudCheckForUpdates();});
+  // Closing the tab mid-save would lose the edit for everyone else — ask first.
+  window.addEventListener('beforeunload',(e)=>{if(_cloudDirty.size>0||_cloudPushing>0){e.preventDefault();e.returnValue='';}});
 }
 // Pulls every row from kv_store down into this browser's localStorage, bypassing safeLocalSet
 // (a pull must never re-trigger a push — that key's data just came FROM the server). Call once,
@@ -1365,32 +1626,49 @@ function queueCloudPush(key,value){
 async function cloudPullAndHydrate(){
   if(!CLOUD_SYNC_ENABLED)return;
   try{
-    const supa=await getSupabaseClient();
-    const{data:{session}}=await supa.auth.getSession();
+    const{supa,session}=await _cloudSession();
     if(!session)throw new Error('No cloud session');
-    // Push anything saved on this device while it couldn't reach the cloud first, so the pull
-    // below doesn't overwrite it with the older server copy.
+    // Push (merged) anything saved on this device while it couldn't reach the cloud first, so the
+    // pull below doesn't overwrite it with the older server copy.
     const pending=loadCloudPending();
     const stillPending=[];
     for(const key of pending){
-      const value=localStorage.getItem(key);
-      if(value==null)continue;
-      const{error:pushErr}=await supa.from('kv_store').upsert({key,value,updated_at:new Date().toISOString(),updated_by:session.user.id});
-      if(pushErr)stillPending.push(key);
+      try{await cloudPushKey(key);}catch(e){stillPending.push(key);}
     }
     try{localStorage.setItem(CLOUD_PENDING_KEY,JSON.stringify(stillPending));}catch(e){}
-    const{data,error}=await supa.from('kv_store').select('key,value');
+    const{data,error}=await supa.from('kv_store').select('key,value,updated_at');
     if(error)throw error;
     (data||[]).forEach(row=>{
-      if(row.value==null||stillPending.includes(row.key))return;
-      localStorage.setItem(row.key,row.value);
-      _lsReadCache[row.key]=row.value;
+      if(stillPending.includes(row.key))return;
+      if(row.value==null){ // deleted in the cloud — drop this browser's leftover copy too
+        if(localStorage.getItem(row.key)!=null)cachedLocalRemove(row.key);
+        _cloudUpdatedAt[row.key]=row.updated_at;
+        return;
+      }
+      applyCloudValue(row.key,row.value);
+      _cloudBase[row.key]=row.value;
+      _cloudUpdatedAt[row.key]=row.updated_at;
     });
+    stillPending.forEach(k=>_cloudDirty.add(k));
     _cloudSyncReady=true;
+    refreshCloudStatus();
   }catch(e){
     try{if(_addToast)_addToast('Could not load your data from the cloud — showing what is cached on this device','error',7000);}catch(e2){}
     _cloudSyncReady=true; // still let the app proceed with whatever's cached locally rather than blocking forever
+    setCloudStatus({state:'error',error:(e&&e.message)||'Could not reach the cloud'});
   }
+  startCloudSyncLoop();
+}
+// Topbar hook: the real cloud save state.
+function useCloudStatus(){
+  const [st,setSt]=useState(_cloudStatus);
+  useEffect(()=>{
+    const on=()=>setSt(_cloudStatus);
+    window.addEventListener('salonos-cloud-status',on);
+    const tick=setInterval(()=>setSt({..._cloudStatus}),15000); // keeps "Saved 20s ago" fresh
+    return()=>{window.removeEventListener('salonos-cloud-status',on);clearInterval(tick);};
+  },[]);
+  return st;
 }
 // ── Live save-activity indicator for the topbar — listens for the event safeLocalSet fires on
 // every successful write (i.e. essentially every real edit anywhere in the app, since all
@@ -2356,6 +2634,15 @@ const SALON_SCOPED_KEY_BASES=[
 ];
 function deleteAllSalonScopedData(salonId){
   SALON_SCOPED_KEY_BASES.forEach(base=>{cachedLocalRemove(outletKey(base,salonId));});
+  // The list above has fallen behind before (billing, clients, advances, bank rows… were missing),
+  // so also sweep every key that ends in this outlet's suffix — and delete them in the cloud too,
+  // or the outlet's data kept coming back on every other login.
+  try{
+    const suffix='_outlet_'+salonId,stray=[];
+    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.indexOf('salonos_')===0&&k.endsWith(suffix))stray.push(k);}
+    stray.forEach(k=>cachedLocalRemove(k));
+  }catch(e){}
+  cloudDeleteOutletData(salonId);
   // Appointment Book stores every outlet's bookings inside ONE shared key (composite "sid|date"
   // keys within it), not a separate localStorage key per outlet — strip just this outlet's
   // entries out of it rather than deleting the whole thing.
@@ -5109,6 +5396,7 @@ function MasterSheet({onSelect,salons,setSalons,user}){
     // with none of its employees/invoices/history behind it.
     const snapshot={};
     SALON_SCOPED_KEY_BASES.forEach(base=>{const k=outletKey(base,id);snapshot[k]=cachedLocalGet(k);});
+    try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.indexOf('salonos_')===0&&k.endsWith('_outlet_'+id)&&!(k in snapshot))snapshot[k]=localStorage.getItem(k);}}catch(e){}
     const apptRaw=cachedLocalGet('salonos_appointments_book');
     setSalons(prev=>prev.filter(s=>s.id!==id));
     deleteAllSalonScopedData(id);
@@ -5902,18 +6190,35 @@ function UserManagement(){
     setUsers(prev=>prev.map(x=>x.id===u.id?{...x,status:x.status==='Active'?'Inactive':'Active'}:x));
     toast('User '+(u.status==='Active'?'deactivated — they can no longer log in':'reactivated'),'info');
   };
-  const removeUser=async(id)=>{
+  const removeUser=async(id,permanent)=>{
     if(users.length<=1){toast('Can\'t remove the last account — that would lock everyone out','error');setShowDelete(null);return;}
     if(CLOUD_SYNC_ENABLED){
-      // Deleting the actual login needs the same admin privileges as creating one — deactivating
-      // is the safe, always-available action from here; ask for a real delete separately if
-      // that's specifically needed (a small follow-up to the create-user Edge Function).
-      const supa=await getSupabaseClient();
-      const{error}=await supa.from('profiles').update({status:'Inactive'}).eq('id',id);
-      setShowDelete(null);
-      if(error){toast(error.message||'Could not deactivate user','error');return;}
-      await refreshCloudUsers();
-      toast('User deactivated — they can no longer log in. (Full deletion isn\'t wired up yet; ask if you need that too.)','info');
+      const me=(()=>{try{return JSON.parse(sessionStorage.getItem('salonos_user'))||{};}catch(e){return{};}})();
+      if(id===me.id){toast('You can\'t remove your own account while signed in to it','error');setShowDelete(null);return;}
+      setCloudBusy(true);
+      try{
+        const supa=await getSupabaseClient();
+        if(permanent){
+          // Deleting a login needs admin rights the browser doesn't have — admin_delete_user is a
+          // SECURITY DEFINER function in Supabase that only an active Super Admin may call (it
+          // checks that server-side). Deactivate stays available as the reversible option.
+          const{error}=await supa.rpc('admin_delete_user',{target:id});
+          if(error){
+            const missing=error.code==='PGRST202'||/could not find the function|does not exist/i.test(error.message||'');
+            toast(missing?'Permanent delete needs a one-time setup in Supabase (the admin_delete_user function). Until then, use Deactivate.':(error.message||'Could not delete user'),'error',9000);
+            return;
+          }
+          toast('User permanently deleted — their login no longer exists','warning');
+        }else{
+          const{error}=await supa.from('profiles').update({status:'Inactive'}).eq('id',id);
+          if(error){toast(error.message||'Could not deactivate user','error');return;}
+          toast('User deactivated — they can no longer log in. Use the status toggle to reactivate.','info');
+        }
+        setShowDelete(null);
+        await refreshCloudUsers();
+      }catch(err){
+        toast(err.message||'Could not update user — check your internet connection','error');
+      }finally{setCloudBusy(false);}
       return;
     }
     setUsers(prev=>prev.filter(u=>u.id!==id));
@@ -6088,10 +6393,16 @@ function UserManagement(){
     showDelete&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowDelete(null)},
       React.createElement('div',{className:'modal',style:{width:420},onClick:e=>e.stopPropagation()},
         React.createElement('div',{className:'modal-title'},'Remove User'),
-        React.createElement('div',{style:{fontSize:13,color:'var(--text2)',marginBottom:16}},'Remove "'+showDelete.name+'" ('+showDelete.email+')? They\'ll no longer be able to log in.'),
+        CLOUD_SYNC_ENABLED
+          ?React.createElement('div',{style:{fontSize:13,color:'var(--text2)',marginBottom:16,lineHeight:1.6}},
+            'Remove "'+showDelete.name+'" ('+showDelete.email+')?',React.createElement('br'),
+            React.createElement('b',null,'Deactivate'),' — they can\'t log in, but the account stays and can be reactivated any time.',React.createElement('br'),
+            React.createElement('b',{style:{color:'var(--red)'}},'Delete permanently'),' — the login is erased and can\'t be undone. The data they entered stays.')
+          :React.createElement('div',{style:{fontSize:13,color:'var(--text2)',marginBottom:16}},'Remove "'+showDelete.name+'" ('+showDelete.email+')? They\'ll no longer be able to log in.'),
         React.createElement('div',{className:'modal-actions'},
           React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowDelete(null)},'Cancel'),
-          React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,0.15)',border:'1px solid rgba(255,107,107,0.4)',color:'var(--red)',padding:'8px 16px',borderRadius:'var(--r)',cursor:'pointer',fontWeight:600},onClick:()=>removeUser(showDelete.id)},'Remove')
+          CLOUD_SYNC_ENABLED&&React.createElement('button',{className:'btn btn-ghost',disabled:cloudBusy,onClick:()=>removeUser(showDelete.id,false)},'Deactivate'),
+          React.createElement('button',{className:'btn btn-sm'+(cloudBusy?' btn-loading':''),disabled:cloudBusy,style:{background:'rgba(255,107,107,0.15)',border:'1px solid rgba(255,107,107,0.4)',color:'var(--red)',padding:'8px 16px',borderRadius:'var(--r)',cursor:'pointer',fontWeight:600},onClick:()=>removeUser(showDelete.id,true)},CLOUD_SYNC_ENABLED?'Delete permanently':'Remove')
         )
       )
     )
@@ -29668,13 +29979,23 @@ function App(){
     {id:'SUB-1001',outletId:2,outlet:'Glow & Co — Sector 18',period:'June 2026',module:'Monthly Operations',submittedBy:'Rahul Mehta',submittedAt:'2026-06-26T18:30:00+05:30',status:'Submitted',remarks:'',reviewedBy:'',reviewedAt:''},
     {id:'SUB-1000',outletId:1,outlet:'Luxe Studio — Connaught Place',period:'May 2026',module:'Payroll & Attendance',submittedBy:'Priya Sharma',submittedAt:'2026-06-05T12:15:00+05:30',status:'Approved',remarks:'Checked and approved.',reviewedBy:'Amit Verma',reviewedAt:'2026-06-06T10:00:00+05:30'}
   ];
-  const [submissions,setSubmissions]=useState(()=>{
+  const loadSubmissionsClean=()=>{
     try{
       const stored=JSON.parse(cachedLocalGet('salonos_submissions'))||[];
       return stored.filter(s=>!KNOWN_DUMMY_SUBMISSIONS.some(d=>JSON.stringify(d)===JSON.stringify(s)));
     }catch(e){return []}
-  });
+  };
+  const [submissions,setSubmissions]=useState(loadSubmissionsClean);
   useEffect(()=>{safeLocalSet('salonos_submissions',JSON.stringify(submissions));},[submissions]);
+  // App-level state (outlet list, submissions) is read once when the app first loads — before
+  // login, so before any cloud data arrived. Re-read it whenever cloud data lands in this browser,
+  // or it keeps showing (and later saving back) that older copy.
+  const reloadAppLevelData=useCallback(()=>{
+    const s=loadSalonsFromStorage();
+    SALONS.length=0;SALONS.push(...s);
+    setSalons(s);
+    setSubmissions(loadSubmissionsClean());
+  },[]);
 
   // Wire toast system
   const addToast=useCallback((msg,type='success',dur=3000,onUndo)=>{
@@ -29685,6 +30006,43 @@ function App(){
   },[]);
   _addToast=addToast;
   const saveActivity=useSaveActivity();
+  const cloudStatus=useCloudStatus();
+  // ── Live updates from other IDs: bumping dataVersion re-mounts the open screen so it re-reads
+  // the fresh data. Held back while this user is mid-edit (typing in the last 5s, a field focused,
+  // or a form/modal open) so their work is never yanked away — a banner offers it instead, and it
+  // applies by itself as soon as they pause. ──
+  const [dataVersion,setDataVersion]=useState(0);
+  const [cloudUpdateWaiting,setCloudUpdateWaiting]=useState(false);
+  const applyCloudUpdatesNow=useCallback(async()=>{
+    try{
+      const scroller=document.querySelector('.content');
+      const top=scroller?scroller.scrollTop:0;
+      const applied=await cloudApplyUpdates();
+      setCloudUpdateWaiting(false);
+      if(!applied.length)return;
+      reloadAppLevelData();
+      setDataVersion(v=>v+1);
+      setTimeout(()=>{const el=document.querySelector('.content');if(el)el.scrollTop=top;},60);
+    }catch(e){}
+  },[reloadAppLevelData]);
+  useEffect(()=>{
+    if(!CLOUD_SYNC_ENABLED)return;
+    let lastActivity=0,waiting=false;
+    const mark=()=>{lastActivity=Date.now();};
+    const evs=['keydown','mousedown','wheel','touchstart','input'];
+    evs.forEach(ev=>window.addEventListener(ev,mark,true));
+    const busy=()=>{
+      const a=document.activeElement;
+      return Date.now()-lastActivity<5000||!!document.querySelector('.modal-overlay')||!!(a&&['INPUT','TEXTAREA','SELECT'].includes(a.tagName));
+    };
+    const onUpdates=()=>{
+      if(busy()){waiting=true;setCloudUpdateWaiting(true);}
+      else{waiting=false;applyCloudUpdatesNow();}
+    };
+    const t=setInterval(()=>{if(waiting&&!busy()){waiting=false;applyCloudUpdatesNow();}},3000);
+    window.addEventListener('salonos-cloud-data',onUpdates);
+    return()=>{evs.forEach(ev=>window.removeEventListener(ev,mark,true));clearInterval(t);window.removeEventListener('salonos-cloud-data',onUpdates);};
+  },[applyCloudUpdatesNow]);
   const removeToast=(id)=>{
     setToasts(p=>p.map(t=>t.id===id?{...t,leaving:true}:t));
     setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),220);
@@ -29731,7 +30089,7 @@ function App(){
       if(loggedIn&&!_cloudSyncReady){
         supa.auth.getSession().then(({data:{session}})=>{
           if(!session){setSyncing(false);forceRelogin();return;}
-          cloudPullAndHydrate().then(()=>setSyncing(false));
+          cloudPullAndHydrate().then(()=>{reloadAppLevelData();setSyncing(false);});
         }).catch(()=>setSyncing(false));
       }
     }).catch(()=>setSyncing(false));
@@ -29741,6 +30099,7 @@ function App(){
     if(CLOUD_SYNC_ENABLED){
       setSyncing(true);
       await cloudPullAndHydrate();
+      reloadAppLevelData();
       setSyncing(false);
     }
     setUser(u);setLoggedIn(true);sessionStorage.setItem('salonos_user',JSON.stringify(u));
@@ -30033,7 +30392,19 @@ function App(){
         React.createElement('div',{className:'topbar-right'},
           React.createElement('button',{className:'topbar-icon-btn',title:'Reload the app',
             onClick:()=>window.location.reload()},React.createElement(IconRefresh,null),React.createElement('span',null,'Refresh')),
-          React.createElement('button',{className:'topbar-icon-btn',
+          CLOUD_SYNC_ENABLED
+            // Cloud mode: show whether edits have actually reached the cloud, not just this browser.
+            ?React.createElement('button',{className:'topbar-icon-btn',
+              title:cloudStatus.state==='error'?'Not saved to the cloud yet ('+(cloudStatus.error||'network error')+') — kept on this device and retrying automatically'
+                :cloudStatus.state==='saving'?'Saving your changes to the cloud…'
+                :'Everything is saved to the cloud'+(cloudStatus.lastSyncedAt?' — last saved '+relativeTimeFromNow(cloudStatus.lastSyncedAt):''),
+              style:cloudStatus.state==='error'?{color:'var(--red)',borderColor:'var(--red)'}:undefined,
+              onClick:()=>{if(cloudStatus.state==='error'){retryDirtyCloudKeys();addToast('Retrying cloud save…','info');}else addToast(cloudStatus.state==='saving'?'Saving to the cloud…':'All changes are saved to the cloud','success');}},
+              React.createElement(IconSave,null),
+              React.createElement('span',null,cloudStatus.state==='error'?'NOT saved — retrying':cloudStatus.state==='saving'?'Saving…':'Saved to cloud'),
+              React.createElement('span',{className:'save-pulse-dot'+(saveActivity.pulsing||cloudStatus.state==='saving'?' active':'')})
+            )
+            :React.createElement('button',{className:'topbar-icon-btn',
             title:saveActivity.lastSavedAt?'Last saved '+relativeTimeFromNow(saveActivity.lastSavedAt)+' — all changes save automatically':'All changes are saved automatically',
             onClick:()=>addToast('All changes saved','success')},
             React.createElement(IconSave,null),
@@ -30055,7 +30426,8 @@ function App(){
             ?React.createElement('span',{title:'Set via this outlet\'s period picker below',style:{fontSize:11,padding:'4px 8px',border:'1px solid var(--border)',borderRadius:6,color:'var(--text2)'}},'FY '+period.fy)
             :React.createElement('select',{className:'form-control',style:{width:'auto',fontSize:11,padding:'4px 8px'},value:selFY,onChange:e=>setSelFY(e.target.value)},FYS.map(f=>React.createElement('option',{key:f,value:f},'FY '+f))),
           React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},new Date().toLocaleDateString('en-IN',{weekday:'short',month:'short',day:'numeric',year:'numeric'})),
-          React.createElement('div',{title:'Synced locally on this device',style:{width:8,height:8,borderRadius:'50%',background:'var(--green)',boxShadow:'0 0 6px var(--green)'}}),
+          (()=>{const c=!CLOUD_SYNC_ENABLED?'var(--green)':cloudStatus.state==='error'?'var(--red)':cloudStatus.state==='saving'?'var(--orange)':'var(--green)';
+            return React.createElement('div',{title:!CLOUD_SYNC_ENABLED?'Synced locally on this device':cloudStatus.state==='error'?'Cloud save failing — retrying':cloudStatus.state==='saving'?'Saving to the cloud…':'Live — synced with the cloud',style:{width:8,height:8,borderRadius:'50%',background:c,boxShadow:'0 0 6px '+c}});})(),
           React.createElement('span',{className:'role-chip'},user?.role),
           React.createElement('button',{className:'topbar-icon-btn',onClick:logout},React.createElement(IconLogOut,null),React.createElement('span',null,'Sign Out'))
         )
@@ -30073,7 +30445,11 @@ function App(){
           React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setBackupBannerDismissed(true)},'Dismiss for now')
         )
       ),
-      React.createElement('div',{className:'content'},React.createElement('div',{key:activePage+'_'+(selectedSalon?.id||''),className:'content-frame'},renderPage()))
+      CLOUD_SYNC_ENABLED&&cloudUpdateWaiting&&React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'8px 20px',background:'rgba(76,125,255,0.12)',borderBottom:'1px solid rgba(76,125,255,0.35)',fontSize:12.5,color:'var(--text)'}},
+        React.createElement('div',null,'↻ Other users have saved new changes. They\'ll appear as soon as you pause — or load them now (finish or close any open form first).'),
+        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:applyCloudUpdatesNow},'Show latest')
+      ),
+      React.createElement('div',{className:'content'},React.createElement('div',{key:activePage+'_'+(selectedSalon?.id||'')+'_'+dataVersion,className:'content-frame'},renderPage()))
     )
   ));
 }
