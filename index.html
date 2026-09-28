@@ -1532,15 +1532,56 @@ async function _cloudSession(){
   const{data:{session}}=await supa.auth.getSession();
   return{supa,session};
 }
+// The database only lets each login read/change the outlets User Management gives it; a refused
+// write is reported as this error so the caller can undo it locally instead of retrying forever.
+function cloudPermissionError(){const e=new Error('View-only access — change not saved');e.permissionDenied=true;return e;}
+// Moves any freshly attached files (data: URLs) inside this key's value into private storage,
+// replacing them with "sbfile:" references, before the value goes to the cloud. Files go under the
+// key's outlet folder, so storage applies the same per-outlet access as the data itself.
+const _uploadedDataUrls=new Map(); // folder|data: URL -> sbfile ref, so a re-save of the same file never re-uploads
+async function externalizeAttachments(key){
+  const raw=localStorage.getItem(key);
+  if(!raw||raw.indexOf('"dataUrl":"data:')<0)return;
+  const m=/_outlet_(\d+)$/.exec(key);
+  const folder=m?'outlet_'+m[1]:'global';
+  const supa=await getSupabaseClient();
+  const val=JSON.parse(raw);
+  const walk=async(node)=>{
+    if(Array.isArray(node)){for(const x of node)await walk(x);return;}
+    if(!node||typeof node!=='object')return;
+    if(typeof node.dataUrl==='string'&&node.dataUrl.indexOf('data:')===0){
+      // Cached per folder: the same file attached in two outlets must be stored in both, or
+      // someone with access to only one of them couldn't open it.
+      const cacheKey=folder+'|'+node.dataUrl;
+      let ref=_uploadedDataUrls.get(cacheKey);
+      if(!ref){
+        const blob=await(await fetch(node.dataUrl)).blob();
+        const safe=String(node.name||'file').replace(/[^\w.\-]+/g,'_').slice(-80);
+        const path=folder+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'-'+safe;
+        const{error}=await supa.storage.from(FILES_BUCKET).upload(path,blob,{contentType:node.type||blob.type||'application/octet-stream',upsert:false});
+        if(error){if(/row-level security|unauthori[sz]ed|403/i.test((error.message||'')+' '+(error.statusCode||'')))throw cloudPermissionError();throw error;}
+        ref=SBFILE_PREFIX+path;
+        _uploadedDataUrls.set(cacheKey,ref);
+      }
+      node.dataUrl=ref;
+    }
+    for(const k of Object.keys(node))if(k!=='dataUrl')await walk(node[k]);
+  };
+  await walk(val);
+  if(localStorage.getItem(key)===raw)applyCloudValue(key,JSON.stringify(val)); // unless edited again meanwhile
+}
 // Pushes this browser's current value for one key, merged with whatever is in the cloud now.
 async function cloudPushKey(key){
   const{supa,session}=await _cloudSession();
   if(!session){notifyCloudSessionLost();throw new Error('Not signed in');}
   for(let attempt=0;attempt<6;attempt++){
+    await externalizeAttachments(key);
     const local=localStorage.getItem(key);
     if(local==null)return; // removed locally — removals aren't synced (same as before)
+    if(local.indexOf('"dataUrl":"data:')>=0)continue; // edited during the upload — externalize again
     const{data:row,error:readErr}=await supa.from('kv_store').select('value,updated_at').eq('key',key).maybeSingle();
     if(readErr)throw readErr;
+    if(row&&row.value===local){_cloudBase[key]=local;_cloudUpdatedAt[key]=row.updated_at;return;} // already saved — nothing to write
     let merged=local;
     if(row&&row.value!=null&&row.value!==local&&row.value!==_cloudBase[key])
       merged=mergeCloudValues(_cloudBase[key],local,row.value);
@@ -1550,10 +1591,22 @@ async function cloudPushKey(key){
       res=await supa.from('kv_store').update({value:merged,updated_at:now,updated_by:session.user.id}).eq('key',key).eq('updated_at',row.updated_at).select('key');
     }else{
       res=await supa.from('kv_store').insert({key,value:merged,updated_at:now,updated_by:session.user.id}).select('key');
-      if(res.error&&(res.error.code==='23505'||/duplicate/i.test(res.error.message||'')))continue; // another ID created it first — merge with theirs
+      if(res.error&&(res.error.code==='42501'||/row-level security/i.test(res.error.message||'')))throw cloudPermissionError();
+      // Duplicate: another ID created it first — merge with theirs. (If this login couldn't even
+      // see the existing row, it has no access to it at all.)
+      if(res.error&&(res.error.code==='23505'||/duplicate/i.test(res.error.message||''))){
+        if(attempt>0){const{data:vis}=await supa.from('kv_store').select('key').eq('key',key).maybeSingle();if(!vis)throw cloudPermissionError();}
+        continue;
+      }
     }
-    if(res.error)throw res.error;
-    if(!res.data||!res.data.length)continue; // changed on the server between read and write — merge again
+    if(res.error){if(res.error.code==='42501')throw cloudPermissionError();throw res.error;}
+    if(!res.data||!res.data.length){
+      // Zero rows updated: either someone saved in between (merge again) or this login may only
+      // view this key — the database silently skips rows it isn't allowed to change.
+      const{data:chk}=await supa.from('kv_store').select('updated_at').eq('key',key).maybeSingle();
+      if(!chk||chk.updated_at===row.updated_at)throw cloudPermissionError();
+      continue;
+    }
     // Open screens still hold `local` in memory and their next edit builds on it, so `local` stays
     // the merge base. If the merge pulled in other IDs' changes, the cloud now differs from this
     // browser: leave _cloudUpdatedAt stale so the next update check brings the merged copy down
@@ -1585,6 +1638,19 @@ function queueCloudPush(key,value,delay){
       refreshCloudStatus();
     }catch(e){
       _cloudPushing--;
+      if(e&&e.permissionDenied){
+        // Not a failure to retry: this login may only view this sheet/outlet. Drop the edit and
+        // bring the cloud copy back (the next update check re-downloads it and refreshes the screen).
+        _cloudDirty.delete(key);markCloudPending(key,false);
+        _cloudUpdatedAt[key]=null;
+        if(!_cloudPushFailedOnce[key]){
+          _cloudPushFailedOnce[key]=true;
+          try{if(_addToast)_addToast('You have view-only access here — that change was not saved. Ask your Super Admin for edit access if you need it.','warning',7000);}catch(e2){}
+        }
+        refreshCloudStatus();
+        notifyCloudDataChanged([key]);
+        return;
+      }
       setCloudStatus({state:'error',error:(e&&e.message)||'Network error'});
       if(!_cloudPushFailedOnce[key]){ // one toast per key per session — a flaky connection shouldn't spam every keystroke
         _cloudPushFailedOnce[key]=true;
@@ -1617,6 +1683,34 @@ async function cloudDeleteOutletData(salonId){
   }catch(e){
     try{if(_addToast)_addToast('Outlet removed here, but its data could not be deleted from the cloud: '+((e&&e.message)||'network error'),'error',8000);}catch(e2){}
   }
+}
+// This browser may still hold copies of outlets this login no longer has access to (from an
+// earlier login, or before access rules were enforced). Remove them — the cloud copy is untouched.
+function purgeOutletDataWithoutAccess(){
+  try{
+    const u=JSON.parse(sessionStorage.getItem('salonos_user')||'null');
+    if(!u||u.role==='Super Admin'||u.role==='Reviewer')return;
+    const oa=u.outletAccess&&Object.keys(u.outletAccess).length?u.outletAccess:null;
+    const allowed=new Set(oa?Object.keys(oa).filter(id=>oa[id]&&oa[id]!=='No Access'):(u.outletIds||[]).map(String));
+    const pending=new Set(loadCloudPending());
+    const drop=[];
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);const m=k&&k.indexOf('salonos_')===0&&/_outlet_(\d+)$/.exec(k);
+      if(m&&!allowed.has(m[1])&&!pending.has(k))drop.push(k);
+    }
+    drop.forEach(k=>cachedLocalRemove(k));
+  }catch(e){}
+}
+function migrateInlineAttachments(){
+  try{
+    // Done from a Super Admin's browser only — they can write every outlet, so nobody with
+    // view-only access gets "not saved" notices for a background move they never asked for.
+    const u=JSON.parse(sessionStorage.getItem('salonos_user')||'null');
+    if(!u||u.role!=='Super Admin')return;
+    const keys=[];
+    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.indexOf('salonos_')===0&&(localStorage.getItem(k)||'').indexOf('"dataUrl":"data:')>=0)keys.push(k);}
+    keys.forEach((k,i)=>queueCloudPush(k,null,i*400));
+  }catch(e){}
 }
 // Retries anything still unsaved (after a network blip) — called by the periodic sync loop.
 function retryDirtyCloudKeys(){
@@ -1738,8 +1832,12 @@ async function cloudPullAndHydrate(){
       _cloudUpdatedAt[row.key]=row.updated_at;
     });
     stillPending.forEach(k=>_cloudDirty.add(k));
+    purgeOutletDataWithoutAccess();
     _cloudSyncReady=true;
     refreshCloudStatus();
+    // Files attached before documents moved to cloud storage are still inline in some sheets —
+    // re-save those once so they get moved (runs quietly in the background, a few seconds in).
+    setTimeout(migrateInlineAttachments,4000);
   }catch(e){
     try{if(_addToast)_addToast('Could not load your data from the cloud — showing what is cached on this device','error',7000);}catch(e2){}
     _cloudSyncReady=true; // still let the app proceed with whatever's cached locally rather than blocking forever
@@ -1806,9 +1904,35 @@ function readFileAsAttachment(file,onDone,onError){
   reader.onerror=()=>onError&&onError('read');
   reader.readAsDataURL(file);
 }
+// ── Documents live in private cloud storage (bucket salonos-files, access-checked per outlet),
+// not inside the data rows: a stored record's dataUrl is a reference "sbfile:<path>" instead of
+// the file's bytes. The UI still treats any non-empty dataUrl as "has a file"; only opening one
+// needs a short-lived signed link. New attachments are read in as normal data: URLs (so OCR etc.
+// work instantly) and moved to storage when saved — see externalizeAttachments. ──
+const FILES_BUCKET='salonos-files';
+const SBFILE_PREFIX='sbfile:';
+function isStoredFileRef(u){return typeof u==='string'&&u.indexOf(SBFILE_PREFIX)===0;}
+async function signedFileUrl(ref,downloadName){
+  const supa=await getSupabaseClient();
+  const{data,error}=await supa.storage.from(FILES_BUCKET).createSignedUrl(ref.slice(SBFILE_PREFIX.length),120,downloadName?{download:downloadName}:undefined);
+  if(error)throw error;
+  return data.signedUrl;
+}
+async function resolveAttachmentDataUrl(u){
+  if(!isStoredFileRef(u))return u;
+  const blob=await(await fetch(await signedFileUrl(u))).blob();
+  return await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('Could not read the file'));r.readAsDataURL(blob);});
+}
+function openStoredFile(ref,name){
+  signedFileUrl(ref,name||'attachment').then(url=>{
+    const a=document.createElement('a');a.href=url;a.rel='noopener';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+  }).catch(e=>{try{if(_addToast)_addToast('Could not open the file: '+((e&&e.message)||'network error'),'error',6000);}catch(e2){}});
+}
 function downloadAttachment(rec,fallbackName){
   if(!rec)return false;
   if(typeof rec==='string'||!rec.dataUrl)return false;
+  if(isStoredFileRef(rec.dataUrl)){openStoredFile(rec.dataUrl,rec.name||fallbackName);return true;}
   const a=document.createElement('a');
   a.href=rec.dataUrl;a.download=rec.name||fallbackName||'attachment';
   document.body.appendChild(a);a.click();document.body.removeChild(a);
@@ -1859,7 +1983,8 @@ async function renderPdfFirstPageToDataUrl(dataUrl){
 async function ocrReadClosingBalance(attachmentRec){
   if(!attachmentRec||typeof attachmentRec==='string'||!attachmentRec.dataUrl)throw new Error("This attachment has no readable file (it was saved by an older version) — remove it and re-attach.");
   const isPdf=(attachmentRec.type||'').includes('pdf')||/\.pdf$/i.test(attachmentRec.name||'');
-  const imgDataUrl=isPdf?await renderPdfFirstPageToDataUrl(attachmentRec.dataUrl):attachmentRec.dataUrl;
+  const srcDataUrl=await resolveAttachmentDataUrl(attachmentRec.dataUrl); // fetches it from cloud storage if needed
+  const imgDataUrl=isPdf?await renderPdfFirstPageToDataUrl(srcDataUrl):srcDataUrl;
   await loadScript(CDN_TESSERACT_URL);
   if(!window.Tesseract)throw new Error('OCR engine unavailable — check your internet connection.');
   const result=await window.Tesseract.recognize(imgDataUrl,'eng');
@@ -5922,6 +6047,87 @@ function MasterSheet({onSelect,salons,setSalons,user}){
   );
 }
 
+// ── Cloud Backups (Super Admin) — Supabase keeps a full snapshot of every outlet's data every
+// night at 2:00 AM (30 days kept) plus any taken here (90 days). Restoring first saves a
+// "before restore" snapshot, so a restore can itself be undone. ──
+function CloudBackupsCard(){
+  const {success,error:toastError}=useToast();
+  const [rows,setRows]=useState(null);
+  const [busy,setBusy]=useState(false);
+  const [restoreFor,setRestoreFor]=useState(null);
+  const [restoreOutlet,setRestoreOutlet]=useState('all');
+  const [confirmText,setConfirmText]=useState('');
+  const salonsList=loadSalonsFromStorage();
+  const KIND={auto:'Nightly',manual:'Manual','pre-restore':'Before restore'};
+  const load=useCallback(async()=>{
+    try{
+      const supa=await getSupabaseClient();
+      const{data,error}=await supa.from('kv_backups').select('id,taken_at,kind,rows_count').order('taken_at',{ascending:false}).limit(60);
+      if(error)throw error;
+      setRows(data||[]);
+    }catch(e){setRows([]);toastError('Could not load cloud backups: '+(e.message||'network error'));}
+  },[]);
+  useEffect(()=>{load();},[load]);
+  const backupNow=async()=>{
+    setBusy(true);
+    try{
+      const supa=await getSupabaseClient();
+      const{error}=await supa.rpc('salonos_take_backup',{p_kind:'manual'});
+      if(error)throw error;
+      success('Cloud backup taken');await load();
+    }catch(e){toastError('Backup failed: '+(e.message||'network error'));}
+    setBusy(false);
+  };
+  const doRestore=async()=>{
+    setBusy(true);
+    try{
+      const supa=await getSupabaseClient();
+      const{data,error}=await supa.rpc('salonos_restore_backup',{p_backup_id:restoreFor.id,p_outlet_id:restoreOutlet==='all'?null:Number(restoreOutlet)});
+      if(error)throw error;
+      setRestoreFor(null);
+      success('Restored '+data+' record'+(data===1?'':'s')+'. Everyone\'s screens will update in a moment.');
+      notifyCloudDataChanged([]);
+      await load();
+    }catch(e){toastError('Restore failed: '+(e.message||'network error'));}
+    setBusy(false);
+  };
+  const fmt=(ts)=>new Date(ts).toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'numeric',minute:'2-digit'});
+  return React.createElement('div',{className:'card',style:{marginBottom:16}},
+    React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:8}},
+      React.createElement('div',{className:'card-title',style:{marginBottom:0}},'☁️ Cloud Backups'),
+      React.createElement('button',{className:'btn btn-primary btn-sm'+(busy?' btn-loading':''),disabled:busy,onClick:backupNow},'Back up now')
+    ),
+    React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:12,lineHeight:1.6}},
+      'Every outlet\'s data is backed up automatically every night at 2:00 AM and kept for 30 days (manual backups: 90 days). Restoring saves a "Before restore" backup first, so any restore can be undone.'),
+    rows===null?React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},'Loading…')
+    :rows.length===0?React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},'No backups yet — the first nightly backup runs at 2:00 AM.')
+    :React.createElement('div',{style:{maxHeight:300,overflowY:'auto',border:'1px solid var(--border)',borderRadius:'var(--r)'}},
+      rows.map(r=>React.createElement('div',{key:r.id,style:{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',borderBottom:'1px solid var(--border)',fontSize:12.5}},
+        React.createElement('div',{style:{flex:1,minWidth:0}},
+          React.createElement('div',{style:{color:'var(--text)'}},fmt(r.taken_at)),
+          React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},(KIND[r.kind]||r.kind)+' · '+r.rows_count+' records')),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,onClick:()=>{setRestoreFor(r);setRestoreOutlet('all');setConfirmText('');}},'Restore…')))),
+    restoreFor&&React.createElement('div',{className:'modal-overlay',onClick:()=>!busy&&setRestoreFor(null)},
+      React.createElement('div',{className:'modal',style:{width:460},onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-title'},'Restore backup of '+fmt(restoreFor.taken_at)),
+        React.createElement('div',{style:{fontSize:13,color:'var(--text2)',marginBottom:12,lineHeight:1.6}},
+          'This replaces the current data with this backup for everyone. Anything entered after this backup (in what you restore) will be removed. A "Before restore" backup is saved first, so you can undo this.'),
+        React.createElement('div',{className:'form-group',style:{marginBottom:12}},
+          React.createElement('label',null,'What to restore'),
+          React.createElement('select',{className:'form-control',value:restoreOutlet,onChange:e=>setRestoreOutlet(e.target.value)},
+            React.createElement('option',{value:'all'},'Everything (all outlets + settings)'),
+            salonsList.map(s=>React.createElement('option',{key:s.id,value:String(s.id)},'Only '+s.name)))),
+        React.createElement('div',{className:'form-group'},
+          React.createElement('label',null,'Type RESTORE to confirm'),
+          React.createElement('input',{className:'form-control',value:confirmText,onChange:e=>setConfirmText(e.target.value),placeholder:'RESTORE'})),
+        React.createElement('div',{className:'modal-actions',style:{marginTop:16}},
+          React.createElement('button',{className:'btn btn-ghost',disabled:busy,onClick:()=>setRestoreFor(null)},'Cancel'),
+          React.createElement('button',{className:'btn btn-danger'+(busy?' btn-loading':''),disabled:busy||confirmText.trim().toUpperCase()!=='RESTORE',onClick:doRestore},'Restore')
+        )
+      )
+    )
+  );
+}
 function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup}={}){
   const {success,error:toastError,warn}=useToast();
   const [importMsg,setImportMsg]=useState('');
@@ -5971,6 +6177,7 @@ function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup}={}){
   return React.createElement('div',{className:'fade-in'},
     React.createElement('div',{className:'page-title'},'Master Settings'),
     React.createElement('div',{className:'page-sub'},'Global configuration and statutory applicability'),
+    CLOUD_SYNC_ENABLED&&React.createElement(CloudBackupsCard,null),
     React.createElement('div',{className:'card',style:{marginBottom:16}},
       React.createElement('div',{className:'card-title'},'💾 Backup & Restore'),
       React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:14,lineHeight:1.6}},'Every outlet\'s data — employees, attendance, salary, bank statements, collections, vendors and invoices — lives in this browser\'s local storage. Take a backup regularly, and before clearing browser data or switching devices.'),
@@ -8382,6 +8589,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       crToastErr('This attachment was saved by an older version and its file was never actually stored — please remove it and re-attach the file to enable download.');
       return;
     }
+    if(isStoredFileRef(rec.dataUrl)){openStoredFile(rec.dataUrl,rec.name||('cash-register-'+iso));return;}
     const a=document.createElement('a');
     a.href=rec.dataUrl;a.download=rec.name||('cash-register-'+iso);
     document.body.appendChild(a);a.click();document.body.removeChild(a);
@@ -30196,6 +30404,7 @@ function App(){
       setSyncing(false);
     }
     setUser(u);setLoggedIn(true);sessionStorage.setItem('salonos_user',JSON.stringify(u));
+    if(CLOUD_SYNC_ENABLED)purgeOutletDataWithoutAccess(); // needs the signed-in user, set just above
     if(!CLOUD_SYNC_ENABLED){
       try{
         const accts=loadUserAccounts();
