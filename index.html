@@ -1677,7 +1677,31 @@ let _cloudLoopStarted=false;
 function startCloudSyncLoop(){
   if(!CLOUD_SYNC_ENABLED||_cloudLoopStarted)return;
   _cloudLoopStarted=true;
-  setInterval(()=>{if(document.visibilityState==='visible'){retryDirtyCloudKeys();cloudCheckForUpdates();}},15000);
+  // Instant path: Supabase Realtime pushes every kv_store change the moment it's saved. It only
+  // delivers once kv_store is in the supabase_realtime publication (one SQL line in Supabase);
+  // until then — or if the socket drops — the fast poll below keeps other IDs' edits appearing
+  // within ~5s. Once Realtime has proven it's delivering, the poll backs off to a 30s safety net.
+  let lastRealtimeAt=0,rtTimer=null;
+  getSupabaseClient().then(supa=>{
+    if(!supa)return;
+    supa.channel('salonos-kv-live')
+      .on('postgres_changes',{event:'*',schema:'public',table:'kv_store'},payload=>{
+        lastRealtimeAt=Date.now();
+        const row=payload.new||{};
+        if(row.key&&localStorage.getItem(row.key)===row.value)return; // our own save echoing back
+        clearTimeout(rtTimer);
+        rtTimer=setTimeout(cloudCheckForUpdates,250); // coalesce a burst of saves into one check
+      })
+      .subscribe();
+  }).catch(()=>{});
+  let lastPoll=0;
+  setInterval(()=>{
+    if(document.visibilityState!=='visible')return;
+    const realtimeLive=Date.now()-lastRealtimeAt<10*60*1000;
+    if(Date.now()-lastPoll<(realtimeLive?30000:5000))return;
+    lastPoll=Date.now();
+    retryDirtyCloudKeys();cloudCheckForUpdates();
+  },1000);
   window.addEventListener('focus',()=>cloudCheckForUpdates());
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')cloudCheckForUpdates();});
   window.addEventListener('online',()=>{retryDirtyCloudKeys();cloudCheckForUpdates();});
@@ -30097,17 +30121,18 @@ function App(){
     if(!CLOUD_SYNC_ENABLED)return;
     let lastActivity=0,waiting=false;
     const mark=()=>{lastActivity=Date.now();};
-    const evs=['keydown','mousedown','wheel','touchstart','input'];
+    // Only genuine typing or an open form holds updates back. Scrolling, tapping, or a dropdown
+    // that simply kept focus after a pick used to block them indefinitely, so other IDs' changes
+    // never appeared until a manual refresh. (Inline edits are saved as they're typed, so a
+    // refresh after a pause can't lose them — unsaved keys are never overwritten.)
+    const evs=['keydown','input'];
     evs.forEach(ev=>window.addEventListener(ev,mark,true));
-    const busy=()=>{
-      const a=document.activeElement;
-      return Date.now()-lastActivity<5000||!!document.querySelector('.modal-overlay')||!!(a&&['INPUT','TEXTAREA','SELECT'].includes(a.tagName));
-    };
+    const busy=()=>Date.now()-lastActivity<3000||!!document.querySelector('.modal-overlay');
     const onUpdates=()=>{
       if(busy()){waiting=true;setCloudUpdateWaiting(true);}
       else{waiting=false;applyCloudUpdatesNow();}
     };
-    const t=setInterval(()=>{if(waiting&&!busy()){waiting=false;applyCloudUpdatesNow();}},3000);
+    const t=setInterval(()=>{if(waiting&&!busy()){waiting=false;applyCloudUpdatesNow();}},1000);
     window.addEventListener('salonos-cloud-data',onUpdates);
     return()=>{evs.forEach(ev=>window.removeEventListener(ev,mark,true));clearInterval(t);window.removeEventListener('salonos-cloud-data',onUpdates);};
   },[applyCloudUpdatesNow]);
