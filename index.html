@@ -1315,16 +1315,34 @@ async function getSupabaseClient(){
 let _cloudSyncReady=!CLOUD_SYNC_ENABLED;
 const _cloudPushTimers={};
 const _cloudPushFailedOnce={};
+// Keys saved on this device that haven't reached kv_store yet (no session, network error). Kept in
+// localStorage so they survive a reload/re-login and get pushed up BEFORE the next pull, instead
+// of being silently overwritten by the server copy and never seen from any other login.
+const CLOUD_PENDING_KEY='salonos_cloud_pending';
+function loadCloudPending(){try{return JSON.parse(localStorage.getItem(CLOUD_PENDING_KEY))||[];}catch(e){return[];}}
+function markCloudPending(key,pending){
+  try{
+    const s=new Set(loadCloudPending());
+    if(pending)s.add(key);else s.delete(key);
+    localStorage.setItem(CLOUD_PENDING_KEY,JSON.stringify(Array.from(s)));
+  }catch(e){}
+}
+// Fired when a push finds no valid Supabase session — the App shell listens and sends the user
+// back to the login screen, since everything else (user list, other IDs' data) is empty too.
+function notifyCloudSessionLost(){try{window.dispatchEvent(new Event('salonos-session-lost'));}catch(e){}}
 function queueCloudPush(key,value){
-  if(!CLOUD_SYNC_ENABLED||!_cloudSyncReady)return;
+  if(!CLOUD_SYNC_ENABLED||key===CLOUD_PENDING_KEY)return;
+  markCloudPending(key,true);
+  if(!_cloudSyncReady)return;
   clearTimeout(_cloudPushTimers[key]);
   _cloudPushTimers[key]=setTimeout(async()=>{
     try{
       const supa=await getSupabaseClient();
       const{data:{session}}=await supa.auth.getSession();
-      if(!session)return; // signed out mid-edit (or session expired) — local copy is still safe, nothing to push to
+      if(!session){notifyCloudSessionLost();return;} // session expired — key stays pending, pushed after the next login
       const{error}=await supa.from('kv_store').upsert({key,value,updated_at:new Date().toISOString(),updated_by:session.user.id});
       if(error)throw error;
+      markCloudPending(key,false);
       _cloudPushFailedOnce[key]=false;
     }catch(e){
       if(!_cloudPushFailedOnce[key]){ // one toast per key per session — a flaky connection shouldn't spam every keystroke
@@ -1341,10 +1359,23 @@ async function cloudPullAndHydrate(){
   if(!CLOUD_SYNC_ENABLED)return;
   try{
     const supa=await getSupabaseClient();
+    const{data:{session}}=await supa.auth.getSession();
+    if(!session)throw new Error('No cloud session');
+    // Push anything saved on this device while it couldn't reach the cloud first, so the pull
+    // below doesn't overwrite it with the older server copy.
+    const pending=loadCloudPending();
+    const stillPending=[];
+    for(const key of pending){
+      const value=localStorage.getItem(key);
+      if(value==null)continue;
+      const{error:pushErr}=await supa.from('kv_store').upsert({key,value,updated_at:new Date().toISOString(),updated_by:session.user.id});
+      if(pushErr)stillPending.push(key);
+    }
+    try{localStorage.setItem(CLOUD_PENDING_KEY,JSON.stringify(stillPending));}catch(e){}
     const{data,error}=await supa.from('kv_store').select('key,value');
     if(error)throw error;
     (data||[]).forEach(row=>{
-      if(row.value==null)return;
+      if(row.value==null||stillPending.includes(row.key))return;
       localStorage.setItem(row.key,row.value);
       _lsReadCache[row.key]=row.value;
     });
@@ -5694,8 +5725,11 @@ function UserManagement(){
   const refreshCloudUsers=useCallback(async()=>{
     if(!CLOUD_SYNC_ENABLED)return;
     const supa=await getSupabaseClient();
+    const{data:{session}}=await supa.auth.getSession();
+    if(!session){notifyCloudSessionLost();return;}
     const{data,error}=await supa.from('profiles').select('*').order('created_at',{ascending:true});
-    if(!error&&data)setCloudUsers(data.map(p=>({
+    if(error){toast('Could not load users: '+(error.message||'unknown error'),'error');return;}
+    if(data)setCloudUsers(data.map(p=>({
       id:p.id,name:p.name,email:p.email,role:p.role,access:p.access,
       outletIds:p.outlet_ids||[],
       // outlet_access / sheet_access_by_outlet are real jsonb columns on profiles (see
@@ -29668,11 +29702,32 @@ function App(){
   // queueCloudPush silently no-ops on every single edit made after the refresh (see its guard
   // near CLOUD_SYNC_ENABLED). This re-runs the same pull-and-mark-ready step handleLogin does,
   // once, whenever the app mounts already logged in.
+  // The app's own "logged in" flag lives in sessionStorage, but every cloud read/write needs a live
+  // Supabase session too. When that session has expired or been revoked, Supabase answers with
+  // empty lists instead of an error — User Management shows 0 users, other IDs' data never loads,
+  // and saves never leave this browser. So: verify it on mount, and drop back to the login screen
+  // whenever it's found missing, rather than carrying on half-logged-in.
+  const forceRelogin=useCallback(()=>{
+    if(!sessionStorage.getItem('salonos_user'))return;
+    sessionStorage.removeItem('salonos_user');setLoggedIn(false);setUser(null);
+    addToast('Your login session has expired — please sign in again. Unsynced changes on this device will be uploaded after you sign in.','warning',9000);
+  },[]);
   useEffect(()=>{
-    if(CLOUD_SYNC_ENABLED&&loggedIn&&!_cloudSyncReady){
-      setSyncing(true);
-      cloudPullAndHydrate().then(()=>setSyncing(false));
-    }
+    if(!CLOUD_SYNC_ENABLED)return;
+    window.addEventListener('salonos-session-lost',forceRelogin);
+    let sub=null;
+    getSupabaseClient().then(supa=>{
+      if(!supa)return;
+      sub=supa.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT')forceRelogin();}).data.subscription;
+      if(loggedIn&&!_cloudSyncReady){
+        supa.auth.getSession().then(({data:{session}})=>{
+          if(!session){forceRelogin();return;}
+          setSyncing(true);
+          cloudPullAndHydrate().then(()=>setSyncing(false));
+        });
+      }
+    }).catch(()=>{});
+    return()=>{window.removeEventListener('salonos-session-lost',forceRelogin);if(sub)sub.unsubscribe();};
   },[]);
   const handleLogin=async(u)=>{
     if(CLOUD_SYNC_ENABLED){
@@ -29697,7 +29752,9 @@ function App(){
   };
   const logout=()=>{
     sessionStorage.removeItem('salonos_user');setLoggedIn(false);setUser(null);
-    if(CLOUD_SYNC_ENABLED)getSupabaseClient().then(supa=>supa&&supa.auth.signOut()).catch(()=>{});
+    // scope:'local' — Supabase's default signOut() is global and revokes this account's session on
+    // EVERY device/browser, silently breaking cloud sync wherever else it was still open.
+    if(CLOUD_SYNC_ENABLED)getSupabaseClient().then(supa=>supa&&supa.auth.signOut({scope:'local'})).catch(()=>{});
   };
   const handleSelectSalon=(s)=>{
     const dp=defaultPeriods[s.id];
