@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0A0E1A">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231E40AF'/%3E%3Ctext x='16' y='22' font-family='Arial,sans-serif' font-size='16' font-weight='700' fill='white' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E">
 <link rel="manifest" href="manifest.json">
@@ -645,6 +645,70 @@ kbd{background:var(--bg4);border:1px solid var(--border2);border-radius:4px;padd
   .modal{padding:16px;width:94vw}
   .topbar-breadcrumb{font-size:12px}
 }
+
+/* ===== PHONE LAYOUT (≤640px) =====
+   The desktop chrome (3-row topbar, outlet bar, period bar, 27-tab strip) used ~40% of a phone
+   screen before any content. On phones: a one-row topbar with a ⋯ menu, a bottom tab bar inside
+   outlets plus a full-screen "All sheets" picker, single-column layouts, 16px inputs (iOS zooms
+   the page on focus below 16px), bigger tap targets, bottom-sheet modals, and notch/home-bar
+   safe areas for the installed app. Desktop is untouched. */
+.show-phone{display:none!important}
+.bottom-nav,.module-switch{display:none}
+@media(max-width:900px){
+  .topbar{padding-top:calc(8px + env(safe-area-inset-top))}
+  .sidebar{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+}
+@media(max-width:640px){
+  .hide-phone{display:none!important}
+  .show-phone{display:flex!important}
+  .topbar{flex-wrap:nowrap;gap:8px;padding-left:10px;padding-right:10px;padding-bottom:8px;min-height:52px}
+  .topbar-breadcrumb{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--text)}
+  .topbar-title{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
+  .topbar-right{flex-wrap:nowrap;padding:0;gap:6px;flex-shrink:0}
+  .lbl-full{display:none}
+  .lbl-short{display:inline!important}
+  .sidebar-hamburger{width:38px;height:38px;font-size:16px}
+  .content{padding:12px 12px calc(16px + env(safe-area-inset-bottom))}
+  .main.has-bottom-nav .content{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+  /* 16px stops iOS zooming into every field; dense grid cells inside tables keep their size */
+  .content input:not(td input):not(th input):not([type=checkbox]):not([type=radio]),.content select:not(td select),.content textarea,
+  .modal input:not([type=checkbox]):not([type=radio]),.modal select,.modal textarea{font-size:16px!important}
+  .btn{min-height:38px}
+  .btn-sm{min-height:34px}
+  .two-col,.crm{grid-template-columns:1fr!important}
+  .content [style*="grid-template-columns: 1fr 1fr"],.content [style*="grid-template-columns: minmax(0,2.1fr)"]{grid-template-columns:1fr!important}
+  .modal-overlay{align-items:flex-end}
+  .modal{width:100vw!important;max-width:100vw!important;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))!important}
+  /* Save/Cancel stay pinned to the bottom of long forms instead of being a long scroll away */
+  .modal>.modal-actions{position:sticky;bottom:calc(-18px - env(safe-area-inset-bottom));z-index:2;background:var(--bg2);border-top:1px solid var(--border);
+    padding:12px 0 calc(12px + env(safe-area-inset-bottom));margin-bottom:calc(-18px - env(safe-area-inset-bottom))}
+  .modal-actions{flex-wrap:wrap}
+  .modal-actions .btn{flex:1 1 auto}
+  .period-bar{padding:6px 6px 6px 12px;margin-bottom:10px;flex-wrap:nowrap;gap:6px}
+  .period-bar > span:first-child{display:none}
+  .period-bar .pv{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .period-bar .btn{white-space:nowrap;flex-shrink:0}
+  .module-switch{display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;margin-bottom:14px;background:var(--bg2);border:1px solid var(--border2);border-radius:12px;color:var(--text);font-size:15px;font-weight:600;text-align:left}
+  .module-switch .ms-icon{font-size:20px}
+  .module-switch .ms-more{margin-left:auto;font-size:12px;font-weight:500;color:var(--accent2)}
+  .bottom-nav{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:150;background:var(--bg2);border-top:1px solid var(--border);padding:4px 4px calc(4px + env(safe-area-inset-bottom));box-shadow:0 -6px 18px rgba(0,0,0,0.18)}
+  .bottom-nav button{background:none;border:0;color:var(--text3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px 2px;font-size:10.5px;line-height:1.15;min-height:54px;border-radius:10px;text-align:center}
+  .bottom-nav button.active{color:var(--accent2);background:rgba(47,95,224,0.12);font-weight:600}
+  .bottom-nav .bn-icon{font-size:20px;line-height:1}
+}
+.module-sheet{position:fixed;inset:0;z-index:300;background:var(--bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top);animation:modalOverlayIn .18s ease-out}
+.module-sheet-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border)}
+.module-sheet-head .form-control{flex:1;font-size:16px!important}
+.module-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 12px calc(20px + env(safe-area-inset-bottom));overflow-y:auto;align-content:start}
+.module-grid button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:12px 6px;border-radius:12px;background:var(--bg2);border:1px solid var(--border);border-top:3px solid var(--mgc,var(--accent));color:var(--text);font-size:11.5px;line-height:1.25;text-align:center;min-height:86px}
+.module-grid button.active{border-color:var(--accent);background:rgba(47,95,224,0.12)}
+.module-grid .mg-icon{font-size:24px;line-height:1}
+.phone-menu-backdrop{position:fixed;inset:0;z-index:250}
+.phone-menu{position:absolute;right:8px;top:calc(100% + 4px);z-index:260;background:var(--bg2);border:1px solid var(--border2);border-radius:14px;box-shadow:0 14px 36px rgba(0,0,0,0.35);width:240px;padding:6px;display:flex;flex-direction:column;gap:2px}
+.phone-menu button,.phone-menu .pm-row{display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;background:none;border:0;border-radius:10px;color:var(--text);font-size:14px;text-align:left;min-height:44px}
+.phone-menu button:active{background:var(--bg3)}
+.phone-menu .pm-meta{font-size:11.5px;color:var(--text3);padding:8px 12px 4px;border-top:1px solid var(--border);margin-top:4px}
+.lbl-short{display:none}
 
 /* ===== PERSISTENT BACKUP STATUS PILL ===== */
 .backup-pill{display:flex;align-items:center;gap:6px;font-size:10.5px;cursor:pointer;
@@ -30013,6 +30077,10 @@ function App(){
   // applies by itself as soon as they pause. ──
   const [dataVersion,setDataVersion]=useState(0);
   const [cloudUpdateWaiting,setCloudUpdateWaiting]=useState(false);
+  // Phone-only chrome: the topbar ⋯ menu and the full-screen "All sheets" picker.
+  const [phoneMenuOpen,setPhoneMenuOpen]=useState(false);
+  const [modulePickerOpen,setModulePickerOpen]=useState(false);
+  const [moduleQuery,setModuleQuery]=useState('');
   const applyCloudUpdatesNow=useCallback(async()=>{
     try{
       const scroller=document.querySelector('.content');
@@ -30280,7 +30348,8 @@ function App(){
     if(activePage==='salon'){
       const Comp=SALON_TAB_COMPONENTS[salonTab]||MasterSalarySheet;
       return React.createElement('div',{className:'fade-in'},
-        React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
+        // Phone: the outlet name is already in the topbar, so this bar is hidden there.
+        React.createElement('div',{className:'hide-phone',style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
           React.createElement('span',{style:{fontSize:12,color:'var(--text3)'}},'Outlet:'),
           React.createElement('span',{style:{fontSize:13,color:'var(--accent)',fontWeight:500}},selectedSalon?.name),
           React.createElement('span',{style:{marginLeft:'auto',fontSize:11,color:'var(--text3)',cursor:'pointer'},onClick:()=>setActivePage('master-sheet')},'← Back to Master Sheet')
@@ -30293,7 +30362,14 @@ function App(){
           selectedSalon&&defaultPeriods[selectedSalon.id]?React.createElement('button',{className:'btn btn-ghost btn-sm',
             onClick:()=>{pgSave(null,selectedSalon.id);setDefaultPeriods(prev=>{const n={...prev};delete n[selectedSalon.id];return n;});addToast('Default cleared for this outlet — it will ask for a period again','info')}},'Clear default'):null
         ),
-        React.createElement('div',{style:{display:'flex',alignItems:'center',gap:6,marginBottom:20}},
+        // Phone: one big "current sheet" button opening the full-screen sheet picker, instead of a
+        // 27-tab strip that shows two tabs at a time.
+        (()=>{const cur=visibleSalonTabs.find(t=>t.id===salonTab);
+          return React.createElement('button',{type:'button',className:'module-switch',onClick:()=>{setModuleQuery('');setModulePickerOpen(true);}},
+            React.createElement('span',{className:'ms-icon'},cur?cur.icon:'📋'),
+            React.createElement('span',null,cur?cur.label:'Choose a sheet'),
+            React.createElement('span',{className:'ms-more'},'All sheets ▾'));})(),
+        React.createElement('div',{className:'hide-phone',style:{display:'flex',alignItems:'center',gap:6,marginBottom:20}},
           React.createElement('button',{type:'button','aria-label':'Scroll sheets left',className:'btn btn-ghost btn-sm',style:{flexShrink:0,padding:'6px 9px'},onClick:()=>salonTabBarScrollTo(-1)},'‹'),
           React.createElement('div',{className:'tab-bar',id:'salon-tab-bar',style:{marginBottom:0,flex:1}},
             visibleSalonTabs.map(t=>React.createElement('button',{key:t.id,className:`tab-btn ${salonTab===t.id?'active':''}`,onClick:()=>setSalonTab(t.id),
@@ -30379,18 +30455,18 @@ function App(){
         React.createElement('div',{style:{fontSize:9.5,color:'var(--text3)',textAlign:'center',marginTop:10,paddingTop:10,borderTop:'1px solid var(--border)',letterSpacing:'0.02em'}},'Developed By CA Dharmender Saini, Gurugram')
       )
     ),
-    React.createElement('div',{className:'main'},
+    React.createElement('div',{className:'main'+(activePage==='salon'&&selectedSalon&&period&&!gateFor?' has-bottom-nav':'')},
       React.createElement('div',{className:'topbar'},
         React.createElement('div',{className:'topbar-breadcrumb',style:{display:'flex',alignItems:'center',gap:10}},
           React.createElement('button',{className:'sidebar-hamburger',title:'Menu',onClick:()=>setSidebarOpen(o=>!o)},
             React.createElement('span',null,'☰')),
           canGoBack&&React.createElement('button',{className:'topbar-icon-btn',title:'Go back to the previous screen (Alt+←)',onClick:goBack,style:{padding:'4px 8px'}},
-            React.createElement('span',null,'←'),React.createElement('span',null,'Back')
+            React.createElement('span',null,'←'),React.createElement('span',{className:'lbl-full'},'Back')
           ),
-          activePage==='salon'&&selectedSalon?selectedSalon.name:'SalonOS'
+          React.createElement('span',{className:'topbar-title'},activePage==='salon'&&selectedSalon?selectedSalon.name:'SalonOS')
         ),
         React.createElement('div',{className:'topbar-right'},
-          React.createElement('button',{className:'topbar-icon-btn',title:'Reload the app',
+          React.createElement('button',{className:'topbar-icon-btn hide-phone',title:'Reload the app',
             onClick:()=>window.location.reload()},React.createElement(IconRefresh,null),React.createElement('span',null,'Refresh')),
           CLOUD_SYNC_ENABLED
             // Cloud mode: show whether edits have actually reached the cloud, not just this browser.
@@ -30401,7 +30477,8 @@ function App(){
               style:cloudStatus.state==='error'?{color:'var(--red)',borderColor:'var(--red)'}:undefined,
               onClick:()=>{if(cloudStatus.state==='error'){retryDirtyCloudKeys();addToast('Retrying cloud save…','info');}else addToast(cloudStatus.state==='saving'?'Saving to the cloud…':'All changes are saved to the cloud','success');}},
               React.createElement(IconSave,null),
-              React.createElement('span',null,cloudStatus.state==='error'?'NOT saved — retrying':cloudStatus.state==='saving'?'Saving…':'Saved to cloud'),
+              React.createElement('span',{className:'lbl-full'},cloudStatus.state==='error'?'NOT saved — retrying':cloudStatus.state==='saving'?'Saving…':'Saved to cloud'),
+              React.createElement('span',{className:'lbl-short'},cloudStatus.state==='error'?'Not saved':cloudStatus.state==='saving'?'Saving…':'Saved'),
               React.createElement('span',{className:'save-pulse-dot'+(saveActivity.pulsing||cloudStatus.state==='saving'?' active':'')})
             )
             :React.createElement('button',{className:'topbar-icon-btn',
@@ -30415,21 +30492,36 @@ function App(){
           // (set via the period bar below) rather than being a second, independently-changeable
           // FY, so the two never show conflicting values. Elsewhere (Master Dashboard etc.) it's
           // the normal editable global-report FY selector.
-          React.createElement('button',{className:'theme-toggle',onClick:()=>setTheme(theme==='light'?'dark':'light'),
+          React.createElement('button',{className:'theme-toggle hide-phone',onClick:()=>setTheme(theme==='light'?'dark':'light'),
             title:theme==='light'?'Switch to dark':'Switch to light'},theme==='light'?React.createElement(IconMoon,null):React.createElement(IconSun,null),
             React.createElement('span',null,theme==='light'?'Dark':'Light')),
-          React.createElement('div',{className:'kbd-hint',onClick:()=>setCmdOpen(true),title:'Quick jump'},
+          React.createElement('div',{className:'kbd-hint hide-phone',onClick:()=>setCmdOpen(true),title:'Quick jump'},
             React.createElement(IconSearch,{size:13}),
             React.createElement('span',null,'Search'),
             React.createElement('kbd',null,navigator.platform.indexOf('Mac')>-1?'⌘K':'Ctrl K')),
           activePage==='salon'&&period
-            ?React.createElement('span',{title:'Set via this outlet\'s period picker below',style:{fontSize:11,padding:'4px 8px',border:'1px solid var(--border)',borderRadius:6,color:'var(--text2)'}},'FY '+period.fy)
-            :React.createElement('select',{className:'form-control',style:{width:'auto',fontSize:11,padding:'4px 8px'},value:selFY,onChange:e=>setSelFY(e.target.value)},FYS.map(f=>React.createElement('option',{key:f,value:f},'FY '+f))),
-          React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},new Date().toLocaleDateString('en-IN',{weekday:'short',month:'short',day:'numeric',year:'numeric'})),
+            ?React.createElement('span',{className:'hide-phone',title:'Set via this outlet\'s period picker below',style:{fontSize:11,padding:'4px 8px',border:'1px solid var(--border)',borderRadius:6,color:'var(--text2)'}},'FY '+period.fy)
+            :React.createElement('select',{className:'form-control hide-phone',style:{width:'auto',fontSize:11,padding:'4px 8px'},value:selFY,onChange:e=>setSelFY(e.target.value)},FYS.map(f=>React.createElement('option',{key:f,value:f},'FY '+f))),
+          React.createElement('div',{className:'hide-phone',style:{fontSize:12,color:'var(--text3)'}},new Date().toLocaleDateString('en-IN',{weekday:'short',month:'short',day:'numeric',year:'numeric'})),
           (()=>{const c=!CLOUD_SYNC_ENABLED?'var(--green)':cloudStatus.state==='error'?'var(--red)':cloudStatus.state==='saving'?'var(--orange)':'var(--green)';
-            return React.createElement('div',{title:!CLOUD_SYNC_ENABLED?'Synced locally on this device':cloudStatus.state==='error'?'Cloud save failing — retrying':cloudStatus.state==='saving'?'Saving to the cloud…':'Live — synced with the cloud',style:{width:8,height:8,borderRadius:'50%',background:c,boxShadow:'0 0 6px '+c}});})(),
-          React.createElement('span',{className:'role-chip'},user?.role),
-          React.createElement('button',{className:'topbar-icon-btn',onClick:logout},React.createElement(IconLogOut,null),React.createElement('span',null,'Sign Out'))
+            return React.createElement('div',{className:'hide-phone',title:!CLOUD_SYNC_ENABLED?'Synced locally on this device':cloudStatus.state==='error'?'Cloud save failing — retrying':cloudStatus.state==='saving'?'Saving to the cloud…':'Live — synced with the cloud',style:{width:8,height:8,borderRadius:'50%',background:c,boxShadow:'0 0 6px '+c}});})(),
+          React.createElement('span',{className:'role-chip hide-phone'},user?.role),
+          React.createElement('button',{className:'topbar-icon-btn hide-phone',onClick:logout},React.createElement(IconLogOut,null),React.createElement('span',null,'Sign Out')),
+          // Phone: everything above folds into one ⋯ menu so the topbar stays a single row.
+          React.createElement('button',{className:'topbar-icon-btn show-phone','aria-label':'More options','aria-expanded':phoneMenuOpen,style:{fontSize:18,padding:'4px 12px',minHeight:38},onClick:()=>setPhoneMenuOpen(o=>!o)},'⋯')
+        ),
+        phoneMenuOpen&&React.createElement(React.Fragment,null,
+          React.createElement('div',{className:'phone-menu-backdrop',onClick:()=>setPhoneMenuOpen(false)}),
+          React.createElement('div',{className:'phone-menu',role:'menu'},
+            React.createElement('button',{onClick:()=>{setPhoneMenuOpen(false);setCmdOpen(true);}},React.createElement(IconSearch,{size:16}),'Search sheets & outlets'),
+            React.createElement('button',{onClick:()=>window.location.reload()},React.createElement(IconRefresh,null),'Refresh'),
+            React.createElement('button',{onClick:()=>setTheme(theme==='light'?'dark':'light')},theme==='light'?React.createElement(IconMoon,null):React.createElement(IconSun,null),theme==='light'?'Dark mode':'Light mode'),
+            activePage==='salon'&&period
+              ?React.createElement('div',{className:'pm-row',style:{color:'var(--text2)'}},'📅 '+pgLabel(period))
+              :React.createElement('div',{className:'pm-row'},'📅',React.createElement('select',{className:'form-control',style:{flex:1,fontSize:16},value:selFY,onChange:e=>setSelFY(e.target.value)},FYS.map(f=>React.createElement('option',{key:f,value:f},'FY '+f)))),
+            React.createElement('button',{style:{color:'var(--red)'},onClick:()=>{setPhoneMenuOpen(false);logout();}},React.createElement(IconLogOut,null),'Sign Out'),
+            React.createElement('div',{className:'pm-meta'},(user?.name||'')+' · '+(user?.role||'')+' · '+new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}))
+          )
         )
       ),
       !CLOUD_SYNC_ENABLED&&backupOverdue&&!backupBannerDismissed&&React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'10px 20px',background:'rgba(255,159,67,0.12)',borderBottom:'1px solid rgba(255,159,67,0.35)',fontSize:12.5,color:'var(--text)'}},
@@ -30449,7 +30541,34 @@ function App(){
         React.createElement('div',null,'↻ Other users have saved new changes. They\'ll appear as soon as you pause — or load them now (finish or close any open form first).'),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:applyCloudUpdatesNow},'Show latest')
       ),
-      React.createElement('div',{className:'content'},React.createElement('div',{key:activePage+'_'+(selectedSalon?.id||'')+'_'+dataVersion,className:'content-frame'},renderPage()))
+      React.createElement('div',{className:'content'},React.createElement('div',{key:activePage+'_'+(selectedSalon?.id||'')+'_'+dataVersion,className:'content-frame'},renderPage())),
+      // ── Phone bottom tab bar inside an outlet: the four everyday sheets (only those this user
+      // may open) plus "All sheets". Hidden on wider screens by CSS. ──
+      activePage==='salon'&&selectedSalon&&period&&!gateFor&&(()=>{
+        const FAVS=['outlet-dashboard','daily-sales','attendance','master-salary'];
+        const SHORT={'outlet-dashboard':'Home','daily-sales':'Sales','attendance':'Attendance','master-salary':'Staff'};
+        const favs=FAVS.map(id=>visibleSalonTabs.find(t=>t.id===id)).filter(Boolean);
+        const others=visibleSalonTabs.filter(t=>!FAVS.includes(t.id));
+        while(favs.length<4&&others.length)favs.push(others.shift());
+        const onFav=favs.some(t=>t.id===salonTab);
+        return React.createElement('nav',{className:'bottom-nav','aria-label':'Outlet sheets'},
+          favs.map(t=>React.createElement('button',{key:t.id,type:'button',className:salonTab===t.id?'active':'',onClick:()=>setSalonTab(t.id)},
+            React.createElement('span',{className:'bn-icon'},t.icon),SHORT[t.id]||t.label)),
+          React.createElement('button',{type:'button',className:!onFav||modulePickerOpen?'active':'',onClick:()=>{setModuleQuery('');setModulePickerOpen(true);}},
+            React.createElement('span',{className:'bn-icon'},'▦'),'All sheets'));
+      })(),
+      modulePickerOpen&&activePage==='salon'&&React.createElement('div',{className:'module-sheet',role:'dialog','aria-label':'All sheets'},
+        React.createElement('div',{className:'module-sheet-head'},
+          React.createElement('input',{className:'form-control',placeholder:'Search sheets…',value:moduleQuery,onChange:e=>setModuleQuery(e.target.value)}),
+          React.createElement('button',{type:'button',className:'btn btn-ghost',onClick:()=>setModulePickerOpen(false)},'Close')
+        ),
+        React.createElement('div',{className:'module-grid'},
+          visibleSalonTabs.filter(t=>!moduleQuery.trim()||t.label.toLowerCase().includes(moduleQuery.trim().toLowerCase())).map(t=>
+            React.createElement('button',{key:t.id,type:'button',className:salonTab===t.id?'active':'',style:{'--mgc':SALON_TAB_GROUP_COLORS[t.group]||'var(--accent)'},
+              onClick:()=>{setSalonTab(t.id);setModulePickerOpen(false);const el=document.querySelector('.content');if(el)el.scrollTop=0;}},
+              React.createElement('span',{className:'mg-icon'},t.icon),t.label))
+        )
+      )
     )
   ));
 }
