@@ -1240,11 +1240,15 @@ function opaqueStickyBg(rgba,base){
 }
 function safeLocalSet(key,value){
   try{
+    // Many screens save their whole state straight back on mount (useEffect on [state]), even when
+    // nothing was edited. Pushing those unchanged copies to the cloud overwrote other users' newer
+    // edits (e.g. employees another ID added) with this browser's older copy — only push real changes.
+    const unchanged=cachedLocalGet(key)===value;
     localStorage.setItem(key,value);
     _lsReadCache[key]=value; // keep the read cache in sync — safeLocalSet is the only write path
     _lastSavedAt=Date.now();
     try{window.dispatchEvent(new Event('salonos-saved'));}catch(e3){}
-    queueCloudPush(key,value); // no-op unless cloud sync is configured — see CLOUD_SYNC_ENABLED below
+    if(!unchanged)queueCloudPush(key,value); // no-op unless cloud sync is configured — see CLOUD_SYNC_ENABLED below
     return true;
   }
   catch(e){
@@ -1318,7 +1322,9 @@ const _cloudPushFailedOnce={};
 // Keys saved on this device that haven't reached kv_store yet (no session, network error). Kept in
 // localStorage so they survive a reload/re-login and get pushed up BEFORE the next pull, instead
 // of being silently overwritten by the server copy and never seen from any other login.
-const CLOUD_PENDING_KEY='salonos_cloud_pending';
+// (_v2: the first version of this list could also capture stale screen-mount writes made before the
+// initial pull finished — those must never be pushed, so any list saved under the old name is ignored.)
+const CLOUD_PENDING_KEY='salonos_cloud_pending_v2';
 function loadCloudPending(){try{return JSON.parse(localStorage.getItem(CLOUD_PENDING_KEY))||[];}catch(e){return[];}}
 function markCloudPending(key,pending){
   try{
@@ -1331,9 +1337,10 @@ function markCloudPending(key,pending){
 // back to the login screen, since everything else (user list, other IDs' data) is empty too.
 function notifyCloudSessionLost(){try{window.dispatchEvent(new Event('salonos-session-lost'));}catch(e){}}
 function queueCloudPush(key,value){
-  if(!CLOUD_SYNC_ENABLED||key===CLOUD_PENDING_KEY)return;
+  // Nothing written before the initial pull finishes is a real edit — it's a screen saving back the
+  // stale cached copy it just loaded — so it must never be pushed or marked pending.
+  if(!CLOUD_SYNC_ENABLED||key===CLOUD_PENDING_KEY||!_cloudSyncReady)return;
   markCloudPending(key,true);
-  if(!_cloudSyncReady)return;
   clearTimeout(_cloudPushTimers[key]);
   _cloudPushTimers[key]=setTimeout(async()=>{
     try{
@@ -29695,7 +29702,9 @@ function App(){
   // Cloud mode pulls every saved key down from Supabase into localStorage before the app renders
   // any real screen — otherwise the very first render after login would briefly show whatever
   // (possibly empty) data happened to already be cached in this browser.
-  const [syncing,setSyncing]=useState(false);
+  // Starts true when the tab reopens already logged in, so no screen renders (and saves back its
+  // stale cached data) before the session check + pull below have finished.
+  const [syncing,setSyncing]=useState(()=>CLOUD_SYNC_ENABLED&&loggedIn&&!_cloudSyncReady);
   // A page refresh (or the tab reloading after being backgrounded) restores loggedIn/user
   // straight from sessionStorage above, bypassing handleLogin entirely — without this,
   // _cloudSyncReady stays stuck at its initial false for the rest of this tab's life, and
@@ -29721,12 +29730,11 @@ function App(){
       sub=supa.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT')forceRelogin();}).data.subscription;
       if(loggedIn&&!_cloudSyncReady){
         supa.auth.getSession().then(({data:{session}})=>{
-          if(!session){forceRelogin();return;}
-          setSyncing(true);
+          if(!session){setSyncing(false);forceRelogin();return;}
           cloudPullAndHydrate().then(()=>setSyncing(false));
-        });
+        }).catch(()=>setSyncing(false));
       }
-    }).catch(()=>{});
+    }).catch(()=>setSyncing(false));
     return()=>{window.removeEventListener('salonos-session-lost',forceRelogin);if(sub)sub.unsubscribe();};
   },[]);
   const handleLogin=async(u)=>{
