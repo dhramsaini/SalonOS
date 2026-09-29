@@ -124,9 +124,19 @@ this update. Login failures still log to App errors ("Login: …").
   structured output json_schema; effort low + refusal fallback "default") + `aiReadBill` (js/13-pnl.js) tried first in
   InvoiceIntake (Vendor Sheet "+ Add Invoice"), falls back to the in-browser reader. Also fixed: intake now passes taxable value,
   freight and the real attachment file into the invoice form (before: taxable only in the description, attachment = file name).
-2 Next: alerts table + in-app Alerts centre (bell) + Automation settings page; server cron (pg_cron → edge function
-  `automation`) for daily data check 21:00 IST, due-date reminders, recurring-bill reminders, month-end checklist, auto month
-  lock. Email/WhatsApp delivery only once the owner adds Resend / WhatsApp keys.
+2 ✅ (v2026.09.30.3) Alerts + nightly checks. supabase/step12_alerts_automation.sql: `alerts` table (unique akey; read =
+  outlet access via salonos_key_access on the outlet's vendor_invoices key, outlet-less = Super Admin; writes only service role;
+  people close via rpc salonos_resolve_alert, needs outlet edit), pg_cron `salonos-automation` 15:30 UTC = 21:00 IST.
+  Edge function `automation` (Verify JWT OFF; body {kind:'nightly'} from cron, {kind:'run'} = signed-in Super Admin
+  "Run checks now"): pure `computeAlerts(kv,settings,today)` → sales (yesterday + day before, only outlets with sales in
+  last 30 days), attendance today (skips weekly off / not joined / left), vendor bills due ≤ N days or overdue (not PI),
+  recurring Fixed on due day (auto=false → Mark done), Variable bill missing (same rule as variableRecurringMissingPeriod),
+  month-end checklist for last month until the lock day, auto month lock (off by default) written to
+  salonos_month_locks_outlet_<id> with an updated_at-conditional update. Re-runs upsert by akey; auto alerts close as
+  'fixed'; ones a person marked 'done' never reopen; closed > 90 days deleted. Optional digest to the report recipients.
+  Client: AlertsBell (js/14) in the topbar, hides alerts already fixed on this device (alertFixedLocally, js/02);
+  AutomationSettingsCard (js/03, kv salonos_secret_automation_settings). tests.html compiles the edge function with
+  TypeScript (cdnjs) and runs computeAlerts on sample data (4 tests).
 3 Auto-match bank payments on import, recurring (Fixed) invoice auto-create on bill day, salary bank bulk file (needs bank
   format), evening Tally sync (connector is local → run from the app when open).
 4 AI bank-row tagging, monthly P&L explanation, anomaly alerts, "Ask SalonOS".

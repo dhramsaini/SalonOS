@@ -255,6 +255,66 @@ const SALON_TABS=[
   {id:'audit-log',label:'Audit Log',icon:'🕵',group:'Reports & Compliance'},
   {id:'import-center',label:'Import Center',icon:'📥',group:'Reports & Compliance'},
 ];
+// ── 🔔 Alerts bell (automation phase 2) — the open alerts from the nightly server check, for the
+// outlets this person can see. Refreshes every 5 minutes, on window focus, and after "Run checks
+// now"; an alert already fixed on this device is hidden until the next run closes it. ──
+function AlertsBell({user,salons,onOpen}){
+  const h=React.createElement;
+  const {success,error:toastError}=useToast();
+  const [alerts,setAlerts]=useState(null); // null = not loaded / not available
+  const [open,setOpen]=useState(false);
+  const [,setTick]=useState(0);
+  const load=useCallback(async()=>{
+    try{setAlerts(await loadOpenAlerts());}catch(e){setAlerts(prev=>prev||null);}
+  },[]);
+  useEffect(()=>{
+    load();
+    const t=setInterval(load,5*60*1000);
+    const tick=setInterval(()=>setTick(x=>x+1),60*1000);
+    const onFocus=()=>load();
+    window.addEventListener('focus',onFocus);window.addEventListener('salonos-alerts-refresh',onFocus);
+    return()=>{clearInterval(t);clearInterval(tick);window.removeEventListener('focus',onFocus);window.removeEventListener('salonos-alerts-refresh',onFocus);};
+  },[load,user&&user.id]);
+  useEffect(()=>{if(open)load();},[open]);
+  if(alerts===null)return null;
+  const visible=alerts.filter(a=>(a.outlet_id==null?user&&user.role==='Super Admin':userCanSeeOutlet(user,a.outlet_id))&&!alertFixedLocally(a));
+  const rank={urgent:0,warn:1,info:2};
+  visible.sort((a,b)=>(a.severity in rank?rank[a.severity]:1)-(b.severity in rank?rank[b.severity]:1)||String(b.created_at).localeCompare(String(a.created_at)));
+  const urgent=visible.filter(a=>a.severity==='urgent').length;
+  const salonOf=id=>(salons||[]).find(s=>Number(s.id)===Number(id));
+  const groups=[];
+  visible.forEach(a=>{const k=a.outlet_id==null?'all':String(a.outlet_id);let g=groups.find(x=>x.k===k);if(!g){g={k,name:a.outlet_id==null?'All outlets':((salonOf(a.outlet_id)||{}).name||('Outlet '+a.outlet_id)).split('—')[0].trim(),items:[]};groups.push(g);}g.items.push(a);});
+  const done=async(a)=>{
+    try{await resolveAlert(a.id);setAlerts(list=>(list||[]).filter(x=>x.id!==a.id));success('Marked done');}
+    catch(e){toastError((e&&e.message)||'Could not close this alert');}
+  };
+  const dot=sev=>h('span',{style:{width:8,height:8,borderRadius:'50%',flexShrink:0,marginTop:6,background:sev==='urgent'?'var(--red)':sev==='info'?'var(--accent)':'var(--orange)'}});
+  return h(React.Fragment,null,
+    h('button',{className:'topbar-icon-btn',title:visible.length?visible.length+' alert'+(visible.length===1?'':'s')+' need attention':'No alerts',
+      'aria-label':'Alerts','aria-expanded':open,onClick:()=>setOpen(o=>!o),style:{position:'relative'}},
+      h('span',{style:{fontSize:15,lineHeight:1}},'🔔'),
+      visible.length>0&&h('span',{style:{position:'absolute',top:-6,right:-6,minWidth:18,height:18,borderRadius:9,padding:'0 5px',fontSize:10.5,fontWeight:700,lineHeight:'18px',textAlign:'center',color:'#fff',background:urgent?'var(--red)':'var(--orange)'}},visible.length>99?'99+':visible.length)),
+    open&&h(React.Fragment,null,
+      h('div',{style:{position:'fixed',inset:0,zIndex:998},onClick:()=>setOpen(false)}),
+      h('div',{role:'dialog','aria-label':'Alerts',style:{position:'fixed',top:56,right:12,width:'min(430px, calc(100vw - 24px))',maxHeight:'calc(100vh - 80px)',overflowY:'auto',zIndex:999,
+        background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,boxShadow:'0 12px 32px rgba(0,0,0,.18)'}},
+        h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 14px',borderBottom:'1px solid var(--border)',position:'sticky',top:0,background:'var(--bg2)'}},
+          h('div',{style:{fontWeight:700,fontSize:14}},'Alerts',visible.length?' ('+visible.length+')':''),
+          h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setOpen(false),'aria-label':'Close'},'✕')),
+        !visible.length&&h('div',{style:{padding:'28px 16px',textAlign:'center',color:'var(--text3)',fontSize:13}},'✓ All clear — nothing needs attention right now.',
+          h('div',{style:{fontSize:11.5,marginTop:6}},'The server checks every night at 9 PM.')),
+        groups.map(g=>h('div',{key:g.k},
+          h('div',{style:{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'.04em',color:'var(--text3)',padding:'10px 14px 4px'}},g.name),
+          g.items.map(a=>h('div',{key:a.id,style:{display:'flex',gap:10,padding:'8px 14px 10px',borderBottom:'1px solid var(--border)'}},
+            dot(a.severity),
+            h('div',{style:{flex:1,minWidth:0}},
+              h('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)'}},String(a.title||'').replace(/^[^:]+:\s*/,'')),
+              a.body&&h('div',{style:{fontSize:12,color:'var(--text2)',whiteSpace:'pre-line',marginTop:2}},a.body),
+              h('div',{style:{display:'flex',gap:6,marginTop:6}},
+                a.tab&&a.outlet_id!=null&&salonOf(a.outlet_id)&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setOpen(false);onOpen(salonOf(a.outlet_id),a.tab);}},'Open'),
+                h('button',{className:'btn btn-ghost btn-sm',onClick:()=>done(a)},'Mark done')))))))))
+  );
+}
 function App(){
   // Esc closes whatever modal/popup is currently open, app-wide. Every modal in this app already
   // closes when its backdrop (.modal-overlay) is clicked — so rather than wiring an Escape
@@ -740,6 +800,12 @@ function App(){
   const FYS=['2022-23','2023-24','2024-25','2025-26','2026-27'];
 
   const accessibleSalons=salons.filter(s=>userCanSeeOutlet(user,s.id)); // Super Admin: all; everyone else: outlets given in User Management
+  // 🔔 "Open" — straight to the sheet that fixes the alert (period picker first if none is set yet).
+  const openFromAlert=(sn,tabId)=>{
+    const dp=(activePage==='salon'&&selectedSalon&&selectedSalon.id===sn.id&&period)||defaultPeriods[sn.id];
+    if(!dp){handleSelectSalon(sn);return;}
+    setPeriod(dp);setSelFY(dp.fy);setSelectedSalon(sn);setActivePage('salon');navToSalonTab(tabId);
+  };
   const renderPage=()=>{
     if(gateFor||(activePage==='salon'&&!period)){
       const gateSalon=gateFor||selectedSalon;
@@ -876,6 +942,7 @@ function App(){
           React.createElement('span',{className:'topbar-title'},activePage==='salon'&&selectedSalon?selectedSalon.name:'SalonOS')
         ),
         React.createElement('div',{className:'topbar-right'},
+          CLOUD_SYNC_ENABLED&&user&&React.createElement(AlertsBell,{user,salons:accessibleSalons,onOpen:openFromAlert}),
           React.createElement('button',{className:'topbar-icon-btn hide-phone',title:'Reload the app',
             onClick:()=>window.location.reload()},React.createElement(IconRefresh,null),React.createElement('span',null,'Refresh')),
           CLOUD_SYNC_ENABLED

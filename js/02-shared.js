@@ -2946,3 +2946,53 @@ function savePasswordOverride(email,password){
 function isPasswordRecoveryLink(){
   return typeof window!=='undefined' && /type=recovery/.test(window.location.hash);
 }
+// ── Alerts centre (automation phase 2). The nightly server check (edge function "automation",
+// settings in Master Settings → Automation) writes public.alerts; the 🔔 bell reads the open ones
+// the signed-in person may see (database rule = same as the outlet's data). Between nightly runs
+// an alert whose problem has already been fixed on this device is hidden straight away
+// (alertFixedLocally) — the next run closes it for good. ──
+const AUTOMATION_SETTINGS_KEY='salonos_secret_automation_settings';
+const AUTOMATION_DEFAULTS={enabled:true,salesCheck:true,attendanceCheck:true,dueReminders:true,dueDaysAhead:3,
+  recurringReminders:true,monthEndChecklist:true,autoLock:false,autoLockDay:10,digest:false};
+async function loadOpenAlerts(){
+  const supa=await getSupabaseClient();
+  const{data,error}=await supa.from('alerts').select('id,akey,outlet_id,kind,severity,title,body,tab,due_date,auto,created_at')
+    .is('resolved_at',null).order('created_at',{ascending:false}).limit(300);
+  if(error)throw error;
+  return data||[];
+}
+async function resolveAlert(id){
+  const supa=await getSupabaseClient();
+  const{error}=await supa.rpc('salonos_resolve_alert',{alert_id:id});
+  if(error)throw error;
+}
+function alertFixedLocally(a){
+  try{
+    const p=String(a.akey||'').split(':');const sid=Number(p[1]);
+    if(a.kind==='sales'){
+      const rec=JSON.parse(cachedLocalGet(outletKey('salonos_daily_sales_collection_data',sid))||'{}')[p[2]];
+      return !!rec&&Object.values(rec).some(v=>String(v==null?'':v)!=='');
+    }
+    if(a.kind==='attendance'){
+      const [y,m,d]=p[2].split('-').map(Number);
+      const dow=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(y,m-1,d).getDay()];
+      const att=JSON.parse(cachedLocalGet(outletKey('salonos_attendance',sid))||'{}');
+      const emps=JSON.parse(cachedLocalGet(outletKey('salonos_master_employees',sid))||'[]').filter(e=>e&&e.status==='Active'&&e.weeklyOff!==dow);
+      return emps.length>0&&emps.every(e=>{const r=att[e.id+'_'+y+'_'+(m-1)];return !!(r&&r.days&&r.days[d-1]);});
+    }
+    if(a.kind==='due'){
+      const inv=loadVendorInvoices(sid).find(x=>x.id===p[2]);
+      if(!inv)return false;
+      return Number(inv.amount)-(inv.payments||[]).reduce((s,x)=>s+(Number(x.paidAmount)||0),0)<=0.5;
+    }
+    if(a.kind==='recurring_bill'&&typeof variableRecurringMissingPeriod==='function'){
+      const it=loadRecurringExpenses(sid).find(x=>x.id===p[2]);
+      if(!it)return true;
+      const miss=variableRecurringMissingPeriod(it,sid);
+      if(!miss)return true;
+      const code=Math.floor(miss.first/12)+'-'+String(miss.first%12+1).padStart(2,'0');
+      return code!==p[3];
+    }
+  }catch(e){}
+  return false;
+}

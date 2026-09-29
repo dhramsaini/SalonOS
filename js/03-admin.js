@@ -1553,6 +1553,72 @@ function ReportSettingsCard(){
       Object.keys(lastResult).map(k=>k+': '+(lastResult[k].ok?'sent ✓':lastResult[k].error)).join(' · ')||'Nothing to send — add recipients and save first.')
   );
 }
+// ── Automation (phase 2) — what the nightly 9 PM check (edge function "automation") looks for.
+// Its findings appear under the 🔔 bell for everyone who can see that outlet. Stored in a
+// salonos_secret_* record, so only Super Admins can read or change it. ──
+function AutomationSettingsCard(){
+  const {success,error:toastError}=useToast();
+  const saved=(()=>{try{return{...AUTOMATION_DEFAULTS,...(JSON.parse(cachedLocalGet(AUTOMATION_SETTINGS_KEY)||'{}')||{})};}catch(e){return{...AUTOMATION_DEFAULTS};}})();
+  const [s,setS]=useState(saved);
+  const [busy,setBusy]=useState(false);
+  const [result,setResult]=useState(null);
+  const set=(k,v)=>setS(p=>({...p,[k]:v}));
+  const save=()=>{
+    const days=Math.round(Number(s.dueDaysAhead)),lock=Math.round(Number(s.autoLockDay));
+    if(!(days>=0&&days<=30))return toastError('Remind days ahead must be between 0 and 30');
+    if(!(lock>=2&&lock<=28))return toastError('Lock day must be between 2 and 28');
+    safeLocalSet(AUTOMATION_SETTINGS_KEY,JSON.stringify({...s,dueDaysAhead:days,autoLockDay:lock}));
+    success('Automation settings saved — used from the next check');
+  };
+  const runNow=async()=>{
+    setBusy(true);setResult(null);
+    try{
+      const supa=await getSupabaseClient();
+      const{data,error}=await supa.functions.invoke('automation',{body:{kind:'run'}});
+      if(error)throw error;
+      if(data&&data.error)throw new Error(data.error);
+      setResult(data);
+      success('Checks done — '+(data.open||0)+' open alert'+(data.open===1?'':'s')+', '+(data.closed||0)+' closed as fixed');
+      window.dispatchEvent(new Event('salonos-alerts-refresh'));
+    }catch(e){
+      const msg=(e&&e.message)||String(e);
+      toastError(/not found|404|Failed to send a request/i.test(msg)?'The automation service isn\'t installed in Supabase yet (see the setup notes).':'Run failed: '+msg);
+    }
+    setBusy(false);
+  };
+  const row={display:'flex',alignItems:'flex-start',gap:8,fontSize:13,color:'var(--text2)',marginBottom:8,lineHeight:1.5};
+  const box=(k,label,hint)=>React.createElement('label',{style:row},
+    React.createElement('input',{type:'checkbox',checked:!!s[k],onChange:e=>set(k,e.target.checked),style:{marginTop:3}}),
+    React.createElement('span',null,label,hint&&React.createElement('span',{style:{display:'block',fontSize:11.5,color:'var(--text3)'}},hint)));
+  const small={width:64,display:'inline-block',padding:'2px 6px',margin:'0 4px'};
+  return React.createElement('div',{className:'card',style:{marginBottom:16}},
+    React.createElement('div',{className:'card-title'},'🤖 Automation'),
+    React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:12,lineHeight:1.6}},
+      'Every night at 9 PM the server checks every outlet and puts what needs attention under the 🔔 bell (top bar) for the people who can see that outlet. Alerts close themselves once the problem is fixed, or can be marked done.'),
+    box('enabled','Run the nightly check'),
+    React.createElement('div',{style:{paddingLeft:22,opacity:s.enabled?1:.5}},
+      box('salesCheck','Sales not entered','Yesterday\'s and the day before\'s Daily Sales & Exp.'),
+      box('attendanceCheck','Attendance not marked today','Skips each person\'s weekly off.'),
+      React.createElement('label',{style:row},
+        React.createElement('input',{type:'checkbox',checked:!!s.dueReminders,onChange:e=>set('dueReminders',e.target.checked),style:{marginTop:3}}),
+        React.createElement('span',null,'Vendor bills falling due — remind',
+          React.createElement('input',{type:'number',min:0,max:30,className:'form-control',style:small,value:s.dueDaysAhead,onChange:e=>set('dueDaysAhead',e.target.value)}),'days ahead',
+          React.createElement('span',{style:{display:'block',fontSize:11.5,color:'var(--text3)'}},'Unpaid vendor bills with a due date (closes once paid). The same days-ahead applies to fixed recurring items below. Overdue ones turn red.'))),
+      box('recurringReminders','Recurring expenses','Fixed items on their due day; variable bills (electricity, water…) once their period is over and no bill is entered.'),
+      box('monthEndChecklist','Month-end checklist','From the 1st: last month\'s days without sales, unmarked attendance, salary not approved, bank statement not imported.'),
+      React.createElement('label',{style:row},
+        React.createElement('input',{type:'checkbox',checked:!!s.autoLock,onChange:e=>set('autoLock',e.target.checked),style:{marginTop:3}}),
+        React.createElement('span',null,'Lock last month automatically on day',
+          React.createElement('input',{type:'number',min:2,max:28,className:'form-control',style:small,value:s.autoLockDay,onChange:e=>set('autoLockDay',e.target.value)}),'of the new month',
+          React.createElement('span',{style:{display:'block',fontSize:11.5,color:'var(--text3)'}},'Attendance, Salary and Incentive Working for that month become read-only (unlock from Master Sheet → 🔒 Months). The checklist runs until this day.'))),
+      box('digest','Also send new alerts by email / WhatsApp','To the recipients under Automatic reports — needs the same email / WhatsApp setup.')),
+    React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',marginTop:6}},
+      React.createElement('button',{className:'btn btn-primary btn-sm',onClick:save},'Save'),
+      React.createElement('button',{className:'btn btn-ghost btn-sm'+(busy?' btn-loading':''),disabled:busy,onClick:runNow},'Run checks now')),
+    result&&React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginTop:10}},
+      (result.skipped?result.skipped:(result.open+' open · '+result.new+' new · '+result.closed+' closed as fixed'+(result.locked&&result.locked.length?' · locked '+result.locked.join(', '):''))))
+  );
+}
 // ── Two-step login (authenticator app, TOTP) for the signed-in account. Once it's on, sign-in
 // asks for the app's 6-digit code, and the database only grants Super Admin powers to a
 // session that has passed that step. ──
@@ -1675,6 +1741,7 @@ function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup}={}){
     CLOUD_SYNC_ENABLED&&React.createElement(CloudBackupsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(ReportSettingsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(AiSettingsCard,null),
+    CLOUD_SYNC_ENABLED&&React.createElement(AutomationSettingsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(ChangeHistoryCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(AppErrorsCard,null),
     React.createElement('div',{className:'card',style:{marginBottom:16}},

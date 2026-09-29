@@ -39,6 +39,8 @@
     let app=inline.find(s=>s.includes('function swWorkingsFor'));
     if(!app&&appFiles.length)app=(await Promise.all(appFiles.map(u=>fetch(u,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Could not load '+u);return r.text();})))).join('\n');
     if(!app)throw new Error('Could not find the app script in index.html');
+    // The nightly automation check (server code) — compiled and tested inside the frame.
+    const automationTs=await (await fetch('supabase/functions/automation/index.ts?t='+Date.now(),{cache:'no-store'})).text();
 
     // In-memory storage (the frame has no real storage at all) + made-up test data.
     const setup=`(function(){
@@ -138,11 +140,48 @@
         eq('PDF statement: dates, debit/credit, balances',rows.slice(1).map(r=>[r[0],r[4],r[5],r[6]]),[['01/09/2026','',1200,11200],['03/09/2026',5000,'',6200],['15/09/2026','',2345.5,8545.5]]);
         eq('PDF statement: wrapped narration and reference',[rows[2][2],rows[2][3]],['NEFT RENT SEPT TO LANDLORD','N222']);
       }catch(err){results.push({name:'PDF statement',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
+        // Automation (phase 2): the nightly server check itself — supabase/functions/automation/
+        // index.ts, compiled here with TypeScript and run on made-up data for "today" = 5 Oct 2026.
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/typescript/5.4.5/typescript.min.js');
+        const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
+        const mod={};
+        new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});
+        const day=(y,m,d)=>Math.floor(Date.UTC(y,m-1,d)/864e5);
+        const kv=new Map();
+        kv.set('salonos_salons',[{id:901,name:'Test Outlet A — Delhi',status:'Active'},{id:902,name:'Test Outlet B',status:'Active'},{id:903,name:'Closed',status:'Inactive'}]);
+        kv.set('salonos_daily_sales_collection_data_outlet_901',{'2026-10-01':{0:500},'2026-10-02':{1:800},'2026-10-03':{0:100}});
+        kv.set('salonos_master_employees_outlet_901',[{id:'E1',name:'Asha',status:'Active',weeklyOff:''},{id:'E2',name:'Ravi',status:'Active',weeklyOff:''},{id:'E3',name:'Off Today',status:'Active',weeklyOff:'Monday'},{id:'E9',name:'Old',status:'Left'}]);
+        kv.set('salonos_attendance_outlet_901',{E1_2026_9:{days:[,,,,'present']}});
+        kv.set('salonos_master_employees_outlet_902',[{id:'E4',name:'Neha',status:'Active',weeklyOff:'',doj:'2026-11-01'}]);
+        kv.set('salonos_vendors_outlet_901',[{id:'V1',name:'Loreal'},{id:'V9',name:'BSES'},{id:'V5',name:'Landlord'}]);
+        kv.set('salonos_vendor_invoices_outlet_901',[
+          {id:'I1',vendorId:'V1',invoiceNo:'A-1',amount:1000,dueDate:'07/10/2026',payments:[]},
+          {id:'I2',vendorId:'V1',invoiceNo:'A-2',amount:500,dueDate:'01/10/2026',payments:[{paidAmount:500}]},
+          {id:'I3',vendorId:'V1',invoiceNo:'A-3',amount:900,dueDate:'2026-09-30',payments:[{paidAmount:400}]},
+          {id:'I4',vendorId:'V1',invoiceNo:'PI-1',amount:700,dueDate:'01/10/2026',docNature:'Performa Invoice',payments:[]},
+          {id:'I5',vendorId:'V1',invoiceNo:'A-5',amount:800,dueDate:'20/10/2026',payments:[]},
+          {id:'I6',vendorId:'V9',invoiceNo:'E-77',amount:12000,invoiceDate:'10/08/2026',periodFrom:'2026-06',periodTo:'2026-07',payments:[]}]);
+        kv.set('salonos_recurring_expenses_outlet_901',[
+          {id:'R1',expenseName:'Rent',payee:'Landlord',amount:50000,frequency:'Monthly',dueDay:7,status:'Active',startDate:'2026-01-01',amountType:'Fixed'},
+          {id:'R2',expenseName:'Electricity',payee:'BSES',amount:6000,frequency:'Bi-Monthly',dueDay:10,status:'Active',startDate:'2026-06-01',amountType:'Variable',billFor:'previous'},
+          {id:'R3',expenseName:'Other',customName:'AMC',payee:'X',amount:9000,frequency:'Quarterly',dueDay:5,status:'Active',startDate:'2026-02-01',amountType:'Fixed'}]);
+        const r1=mod.computeAlerts(kv,mod.DEFAULTS,day(2026,10,5));
+        const keys=r1.alerts.map(a=>a.akey).sort();
+        eq('Automation: which alerts the nightly check raises',keys,['attendance:901:2026-10-05','due:901:I1','due:901:I3','month_end:901:2026-09','recurring:901:R1:2026-10','recurring_bill:901:R2:2026-08','sales:901:2026-10-04']);
+        const by=k=>r1.alerts.find(a=>a.akey===k)||{};
+        eq('Automation: alert wording and severity',[by('attendance:901:2026-10-05').body,by('due:901:I3').severity,by('due:901:I3').title,by('recurring_bill:901:R2:2026-08').title,by('sales:901:2026-10-04').title],
+          ['Ravi','urgent','Test Outlet A: Loreal bill A-3 overdue by 5 days','Test Outlet A: Electricity bill for Aug 2026 – Sep 2026 not entered','Test Outlet A: sales for 4 Oct not entered']);
+        eq('Automation: month-end checklist items',by('month_end:901:2026-09').body.split(String.fromCharCode(10)).map(s=>s.split(' (')[0]),['• 30 days without sales','• attendance incomplete for 3 staff','• salary not approved for 3 of 3 staff','• bank statement not imported']);
+        const r2=mod.computeAlerts(kv,Object.assign({},mod.DEFAULTS,{autoLock:true,autoLockDay:4}),day(2026,10,5));
+        eq('Automation: auto month lock only past the lock day, checklist stops then',[r2.locks,r2.alerts.some(a=>a.kind==='month_end')],[[{sid:901,month:2026*12+8}],false]);
+      }catch(err){results.push({name:'Automation checks',ok:false,got:String(err&&err.message||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
     const esc=s=>s.replace(/<\/script>/gi,'<\\/script>');
     const doc='<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><div id="root"></div>'
+      +'<script>window.__AUTOMATION_TS='+esc(JSON.stringify(automationTs))+';<\/script>'
       +'<script>'+setup+'<\/script>'
       +libs.map(s=>'<script src="'+s+'"><\/script>').join('')
       +'<script>'+esc(app)+'<\/script>'
