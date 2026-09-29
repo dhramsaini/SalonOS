@@ -2073,6 +2073,97 @@ function CollectionSheetView({salon,onNavTab}={}){
 }
 
 
+// ── "How it works" walkthrough for getting / auto-importing bank statements ─────────────────────
+// A short animated explainer (6 scenes) in English or Hindi: each scene shows a small picture of
+// the real screen with the part to click highlighted, a caption, and spoken narration where the
+// browser has a voice for that language (captions always show). Plays by itself; Back/Next/Pause.
+const BANK_GUIDE_SCENES=[
+  {icon:'📂',en:{t:'1. Connect your Downloads folder — once',s:'Click "Connect Downloads Folder" and choose your Downloads folder. The browser asks for permission: click Allow. You do this only once on each computer.'},
+   hi:{t:'1. Downloads फ़ोल्डर जोड़ें — सिर्फ़ एक बार',s:'"Connect Downloads Folder" पर क्लिक करें और अपना Downloads फ़ोल्डर चुनें। ब्राउज़र अनुमति माँगेगा, Allow पर क्लिक करें। यह हर कंप्यूटर पर सिर्फ़ एक बार करना है।'},
+   ui:'folder'},
+  {icon:'🏦',en:{t:'2. Pick the bank account and the period',s:'Under "Get statement", choose the account and the period — for example This month, Last month, or your own From and To dates.'},
+   hi:{t:'2. बैंक खाता और अवधि चुनें',s:'"Get statement" में खाता चुनें और अवधि चुनें, जैसे This month, Last month, या अपनी From और To तारीख।'},
+   ui:'period'},
+  {icon:'🔐',en:{t:'3. Open the bank website and log in there',s:'Click "Open bank website". The bank’s own site opens in a new tab. Log in there as you always do. Your bank password never goes into SalonOS.'},
+   hi:{t:'3. बैंक की वेबसाइट खोलें और वहीं लॉगिन करें',s:'"Open bank website" पर क्लिक करें। बैंक की अपनी वेबसाइट नए टैब में खुलेगी। वहीं हमेशा की तरह लॉगिन करें। आपका बैंक पासवर्ड SalonOS में कभी नहीं जाता।'},
+   ui:'bank'},
+  {icon:'⬇️',en:{t:'4. Download the statement for the same period',s:'On the bank’s site, open Account Statement, choose the same dates and download it as Excel, CSV or PDF. It saves into your Downloads folder.'},
+   hi:{t:'4. उसी अवधि का स्टेटमेंट डाउनलोड करें',s:'बैंक की साइट पर Account Statement खोलें, वही तारीखें चुनें और Excel, CSV या PDF में डाउनलोड करें। फ़ाइल आपके Downloads फ़ोल्डर में सेव होगी।'},
+   ui:'download'},
+  {icon:'⚡',en:{t:'5. SalonOS imports it by itself',s:'Within a few seconds SalonOS spots the new file and imports it — only the period you chose, rows already there are skipped, and each row is tagged automatically.'},
+   hi:{t:'5. SalonOS अपने-आप इम्पोर्ट कर लेता है',s:'कुछ ही सेकंड में SalonOS नई फ़ाइल पहचान लेता है और इम्पोर्ट कर देता है — सिर्फ़ चुनी हुई अवधि, पहले से मौजूद एंट्री छोड़ दी जाती हैं, और हर एंट्री अपने-आप टैग होती है।'},
+   ui:'import'},
+  {icon:'✅',en:{t:'6. Check and you are done',s:'Glance at a few rows below. Tip: automatic pick-up works in Chrome or Edge on a computer. On a phone, just drop the downloaded file into the upload box.'},
+   hi:{t:'6. जाँचें, और काम पूरा',s:'नीचे कुछ एंट्री एक बार देख लें। ध्यान दें: अपने-आप इम्पोर्ट कंप्यूटर पर Chrome या Edge में चलता है। फ़ोन पर डाउनलोड की हुई फ़ाइल को अपलोड बॉक्स में डाल दें।'},
+   ui:'done'},
+];
+function BankGuideModal({onClose,initialLang}){
+  const [lang,setLang]=useState(initialLang||'en');
+  const [i,setI]=useState(0);
+  const [playing,setPlaying]=useState(true);
+  const [noVoice,setNoVoice]=useState(false);
+  const sc=BANK_GUIDE_SCENES[i],txt=sc[lang];
+  const synth=typeof window!=='undefined'?window.speechSynthesis:null;
+  useEffect(()=>{
+    let timer=null,cancelled=false;
+    if(synth)synth.cancel();
+    if(!playing)return()=>{};
+    const next=()=>{if(cancelled)return;if(i<BANK_GUIDE_SCENES.length-1)setI(i+1);else setPlaying(false);};
+    const speak=()=>{
+      const voices=synth?synth.getVoices():[];
+      const want=lang==='hi'?'hi':'en';
+      const v=voices.find(x=>x.lang&&x.lang.toLowerCase().startsWith(want+'-in'))||voices.find(x=>x.lang&&x.lang.toLowerCase().startsWith(want));
+      if(!synth||!v){setNoVoice(lang==='hi'&&!!synth);timer=setTimeout(next,Math.max(6000,txt.s.length*70));return;}
+      setNoVoice(false);
+      const u=new SpeechSynthesisUtterance(txt.t+'. '+txt.s);u.voice=v;u.lang=v.lang;u.rate=lang==='hi'?0.95:1;
+      u.onend=()=>{timer=setTimeout(next,900);};
+      u.onerror=()=>{timer=setTimeout(next,Math.max(6000,txt.s.length*70));};
+      synth.speak(u);
+    };
+    if(synth&&!synth.getVoices().length){synth.onvoiceschanged=()=>{synth.onvoiceschanged=null;if(!cancelled)speak();};timer=setTimeout(()=>{if(!cancelled&&!synth.speaking)speak();},700);}
+    else speak();
+    return()=>{cancelled=true;clearTimeout(timer);if(synth)synth.cancel();};
+    // eslint-disable-next-line
+  },[i,lang,playing]);
+  useEffect(()=>()=>{if(synth)synth.cancel();},[]);
+  const box={background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:8,padding:'8px 10px',fontSize:11.5,color:'var(--text2)'};
+  const hot={animation:'bgPulse 1.4s ease-in-out infinite',outline:'2px solid var(--accent)',outlineOffset:2};
+  const pill=(label,h)=>React.createElement('span',{style:{display:'inline-block',padding:'4px 10px',borderRadius:6,fontSize:11,fontWeight:600,background:h?'var(--accent)':'var(--bg3)',color:h?'#fff':'var(--text2)',marginRight:6,...(h?hot:{})}},label);
+  const picture={
+    folder:React.createElement('div',{style:box},React.createElement('div',{style:{fontWeight:600,marginBottom:6}},'⚡ Auto-Import from your Downloads folder'),pill('📂 Connect Downloads Folder',true),
+      React.createElement('div',{style:{marginTop:10,padding:8,border:'1px dashed var(--border2)',borderRadius:6,animation:'bgIn .6s ease both .8s'}},'🗂 Downloads  ',pill('Allow',true))),
+    period:React.createElement('div',{style:box},React.createElement('div',{style:{marginBottom:6}},'◉ HDFC Current · Current · ••1234'),
+      React.createElement('div',null,pill('Yesterday'),pill('This month',true),pill('Last month'),pill('This FY')),React.createElement('div',{style:{marginTop:8}},'From 01/09/2026  →  To 29/09/2026')),
+    bank:React.createElement('div',{style:box},pill('🔗 Open bank website',true),React.createElement('div',{style:{marginTop:10,padding:8,borderRadius:6,background:'var(--bg3)',animation:'bgIn .6s ease both .8s'}},'🔒 https://netbanking.yourbank…  ',React.createElement('b',null,'Login'),'  · User ID · Password')),
+    download:React.createElement('div',{style:box},'Account Statement · 01/09/2026 – 29/09/2026',React.createElement('div',{style:{marginTop:8}},pill('Excel'),pill('CSV'),pill('PDF'),pill('⬇ Download',true)),
+      React.createElement('div',{style:{marginTop:8,animation:'bgIn .6s ease both 1s'}},'✅ Statement_Sep.xlsx → Downloads')),
+    import:React.createElement('div',{style:box},React.createElement('div',{style:{color:'var(--accent2)'}},'⏳ Watching your Downloads folder…'),
+      React.createElement('div',{style:{marginTop:8,color:'var(--green)',animation:'bgIn .6s ease both 1.2s'}},'Found "Statement_Sep.xlsx" — Appended 42 new transactions · 3 already there skipped · 30 auto-classified')),
+    done:React.createElement('div',{style:box},React.createElement('div',null,'05/09  UPI/CR/…  +1,200  → UPI Settlement'),React.createElement('div',null,'06/09  NEFT RENT  −5,000'),React.createElement('div',{style:{marginTop:8}},'💻 Chrome / Edge: automatic  ·  📱 Phone: upload box')),
+  }[sc.ui];
+  const go=d=>{setI(x=>Math.min(BANK_GUIDE_SCENES.length-1,Math.max(0,x+d)));};
+  return React.createElement('div',{className:'modal-overlay',onClick:onClose},
+    React.createElement('div',{className:'modal',style:{width:620,maxWidth:'96vw'},onClick:e=>e.stopPropagation()},
+      React.createElement('style',null,'@keyframes bgPulse{0%,100%{box-shadow:0 0 0 0 rgba(47,95,224,.45)}50%{box-shadow:0 0 0 8px rgba(47,95,224,0)}}@keyframes bgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}'),
+      React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}},
+        React.createElement('div',{className:'modal-title',style:{margin:0,flex:1}},lang==='hi'?'बैंक स्टेटमेंट — यह कैसे काम करता है':'Bank statement — how it works'),
+        ['en','hi'].map(l=>React.createElement('button',{key:l,className:'btn btn-sm '+(lang===l?'btn-primary':'btn-ghost'),onClick:()=>{setLang(l);setPlaying(true);}},l==='en'?'English':'हिंदी'))),
+      React.createElement('div',{key:i+lang,style:{animation:'bgIn .4s ease both'}},
+        React.createElement('div',{style:{fontSize:34,marginBottom:6}},sc.icon),
+        React.createElement('div',{style:{fontSize:15,fontWeight:700,color:'var(--text)',marginBottom:10}},txt.t),
+        picture,
+        React.createElement('div',{style:{fontSize:13.5,color:'var(--text)',lineHeight:1.7,marginTop:12,minHeight:70}},txt.s)),
+      noVoice&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:4}},'This browser has no Hindi voice installed — captions only. (Windows: Settings → Time & language → Speech → add Hindi.)'),
+      React.createElement('div',{style:{display:'flex',gap:6,margin:'12px 0 4px'}},BANK_GUIDE_SCENES.map((_,k)=>React.createElement('div',{key:k,onClick:()=>setI(k),style:{flex:1,height:4,borderRadius:2,cursor:'pointer',background:k<=i?'var(--accent)':'var(--border2)'}}))),
+      React.createElement('div',{className:'modal-actions'},
+        React.createElement('button',{className:'btn btn-ghost',disabled:i===0,onClick:()=>go(-1)},lang==='hi'?'← पिछला':'← Back'),
+        React.createElement('button',{className:'btn btn-ghost',onClick:()=>{if(!playing&&i===BANK_GUIDE_SCENES.length-1)setI(0);setPlaying(p=>!p);}},playing?(lang==='hi'?'⏸ रोकें':'⏸ Pause'):(lang==='hi'?'▶ चलाएँ':'▶ Play')),
+        React.createElement('button',{className:'btn btn-ghost',disabled:i===BANK_GUIDE_SCENES.length-1,onClick:()=>go(1)},lang==='hi'?'अगला →':'Next →'),
+        React.createElement('button',{className:'btn btn-primary',onClick:onClose},lang==='hi'?'बंद करें':'Close'))
+    )
+  );
+}
+
 // ── PDF bank statements ─────────────────────────────────────────────────────────────────────────
 // Turns a statement PDF (as downloaded from any bank's website) into the same rows an Excel/CSV
 // statement gives: [header, ...rows] with the Generic columns. Works from the text layout: a line
@@ -2562,6 +2653,10 @@ function BankStatement({salon,onNavTab}={}){
   const [gFrom,setGFrom]=useState(()=>gIso(new Date(gToday.getFullYear(),gToday.getMonth(),1)));
   const [gTo,setGTo]=useState(()=>gIso(gToday));
   const [acctForm,setAcctForm]=useState(null); // null, or the account being added/edited
+  const [guideLang,setGuideLang]=useState(null); // 'en' | 'hi' while the walkthrough is open
+  const guideButtons=React.createElement('span',{style:{display:'inline-flex',gap:6,flexWrap:'wrap'}},
+    React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 10px'},onClick:()=>setGuideLang('en')},'▶ Watch how it works'),
+    React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 10px'},onClick:()=>setGuideLang('hi')},'▶ हिंदी में देखें'));
   const [waitSince,setWaitSince]=useState(0);
   const [gStatus,setGStatus]=useState({text:'',bad:false});
   const loadWorkbookRef=useRef(null);
@@ -3852,7 +3947,8 @@ function BankStatement({salon,onNavTab}={}){
       React.createElement('div',{style:{display:'flex',gap:12,alignItems:'flex-start',flexWrap:'wrap'}},
         React.createElement('div',{style:{fontSize:20}},'📥'),
         React.createElement('div',{style:{flex:1,minWidth:260}},
-          React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)',marginBottom:4}},'Get statement from your bank’s website'),
+          React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:4}},
+            React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)'}},'Get statement from your bank’s website'),guideButtons),
           React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',lineHeight:1.6,marginBottom:10}},'Pick the account and period, click "Open bank website", log in there as usual and download the statement (Excel, CSV or PDF). SalonOS picks up the download and imports it by itself — only that period, duplicates skipped. Your bank login is only ever typed on the bank’s own site.'),
           bankAccounts.length>0&&React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:6,marginBottom:10}},
             bankAccounts.map(a=>React.createElement('label',{key:a.id,style:{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:'var(--r)',border:'1px solid '+(gAcct&&gAcct.id===a.id?'var(--accent)':'var(--border2)'),background:'var(--bg2)',cursor:'pointer',flexWrap:'wrap'}},
@@ -3904,14 +4000,15 @@ function BankStatement({salon,onNavTab}={}){
       React.createElement('div',{style:{display:'flex',gap:12,alignItems:'flex-start',flexWrap:'wrap'}},
         React.createElement('div',{style:{fontSize:20}},'⚡'),
         React.createElement('div',{style:{flex:1,minWidth:260}},
-          React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)',marginBottom:4}},'Auto-Import from your Downloads folder'),
+          React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:4}},
+            React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)'}},'Auto-Import from your Downloads folder'),guideButtons),
           !fsSupported?React.createElement('div',{style:{fontSize:12,color:'var(--text2)',lineHeight:1.7}},
             'This browser doesn\u2019t support folder watching (works in Chrome/Edge desktop only). Please use the upload box below instead.'
           ):React.createElement(React.Fragment,null,
             React.createElement('div',{style:{fontSize:12,color:'var(--text2)',lineHeight:1.7,marginBottom:8}},
               !dirHandle
-                ?'Connect your Downloads folder once. From then on, every time you download a '+bank+' statement there, this page can pick it up automatically \u2014 no manual browsing.'
-                :'Connected. Click "Check Now" any time after downloading a statement from your bank\u2019s site, or just reopen this tab \u2014 it checks automatically on load.'
+                ?'Connect your Downloads folder once (the browser asks permission \u2014 click Allow). After that, statements you download are imported by themselves: right away when you use "Open bank website" above, or whenever you click "Check Now" / reopen this tab.'
+                :'Connected. After "Open bank website" above, the new download is imported by itself within seconds. You can also click "Check Now" any time, or just reopen this tab \u2014 it checks automatically on load.'
             ),
             React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
               !dirHandle?React.createElement('button',{className:'btn btn-primary btn-sm',onClick:connectDownloads},'📂 Connect Downloads Folder'):
@@ -3921,7 +4018,7 @@ function BankStatement({salon,onNavTab}={}){
               )
             ),
             autoStatus&&React.createElement('div',{style:{marginTop:8,fontSize:12,color:autoStatus.indexOf('failed')>-1||autoStatus.indexOf('not')>-1?'var(--red)':'var(--green)'}},autoStatus),
-            React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:8,lineHeight:1.6}},'It looks for the most recently modified file in that folder whose name contains "statement", "txn", "account"'+(bank!=='Generic'?', or the bank name':'')+' (.xlsx/.xls/.csv). You still download the statement from your bank\u2019s net-banking portal yourself \u2014 this just removes the manual browse-and-select step afterwards.')
+            React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:8,lineHeight:1.6}},'After "Open bank website", any Excel, CSV or PDF saved to this folder in the next 20 minutes is taken, whatever its name. "Check Now" and reopening the tab take the newest file whose name contains "statement", "txn", "account", "history"'+(bank!=='Generic'?' or the bank name':'')+'. Only files SalonOS hasn\u2019t imported before are read; rows already in the statement are skipped. You always log in and download on your bank\u2019s own site \u2014 SalonOS only reads the downloaded file.')
           )
         )
       )
@@ -4189,6 +4286,7 @@ function BankStatement({salon,onNavTab}={}){
         ))
       )
     ),
+    guideLang&&React.createElement(BankGuideModal,{initialLang:guideLang,onClose:()=>setGuideLang(null)}),
     showRulesModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowRulesModal(false)},
       React.createElement('div',{className:'modal',style:{width:640,maxHeight:'85vh',overflowY:'auto'},onClick:e=>e.stopPropagation()},
         React.createElement('div',{className:'modal-title'},'How Nature, Date as per Cradlee & Vendor Name are worked out'),
