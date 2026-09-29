@@ -81,8 +81,24 @@ function LoginPage({onLogin}){
       const supa=await getSupabaseClient();
       const{data,error}=await supa.auth.signInWithPassword({email:email.trim(),password:pass});
       if(error){setErr('Invalid email or password.');if(e&&e.currentTarget&&window.flashButton)window.flashButton(e.currentTarget,'error');return;}
-      const{data:profile,error:profErr}=await supa.from('profiles').select('*').eq('id',data.user.id).single();
-      if(profErr||!profile){setErr('Signed in, but no profile is set up for this account yet — ask your Super Admin to add one in Supabase.');await supa.auth.signOut();return;}
+      let{data:profile,error:profErr}=await supa.from('profiles').select('*').eq('id',data.user.id).maybeSingle();
+      // Seen in the field: the password step succeeds but the follow-up request goes out without
+      // the new login (e.g. another SalonOS tab/window holding the library's session lock), so the
+      // profile looks missing. Ask again directly with the token we were just given.
+      if((profErr||!profile)&&data.session&&data.session.access_token){
+        try{
+          const r=await fetch(SUPABASE_URL+'/rest/v1/profiles?select=*&id=eq.'+encodeURIComponent(data.user.id),{headers:{apikey:SUPABASE_ANON_KEY,Authorization:'Bearer '+data.session.access_token,Accept:'application/json'}});
+          const rows=r.ok?await r.json():null;
+          if(Array.isArray(rows)&&rows[0]){profile=rows[0];profErr=null;}
+          else if(!r.ok)profErr=profErr||new Error('HTTP '+r.status);
+        }catch(e2){profErr=profErr||e2;}
+      }
+      if(!profile){
+        setErr(profErr
+          ?'Signed in, but your profile could not be loaded ('+((profErr.message||String(profErr)).slice(0,120))+'). Close other SalonOS tabs/windows, then try again.'
+          :'Signed in, but no profile is set up for this account yet — ask your Super Admin to add one.');
+        await supa.auth.signOut({scope:'local'});return;
+      }
       if(profile.status==='Inactive'){setErr('This account has been deactivated. Contact your Super Admin.');await supa.auth.signOut();return;}
       // Two-step login: accounts with an authenticator app set up must also enter its 6-digit code.
       // (The database only grants Super Admin powers to such an account after this step.)

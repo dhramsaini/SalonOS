@@ -543,9 +543,11 @@ function App(){
       busy=true;
       try{
         const supa=await getSupabaseClient();
+        const{data:{session}}=await supa.auth.getSession();
+        if(!session||stopped)return; // no live login right now — the session check elsewhere handles that
         const{data:p,error}=await supa.from('profiles').select('*').eq('id',user.id).maybeSingle();
-        if(error||stopped)return;
-        if(!p||p.status==='Inactive'){logout();addToast('This account has been deactivated. Contact your Super Admin.','warning',9000);return;}
+        if(error||stopped||!p)return; // can't see the row this time (network, token refresh) — never sign out on that
+        if(p.status==='Inactive'){logout();addToast('This account has been deactivated. Contact your Super Admin.','warning',9000);return;}
         const cur=currentSessionUser()||user;
         const next={...cur,...userFromProfile(p,cur.email,{isDemo:cur.isDemo,demoDaysLeft:cur.demoDaysLeft})};
         if(FIELDS.every(f=>JSON.stringify(next[f])===JSON.stringify(cur[f])))return;
