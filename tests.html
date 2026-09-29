@@ -125,6 +125,19 @@
         await c.from('profiles').select('*').eq('id','x');
         eq('Login: another tab signing out does not sign this tab out',[!si.error,authSeen[authSeen.length-1]],[true,'USER']);
       }catch(err){results.push({name:'Login across tabs',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
+        // A bank statement PDF (made here with jsPDF): header columns, an opening balance, a
+        // narration that wraps onto a second line, and a date written as 15-Sep-2026.
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+        const doc=new window.jspdf.jsPDF();doc.setFontSize(9);
+        [['Txn Date',10],['Narration',55],['Chq/Ref No',105],['Withdrawal',140,'right'],['Deposit',165,'right'],['Balance',195,'right']].forEach(h=>doc.text(h[0],h[1],24,h[2]?{align:h[2]}:undefined));
+        doc.text('Opening Balance',55,30);doc.text('10,000.00',195,30,{align:'right'});
+        const R=[['01/09/2026','UPI/CR/1234/CUSTOMER A','UPI111','','1,200.00','11,200.00'],['03/09/2026','NEFT RENT SEPT','N222','5,000.00','','6,200.00'],['15-Sep-2026','CARD SETTLEMENT','S333','','2,345.50','8,545.50']];
+        let y=36;R.forEach(r=>{doc.text(r[0],10,y);doc.text(r[1],55,y);doc.text(r[2],105,y);if(r[3])doc.text(r[3],140,y,{align:'right'});if(r[4])doc.text(r[4],165,y,{align:'right'});doc.text(r[5],195,y,{align:'right'});y+=6;if(r[2]==='N222'){doc.text('TO LANDLORD',55,y);y+=6;}});
+        const rows=await pdfStatementToRows(new File([doc.output('arraybuffer')],'s.pdf',{type:'application/pdf'}));
+        eq('PDF statement: dates, debit/credit, balances',rows.slice(1).map(r=>[r[0],r[4],r[5],r[6]]),[['01/09/2026','',1200,11200],['03/09/2026',5000,'',6200],['15/09/2026','',2345.5,8545.5]]);
+        eq('PDF statement: wrapped narration and reference',[rows[2][2],rows[2][3]],['NEFT RENT SEPT TO LANDLORD','N222']);
+      }catch(err){results.push({name:'PDF statement',ok:false,got:String(err&&err.message||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

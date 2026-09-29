@@ -2073,6 +2073,147 @@ function CollectionSheetView({salon,onNavTab}={}){
 }
 
 
+// ── PDF bank statements ─────────────────────────────────────────────────────────────────────────
+// Turns a statement PDF (as downloaded from any bank's website) into the same rows an Excel/CSV
+// statement gives: [header, ...rows] with the Generic columns. Works from the text layout: a line
+// that starts with a date is a transaction, amounts are matched to the Debit/Credit/Balance
+// columns by their position under the header, and the running balance settles debit vs credit
+// when a PDF's columns are unclear. Lines without a date continue the previous narration.
+// Password-protected PDFs (banks often use customer ID / date of birth) ask for the password —
+// it is used once and never stored.
+const PDFJS_URL='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const PDFJS_WORKER_URL='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const PDF_STATEMENT_HEADERS=['Transaction Date','Value Date','Description','Cheque/Ref No','Debit','Credit','Closing Balance'];
+function isPdfFile(file){return !!file&&(/\.pdf$/i.test(file.name||'')||file.type==='application/pdf');}
+function pdfNormDate(s){
+  const M={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12};
+  const t=String(s||'').trim().replace(/,/g,'');
+  let m=t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if(m)return m[1].padStart(2,'0')+'/'+m[2].padStart(2,'0')+'/'+(m[3].length===2?'20'+m[3]:m[3]);
+  m=t.match(/^(\d{1,2})[\/\-. ]([A-Za-z]{3,9})[\/\-. ](\d{2,4})$/);
+  if(m&&M[m[2].toLowerCase().slice(0,m[2].length>4?3:m[2].length)]!=null){
+    const mo=M[m[2].toLowerCase().slice(0,3)];
+    return m[1].padStart(2,'0')+'/'+String(mo).padStart(2,'0')+'/'+(m[3].length===2?'20'+m[3]:m[3]);
+  }
+  m=t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(m)return m[3]+'/'+m[2]+'/'+m[1];
+  return '';
+}
+const PDF_DATE_RE=/^(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{1,2}[\/\-. ][A-Za-z]{3,9},?[\/\-. ]\d{2,4}|\d{4}-\d{2}-\d{2})$/;
+const PDF_AMT_RE=/^\(?-?(?:₹|Rs\.?|INR)?\s*[\d,]*\d\.\d{1,2}\)?\s*(?:\(?(Cr|Dr|CR|DR)\)?)?$/;
+function pdfAmount(s){
+  const t=String(s).trim();
+  const neg=/^\(|^-/.test(t)||/dr\)?$/i.test(t);
+  const n=Number(t.replace(/cr|dr|rs\.?|inr|₹|[(),\s]/gi,''));
+  return Number.isFinite(n)?(neg?-Math.abs(n):Math.abs(n)):null;
+}
+async function pdfStatementToRows(file,askPassword){
+  await loadScript(PDFJS_URL);
+  const lib=window.pdfjsLib;
+  if(!lib)throw new Error('The PDF reader could not load — check your internet connection.');
+  lib.GlobalWorkerOptions.workerSrc=PDFJS_WORKER_URL;
+  const bytes=new Uint8Array(await file.arrayBuffer());
+  let pdf=null,password;
+  for(let attempt=0;attempt<4;attempt++){
+    try{pdf=await lib.getDocument({data:bytes.slice(),password}).promise;break;}
+    catch(e){
+      if(e&&e.name==='PasswordException'){
+        password=askPassword?await askPassword(attempt>0):null;
+        if(password==null||password==='')throw new Error('This PDF is password-protected — import cancelled.');
+        continue;
+      }
+      throw new Error('Could not read this PDF ('+((e&&e.message)||e)+').');
+    }
+  }
+  if(!pdf)throw new Error('Wrong PDF password — import cancelled.');
+  // 1. Text runs → lines (same baseline), left to right. A run that starts with a date followed
+  //    by more text is split, since some PDFs put the date and narration in one run.
+  const lines=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const tc=await (await pdf.getPage(p)).getTextContent();
+    const items=[];
+    tc.items.forEach(it=>{
+      const s=String(it.str||'').replace(/\s+/g,' ').trim();if(!s)return;
+      const x=it.transform[4],y=it.transform[5],w=it.width||s.length*4;
+      const parts=s.split(/\s{2,}|(?<=^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})\s(?=\S)/);
+      if(parts.length>1){let off=0;const per=w/Math.max(1,s.length);parts.forEach(pt=>{const i=s.indexOf(pt,off);items.push({s:pt,x:x+i*per,w:pt.length*per,y});off=i+pt.length;});}
+      else items.push({s,x,w,y});
+    });
+    items.sort((a,b)=>b.y-a.y||a.x-b.x);
+    let cur=null;
+    items.forEach(it=>{if(!cur||Math.abs(cur.y-it.y)>2.5){cur={y:it.y,items:[]};lines.push(cur);}cur.items.push(it);});
+  }
+  lines.forEach(l=>l.items.sort((a,b)=>a.x-b.x));
+  // 2. Column positions from the header line(s).
+  let cols=null;
+  const colOf=(txt)=>{const t=txt.toLowerCase();
+    if(/value/.test(t))return'vdate';
+    if(/withdraw|debit|\bdr\b|paid out/.test(t))return'debit';
+    if(/deposit|credit|\bcr\b|paid in/.test(t))return'credit';
+    if(/balance/.test(t))return'balance';
+    if(/chq|cheque|ref|instrument/.test(t))return'ref';
+    if(/narration|particular|description|remark|detail/.test(t))return'desc';
+    if(/date/.test(t))return'date';
+    return null;};
+  lines.forEach(l=>{
+    if(cols)return;
+    const txt=l.items.map(i=>i.s).join(' ').toLowerCase();
+    if(/date/.test(txt)&&/balance/.test(txt)&&/(withdraw|debit|\bdr\b)/.test(txt)&&/(deposit|credit|\bcr\b)/.test(txt)){
+      cols={};l.items.forEach(i=>{const c=colOf(i.s);if(c&&cols[c]==null){cols[c]=i.x+i.w;cols[c+'L']=i.x;}}); // right edge for amounts (right-aligned), left edge for text columns
+    }
+  });
+  const nearestAmtCol=(it)=>{
+    if(!cols)return null;
+    let best=null,bd=1e9;
+    ['debit','credit','balance'].forEach(c=>{if(cols[c]==null)return;const d=Math.abs((it.x+it.w)-cols[c]);if(d<bd){bd=d;best=c;}});
+    return best;
+  };
+  // 3. Transactions.
+  const out=[];let prevBal=null,last=null;
+  lines.forEach(l=>{
+    const toks=l.items;const txt=toks.map(i=>i.s).join(' ');const low=txt.toLowerCase();
+    if(/opening balance|balance b\/?f|brought forward/.test(low)){
+      const a=toks.filter(t=>PDF_AMT_RE.test(t.s)).map(t=>pdfAmount(t.s));if(a.length)prevBal=a[a.length-1];last=null;return;
+    }
+    if(/closing balance|^total|grand total|statement summary|page \d+ of \d+/.test(low)){last=null;return;}
+    const first=toks[0];
+    if(first&&PDF_DATE_RE.test(first.s)&&pdfNormDate(first.s)){
+      const r={date:pdfNormDate(first.s),vdate:'',desc:[],ref:'',debit:0,credit:0,bal:null};
+      let rest=toks.slice(1);
+      if(rest[0]&&PDF_DATE_RE.test(rest[0].s)&&pdfNormDate(rest[0].s)){r.vdate=pdfNormDate(rest[0].s);rest=rest.slice(1);}
+      const amts=[];
+      rest.forEach(t=>{
+        if(PDF_AMT_RE.test(t.s))amts.push(t);
+        else if(cols&&cols.refL!=null&&!r.ref&&Math.abs(t.x-cols.refL)<12)r.ref=t.s;
+        else r.desc.push(t.s);
+      });
+      if(!amts.length)return; // a date line with no amounts is not a transaction
+      if(cols){
+        amts.forEach(t=>{const c=nearestAmtCol(t),v=pdfAmount(t.s);if(v==null)return;
+          if(c==='balance')r.bal=v;else if(c==='debit')r.debit=Math.abs(v);else if(c==='credit')r.credit=Math.abs(v);});
+      }else{
+        r.bal=pdfAmount(amts[amts.length-1].s);
+        const others=amts.slice(0,-1).map(t=>Math.abs(pdfAmount(t.s)||0)).filter(v=>v>0);
+        if(amts.length>=3){r.debit=Math.abs(pdfAmount(amts[amts.length-3].s)||0);r.credit=Math.abs(pdfAmount(amts[amts.length-2].s)||0);}
+        else if(others.length)r.credit=others[0]; // direction settled from the balance below
+      }
+      // Running balance decides debit vs credit whenever it can.
+      if(prevBal!=null&&r.bal!=null){
+        const diff=Math.round((r.bal-prevBal)*100)/100,amt=r.debit||r.credit;
+        if(amt&&Math.abs(Math.abs(diff)-amt)<0.011){if(diff<0){r.debit=amt;r.credit=0;}else{r.credit=amt;r.debit=0;}}
+        else if(!amt&&diff){if(diff<0)r.debit=-diff;else r.credit=diff;}
+      }
+      if(r.bal!=null)prevBal=r.bal;
+      out.push(r);last=r;
+      return;
+    }
+    // Narration continued on the next line (no date, no amounts).
+    if(last&&toks.length&&!toks.some(t=>PDF_AMT_RE.test(t.s))&&!/date|narration|particular|balance/.test(low))last.desc.push(txt);
+  });
+  if(!out.length)throw new Error('No transactions found in this PDF. If it is a scanned image rather than a downloaded statement, download the statement as Excel/CSV or a text PDF instead.');
+  return[PDF_STATEMENT_HEADERS,...out.map(r=>[r.date,r.vdate||r.date,r.desc.join(' ').replace(/\s+/g,' ').trim(),r.ref,r.debit||'',r.credit||'',r.bal==null?'':r.bal])];
+}
+
 // ── Fetch from bank (Account Aggregator) ────────────────────────────────────────────────────────
 // Any bank / any account type on India's RBI Account Aggregator network, through the "bank-aa"
 // edge function (Setu). Linking opens the AA's own page where the account holder approves with an
@@ -2245,32 +2386,35 @@ function BankStatement({salon,onNavTab}={}){
     'Karnataka Bank':{headers:['Date','Value Date','Narration','Reference','Debit','Credit','Balance'],sample:['01/06/2026','01/06/2026','UPI COLLECTION','UPI123456','',40203,125000]},
     'Standard Chartered Bank':{headers:['Date','Value Date','Description','Reference','Debit','Credit','Balance'],sample:['01/06/2026','01/06/2026','UPI COLLECTION','UPI123456','',40203,125000]},
   };
-  // Each bank exposes three separate login portals — Personal (retail), Corporate and
-  // Business (MSME/current account) — since these are different systems even for the same bank.
+  // Where each bank's net banking starts. Only login pages that were checked to open (29 Sep 2026)
+  // are deep links; for the rest it is the bank's official home page, where "Login" is one click
+  // away (the earlier per-portal paths were guesses and mostly led to "page not found"). A saved
+  // bank account can store its exact login page instead — that one is used first.
+  const homeOnly=u=>({Personal:u,Corporate:u,Business:u});
   const BANK_LOGIN_URLS={
-    'HDFC Bank':{Personal:'https://now.hdfc.bank.in/retail-app/',Corporate:'https://now.hdfc.bank.in/corporate-enet/',Business:'https://now.hdfc.bank.in/business-app/'},
-    'ICICI Bank':{Personal:'https://retailnetbanking.icici.bank.in/',Corporate:'https://corpnetbanking.icici.bank.in/',Business:'https://businessnetbanking.icici.bank.in/'},
-    'Axis Bank':{Personal:'https://www.axis.bank.in/retail/',Corporate:'https://www.axis.bank.in/corporate/',Business:'https://www.axis.bank.in/business/'},
+    'HDFC Bank':{Personal:'https://now.hdfc.bank.in/retail-app/',Corporate:'https://www.hdfc.bank.in/',Business:'https://www.hdfc.bank.in/'},
+    'ICICI Bank':{Personal:'https://retailnetbanking.icici.bank.in/',Corporate:'https://www.icici.bank.in/',Business:'https://www.icici.bank.in/'},
+    'Axis Bank':{Personal:'https://www.axis.bank.in/',Corporate:'https://www.axis.bank.in/corporate',Business:'https://www.axis.bank.in/'},
     'State Bank of India':{Personal:'https://onlinesbi.sbi.bank.in/personal/',Corporate:'https://onlinesbi.sbi.bank.in/corporate/',Business:'https://onlinesbi.sbi.bank.in/business/'},
-    'Kotak Mahindra Bank':{Personal:'https://www.kotak.bank.in/personal/',Corporate:'https://www.kotak.bank.in/corporate/',Business:'https://www.kotak.bank.in/business/'},
-    'Bank of Baroda':{Personal:'https://www.bankofbaroda.bank.in/personal/',Corporate:'https://www.bankofbaroda.bank.in/corporate/',Business:'https://www.bankofbaroda.bank.in/business/'},
-    'Punjab National Bank':{Personal:'https://www.pnb.bank.in/personal/',Corporate:'https://www.pnb.bank.in/corporate/',Business:'https://www.pnb.bank.in/business/'},
-    'Canara Bank':{Personal:'https://www.canarabank.bank.in/personal/',Corporate:'https://www.canarabank.bank.in/corporate/',Business:'https://www.canarabank.bank.in/business/'},
-    'Union Bank of India':{Personal:'https://www.unionbankofindia.bank.in/personal/',Corporate:'https://www.unionbankofindia.bank.in/corporate/',Business:'https://www.unionbankofindia.bank.in/business/'},
-    'IndusInd Bank':{Personal:'https://www.indusind.bank.in/personal/',Corporate:'https://www.indusind.bank.in/corporate/',Business:'https://www.indusind.bank.in/business/'},
-    'Yes Bank':{Personal:'https://www.yesbank.bank.in/personal/',Corporate:'https://www.yesbank.bank.in/corporate/',Business:'https://www.yesbank.bank.in/business/'},
-    'IDFC FIRST Bank':{Personal:'https://www.idfcfirstbank.bank.in/personal/',Corporate:'https://www.idfcfirstbank.bank.in/corporate/',Business:'https://www.idfcfirstbank.bank.in/business/'},
-    'RBL Bank':{Personal:'https://www.rblbank.bank.in/personal/',Corporate:'https://www.rblbank.bank.in/corporate/',Business:'https://www.rblbank.bank.in/business/'},
-    'Federal Bank':{Personal:'https://www.federalbank.bank.in/personal/',Corporate:'https://www.federalbank.bank.in/corporate/',Business:'https://www.federalbank.bank.in/business/'},
-    'Bank of India':{Personal:'https://www.bankofindia.bank.in/personal/',Corporate:'https://www.bankofindia.bank.in/corporate/',Business:'https://www.bankofindia.bank.in/business/'},
-    'IDBI Bank':{Personal:'https://www.idbibank.bank.in/personal/',Corporate:'https://www.idbibank.bank.in/corporate/',Business:'https://www.idbibank.bank.in/business/'},
-    'Bandhan Bank':{Personal:'https://www.bandhanbank.bank.in/personal/',Corporate:'https://www.bandhanbank.bank.in/corporate/',Business:'https://www.bandhanbank.bank.in/business/'},
-    'Central Bank of India':{Personal:'https://www.centralbankofindia.bank.in/personal/',Corporate:'https://www.centralbankofindia.bank.in/corporate/',Business:'https://www.centralbankofindia.bank.in/business/'},
-    'UCO Bank':{Personal:'https://www.ucobank.bank.in/personal/',Corporate:'https://www.ucobank.bank.in/corporate/',Business:'https://www.ucobank.bank.in/business/'},
-    'Indian Overseas Bank':{Personal:'https://www.iob.bank.in/personal/',Corporate:'https://www.iob.bank.in/corporate/',Business:'https://www.iob.bank.in/business/'},
-    'South Indian Bank':{Personal:'https://www.southindianbank.bank.in/personal/',Corporate:'https://www.southindianbank.bank.in/corporate/',Business:'https://www.southindianbank.bank.in/business/'},
-    'Karnataka Bank':{Personal:'https://www.karnatakabank.bank.in/personal/',Corporate:'https://www.karnatakabank.bank.in/corporate/',Business:'https://www.karnatakabank.bank.in/business/'},
-    'Standard Chartered Bank':{Personal:'https://www.standardchartered.bank.in/personal/',Corporate:'https://www.standardchartered.bank.in/corporate/',Business:'https://www.standardchartered.bank.in/business/'},
+    'Kotak Mahindra Bank':homeOnly('https://www.kotak.bank.in/'),
+    'Bank of Baroda':homeOnly('https://www.bankofbaroda.bank.in/'),
+    'Punjab National Bank':homeOnly('https://www.pnbindia.in/'),
+    'Canara Bank':homeOnly('https://www.canarabank.bank.in/'),
+    'Union Bank of India':homeOnly('https://www.unionbankofindia.bank.in/'),
+    'IndusInd Bank':homeOnly('https://www.indusind.bank.in/'),
+    'Yes Bank':homeOnly('https://www.yesbank.in/'),
+    'IDFC FIRST Bank':homeOnly('https://www.idfcfirstbank.com/'),
+    'RBL Bank':homeOnly('https://www.rblbank.com/'),
+    'Federal Bank':homeOnly('https://www.federalbank.co.in/'),
+    'Bank of India':homeOnly('https://www.bankofindia.bank.in/'),
+    'IDBI Bank':homeOnly('https://www.idbibank.in/'),
+    'Bandhan Bank':homeOnly('https://bandhanbank.com/'),
+    'Central Bank of India':homeOnly('https://www.centralbankofindia.co.in/'),
+    'UCO Bank':homeOnly('https://www.ucobank.com/'),
+    'Indian Overseas Bank':homeOnly('https://www.iob.bank.in/'),
+    'South Indian Bank':homeOnly('https://www.southindianbank.bank.in/'),
+    'Karnataka Bank':homeOnly('https://www.karnatakabank.bank.in/'),
+    'Standard Chartered Bank':homeOnly('https://www.sc.com/in/'),
   };
   const LOGIN_TYPES=['Personal','Corporate','Business'];
   const [bank,setBank]=useState('Generic');
@@ -2331,15 +2475,18 @@ function BankStatement({salon,onNavTab}={}){
     // eslint-disable-next-line
   },[]);
 
-  const findLatestStatement=async(handle)=>{
+  // since (ms): during a guided download, any statement-type file saved after that moment counts,
+  // whatever the bank named it; otherwise the file name must look like a statement.
+  const findLatestStatement=async(handle,since)=>{
     let best=null;
-    const tokens=['statement','txn','transaction','acct','account',...bankTokens()];
+    const tokens=['statement','txn','transaction','acct','account','stmt','passbook','history',...bankTokens()];
     for await (const entry of handle.values()){
       if(entry.kind!=='file')continue;
       const name=entry.name.toLowerCase();
-      if(!tokens.some(t=>name.includes(t)))continue;
-      if(!/\.(xlsx|xls|csv)$/.test(name))continue;
+      if(!/\.(xlsx|xls|csv|pdf)$/.test(name))continue;
+      if(!since&&!tokens.some(t=>name.includes(t)))continue;
       const file=await entry.getFile();
+      if(since&&file.lastModified<since)continue;
       if(!best||file.lastModified>best.file.lastModified)best={entry,file};
     }
     return best;
@@ -2399,6 +2546,82 @@ function BankStatement({salon,onNavTab}={}){
       await scanAndAutoImport(dirHandle);
     }catch(err){setAutoStatus('Check failed: '+err.message);}
   };
+
+  // ── Guided statement download — the bank login always happens on the bank's own website ──
+  // Saved accounts (per outlet, any bank / account type) → pick a period → "Open bank website" →
+  // log in there and download → the new file is picked up from the connected Downloads folder and
+  // imported by itself, keeping only that period and skipping duplicates.
+  const BANK_ACCOUNT_TYPES=['Current','Savings','OD / CC','Salary','NRE / NRO','Other'];
+  const acctKey=outletKey('salonos_bank_accounts',salonId);
+  const [bankAccounts,setBankAccounts]=useState(()=>{try{const a=JSON.parse(cachedLocalGet(acctKey)||'[]');return Array.isArray(a)?a:[];}catch(e){return[];}});
+  useEffect(()=>{safeLocalSet(acctKey,JSON.stringify(bankAccounts));},[bankAccounts,acctKey]);
+  const [gAcctId,setGAcctId]=useState(()=>{try{return(JSON.parse(cachedLocalGet(acctKey)||'[]')[0]||{}).id||'';}catch(e){return'';}});
+  const gAcct=bankAccounts.find(a=>a.id===gAcctId)||bankAccounts[0]||null;
+  const gIso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const gToday=new Date();
+  const [gFrom,setGFrom]=useState(()=>gIso(new Date(gToday.getFullYear(),gToday.getMonth(),1)));
+  const [gTo,setGTo]=useState(()=>gIso(gToday));
+  const [acctForm,setAcctForm]=useState(null); // null, or the account being added/edited
+  const [waitSince,setWaitSince]=useState(0);
+  const [gStatus,setGStatus]=useState({text:'',bad:false});
+  const loadWorkbookRef=useRef(null);
+  const acctLoginUrl=(a)=>a&&((a.url&&/^https:\/\//i.test(a.url))?a.url:((BANK_LOGIN_URLS[a.bank]||{})[a.loginType||'Personal']||''));
+  const gQuick=[
+    ['Yesterday',()=>{const d=new Date(gToday);d.setDate(d.getDate()-1);setGFrom(gIso(d));setGTo(gIso(d));}],
+    ['Last 7 days',()=>{const d=new Date(gToday);d.setDate(d.getDate()-6);setGFrom(gIso(d));setGTo(gIso(gToday));}],
+    ['This month',()=>{setGFrom(gIso(new Date(gToday.getFullYear(),gToday.getMonth(),1)));setGTo(gIso(gToday));}],
+    ['Last month',()=>{setGFrom(gIso(new Date(gToday.getFullYear(),gToday.getMonth()-1,1)));setGTo(gIso(new Date(gToday.getFullYear(),gToday.getMonth(),0)));}],
+    ['This FY',()=>{const y=gToday.getMonth()>=3?gToday.getFullYear():gToday.getFullYear()-1;setGFrom(gIso(new Date(y,3,1)));setGTo(gIso(gToday));}],
+  ];
+  const saveAcct=()=>{
+    const f=acctForm;if(!f)return;
+    if(!f.bank.trim()){setGStatus({text:'Choose or type the bank name.',bad:true});return;}
+    const url=(f.url||'').trim();
+    if(!BANK_LOGIN_URLS[f.bank]&&!/^https:\/\//i.test(url)){setGStatus({text:'For a bank not in the list, paste its net-banking login address (starting with https://).',bad:true});return;}
+    const clean={id:f.id||('ba'+Date.now().toString(36)),label:(f.label||'').trim()||f.bank+(f.type?' '+f.type:''),bank:f.bank.trim(),loginType:f.loginType||'Personal',type:f.type||'Current',last4:String(f.last4||'').replace(/\D/g,'').slice(-4),url:/^https:\/\//i.test(url)?url:''};
+    setBankAccounts(p=>f.id?p.map(a=>a.id===f.id?clean:a):[...p,clean]);
+    setGAcctId(clean.id);setAcctForm(null);setGStatus({text:'Saved "'+clean.label+'".',bad:false});
+  };
+  const removeAcct=(a)=>{if(!confirm('Remove "'+a.label+'" from this list? Imported statement rows stay.'))return;setBankAccounts(p=>p.filter(x=>x.id!==a.id));};
+  const openBankSite=async()=>{
+    if(!gAcct)return;
+    if(gFrom>gTo){setGStatus({text:'From date must be on or before To date.',bad:true});return;}
+    const url=acctLoginUrl(gAcct);
+    if(!url){setGStatus({text:'No login address saved for this account — edit it and add one.',bad:true});return;}
+    window.open(url,'_blank','noopener,noreferrer'); // first, while the click still allows pop-ups
+    if(BANKS[gAcct.bank])setBank(gAcct.bank);
+    setWaitSince(Date.now()-3000);
+    if(dirHandle){
+      try{let perm=await dirHandle.queryPermission({mode:'read'});if(perm!=='granted')perm=await dirHandle.requestPermission({mode:'read'});setDirNeedsPermission(perm!=='granted');}catch(e){}
+    }
+    setGStatus({text:'Bank website opened. Log in there, choose '+gFrom.split('-').reverse().join('/')+' to '+gTo.split('-').reverse().join('/')+' and download the statement (Excel, CSV or PDF). '+(dirHandle?'This page will import it by itself.':'Then drop the file in the upload box below, or connect your Downloads folder so it happens by itself.'),bad:false});
+  };
+  // While waiting, look for the new download every 3 s (up to 20 minutes).
+  useEffect(()=>{
+    if(!waitSince||!dirHandle)return;
+    let stop=false,busy=false;
+    const tick=async()=>{
+      if(stop||busy)return;
+      if(Date.now()-waitSince>20*60*1000){setWaitSince(0);setGStatus({text:'Stopped waiting for the download (20 minutes). Click "Open bank website" again when ready.',bad:true});return;}
+      busy=true;
+      try{
+        if(await dirHandle.queryPermission({mode:'read'})!=='granted'){setDirNeedsPermission(true);return;}
+        const best=await findLatestStatement(dirHandle,waitSince);
+        if(best&&!stop){
+          stop=true;setWaitSince(0);
+          setGStatus({text:'Found "'+best.file.name+'" — importing…',bad:false});
+          await loadWorkbookRef.current(best.file,{from:gFrom,to:gTo,append:true});
+          lastAutoRef.current=best.file.name+'|'+best.file.lastModified;
+          safeLocalSet(outletKey('salonos_bank_last_auto',salonId),lastAutoRef.current);
+          setGStatus({text:'Imported "'+best.file.name+'" for '+(gAcct?gAcct.label:'this account')+' — see the message below for what was added.',bad:false});
+        }
+      }catch(e){setGStatus({text:'Could not read the Downloads folder: '+e.message,bad:true});}
+      finally{busy=false;}
+    };
+    const t=setInterval(tick,3000);tick();
+    return()=>{stop=true;clearInterval(t);};
+    // eslint-disable-next-line
+  },[waitSince,dirHandle]);
 
   const keyNorm=(v)=>String(v||'').toLowerCase().replace(/[^a-z0-9]/g,'');
   const val=(r,names)=>{const keys=Object.keys(r);for(const name of names){const hit=keys.find(k=>keyNorm(k)===keyNorm(name));if(hit!==undefined)return r[hit];}return'';};
@@ -2679,11 +2902,15 @@ function BankStatement({salon,onNavTab}={}){
     setRows(next);
     setMessage(changed?'Re-classified '+changed+' row'+(changed===1?'':'s')+' — Nature and Date as per Cradlee re-applied from the classification rules.':'No rows matched the classification rules (or the rules already agree with what\'s there).');
   };
-  const loadWorkbook=async(file)=>{
+  // opts (from the guided download): {from,to} ISO dates to keep only that period, append:true.
+  const loadWorkbook=async(file,opts)=>{
     setMessage('');setFileName(file.name);
     try{
       let sheet;
-      if(isCSVFile(file)){
+      if(isPdfFile(file)){
+        const raw=await pdfStatementToRows(file,(again)=>Promise.resolve(window.prompt((again?'That password didn’t work. ':'')+'"'+file.name+'" is password-protected.\nBanks usually use your customer ID or date of birth (e.g. DDMMYYYY). Enter the PDF password:')));
+        sheet={raw,rowCount:raw.length};
+      }else if(isCSVFile(file)){
         // Parse CSV ourselves — keeps every date cell as exact original text (see parseCSVToRows).
         const text=await file.text();
         const raw=parseCSVToRows(text);
@@ -2727,21 +2954,27 @@ function BankStatement({salon,onNavTab}={}){
         }
       }
       if(!imported.length)throw new Error('Couldn\u2019t find any recognisable transaction data in this file \u2014 please check it has date, description and amount columns.');
-      let note='';
+      let note='',periodNote='';
+      if(opts&&opts.from&&opts.to){
+        const iso=d=>{const m=String(d||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);return m?m[3]+'-'+m[2]+'-'+m[1]:'';};
+        const before=imported.length;
+        imported=imported.filter(r=>{const d=iso(r.transactionDate);return !d||(d>=opts.from&&d<=opts.to);});
+        if(before!==imported.length)periodNote=' \u00b7 '+(before-imported.length)+' row'+(before-imported.length===1?'':'s')+' outside '+opts.from.split('-').reverse().join('/')+'\u2013'+opts.to.split('-').reverse().join('/')+' left out';
+      }
       if(usedAutoDetect){
         note=' Columns were detected automatically from this file\u2019s own headers/data (didn\u2019t match the '+bank+' format).';
-      }else if(bank!=='Generic'&&matchRatio<0.5){
+      }else if(bank!=='Generic'&&matchRatio<0.5&&!isPdfFile(file)){
         note=' Note: this file\u2019s columns don\u2019t look like the '+bank+' format you\u2019ve selected \u2014 double-check the Bank dropdown above if any fields look off.';
       }
       imported=applyAutoClassification(imported);
       const autoClassified=imported.filter(r=>r.nature).length;
-      const formatNote=(usedAutoDetect?' using automatic column detection.':' using the '+bank+' format.')+note;
+      const formatNote=(usedAutoDetect?' using automatic column detection.':' using the '+bank+' format.')+note+periodNote;
       // Append mode: add only to what's already there, skipping rows that look like the same
       // transaction already imported (same date, description, debit, credit and closing balance
       // — a bank statement export re-covering an overlapping date range is the normal case this
       // guards against, e.g. downloading "this month so far" every few days). Replace mode keeps
       // the original one-shot behavior of wiping the table and starting over.
-      if(importMode==='append'&&rows.length){
+      if((importMode==='append'||(opts&&opts.append))&&rows.length){
         const dedupeKey=(r)=>[r.transactionDate,r.description,r.debit,r.credit,r.closingBalance].join('|');
         const existingKeys=new Set(rows.map(dedupeKey));
         const freshOnes=imported.filter(r=>!existingKeys.has(dedupeKey(r)));
@@ -2758,6 +2991,7 @@ function BankStatement({salon,onNavTab}={}){
       }
     }catch(err){setMessage('Import failed: '+err.message);}
   };
+  loadWorkbookRef.current=loadWorkbook; // the download watcher always uses this render's copy (current rows)
   // Transactions fetched from the bank (Account Aggregator) — always appended, never replacing.
   // Skips anything already here: same bank transaction id, or same date/description/amounts/
   // balance (rows imported earlier from a file have no transaction id).
@@ -3595,7 +3829,7 @@ function BankStatement({salon,onNavTab}={}){
             ),
             otherBankQuery&&!otherBankMatch&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:6}},Object.keys(BANK_LOGIN_URLS).length+' banks available — start typing to search, then pick an exact match from the list.')
           ),
-          React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:10,lineHeight:1.6}},'Personal is for individual/retail accounts, Corporate for company netbanking (multi-user, maker-checker), and Business for MSME / current-account logins \u2014 pick the one matching how this outlet\u2019s account is held. All open each bank\u2019s official portal (RBI-mandated ".bank.in" domain) in a new tab. Always check the address bar shows the correct ".bank.in" domain before entering your credentials \u2014 SalonOS never asks for or stores your banking password.')
+          React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:10,lineHeight:1.6}},'Personal is for individual/retail accounts, Corporate for company netbanking (multi-user, maker-checker), and Business for MSME / current-account logins \u2014 pick the one matching how this outlet\u2019s account is held. Each opens the bank\u2019s official website in a new tab (its login page where known, otherwise the home page \u2014 click "Login" there). Save an account under "Get statement" with its exact login page for one-click access next time. Always check the address bar shows the bank\u2019s real domain before entering your credentials \u2014 SalonOS never asks for or stores your banking password.')
         )
       )
     ),
@@ -3612,7 +3846,60 @@ function BankStatement({salon,onNavTab}={}){
       ),
       React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},'Download the selected bank\u2019s template or directly upload a statement downloaded from that bank. The import, on-screen table and export all follow this bank\u2019s column format \u2014 switch the bank above any time to re-map. Extra columns will be ignored.')
     ),
-    React.createElement(BankFetchPanel,{salonId,canEdit:canEditBank,onImport:importFetched}),
+    // Account Aggregator fetch (BankFetchPanel, edge function bank-aa) stays built but hidden —
+    // the owner chose download-from-the-bank-website instead of a third-party gateway.
+    React.createElement('div',{className:'card',style:{marginBottom:16,border:'1px solid rgba(47,95,224,0.3)',background:'rgba(47,95,224,0.05)'}},
+      React.createElement('div',{style:{display:'flex',gap:12,alignItems:'flex-start',flexWrap:'wrap'}},
+        React.createElement('div',{style:{fontSize:20}},'📥'),
+        React.createElement('div',{style:{flex:1,minWidth:260}},
+          React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)',marginBottom:4}},'Get statement from your bank’s website'),
+          React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',lineHeight:1.6,marginBottom:10}},'Pick the account and period, click "Open bank website", log in there as usual and download the statement (Excel, CSV or PDF). SalonOS picks up the download and imports it by itself — only that period, duplicates skipped. Your bank login is only ever typed on the bank’s own site.'),
+          bankAccounts.length>0&&React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:6,marginBottom:10}},
+            bankAccounts.map(a=>React.createElement('label',{key:a.id,style:{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:'var(--r)',border:'1px solid '+(gAcct&&gAcct.id===a.id?'var(--accent)':'var(--border2)'),background:'var(--bg2)',cursor:'pointer',flexWrap:'wrap'}},
+              React.createElement('input',{type:'radio',name:'bsAcct',checked:!!gAcct&&gAcct.id===a.id,onChange:()=>setGAcctId(a.id)}),
+              React.createElement('span',{style:{fontWeight:600,fontSize:12.5}},a.label),
+              React.createElement('span',{style:{fontSize:11,color:'var(--text2)'}},a.bank+' · '+a.type+(a.last4?' · ••'+a.last4:'')+' · '+a.loginType+' login'),
+              canEditBank&&React.createElement('span',{style:{marginLeft:'auto',display:'flex',gap:4}},
+                React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'2px 8px'},onClick:e=>{e.preventDefault();setAcctForm({...a});}},'Edit'),
+                React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'2px 8px'},onClick:e=>{e.preventDefault();removeAcct(a);}},'Remove'))
+            ))
+          ),
+          gAcct&&React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:8,marginBottom:10}},
+            React.createElement('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},gQuick.map(([t,fn])=>React.createElement('button',{key:t,className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 9px'},onClick:fn},t))),
+            React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+              React.createElement('label',{style:{fontSize:12,color:'var(--text2)'}},'From'),
+              React.createElement('input',{type:'date',className:'form-control',style:{width:'auto'},value:gFrom,max:gTo,onChange:e=>setGFrom(e.target.value)}),
+              React.createElement('label',{style:{fontSize:12,color:'var(--text2)'}},'To'),
+              React.createElement('input',{type:'date',className:'form-control',style:{width:'auto'},value:gTo,min:gFrom,max:gIso(gToday),onChange:e=>setGTo(e.target.value)}),
+              React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openBankSite},'🔗 Open bank website'),
+              waitSince>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setWaitSince(0);setGStatus({text:'Stopped waiting.',bad:false});}},'Stop waiting')
+            ),
+            waitSince>0&&dirHandle&&React.createElement('div',{style:{fontSize:12,color:'var(--accent2)'}},'⏳ Watching your Downloads folder for the new statement…',
+              dirNeedsPermission&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:8,fontSize:11,padding:'2px 8px'},onClick:async()=>{try{const p=await dirHandle.requestPermission({mode:'read'});setDirNeedsPermission(p!=='granted');}catch(e){}}},'🔓 Allow folder access')),
+            waitSince>0&&!dirHandle&&fsSupported&&React.createElement('div',{style:{fontSize:12,color:'var(--orange)'}},'Tip: ',React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'2px 8px'},onClick:connectDownloads},'📂 Connect Downloads folder'),' once, and downloads are imported by themselves from then on.')
+          ),
+          canEditBank&&(acctForm
+            ?React.createElement('div',{style:{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap',padding:10,border:'1px dashed var(--border2)',borderRadius:'var(--r)'}},
+                React.createElement('div',null,React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:3}},'Bank'),
+                  React.createElement('input',{list:'acct-bank-options',className:'form-control',style:{width:200},placeholder:'Type to search any bank',value:acctForm.bank,onChange:e=>setAcctForm(f=>({...f,bank:e.target.value}))}),
+                  React.createElement('datalist',{id:'acct-bank-options'},Object.keys(BANK_LOGIN_URLS).sort().map(b=>React.createElement('option',{key:b,value:b})))),
+                React.createElement('div',null,React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:3}},'Account type'),
+                  React.createElement('select',{className:'form-control',style:{width:'auto'},value:acctForm.type,onChange:e=>setAcctForm(f=>({...f,type:e.target.value}))},BANK_ACCOUNT_TYPES.map(t=>React.createElement('option',{key:t},t)))),
+                React.createElement('div',null,React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:3}},'Login'),
+                  React.createElement('select',{className:'form-control',style:{width:'auto'},value:acctForm.loginType,onChange:e=>setAcctForm(f=>({...f,loginType:e.target.value}))},LOGIN_TYPES.map(t=>React.createElement('option',{key:t,value:t},t)))),
+                React.createElement('div',null,React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:3}},'Last 4 digits (optional)'),
+                  React.createElement('input',{className:'form-control',style:{width:110},inputMode:'numeric',maxLength:4,value:acctForm.last4,onChange:e=>setAcctForm(f=>({...f,last4:e.target.value.replace(/\D/g,'').slice(0,4)}))})),
+                React.createElement('div',null,React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:3}},'Name (optional)'),
+                  React.createElement('input',{className:'form-control',style:{width:160},placeholder:'e.g. HDFC Current',value:acctForm.label,onChange:e=>setAcctForm(f=>({...f,label:e.target.value}))})),
+                React.createElement('div',{style:{flexBasis:'100%'}},React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:3}},BANK_LOGIN_URLS[acctForm.bank]?'Login address (optional — leave blank to use the '+acctForm.bank+' '+(acctForm.loginType||'Personal')+' login)':'Login address of this bank’s net banking (https://…)'),
+                  React.createElement('input',{className:'form-control',style:{width:'100%',maxWidth:460},placeholder:'https://',value:acctForm.url,onChange:e=>setAcctForm(f=>({...f,url:e.target.value}))})),
+                React.createElement('button',{className:'btn btn-primary btn-sm',onClick:saveAcct},'Save account'),
+                React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setAcctForm(null)},'Cancel'))
+            :React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setAcctForm({bank:'',type:'Current',loginType:'Business',last4:'',label:'',url:''})},'➕ Add a bank account')),
+          gStatus.text&&React.createElement('div',{style:{marginTop:8,fontSize:12,color:gStatus.bad?'var(--red)':'var(--green)',lineHeight:1.6}},gStatus.text)
+        )
+      )
+    ),
     React.createElement('div',{className:'card',style:{marginBottom:16,background:fsSupported?'rgba(76,175,125,0.06)':'rgba(255,159,67,0.06)',border:'1px solid '+(fsSupported?'rgba(76,175,125,0.25)':'rgba(255,159,67,0.25)')}},
       React.createElement('div',{style:{display:'flex',gap:12,alignItems:'flex-start',flexWrap:'wrap'}},
         React.createElement('div',{style:{fontSize:20}},'⚡'),
@@ -3657,11 +3944,11 @@ function BankStatement({salon,onNavTab}={}){
           ?'The next file you upload will be added to what\u2019s already here. Rows with the same date, description, debit, credit and closing balance as an existing row are treated as the same transaction and skipped, so re-uploading an overlapping date range is safe.'
           :React.createElement('span',{style:{color:'var(--orange)'}},'\u26a0 The next file you upload will remove all '+rows.length+' currently imported rows first \u2014 use this only if this file is the complete, correct statement on its own.')
       ),
-      React.createElement('input',{ref:fileRef,type:'file',accept:'.xlsx,.xls,.csv',style:{display:'none'},onChange:onFile}),
+      React.createElement('input',{ref:fileRef,type:'file',accept:'.xlsx,.xls,.csv,.pdf',style:{display:'none'},onChange:onFile}),
       React.createElement('div',{onDragOver:e=>{e.preventDefault();setDragging(true)},onDragLeave:()=>setDragging(false),onDrop,
         onClick:()=>fileRef.current&&fileRef.current.click(),style:{border:'2px dashed '+(dragging?'var(--accent)':'var(--border2)'),borderRadius:'var(--r2)',padding:28,textAlign:'center',cursor:'pointer',background:dragging?'rgba(47,95,224,.06)':'var(--bg3)'}},
         React.createElement('div',{style:{fontSize:30,marginBottom:8}},'🏦'),React.createElement('div',{style:{fontSize:14,fontWeight:600,color:'var(--text)',marginBottom:5}},'Drop bank statement here or click to browse'),
-        React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},'Accepted: Excel (.xlsx, .xls) and CSV'),fileName&&React.createElement('div',{style:{fontSize:11,color:'var(--accent)',marginTop:8}},'Selected: '+fileName)
+        React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},'Accepted: Excel (.xlsx, .xls), CSV and PDF (password-protected PDFs ask for the password)'),fileName&&React.createElement('div',{style:{fontSize:11,color:'var(--accent)',marginTop:8}},'Selected: '+fileName)
       ),
       message&&React.createElement('div',{style:{marginTop:12,padding:10,borderRadius:'var(--r)',fontSize:12,color:message.startsWith('Import failed')?'var(--red)':'var(--green)',background:message.startsWith('Import failed')?'rgba(255,107,107,.08)':'rgba(76,175,125,.08)'}},message)
     ),

@@ -75,3 +75,17 @@ login failed to refresh it, removed the shared session and broadcast SIGNED_OUT 
 other tabs (reproduced with mocks: shared key → ANON, per-tab key → USER). Fix: `getSupabaseClient` stores the Supabase session in
 sessionStorage under a per-tab key (`salonos_auth_key`), matching SalonOS's existing per-tab login. Everyone signs in once after
 this update. Login failures still log to App errors ("Login: …").
+
+## Bank statements (v2026.09.29.15) — owner chose "download from the bank's website", no gateway
+- Bank Statement tab → "Get statement from your bank's website": saved accounts per outlet (kv `salonos_bank_accounts_outlet_<id>`:
+  bank, account type, login type, last 4, optional exact login URL — any bank, custom URL for unlisted ones), period (quick picks or
+  From/To), "Open bank website" → the user logs in ON THE BANK'S SITE and downloads → the connected Downloads folder (Chrome/Edge,
+  File System Access) is polled every 3 s for 20 min for any .xlsx/.xls/.csv/.pdf saved after the click → `loadWorkbook(file,
+  {from,to,append:true})` keeps only that period, skips duplicates, auto-classifies.
+- PDF statements: `pdfStatementToRows` (pdf.js 3.11.174 from cdnjs) — text layout → rows; columns from the header line (right
+  edge for amounts, left edge for Chq/Ref), running balance settles debit/credit, wrapped narration joined, password-protected PDFs
+  prompt for the password (never stored). Scanned-image PDFs are not supported (no OCR).
+- BANK_LOGIN_URLS fixed: most old per-portal paths were guesses (404/error pages). Now verified deep links only for HDFC Personal,
+  ICICI Personal, Axis Corporate, SBI (all three); others open the bank's official home page.
+- The Account Aggregator (Setu) card + `bank-aa` edge function + `bank_aa_links` table remain but the card is not rendered.
+- Self-tests: 27 (incl. 2 PDF-statement tests using jsPDF).
