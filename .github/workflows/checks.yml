@@ -1,0 +1,23 @@
+# Runs on every push and pull request: static checks (syntax, load order, duplicate names,
+# version consistency) and the self-tests in headless Chrome. A red ❌ on a commit means
+# something is wrong — see the "Checks" run's log on GitHub → Actions.
+name: Checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install check tools
+        run: npm install --no-save --no-package-lock acorn@8 puppeteer@23
+      - name: Static checks (syntax, load order, versions)
+        run: node tools/check.mjs
+      - name: Self-tests in headless Chrome
+        run: node tools/run-tests.mjs
