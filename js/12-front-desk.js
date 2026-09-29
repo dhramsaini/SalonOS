@@ -424,7 +424,7 @@ function CollaborationReview({user,salons,submissions,setSubmissions}){
   const [filter,setFilter]=useState('All');
   const [note,setNote]=useState({});
   const canReview=['Super Admin','Reviewer'].includes(user.role);
-  const visible=submissions.filter(x=>user.role==='Super Admin'||user.role==='Reviewer'||user.outletIds.includes(x.outletId)).filter(x=>filter==='All'||x.status===filter);
+  const visible=submissions.filter(x=>userCanSeeOutlet(user,x.outletId)).filter(x=>filter==='All'||x.status===filter);
   const updateStatus=(id,status)=>{
     setSubmissions(prev=>prev.map(x=>x.id===id?{...x,status,reviewedBy:user.name,reviewedAt:new Date().toISOString(),remarks:note[id]||x.remarks}:x));
     toast('Submission marked '+status.toLowerCase(),'success');

@@ -131,10 +131,7 @@ function LoginPage({onLogin}){
           setErr('Could not verify demo access — check your internet connection and try again.');await supa.auth.signOut();return;
         }
       }
-      onLogin({id:profile.id,name:profile.name,email:data.user.email,role:profile.role,access:profile.access,outletIds:profile.outlet_ids||[],status:profile.status,
-        outletAccess:(profile.outlet_access&&Object.keys(profile.outlet_access).length)?profile.outlet_access:Object.fromEntries((profile.outlet_ids||[]).map(oid=>[oid,'View and Edit'])),
-        sheetAccessByOutlet:profile.sheet_access_by_outlet||{},
-        isDemo:!!profile.is_demo,demoDaysLeft});
+      onLogin(userFromProfile(profile,data.user.email,{demoDaysLeft}));
     }catch(err){
       setErr(err.message||'Could not sign in — check your internet connection and try again.');
     }
@@ -2004,8 +2001,8 @@ function UserManagement(){
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-13'},'Status'),React.createElement('select',{id:'f-13',className:'form-control',value:form.status,onChange:fc('status')},['Active','Inactive'].map(s=>React.createElement('option',{key:s},s))))
         ),
         React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'18px 0 10px',paddingTop:14,borderTop:'1px solid var(--border)'}},'Outlet Access'),
-        (form.role==='Super Admin'||form.role==='Reviewer')
-          ?React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',background:'var(--bg3)',padding:'10px 14px',borderRadius:'var(--r)',marginBottom:14}},form.role+' always sees every outlet — the table below doesn\'t apply to this role.')
+        form.role==='Super Admin'
+          ?React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',background:'var(--bg3)',padding:'10px 14px',borderRadius:'var(--r)',marginBottom:14}},'Super Admin always sees every outlet — the table below doesn\'t apply to this role.')
           :React.createElement(React.Fragment,null,
               React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:10,lineHeight:1.5}},'Choose how much access this user gets, outlet by outlet. "View Only" lets them see that outlet\'s data; "View and Edit" lets them add, change, or delete it; "No Access" hides that outlet from them entirely — they won\'t be able to switch into it at all. This is separate from Sheet-wise Access below, which controls what they can do once inside whichever outlet they\'re in.'),
               salonsList.length===0

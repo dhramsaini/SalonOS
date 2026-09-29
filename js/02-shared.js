@@ -325,6 +325,28 @@ function saveSalonsToStorage(list){
   if(Object.keys(sec).length||cachedLocalGet(PORTAL_SECRETS_KEY)!=null)safeLocalSet(PORTAL_SECRETS_KEY,JSON.stringify(sec));
 }
 const SALONS=loadSalonsFromStorage();
+// Which outlets a login may open — the same rule the database enforces (salonos_key_access):
+// Super Admin sees every outlet; everyone else (Reviewer included) only the outlets User
+// Management gives them ("View Only" or "View and Edit"), falling back to outlet_ids for
+// accounts saved before outlet-wise access existed.
+function userCanSeeOutlet(u,outletId){
+  if(!u)return false;
+  if(u.role==='Super Admin')return true;
+  const oa=u.outletAccess&&Object.keys(u.outletAccess).length?u.outletAccess:null;
+  if(oa){const lvl=oa[String(outletId)];return !!lvl&&lvl!=='No Access';}
+  return(u.outletIds||[]).map(String).includes(String(outletId));
+}
+function currentSessionUser(){try{return JSON.parse(sessionStorage.getItem('salonos_user')||'null');}catch(e){return null;}}
+// The outlets the signed-in user may see, out of `list` (default: every outlet).
+function salonsForCurrentUser(list){const u=currentSessionUser();return(list||SALONS).filter(s=>userCanSeeOutlet(u,s.id));}
+// Builds the app's user object from a profiles row — used at login and whenever a Super Admin
+// changes this person's access while they're signed in (see the access refresh in App).
+function userFromProfile(profile,email,extra){
+  return{id:profile.id,name:profile.name,email,role:profile.role,access:profile.access,outletIds:profile.outlet_ids||[],status:profile.status,
+    outletAccess:(profile.outlet_access&&Object.keys(profile.outlet_access).length)?profile.outlet_access:Object.fromEntries((profile.outlet_ids||[]).map(oid=>[oid,'View and Edit'])),
+    sheetAccessByOutlet:profile.sheet_access_by_outlet||{},
+    isDemo:!!profile.is_demo,...(extra||{})};
+}
 const EMP_STORE_KEY='salonos_master_employees';
 function empKeyFor(salonId){
   return salonId!=null?EMP_STORE_KEY+'_outlet_'+salonId:EMP_STORE_KEY;

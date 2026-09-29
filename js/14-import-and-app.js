@@ -531,6 +531,40 @@ function App(){
     // EVERY device/browser, silently breaking cloud sync wherever else it was still open.
     if(CLOUD_SYNC_ENABLED)getSupabaseClient().then(supa=>supa&&supa.auth.signOut({scope:'local'})).catch(()=>{});
   };
+  // Access a Super Admin changes applies straight away — this person's own profile is re-read every
+  // 30 s and when the window regains focus. Before, rights were read only at login, so outlets or
+  // sheets given later stayed hidden (and removed ones stayed visible) until they signed in again.
+  useEffect(()=>{
+    if(!CLOUD_SYNC_ENABLED||!loggedIn||!user||!user.id)return;
+    let stopped=false,busy=false;
+    const FIELDS=['name','role','access','status','outletIds','outletAccess','sheetAccessByOutlet'];
+    const check=async()=>{
+      if(busy||stopped||document.visibilityState!=='visible')return;
+      busy=true;
+      try{
+        const supa=await getSupabaseClient();
+        const{data:p,error}=await supa.from('profiles').select('*').eq('id',user.id).maybeSingle();
+        if(error||stopped)return;
+        if(!p||p.status==='Inactive'){logout();addToast('This account has been deactivated. Contact your Super Admin.','warning',9000);return;}
+        const cur=currentSessionUser()||user;
+        const next={...cur,...userFromProfile(p,cur.email,{isDemo:cur.isDemo,demoDaysLeft:cur.demoDaysLeft})};
+        if(FIELDS.every(f=>JSON.stringify(next[f])===JSON.stringify(cur[f])))return;
+        sessionStorage.setItem('salonos_user',JSON.stringify(next));
+        setUser(next);
+        purgeOutletDataWithoutAccess();
+        cloudCheckForUpdates(); // brings down the data of any outlet just given
+        addToast('Your access has been updated by the Super Admin.','info',6000);
+      }catch(e){}finally{busy=false;}
+    };
+    const t=setInterval(check,30000);
+    window.addEventListener('focus',check);
+    check();
+    return()=>{stopped=true;clearInterval(t);window.removeEventListener('focus',check);};
+  },[loggedIn,user&&user.id]);
+  // If the outlet open right now is no longer allowed, leave it.
+  useEffect(()=>{
+    if(user&&selectedSalon&&!userCanSeeOutlet(user,selectedSalon.id)){setSelectedSalon(null);setActivePage('dashboard');}
+  },[user,selectedSalon]);
   // Shared counter PCs and phones often stay logged in all day — sign out after 30 minutes with
   // no activity, but never while an edit is still on its way to the cloud.
   useEffect(()=>{
@@ -686,7 +720,7 @@ function App(){
 
   const FYS=['2022-23','2023-24','2024-25','2025-26','2026-27'];
 
-  const accessibleSalons=isAdmin||isReviewer?salons:salons.filter(s=>user?.outletIds?.includes(s.id));
+  const accessibleSalons=salons.filter(s=>userCanSeeOutlet(user,s.id)); // Super Admin: all; everyone else: outlets given in User Management
   const renderPage=()=>{
     if(gateFor||(activePage==='salon'&&!period)){
       const gateSalon=gateFor||selectedSalon;

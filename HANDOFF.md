@@ -25,7 +25,8 @@ PWA: `manifest.json`, `service-worker.js` (network-first). `tests.html` = self-t
 - `profiles`: users read only their own row; only active Super Admins manage others (`is_active_super_admin()`).
 - Both Super Admins (dhramsaini15@gmail.com, ca.dharmendersaini@yahoo.com) have **TOTP two-step login ON** — signing in needs the owner's authenticator code (Claude can't do it).
 - Public sign-up is OFF in Supabase Auth; min password length 8. Users are created via the `create-user` edge function (admin API). Permanent delete: `admin_delete_user(uuid)`.
-- Users today: Payal Roy (Salon Manager, outlets 5 & 6 View and Edit), Amit Verma (Reviewer), the two Super Admins.
+- Users today: Payal Roy (Salon Manager, outlets 5 & 6 View and Edit), Amit Verma (Reviewer — since step8 no outlets until given some), the two Super Admins.
+- Since v2026.09.29.7: everyone except Super Admin (Reviewer included) sees only outlets given in User Management (`userCanSeeOutlet` in js/02-shared.js, same rule as the database); a signed-in user's rights are re-read every 30 s / on focus, so changes apply without logging out.
 - Outlets: **5 = Mysha Ventures LLP**, **6 = Rudraaksh Wellness Private Limited**.
 
 ## Other Supabase pieces
@@ -34,7 +35,7 @@ PWA: `manifest.json`, `service-worker.js` (network-first). `tests.html` = self-t
 - `client_errors` (app error log, 60 days).
 - Edge function **`salonos-reports`** (source `supabase/functions/salonos-reports/index.ts`, verify-JWT OFF, own auth): nightly 22:00 IST + monthly 1st 09:00 IST via cron (`salonos-report-daily/monthly`, pg_net). Email needs owner-added secrets `RESEND_API_KEY` + `REPORT_FROM` (Resend, domain verified); WhatsApp optional (`WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, template `salonos_daily_summary`). **Owner chose to skip email setup for now.**
 - **`employees` table** (step6): one row per employee (`outlet_id, id, data jsonb, name, status, deleted`), filled automatically by trigger `kv_store_sync_employees` from the app's employee lists; read-only RLS by outlet access. Check it with `select * from salonos_employees_parity();` (all `mismatched` must be 0).
-- SQL scripts that built all of this: `supabase/step0…step7*.sql` (already applied — don't re-run blindly).
+- SQL scripts that built all of this: `supabase/step0…step9*.sql` (already applied — don't re-run blindly).
 
 ## How to change and publish
 1. Edit the right file in `js/` (or `index.html` for CSS/shell). Then run `powershell -File tools\bump-version.ps1 <new version>` —
@@ -54,6 +55,6 @@ Cloud sync fixes & live updates · per-outlet database access rules · documents
 - Stage B: ✅ DONE — GitHub Actions "Checks" on every push: `tools/check.mjs` (syntax, load order, duplicate names, versions) + `tools/run-tests.mjs` (self-tests in headless Chrome). (This PC has no Node/Python.)
 - Stage C: per-area tests.
 
-**#3 Proper database tables** — Employees Stage 1a ✅ DONE (29 Sep 2026): `employees` table kept in sync from the app by a database trigger; parity at creation: outlet 5 = 11/11, outlet 6 = 1/1, 0 mismatched. Stage 1b ✅ DONE (v2026.09.29.6): step7 adds `pos` + `raw`; the app rebuilds each outlet's employee list from the table on every load (`employeesFromTable` in js/01-foundation.js) and compares it byte-for-byte with the kv copy — on a difference it uses the kv copy and logs to App errors. Saves still go to kv_store (trigger copies them in the same transaction). Rollback: `EMPLOYEES_FROM_TABLE=false`. Possible later step: save per record straight into the table (needs server-side handling of two people adding an employee with the same new id). Then, one module at a time: Employees → Attendance → Daily Sales & Expenses → Advances/Penalties → Vendors/Invoices → … For each: new table with per-outlet RLS; dual-write (kv + table) with a daily parity check; backup before each step; switch reads to the table only when parity holds; keep a one-line rollback switch.
+**#3 Proper database tables** — Employees Stage 1a ✅ DONE (29 Sep 2026): `employees` table kept in sync from the app by a database trigger; parity at creation: outlet 5 = 11/11, outlet 6 = 1/1, 0 mismatched. Stage 1b ✅ DONE (v2026.09.29.6): step7 adds `pos` + `raw`; the app rebuilds each outlet's employee list from the table on every load (`sheetsFromTables` in js/01-foundation.js) and compares it byte-for-byte with the kv copy — on a difference it uses the kv copy and logs to App errors. Saves still go to kv_store (trigger copies them in the same transaction). Rollback: `EMPLOYEES_FROM_TABLE=false`. Possible later step: save per record straight into the table (needs server-side handling of two people adding an employee with the same new id). **Attendance ✅ DONE (v2026.09.29.7, step9)**: `attendance` table, one row per employee-month (`rec_key` like E001_2026_7, `emp_id, year, month 1-12, days in data, present, off_days`), same trigger + load check; rollback `ATTENDANCE_FROM_TABLE=false`. Then, one module at a time: Daily Sales & Expenses → Advances/Penalties → Vendors/Invoices → … For each: new table with per-outlet RLS; dual-write (kv + table) with a daily parity check; backup before each step; switch reads to the table only when parity holds; keep a one-line rollback switch.
 
 Other open items: email reports setup (owner); staff should reload the app; attendance & sales for 22–28 Sep 2026 were missing at both outlets.

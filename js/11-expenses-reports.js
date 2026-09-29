@@ -950,8 +950,8 @@ function PnLSheet(){
   // pgCurrent() the Period Gate uses), so this doesn't quietly go stale again every April.
   const [selFY,setSelFY]=useState(()=>pgCurrent().fy);
   const FYS=['2023-24','2024-25','2025-26','2026-27'];
-  const ACTIVE_SALONS=SALONS.filter(s=>s.status==='Active');
-  const [selOutletId,setSelOutletId]=useState((ACTIVE_SALONS[0]||SALONS[0]||{}).id||1);
+  const ACTIVE_SALONS=salonsForCurrentUser().filter(s=>s.status==='Active');
+  const [selOutletId,setSelOutletId]=useState((ACTIVE_SALONS[0]||{}).id||1);
   const sid=Number(selOutletId)||1;
 
   // Real monthly figures — one call to the same plBuild() that powers the real Monthly P&L, for
@@ -1759,7 +1759,7 @@ function ReportsHub(){
   const [selYear,setSelYear]=useState(today.getFullYear());
   const [selOutlet,setSelOutlet]=useState('all');
   const [activeReport,setActiveReport]=useState(null);
-  const targets=selOutlet==='all'?SALONS.filter(s=>s.status==='Active').map(s=>s.id):[Number(selOutlet)];
+  const targets=selOutlet==='all'?salonsForCurrentUser().filter(s=>s.status==='Active').map(s=>s.id):[Number(selOutlet)];
   const EMPLOYEES=sortByDesignation(
     targets.flatMap(sid=>loadEmployees(sid).map(e=>({...e,_salonId:sid})))
   );
@@ -1823,7 +1823,7 @@ function ReportsHub(){
   // user say so explicitly.
   const mk=(m,y)=>{
     const{fy,mi}=calToFYMI(y,m);
-    const targets=selOutlet==='all'?SALONS.filter(s=>s.status==='Active').map(s=>s.id):[Number(selOutlet)];
+    const targets=selOutlet==='all'?salonsForCurrentUser().filter(s=>s.status==='Active').map(s=>s.id):[Number(selOutlet)];
     const builds=targets.map(sid=>plBuild(sid,fy,mi));
     const sumField=(fn)=>builds.reduce((s,b)=>s+fn(b),0);
     const cash=sumField(b=>b.sections[0].lines[0].amt);
@@ -1994,7 +1994,7 @@ function ReportsHub(){
       React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selOutlet,onChange:e=>setSelOutlet(e.target.value)},
           React.createElement('option',{value:'all'},'All Outlets'),
-          SALONS.filter(s=>s.status==='Active').map(s=>React.createElement('option',{key:s.id,value:s.id},s.name.split('—')[0].trim()))
+          salonsForCurrentUser().filter(s=>s.status==='Active').map(s=>React.createElement('option',{key:s.id,value:s.id},s.name.split('—')[0].trim()))
         ),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))),
