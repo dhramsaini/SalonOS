@@ -2073,6 +2073,148 @@ function CollectionSheetView({salon,onNavTab}={}){
 }
 
 
+// ── Fetch from bank (Account Aggregator) ────────────────────────────────────────────────────────
+// Any bank / any account type on India's RBI Account Aggregator network, through the "bank-aa"
+// edge function (Setu). Linking opens the AA's own page where the account holder approves with an
+// OTP — SalonOS never asks for or stores a bank password. After approval, statements for any
+// period are fetched on demand and handed to onImport (the Bank Statement tab's duplicate-safe
+// append). Accounts are linked per outlet.
+async function bankAaCall(action,payload){
+  const supa=await getSupabaseClient();
+  const{data,error}=await supa.functions.invoke('bank-aa',{body:{action,...payload}});
+  if(error){
+    let msg=error.message||'Could not reach the bank service';
+    try{const b=error.context&&await error.context.json();if(b&&b.error)msg=b.error;}catch(e){}
+    throw new Error(msg);
+  }
+  if(data&&data.error&&!data.notConfigured)throw new Error(data.error);
+  return data||{};
+}
+function BankFetchPanel({salonId,canEdit,onImport}){
+  const isoOf=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const today=new Date();
+  const [state,setState]=useState({loading:true,notConfigured:false,links:[],error:''});
+  const [sel,setSel]=useState('');
+  const [from,setFrom]=useState(isoOf(new Date(today.getFullYear(),today.getMonth(),1)));
+  const [to,setTo]=useState(isoOf(today));
+  const [busy,setBusy]=useState('');
+  const [msg,setMsg]=useState({text:'',bad:false});
+  const [showLink,setShowLink]=useState(false);
+  const [linkForm,setLinkForm]=useState({label:'',mobile:''});
+  const load=useCallback(async(quiet)=>{
+    if(!CLOUD_SYNC_ENABLED||salonId==null){setState({loading:false,notConfigured:true,links:[],error:''});return;}
+    if(!quiet)setState(s=>({...s,loading:true}));
+    try{
+      const d=await bankAaCall('list',{outlet_id:salonId});
+      if(d.notConfigured){setState({loading:false,notConfigured:true,links:[],error:''});return;}
+      const links=(d.links||[]).filter(l=>l.status!=='REVOKED');
+      setState({loading:false,notConfigured:false,links,error:''});
+      setSel(s=>links.some(l=>l.id===s)?s:((links.find(l=>l.status==='ACTIVE')||links[0]||{}).id||''));
+    }catch(e){setState(s=>({...s,loading:false,error:e.message}));}
+  },[salonId]);
+  useEffect(()=>{load();},[load]);
+  // While an approval is pending, re-check every 6 s (the OTP page is in another tab).
+  const pending=state.links.some(l=>l.status==='PENDING');
+  useEffect(()=>{if(!pending)return;const t=setInterval(()=>load(true),6000);return()=>clearInterval(t);},[pending,load]);
+  const setRange=(f,t)=>{setFrom(isoOf(f));setTo(isoOf(t));};
+  const quick=[
+    ['Yesterday',()=>{const d=new Date(today);d.setDate(d.getDate()-1);setRange(d,d);}],
+    ['Last 7 days',()=>{const d=new Date(today);d.setDate(d.getDate()-6);setRange(d,today);}],
+    ['This month',()=>setRange(new Date(today.getFullYear(),today.getMonth(),1),today)],
+    ['Last month',()=>setRange(new Date(today.getFullYear(),today.getMonth()-1,1),new Date(today.getFullYear(),today.getMonth(),0))],
+    ['This FY',()=>{const y=today.getMonth()>=3?today.getFullYear():today.getFullYear()-1;setRange(new Date(y,3,1),today);}],
+  ];
+  const link=async()=>{
+    const mobile=linkForm.mobile.replace(/\D/g,'');
+    if(mobile.length!==10){setMsg({text:'Enter the 10-digit mobile number registered with the bank.',bad:true});return;}
+    setBusy('link');setMsg({text:'',bad:false});
+    // Open the approval tab right away (inside the click) so pop-up blockers allow it.
+    const w=window.open('about:blank','_blank');
+    try{
+      const d=await bankAaCall('link',{outlet_id:salonId,label:linkForm.label.trim(),mobile,redirect_url:location.origin+location.pathname});
+      if(d.notConfigured){if(w)w.close();setState(s=>({...s,notConfigured:true}));return;}
+      if(w)w.location.href=d.url;else window.open(d.url,'_blank');
+      setShowLink(false);setLinkForm({label:'',mobile:''});
+      setMsg({text:'Approval page opened in a new tab — enter the OTP there and choose the account(s) to share. This screen updates by itself once approved.',bad:false});
+      await load(true);
+      if(d.link)setSel(d.link.id);
+    }catch(e){if(w)w.close();setMsg({text:e.message,bad:true});}
+    finally{setBusy('');}
+  };
+  const fetchNow=async()=>{
+    if(!sel)return;
+    if(from>to){setMsg({text:'From date must be on or before To date.',bad:true});return;}
+    setBusy('fetch');setMsg({text:'Fetching from the bank… this usually takes 5–30 seconds.',bad:false});
+    try{
+      const d=await bankAaCall('fetch',{id:sel,from,to});
+      const txns=d.transactions||[];
+      const res=onImport(txns);
+      const accs=(d.accounts||[]).map(a=>(a.masked||'account')+(a.type?' ('+a.type+')':'')).join(', ');
+      setMsg({text:(txns.length?'Fetched '+txns.length+' transaction'+(txns.length===1?'':'s'):'No transactions in that period')+(accs?' from '+accs:'')+' · '+res.added+' new added'+(res.skipped?' · '+res.skipped+' already in the statement skipped':'')+(d.status==='PARTIAL'?' · some accounts did not respond — try again later for those.':'')+'.',bad:false});
+      load(true);
+    }catch(e){setMsg({text:e.message,bad:true});}
+    finally{setBusy('');}
+  };
+  const unlink=async(l)=>{
+    if(!confirm('Remove "'+l.label+'"? Its approval is cancelled at the bank’s end too. Already imported rows stay.'))return;
+    setBusy('unlink');
+    try{await bankAaCall('unlink',{id:l.id});setMsg({text:'"'+l.label+'" removed.',bad:false});await load(true);}
+    catch(e){setMsg({text:e.message,bad:true});}
+    finally{setBusy('');}
+  };
+  const STATUS={ACTIVE:['✅ Approved','var(--green)'],PENDING:['⏳ Waiting for approval (OTP)','var(--orange)'],REJECTED:['✖ Declined','var(--red)'],EXPIRED:['⌛ Expired — link again','var(--red)'],PAUSED:['⏸ Paused','var(--orange)']};
+  const selLink=state.links.find(l=>l.id===sel);
+  const sub={fontSize:11.5,color:'var(--text3)',lineHeight:1.6};
+  return React.createElement('div',{className:'card',style:{marginBottom:16,border:'1px solid rgba(47,95,224,0.3)',background:'rgba(47,95,224,0.05)'}},
+    React.createElement('div',{style:{display:'flex',gap:12,alignItems:'flex-start',flexWrap:'wrap'}},
+      React.createElement('div',{style:{fontSize:20}},'🏦'),
+      React.createElement('div',{style:{flex:1,minWidth:260}},
+        React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)',marginBottom:4}},'Fetch statement from bank — automatic'),
+        React.createElement('div',{style:{...sub,marginBottom:10}},'Works with any bank and any account type (savings, current, OD/CC…) through the RBI-approved Account Aggregator. Link an account once with an OTP — no bank password is ever entered here — then pick a period and fetch. New transactions are added; ones already here are skipped.'),
+        state.loading?React.createElement('div',{style:sub},'Loading linked accounts…'):
+        state.notConfigured?React.createElement('div',{style:{fontSize:12,color:'var(--orange)',lineHeight:1.6}},'Not switched on yet. A Super Admin needs to add the Account Aggregator (Setu) keys in Supabase → Edge Functions → Secrets: SETU_CLIENT_ID, SETU_CLIENT_SECRET, SETU_PRODUCT_INSTANCE_ID (and SETU_ENV = production when going live). Meanwhile, use the upload box below.'):
+        React.createElement(React.Fragment,null,
+          state.error&&React.createElement('div',{style:{fontSize:12,color:'var(--red)',marginBottom:8}},state.error),
+          state.links.length>0&&React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:6,marginBottom:10}},
+            state.links.map(l=>{const st=STATUS[l.status]||[l.status,'var(--text3)'];
+              return React.createElement('label',{key:l.id,style:{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:'var(--r)',border:'1px solid '+(sel===l.id?'var(--accent)':'var(--border2)'),background:'var(--bg2)',cursor:'pointer',flexWrap:'wrap'}},
+                React.createElement('input',{type:'radio',name:'bankAaSel',checked:sel===l.id,onChange:()=>setSel(l.id)}),
+                React.createElement('span',{style:{fontWeight:600,fontSize:12.5}},l.label),
+                (l.accounts||[]).length>0&&React.createElement('span',{style:{fontSize:11,color:'var(--text2)'}},(l.accounts||[]).map(a=>(a.masked||'')+(a.type?' '+a.type:'')).join(', ')),
+                React.createElement('span',{style:{fontSize:11,color:st[1]}},st[0]),
+                l.last_fetch_at&&React.createElement('span',{style:{fontSize:10.5,color:'var(--text3)'}},'last fetched '+new Date(l.last_fetch_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})),
+                canEdit&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto',fontSize:11,padding:'2px 8px'},disabled:!!busy,onClick:e=>{e.preventDefault();unlink(l);}},'Remove'));
+            })
+          ),
+          selLink&&selLink.status==='ACTIVE'&&canEdit&&React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:8,marginBottom:10}},
+            React.createElement('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},quick.map(([t,fn])=>React.createElement('button',{key:t,className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 9px'},onClick:fn},t))),
+            React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+              React.createElement('label',{style:{fontSize:12,color:'var(--text2)'}},'From'),
+              React.createElement('input',{type:'date',className:'form-control',style:{width:'auto'},value:from,max:to,onChange:e=>setFrom(e.target.value)}),
+              React.createElement('label',{style:{fontSize:12,color:'var(--text2)'}},'To'),
+              React.createElement('input',{type:'date',className:'form-control',style:{width:'auto'},value:to,min:from,max:isoOf(today),onChange:e=>setTo(e.target.value)}),
+              React.createElement('button',{className:'btn btn-primary btn-sm',disabled:!!busy,onClick:fetchNow},busy==='fetch'?'Fetching…':'⬇ Fetch & import')
+            )
+          ),
+          selLink&&selLink.status==='PENDING'&&React.createElement('div',{style:{fontSize:12,color:'var(--orange)',marginBottom:10}},'Waiting for the OTP approval in the other tab. This updates by itself — or click ',
+            React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'2px 8px'},onClick:()=>load()},'Check now')),
+          canEdit&&(showLink
+            ?React.createElement('div',{style:{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap',padding:10,border:'1px dashed var(--border2)',borderRadius:'var(--r)'}},
+                React.createElement('div',null,React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:3}},'Name for this account'),
+                  React.createElement('input',{className:'form-control',style:{width:200},placeholder:'e.g. HDFC Current',value:linkForm.label,onChange:e=>setLinkForm(f=>({...f,label:e.target.value}))})),
+                React.createElement('div',null,React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:3}},'Mobile number registered with the bank'),
+                  React.createElement('input',{className:'form-control',style:{width:170},inputMode:'numeric',maxLength:14,placeholder:'10-digit mobile',value:linkForm.mobile,onChange:e=>setLinkForm(f=>({...f,mobile:e.target.value}))})),
+                React.createElement('button',{className:'btn btn-primary btn-sm',disabled:!!busy,onClick:link},busy==='link'?'Opening…':'Link & approve with OTP'),
+                React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowLink(false)},'Cancel'))
+            :React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowLink(true)},'➕ Link a bank account')),
+          !canEdit&&React.createElement('div',{style:sub},'You have view-only access here — fetching is available to users who can edit this Bank Statement.')
+        ),
+        msg.text&&React.createElement('div',{style:{marginTop:8,fontSize:12,color:msg.bad?'var(--red)':'var(--green)',lineHeight:1.6}},msg.text)
+      )
+    )
+  );
+}
+
 function BankStatement({salon,onNavTab}={}){
   const salonId=salon?.id;
   const bsWrapRef=useRef(null);
@@ -2616,6 +2758,36 @@ function BankStatement({salon,onNavTab}={}){
       }
     }catch(err){setMessage('Import failed: '+err.message);}
   };
+  // Transactions fetched from the bank (Account Aggregator) — always appended, never replacing.
+  // Skips anything already here: same bank transaction id, or same date/description/amounts/
+  // balance (rows imported earlier from a file have no transaction id).
+  const importFetched=(txns)=>{
+    const dedupeKey=(r)=>[r.transactionDate,r.description,r.debit,r.credit,r.closingBalance].join('|');
+    const haveIds=new Set(rows.filter(r=>r.txnId).map(r=>r.txnId));
+    const haveKeys=new Set(rows.map(dedupeKey));
+    let nextId=rows.reduce((m,r)=>Math.max(m,Number(r.id)||0),0)+1;
+    const fresh=[];
+    txns.forEach(t=>{
+      const r={transactionDate:t.transactionDate,valueDate:t.valueDate,description:t.description,refNo:t.refNo,debit:Number(t.debit)||0,credit:Number(t.credit)||0,closingBalance:Number(t.closingBalance)||0,nature:'',cradleeDate:'',txnId:t.txnId||'',bankAccount:t.account||''};
+      const k=dedupeKey(r);
+      if((r.txnId&&haveIds.has(r.txnId))||haveKeys.has(k))return;
+      haveKeys.add(k);if(r.txnId)haveIds.add(r.txnId);
+      fresh.push({...r,id:nextId++});
+    });
+    const classified=applyAutoClassification(fresh);
+    if(classified.length)setRows(prev=>[...prev,...classified]);
+    return{added:classified.length,skipped:txns.length-classified.length};
+  };
+  const canEditBank=(()=>{
+    const u=currentSessionUser();
+    if(!u)return false;
+    if(u.role==='Super Admin')return true;
+    if(['Reviewer','Owner','Salon Owner'].includes(u.role))return false;
+    const oa=u.outletAccess&&Object.keys(u.outletAccess).length?u.outletAccess:null;
+    if(oa&&oa[String(salonId)]!=='View and Edit')return false;
+    const sa=u.sheetAccessByOutlet&&u.sheetAccessByOutlet[salonId];
+    return !(sa&&sa['bank-statement']&&sa['bank-statement']!=='Edit');
+  })();
   const onFile=(e)=>{const f=e.target.files&&e.target.files[0];if(f)loadWorkbook(f);e.target.value='';};
   const onDrop=(e)=>{e.preventDefault();setDragging(false);const f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f)loadWorkbook(f);};
   const update=(id,k,v)=>setRows(p=>p.map(r=>r.id===id?{...r,[k]:v}:r));
@@ -3440,6 +3612,7 @@ function BankStatement({salon,onNavTab}={}){
       ),
       React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},'Download the selected bank\u2019s template or directly upload a statement downloaded from that bank. The import, on-screen table and export all follow this bank\u2019s column format \u2014 switch the bank above any time to re-map. Extra columns will be ignored.')
     ),
+    React.createElement(BankFetchPanel,{salonId,canEdit:canEditBank,onImport:importFetched}),
     React.createElement('div',{className:'card',style:{marginBottom:16,background:fsSupported?'rgba(76,175,125,0.06)':'rgba(255,159,67,0.06)',border:'1px solid '+(fsSupported?'rgba(76,175,125,0.25)':'rgba(255,159,67,0.25)')}},
       React.createElement('div',{style:{display:'flex',gap:12,alignItems:'flex-start',flexWrap:'wrap'}},
         React.createElement('div',{style:{fontSize:20}},'⚡'),
