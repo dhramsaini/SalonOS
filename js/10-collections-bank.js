@@ -2691,32 +2691,75 @@ function BankStatement({salon,onNavTab}={}){
     }
     setGStatus({text:'Bank website opened. Log in there, choose '+gFrom.split('-').reverse().join('/')+' to '+gTo.split('-').reverse().join('/')+' and download the statement (Excel, CSV or PDF). '+(dirHandle?'This page will import it by itself.':'Then drop the file in the upload box below, or connect your Downloads folder so it happens by itself.'),bad:false});
   };
-  // While waiting, look for the new download every 3 s (up to 20 minutes).
+  // While waiting, look for the new download every 3 s (up to 20 minutes). The folder's file names
+  // are noted when waiting starts; any file that appears after that is the download — whatever its
+  // name, and whatever date the bank stamped on it (some downloads keep the server's old date, so a
+  // time check alone missed them). What the watcher sees is shown, so a download that went to a
+  // different folder or came as another file type is obvious.
+  const [watchInfo,setWatchInfo]=useState('');
+  const STATEMENT_EXT=/\.(xlsx|xls|csv|pdf)$/i;
   useEffect(()=>{
     if(!waitSince||!dirHandle)return;
-    let stop=false,busy=false;
+    let stop=false,busy=false,known=null;
+    const otherNew=new Set();
+    const listNames=async()=>{const names=new Set();for await(const e of dirHandle.values()){if(e.kind==='file')names.add(e.name);}return names;};
     const tick=async()=>{
       if(stop||busy)return;
-      if(Date.now()-waitSince>20*60*1000){setWaitSince(0);setGStatus({text:'Stopped waiting for the download (20 minutes). Click "Open bank website" again when ready.',bad:true});return;}
+      if(Date.now()-waitSince>20*60*1000){setWaitSince(0);setWatchInfo('');setGStatus({text:'Stopped waiting for the download (20 minutes). Click "Open bank website" again when ready, or use "Choose file".',bad:true});return;}
       busy=true;
       try{
-        if(await dirHandle.queryPermission({mode:'read'})!=='granted'){setDirNeedsPermission(true);return;}
-        const best=await findLatestStatement(dirHandle,waitSince);
-        if(best&&!stop){
-          stop=true;setWaitSince(0);
-          setGStatus({text:'Found "'+best.file.name+'" — importing…',bad:false});
-          await loadWorkbookRef.current(best.file,{from:gFrom,to:gTo,append:true});
-          lastAutoRef.current=best.file.name+'|'+best.file.lastModified;
-          safeLocalSet(outletKey('salonos_bank_last_auto',salonId),lastAutoRef.current);
-          setGStatus({text:'Imported "'+best.file.name+'" for '+(gAcct?gAcct.label:'this account')+' — see the message below for what was added.',bad:false});
+        if(await dirHandle.queryPermission({mode:'read'})!=='granted'){setDirNeedsPermission(true);setWatchInfo('Folder access needs to be allowed again — click "🔓 Allow folder access".');return;}
+        setDirNeedsPermission(false);
+        const names=await listNames();
+        if(!known){known=names;setWatchInfo('Watching folder "'+dirHandle.name+'" ('+names.size+' files already there). Waiting for the new download…');return;}
+        const fresh=[...names].filter(n=>!known.has(n));
+        const stmt=[];
+        for(const n of fresh){
+          if(/\.(crdownload|part|tmp|download)$/i.test(n))continue; // still downloading
+          if(!STATEMENT_EXT.test(n)){otherNew.add(n);continue;}
+          try{const f=await (await dirHandle.getFileHandle(n)).getFile();if(f.size>0)stmt.push(f);}catch(e){}
         }
-      }catch(e){setGStatus({text:'Could not read the Downloads folder: '+e.message,bad:true});}
+        // Fallback: a statement file saved after the click even if its name was already there.
+        if(!stmt.length){const best=await findLatestStatement(dirHandle,waitSince);if(best&&!known.has(best.file.name))stmt.push(best.file);}
+        if(stmt.length&&!stop){
+          const file=stmt.sort((a,b)=>b.lastModified-a.lastModified)[0];
+          stop=true;setWaitSince(0);setWatchInfo('');
+          setGStatus({text:'Found "'+file.name+'" — importing…',bad:false});
+          guidedPendingRef.current=true;
+          await loadWorkbookRef.current(file,{from:gFrom,to:gTo,append:true});
+          lastAutoRef.current=file.name+'|'+file.lastModified;
+          safeLocalSet(outletKey('salonos_bank_last_auto',salonId),lastAutoRef.current);
+          return;
+        }
+        const t=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        setWatchInfo(otherNew.size
+          ?'A new file arrived but it is not Excel, CSV or PDF: "'+[...otherNew].slice(-1)[0]+'". If it is a ZIP, open it and save the statement into "'+dirHandle.name+'"; or download the statement again as Excel/CSV/PDF. (checked '+t+')'
+          :'Watching folder "'+dirHandle.name+'" — no new file yet (checked '+t+'). If your download finished, it may have gone to another folder: use "Choose file" below, or reconnect the folder your browser saves to.');
+      }catch(e){setWatchInfo('');setGStatus({text:'Could not read the Downloads folder: '+e.message,bad:true});}
       finally{busy=false;}
     };
     const t=setInterval(tick,3000);tick();
     return()=>{stop=true;clearInterval(t);};
     // eslint-disable-next-line
   },[waitSince,dirHandle]);
+  // Backup: pick the downloaded file by hand — same period filter and duplicate check.
+  const gFileRef=useRef(null);
+  const onGuidedFile=async(e)=>{
+    const f=e.target.files&&e.target.files[0];e.target.value='';
+    if(!f)return;
+    setWaitSince(0);setWatchInfo('');
+    setGStatus({text:'Importing "'+f.name+'"…',bad:false});
+    guidedPendingRef.current=true;
+    await loadWorkbookRef.current(f,{from:gFrom,to:gTo,append:true});
+  };
+  // Show the import's own result (rows added / skipped, or why it failed) right in this card.
+  const guidedPendingRef=useRef(false);
+  useEffect(()=>{
+    if(!guidedPendingRef.current||!message)return;
+    guidedPendingRef.current=false;
+    setGStatus({text:(gAcct?gAcct.label+': ':'')+message,bad:/failed|couldn’t|could not|no transactions/i.test(message)});
+    // eslint-disable-next-line
+  },[message]);
 
   const keyNorm=(v)=>String(v||'').toLowerCase().replace(/[^a-z0-9]/g,'');
   const val=(r,names)=>{const keys=Object.keys(r);for(const name of names){const hit=keys.find(k=>keyNorm(k)===keyNorm(name));if(hit!==undefined)return r[hit];}return'';};
@@ -3968,9 +4011,11 @@ function BankStatement({salon,onNavTab}={}){
               React.createElement('label',{style:{fontSize:12,color:'var(--text2)'}},'To'),
               React.createElement('input',{type:'date',className:'form-control',style:{width:'auto'},value:gTo,min:gFrom,max:gIso(gToday),onChange:e=>setGTo(e.target.value)}),
               React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openBankSite},'🔗 Open bank website'),
-              waitSince>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setWaitSince(0);setGStatus({text:'Stopped waiting.',bad:false});}},'Stop waiting')
+              React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Pick the downloaded statement yourself (same period filter and duplicate check)',onClick:()=>gFileRef.current&&gFileRef.current.click()},'📄 Choose file'),
+              React.createElement('input',{ref:gFileRef,type:'file',accept:'.xlsx,.xls,.csv,.pdf',style:{display:'none'},onChange:onGuidedFile}),
+              waitSince>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setWaitSince(0);setWatchInfo('');setGStatus({text:'Stopped waiting.',bad:false});}},'Stop waiting')
             ),
-            waitSince>0&&dirHandle&&React.createElement('div',{style:{fontSize:12,color:'var(--accent2)'}},'⏳ Watching your Downloads folder for the new statement…',
+            waitSince>0&&dirHandle&&React.createElement('div',{style:{fontSize:12,color:'var(--accent2)',lineHeight:1.6}},'⏳ '+(watchInfo||'Watching your Downloads folder for the new statement…'),
               dirNeedsPermission&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:8,fontSize:11,padding:'2px 8px'},onClick:async()=>{try{const p=await dirHandle.requestPermission({mode:'read'});setDirNeedsPermission(p!=='granted');}catch(e){}}},'🔓 Allow folder access')),
             waitSince>0&&!dirHandle&&fsSupported&&React.createElement('div',{style:{fontSize:12,color:'var(--orange)'}},'Tip: ',React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'2px 8px'},onClick:connectDownloads},'📂 Connect Downloads folder'),' once, and downloads are imported by themselves from then on.')
           ),
