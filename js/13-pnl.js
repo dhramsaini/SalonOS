@@ -2561,5 +2561,39 @@ function parseInvoice(text,vendors){
 }
 
 /* --- UI --- */
-const CONF_BADGE={high:['badge-green','Verified'],medium:['badge-amber','Likely'],low:['badge-red','Check this']};
+const CONF_BADGE={high:['badge-green','Verified'],medium:['badge-amber','Likely'],low:['badge-red','Check this'],ai:['badge-purple','AI']};
+// ── AI bill reading (the "ai" cloud function, using the Claude key from Master Settings → AI
+// Assistant). Returns the same shape parseInvoice gives, or null when AI isn't set up — callers
+// then fall back to reading the bill in the browser. Throws on a real AI error.
+const AI_BILL_CATEGORIES=['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Fixed Assets','Other'];
+async function aiReadBill(file,vendors){
+  if(!CLOUD_SYNC_ENABLED)return null;
+  const ext=(file.name.split('.').pop()||'').toLowerCase();
+  const mediaType=ext==='pdf'?'application/pdf':ext==='png'?'image/png':ext==='webp'?'image/webp':(ext==='jpg'||ext==='jpeg')?'image/jpeg':'';
+  if(!mediaType||file.size>8*1024*1024)return null;
+  const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]||'');r.onerror=()=>rej(new Error('Could not read the file'));r.readAsDataURL(file);});
+  const supa=await getSupabaseClient();
+  const{data,error}=await supa.functions.invoke('ai',{body:{action:'read_bill',file:b64,mediaType,categories:AI_BILL_CATEGORIES}});
+  if(error){let msg=error.message||'AI could not read the bill';try{const b=error.context&&await error.context.json();if(b&&b.error)msg=b.error;}catch(e){}throw new Error(msg);}
+  if(!data||data.notConfigured)return null;
+  if(data.error)throw new Error(data.error);
+  const R={conf:{},raw:'Read by AI ('+(data.model||'Claude')+').'+(data.notes?'\nNotes from the AI: '+data.notes:'')+'\n\n'+JSON.stringify(data,null,2)};
+  const put=(k,v)=>{if(v!==''&&v!=null&&!(typeof v==='number'&&v===0)){R[k]=v;R.conf[k]='ai';}};
+  put('vendorName',String(data.supplierName||'').trim());put('gst',String(data.supplierGstin||'').toUpperCase().replace(/\s/g,''));
+  put('phone',data.supplierPhone);put('email',data.supplierEmail);put('invoiceNo',data.invoiceNo);
+  put('invoiceDate',/^\d{4}-\d{2}-\d{2}$/.test(data.invoiceDate)?data.invoiceDate:'');put('dueDate',/^\d{4}-\d{2}-\d{2}$/.test(data.dueDate)?data.dueDate:'');
+  ['taxable','igst','cgst','sgst','freight','roundOff'].forEach(k=>put(k,Number(data[k])||0));
+  put('amount',Number(data.total)||0);put('desc',data.description);
+  if(/^\d{4}-\d{2}$/.test(data.periodFrom||''))R.periodFrom=data.periodFrom;if(/^\d{4}-\d{2}$/.test(data.periodTo||''))R.periodTo=data.periodTo;
+  R.docNature=data.docNature||'Tax Invoice';
+  if(R.gst&&typeof gstValid==='function'&&gstValid(R.gst))R.conf.gst='high';
+  R.aiCategory=data.category||'';R.aiNotes=data.notes||'';
+  // Match an existing vendor — same rule as parseInvoice: GSTIN first, then name.
+  const norm=(x)=>String(x||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  let hit=R.gst?vendors.find(v=>norm(v.gst)&&norm(v.gst)===norm(R.gst)):null;
+  if(hit)R.matchBy='GSTIN';
+  if(!hit&&R.vendorName){const n=norm(R.vendorName);hit=vendors.find(v=>{const vn=norm(v.name);return vn&&(vn===n||(n.length>5&&(n.includes(vn)||vn.includes(n))));});if(hit)R.matchBy='name';}
+  if(hit)R.vendorId=hit.id;
+  return R;
+}
 const OK_EXT=['pdf','docx','doc','jpg','jpeg','png','webp'];

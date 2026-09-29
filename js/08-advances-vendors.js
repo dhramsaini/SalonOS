@@ -1826,19 +1826,25 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
       onUse:(d,addVendor)=>{
         let vid=d.vendorId;
         if(!vid&&addVendor){
-          vid='V'+String(vendors.length+1).padStart(3,'0');
+          vid=nextPrefixedId(vendors,'V',3);
           setVendors(prev=>[...prev,{id:vid,name:d.vendorName||'Unnamed supplier',address:'',gst:d.gst||'',
-            cat:'Purchase of Cosmetic',contact:'',phone:d.phone||'',terms:'30 days',status:'Active'}]);
+            cat:d.category||'Purchase of Cosmetic',contact:'',phone:d.phone||'',email:d.email||'',terms:'30 days',status:'Active'}]);
         }
         const due=d.dueDate||(d.invoiceDate?new Date(new Date(d.invoiceDate).getTime()+30*864e5).toISOString().slice(0,10):'');
         const matchedVendor=vendors.find(v=>v.id===vid);
-        setInvForm({vendorId:vid||'',invoiceNo:d.invoiceNo||'',invoiceDate:d.invoiceDate||'',
+        // Taxable value goes into the form (it was only put in the description before, so the form's
+        // total came out as GST only), and the bill itself is attached — not just its file name.
+        const taxable=Number(d.taxable)||0;
+        const gstSum=(Number(d.cgst)||0)+(Number(d.sgst)||0)+(Number(d.igst)||0);
+        setInvForm({...BLANK_INV,vendorId:vid||'',invoiceNo:d.invoiceNo||'',invoiceDate:d.invoiceDate||'',
           amount:d.amount||'',dueDate:due,
-          desc:[d.taxable?'Taxable '+Math.round(d.taxable):null,(d.cgst||d.sgst||d.igst)?'GST '+Math.round((d.cgst||0)+(d.sgst||0)+(d.igst||0)):null].filter(Boolean).join(' · '),
-          attachment:d.fileName||'Attached bill',
+          taxable:taxable||(d.amount?Math.max(0,Math.round((Number(d.amount)-gstSum-(Number(d.freight)||0)-(Number(d.roundOff)||0))*100)/100):''),
+          desc:d.desc||[taxable?'Taxable '+Math.round(taxable):null,gstSum?'GST '+Math.round(gstSum):null].filter(Boolean).join(' · '),
+          attachment:null,
           docNature:d.docNature||'Tax Invoice',bookingDate:d.bookingDate||d.invoiceDate||'',
-          igst:d.igst||'',cgst:d.cgst||'',sgst:d.sgst||'',roundOff:d.roundOff||'',linkedPI:'',assetLines:[],
+          igst:d.igst||'',cgst:d.cgst||'',sgst:d.sgst||'',freight:d.freight||'',roundOff:d.roundOff||'',linkedPI:'',assetLines:[],
           category:d.category||(addVendor?'Purchase of Cosmetic':(matchedVendor?matchedVendor.cat:''))});
+        if(d._file)readFileAsAttachment(d._file,rec=>setInvForm(f=>({...f,attachment:rec})),err=>toastError(err==='size'?'The bill is too large to attach (max 4MB) — attach a smaller copy.':'Could not attach the bill — please attach it again.'));
         setShowIntake(false);setShowInvModal(true);
       }}),
     showInvModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>{setShowInvModal(false);setEditInvoiceId(null);}},

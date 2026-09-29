@@ -16,7 +16,23 @@ function InvoiceIntake({vendors,onUse,onManual,onClose}){
     if(OK_EXT.indexOf(ext)<0){setErr('“'+f.name+'” is not a supported format. Attach a PDF, Word file or photo of the bill.');setStage('error');return}
     if(f.size>20*1024*1024){setErr('That file is '+(f.size/1048576).toFixed(1)+' MB. Please keep attachments under 20 MB.');setStage('error');return}
     setFile(f);setStage('busy');setErr('');
+    // AI first (when a Super Admin has set it up); the in-browser reader below is the fallback.
+    let aiNote='';
     try{
+      setMsg('Reading the bill with AI');
+      const ai=await aiReadBill(f,vendors);
+      if(ai){
+        ai.fileName=f.name;
+        ai.bookingDate=ai.invoiceDate||'';
+        ai.category=ai.vendorId?(((vendors.find(v=>v.id===ai.vendorId)||{}).cat)||ai.aiCategory):ai.aiCategory;
+        if(ai.amount)ai.amount=Math.round(Number(ai.amount));
+        setData(ai);setNewVendor(!ai.vendorId);setStage('review');
+        toast((ai.vendorId?'Read by AI · matched to '+vendors.find(v=>v.id===ai.vendorId).name:'Read by AI — no vendor match, review below')+(ai.aiNotes?' · note: '+ai.aiNotes:''),ai.vendorId?'success':'warning');
+        return;
+      }
+    }catch(e){aiNote='AI could not read it ('+(e.message||'error')+') — reading it here instead. ';}
+    try{
+      if(aiNote)setMsg(aiNote);
       let text='';
       if(ext==='pdf'){
         setMsg('Opening the PDF');
@@ -56,7 +72,7 @@ function InvoiceIntake({vendors,onUse,onManual,onClose}){
   const use=()=>{
     if(!data.amount)return toast('Enter the '+(data.docNature==='Performa Invoice'?'PI':'invoice')+' amount before continuing','error');
     if(!data.category)return toast('Select a Category before continuing','error');
-    onUse({...data,amount:Math.round(Number(data.amount)||0)},newVendor);
+    onUse({...data,amount:Math.round(Number(data.amount)||0),_file:file},newVendor);
   };
   const isPI=data&&data.docNature==='Performa Invoice';
 
@@ -125,10 +141,11 @@ function InvoiceIntake({vendors,onUse,onManual,onClose}){
           )
         ),
         h('div',{className:'form-row cols3'},field('Taxable value','taxable','number'),field('IGST','igst','number'),field('CGST','cgst','number')),
-        h('div',{className:'form-row cols3'},field('SGST','sgst','number'),field('Round off','roundOff','number'),field((isPI?'PI total':'Invoice total')+' ₹','amount','number')),
-        h('div',{className:'form-row cols2'},field('Phone','phone'),field('Email','email')),
+        h('div',{className:'form-row cols3'},field('SGST','sgst','number'),field('Freight','freight','number'),field('Round off','roundOff','number')),
+        h('div',{className:'form-row cols3'},field((isPI?'PI total':'Invoice total')+' ₹','amount','number'),field('Phone','phone'),field('Email','email')),
+        data.aiNotes&&h('div',{className:'help-tip',style:{borderLeft:'3px solid var(--orange)',marginBottom:12}},'Note from the AI: '+data.aiNotes),
         (function(){
-          const parts=(Number(data.taxable)||0)+(Number(data.cgst)||0)+(Number(data.sgst)||0)+(Number(data.igst)||0)+(Number(data.roundOff)||0);
+          const parts=(Number(data.taxable)||0)+(Number(data.cgst)||0)+(Number(data.sgst)||0)+(Number(data.igst)||0)+(Number(data.freight)||0)+(Number(data.roundOff)||0);
           const tot=Number(data.amount)||0;
           if(!data.taxable||!tot)return null;
           const diff=Math.abs(parts-tot);

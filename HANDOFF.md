@@ -118,3 +118,16 @@ this update. Login failures still log to App errors ("Login: …").
   Anthropic TS SDK, default model claude-opus-5-5, test call uses effort low + server-side refusal fallback "default") and
   table `app_secrets` (step11, service role only). The key is never returned to browsers — only keyHint (last 4) and model.
   No AI features use it yet; add a `complete`-style action to ai-settings (or a new function) when one is built.
+
+## Automation roadmap (owner said "do all", 30 Sep 2026) — phases
+1 ✅ (v2026.09.30.2) AI bill reading: edge function `ai` (action read_bill; any active SalonOS user; uses app_secrets key/model;
+  structured output json_schema; effort low + refusal fallback "default") + `aiReadBill` (js/13-pnl.js) tried first in
+  InvoiceIntake (Vendor Sheet "+ Add Invoice"), falls back to the in-browser reader. Also fixed: intake now passes taxable value,
+  freight and the real attachment file into the invoice form (before: taxable only in the description, attachment = file name).
+2 Next: alerts table + in-app Alerts centre (bell) + Automation settings page; server cron (pg_cron → edge function
+  `automation`) for daily data check 21:00 IST, due-date reminders, recurring-bill reminders, month-end checklist, auto month
+  lock. Email/WhatsApp delivery only once the owner adds Resend / WhatsApp keys.
+3 Auto-match bank payments on import, recurring (Fixed) invoice auto-create on bill day, salary bank bulk file (needs bank
+  format), evening Tally sync (connector is local → run from the app when open).
+4 AI bank-row tagging, monthly P&L explanation, anomaly alerts, "Ask SalonOS".
+5 Approval rules, temporary-user expiry, weekly backup file, login watch.
