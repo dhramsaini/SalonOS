@@ -30,9 +30,12 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return; // let Supabase/API calls pass straight through
 
   // Network-first for the app shell so users always get the latest version when online,
-  // falling back to cache when offline.
+  // falling back to cache when offline. The page itself and version.json skip the browser's
+  // HTTP cache (GitHub Pages lets it keep them 10 minutes), so a release reaches people at once;
+  // the js/ files carry ?v= so they are always the matching release anyway.
+  const fresh = req.mode === 'navigate' || /(\/|index\.html|version\.json)$/.test(url.pathname);
   event.respondWith(
-    fetch(req)
+    (fresh ? fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }) : fetch(req))
       .then((res) => {
         const resClone = res.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(req, resClone)).catch(() => {});
