@@ -1770,6 +1770,7 @@ function UserManagement(){
   // anything not explicitly "No Access" counts as an outlet this user can enter.
   const outletIdsFromAccess=(outletAccess)=>salonsList.filter(s=>(outletAccess[s.id]||'No Access')!=='No Access').map(s=>s.id);
   const [form,setForm]=useState(BLANK);
+  const [showFormPass,setShowFormPass]=useState(false); // 👁 on the password box
   const fc=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
   // Sheet-wise Access is now set separately FOR EACH outlet this user has been granted — the
   // same person can be full Edit access at one outlet and View Only (or nothing) at another.
@@ -1800,7 +1801,7 @@ function UserManagement(){
   const allSheetsChecked=checkedSheets.size>0&&checkedSheets.size===PERMISSION_SHEETS.length;
   const toggleAllSheetsChecked=()=>setCheckedSheets(allSheetsChecked?new Set():new Set(PERMISSION_SHEETS.map(s=>s.id)));
 
-  const openAdd=()=>{setForm(BLANK);setEditId(null);setShowModal(true);};
+  const openAdd=()=>{setForm(BLANK);setEditId(null);setShowFormPass(false);setShowModal(true);};
   const openEdit=(u)=>{
     const outletAccess=u.outletAccess||Object.fromEntries((u.outletIds||[]).map(id=>[id,'View and Edit']));
     let sheetAccessByOutlet=u.sheetAccessByOutlet;
@@ -1813,7 +1814,7 @@ function UserManagement(){
       sheetAccessByOutlet=Object.fromEntries(ids.map(id=>[id,{...legacyFlat}]));
     }
     setForm({name:u.name,email:u.email,password:'',role:u.role,access:u.access,status:u.status,sheetAccessByOutlet,outletAccess});
-    setEditId(u.id);setShowModal(true);
+    setEditId(u.id);setShowFormPass(false);setShowModal(true);
   };
   const save=async()=>{
     if(!form.name.trim())return toast('Name is required','error');
@@ -1837,7 +1838,16 @@ function UserManagement(){
             outlet_access:form.outletAccess,sheet_access_by_outlet:form.sheetAccessByOutlet
           }).eq('id',editId);
           if(error){toast(error.message||'Could not update user','error');setCloudBusy(false);return;}
-          toast('User updated','success');
+          if(form.password){
+            const{data:pw,error:pwErr}=await supa.functions.invoke('set-user-password',{body:{user_id:editId,password:form.password}});
+            const pe=pwErr||(pw&&pw.error);
+            if(pe){
+              let msg=(pe.message||pe)||'Could not change the password';
+              try{const b=pwErr&&pwErr.context&&await pwErr.context.json();if(b&&b.error)msg=b.error;}catch(e2){}
+              toast('User details saved, but the password was NOT changed: '+msg,'error',9000);await refreshCloudUsers();setCloudBusy(false);return;
+            }
+            toast('User updated — new password set. Share it with them privately.','success',7000);
+          }else toast('User updated','success');
         }else{
           const{data,error}=await supa.functions.invoke('create-user',{body:{
             email:form.email.trim(),password:form.password.trim(),name:form.name.trim(),
@@ -1997,7 +2007,14 @@ function UserManagement(){
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-12'},'Access Level'),React.createElement('select',{id:'f-12',className:'form-control',value:form.access,onChange:fc('access')},['Full','Editor','Viewer','No Access'].map(a=>React.createElement('option',{key:a},a))))
         ),
         React.createElement('div',{className:'form-row cols2'},
-          React.createElement('div',{className:'form-group'},React.createElement('label',null,editId?'New Password (leave blank to keep current)':'Password *'),React.createElement('input',{type:'password',className:'form-control',placeholder:editId?'••••••••':'At least 6 characters',value:form.password,onChange:fc('password')})),
+          // Existing passwords can't be shown — they are stored only as one-way hashes. 👁 shows what
+          // is being typed here; on Edit, a new password replaces the old one (set-user-password).
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,editId?'New Password (leave blank to keep current)':'Password *'),
+            React.createElement('div',{style:{position:'relative'}},
+              React.createElement('input',{type:showFormPass?'text':'password',className:'form-control',autoComplete:'new-password',placeholder:editId?'Type a new password to change it':'At least 8 characters',value:form.password,onChange:fc('password'),style:{paddingRight:40}}),
+              React.createElement('button',{type:'button',title:showFormPass?'Hide password':'Show password','aria-label':showFormPass?'Hide password':'Show password',onClick:()=>setShowFormPass(s=>!s),style:{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:14}},showFormPass?'🙈':'👁')
+            ),
+            editId&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:4}},'Current passwords can\'t be viewed (stored encrypted). Set a new one here and share it with the user.')),
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-13'},'Status'),React.createElement('select',{id:'f-13',className:'form-control',value:form.status,onChange:fc('status')},['Active','Inactive'].map(s=>React.createElement('option',{key:s},s))))
         ),
         React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'18px 0 10px',paddingTop:14,borderTop:'1px solid var(--border)'}},'Outlet Access'),
