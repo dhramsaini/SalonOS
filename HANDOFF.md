@@ -60,3 +60,13 @@ Cloud sync fixes & live updates · per-outlet database access rules · documents
 **#3 Proper database tables** — Employees Stage 1a ✅ DONE (29 Sep 2026): `employees` table kept in sync from the app by a database trigger; parity at creation: outlet 5 = 11/11, outlet 6 = 1/1, 0 mismatched. Stage 1b ✅ DONE (v2026.09.29.6): step7 adds `pos` + `raw`; the app rebuilds each outlet's employee list from the table on every load (`sheetsFromTables` in js/01-foundation.js) and compares it byte-for-byte with the kv copy — on a difference it uses the kv copy and logs to App errors. Saves still go to kv_store (trigger copies them in the same transaction). Rollback: `EMPLOYEES_FROM_TABLE=false`. Possible later step: save per record straight into the table (needs server-side handling of two people adding an employee with the same new id). **Attendance ✅ DONE (v2026.09.29.7, step9)**: `attendance` table, one row per employee-month (`rec_key` like E001_2026_7, `emp_id, year, month 1-12, days in data, present, off_days`), same trigger + load check; rollback `ATTENDANCE_FROM_TABLE=false`. Then, one module at a time: Daily Sales & Expenses → Advances/Penalties → Vendors/Invoices → … For each: new table with per-outlet RLS; dual-write (kv + table) with a daily parity check; backup before each step; switch reads to the table only when parity holds; keep a one-line rollback switch.
 
 Other open items: email reports setup (owner); staff should reload the app; attendance & sales for 22–28 Sep 2026 were missing at both outlets.
+
+## Incident 29 Sep 2026 (evening): "Signed in, but no profile is set up"
+Password step succeeded (sessions created) but the profile request went out without the new login, for every account in the
+owner's browser. Profiles/policies were fine. Likely cause: supabase-js ≥2.107 "lockless" session handling + several SalonOS
+tabs sharing one saved login, where one tab's sign-out erases it for all tabs — and v2026.09.29.7's access check signed users out
+whenever it couldn't read the profile. Prevention (v.11–.13): the access check never signs out unless status is Inactive; every
+sign-out is scope 'local' (never logs other devices out); login retries the profile with the fresh token and hands the session
+back to the library (setSession); failures are logged to client_errors ("Login: …", with a note if another SalonOS tab is
+open); supabase-js pinned to 2.117.2 (change only with a login/2-step/live-sync test); the page and version.json bypass the
+HTTP cache so fixes arrive immediately.

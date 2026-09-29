@@ -529,11 +529,37 @@ try{
 // ============================================================================
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.09.29.12';
+const APP_VERSION='2026.09.29.13';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
-const CDN_SUPABASE_URL='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+// Pinned to an exact, tested version — "@2" silently followed every new release, so a library
+// change (e.g. 2.107's new session handling) could alter login behaviour with no update from us.
+// Change only together with a test of login, two-step login and live sync.
+const CDN_SUPABASE_URL='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js';
+// Records a failed sign-in step under Master Settings → App errors. Goes straight to the REST API
+// with the token just issued, so it works even when the failure is the library not attaching
+// that login to its own requests.
+function logLoginIssue(session,email,message){
+  try{
+    if(!session||!session.access_token||!session.user)return;
+    fetch(SUPABASE_URL+'/rest/v1/client_errors',{method:'POST',headers:{apikey:SUPABASE_ANON_KEY,Authorization:'Bearer '+session.access_token,'Content-Type':'application/json',Prefer:'return=minimal'},
+      body:JSON.stringify({user_id:session.user.id,email:email||null,page:'login v'+APP_VERSION,message:('Login: '+message).slice(0,500),ua:navigator.userAgent.slice(0,300)})}).catch(()=>{});
+  }catch(e){}
+}
+// SalonOS open in several tabs/windows of one browser shares one saved login; a stale tab can
+// disturb a new sign-in in another. Tabs announce themselves so the newest can warn once.
+const _tabChannel=(()=>{try{return typeof BroadcastChannel==='function'?new BroadcastChannel('salonos-tabs'):null;}catch(e){return null;}})();
+let _otherTabSeen=false;
+if(_tabChannel){
+  _tabChannel.onmessage=(e)=>{
+    if(!e||!e.data)return;
+    if(e.data==='hello'){try{_tabChannel.postMessage('here');}catch(x){}}
+    if(e.data==='here'||e.data==='hello')_otherTabSeen=true;
+  };
+  try{_tabChannel.postMessage('hello');}catch(e){}
+}
+function salonosOpenElsewhere(){return _otherTabSeen;}
 let _supabaseClient=null;
 async function getSupabaseClient(){
   if(!CLOUD_SYNC_ENABLED)return null;

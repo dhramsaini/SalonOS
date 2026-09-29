@@ -20,7 +20,7 @@ function ResetPasswordPage(){
       // Strip the recovery token from the URL so refreshing lands on the ordinary login page,
       // not back on this screen — then bounce there after a moment to confirm sign-in with it.
       window.history.replaceState(null,'',window.location.pathname+window.location.search);
-      try{await supa.auth.signOut();}catch(e2){}
+      try{await supa.auth.signOut({scope:'local'});}catch(e2){}
       setTimeout(()=>{window.location.reload();},2000);
     }catch(err){setErr(err.message||'Could not update password — check your internet connection.');setBusy(false);}
   };
@@ -85,21 +85,30 @@ function LoginPage({onLogin}){
       // Seen in the field: the password step succeeds but the follow-up request goes out without
       // the new login (e.g. another SalonOS tab/window holding the library's session lock), so the
       // profile looks missing. Ask again directly with the token we were just given.
-      if((profErr||!profile)&&data.session&&data.session.access_token){
+      const firstTry=profErr?(profErr.message||String(profErr)):(profile?'':'no row visible');
+      const tabNote=salonosOpenElsewhere()?' — SalonOS is open in another tab':'';
+      if(!profile&&data.session&&data.session.access_token){
         try{
           const r=await fetch(SUPABASE_URL+'/rest/v1/profiles?select=*&id=eq.'+encodeURIComponent(data.user.id),{headers:{apikey:SUPABASE_ANON_KEY,Authorization:'Bearer '+data.session.access_token,Accept:'application/json'}});
           const rows=r.ok?await r.json():null;
           if(Array.isArray(rows)&&rows[0]){profile=rows[0];profErr=null;}
           else if(!r.ok)profErr=profErr||new Error('HTTP '+r.status);
         }catch(e2){profErr=profErr||e2;}
+        if(profile){
+          // The direct request worked, so the library lost the login it just created — hand it
+          // back so everything after this (two-step check, loading data) uses it too.
+          logLoginIssue(data.session,email.trim(),'first profile lookup failed ('+firstTry+'); direct retry worked'+tabNote);
+          try{await supa.auth.setSession({access_token:data.session.access_token,refresh_token:data.session.refresh_token});}catch(e3){}
+        }
       }
       if(!profile){
+        logLoginIssue(data.session,email.trim(),'profile not loaded: '+(profErr?(profErr.message||String(profErr)):'no row visible')+' (first try: '+firstTry+')'+tabNote);
         setErr(profErr
           ?'Signed in, but your profile could not be loaded ('+((profErr.message||String(profErr)).slice(0,120))+'). Close other SalonOS tabs/windows, then try again.'
           :'Signed in, but no profile is set up for this account yet — ask your Super Admin to add one.');
         await supa.auth.signOut({scope:'local'});return;
       }
-      if(profile.status==='Inactive'){setErr('This account has been deactivated. Contact your Super Admin.');await supa.auth.signOut();return;}
+      if(profile.status==='Inactive'){setErr('This account has been deactivated. Contact your Super Admin.');await supa.auth.signOut({scope:'local'});return;}
       // Two-step login: accounts with an authenticator app set up must also enter its 6-digit code.
       // (The database only grants Super Admin powers to such an account after this step.)
       const{data:aal}=await supa.auth.mfa.getAuthenticatorAssuranceLevel();
@@ -140,11 +149,11 @@ function LoginPage({onLogin}){
         try{
           const{data:gate,error:gateErr}=await supa.functions.invoke('demo-access-check',{body:{}});
           const fnErr=gateErr||(gate&&gate.error);
-          if(fnErr){setErr('Could not verify demo access — check your internet connection and try again.');await supa.auth.signOut();return;}
-          if(!gate.allowed){setErr('This demo login is only available for 5 days from a given network, and that window has ended here. Please contact us to purchase SalonOS.');await supa.auth.signOut();return;}
+          if(fnErr){setErr('Could not verify demo access — check your internet connection and try again.');await supa.auth.signOut({scope:'local'});return;}
+          if(!gate.allowed){setErr('This demo login is only available for 5 days from a given network, and that window has ended here. Please contact us to purchase SalonOS.');await supa.auth.signOut({scope:'local'});return;}
           demoDaysLeft=gate.daysLeft;
         }catch(gateEx){
-          setErr('Could not verify demo access — check your internet connection and try again.');await supa.auth.signOut();return;
+          setErr('Could not verify demo access — check your internet connection and try again.');await supa.auth.signOut({scope:'local'});return;
         }
       }
       onLogin(userFromProfile(profile,data.user.email,{demoDaysLeft}));
