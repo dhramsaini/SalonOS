@@ -2477,24 +2477,29 @@ function BankStatement({salon,onNavTab}={}){
     'Karnataka Bank':{headers:['Date','Value Date','Narration','Reference','Debit','Credit','Balance'],sample:['01/06/2026','01/06/2026','UPI COLLECTION','UPI123456','',40203,125000]},
     'Standard Chartered Bank':{headers:['Date','Value Date','Description','Reference','Debit','Credit','Balance'],sample:['01/06/2026','01/06/2026','UPI COLLECTION','UPI123456','',40203,125000]},
   };
-  // Where each bank's net banking starts. Only login pages that were checked to open (29 Sep 2026)
-  // are deep links; for the rest it is the bank's official home page, where "Login" is one click
-  // away (the earlier per-portal paths were guesses and mostly led to "page not found"). A saved
-  // bank account can store its exact login page instead — that one is used first.
+  // Where each bank's net banking starts — the login pages each bank links from its own website,
+  // checked to open on 29 Sep 2026. Banks without a confirmed login page open their official home
+  // page ("Login" is one click away there). A saved account's own login address, if given, wins.
   const homeOnly=u=>({Personal:u,Corporate:u,Business:u});
   const BANK_LOGIN_URLS={
-    'HDFC Bank':{Personal:'https://now.hdfc.bank.in/retail-app/',Corporate:'https://www.hdfc.bank.in/',Business:'https://www.hdfc.bank.in/'},
-    'ICICI Bank':{Personal:'https://retailnetbanking.icici.bank.in/',Corporate:'https://www.icici.bank.in/',Business:'https://www.icici.bank.in/'},
-    'Axis Bank':{Personal:'https://www.axis.bank.in/',Corporate:'https://www.axis.bank.in/corporate',Business:'https://www.axis.bank.in/'},
-    'State Bank of India':{Personal:'https://onlinesbi.sbi.bank.in/personal/',Corporate:'https://onlinesbi.sbi.bank.in/corporate/',Business:'https://onlinesbi.sbi.bank.in/business/'},
-    'Kotak Mahindra Bank':homeOnly('https://www.kotak.bank.in/'),
-    'Bank of Baroda':homeOnly('https://www.bankofbaroda.bank.in/'),
+    'HDFC Bank':homeOnly('https://now.hdfc.bank.in/retail-app/'), // HDFC NetBanking (the old netbanking.hdfcbank.com redirects here)
+    'ICICI Bank':{Personal:'https://retailnetbanking.icici.bank.in/login-page',
+      Corporate:'https://cibnext.icici.bank.in/corp/AuthenticationController?FORMSGROUP_ID__=AuthenticationFG&__START_TRAN_FLAG__=Y&FG_BUTTONS__=LOAD&ACTION.LOAD=Y&AuthenticationFG.LOGIN_FLAG=1&BANK_ID=ICI',
+      Business:'https://cibnext.icici.bank.in/corp/AuthenticationController?FORMSGROUP_ID__=AuthenticationFG&__START_TRAN_FLAG__=Y&FG_BUTTONS__=LOAD&ACTION.LOAD=Y&AuthenticationFG.LOGIN_FLAG=1&BANK_ID=ICI'},
+    'Axis Bank':{Personal:'https://omni.axis.bank.in/axisretailbanking/',Corporate:'https://straight2axis.axis.bank.in/CorporatePortal/login',Business:'https://smedigital.axis.bank.in/sbbcj/login'},
+    'State Bank of India':{Personal:'https://onlinesbi.sbi.bank.in/',Corporate:'https://corp.sbi.bank.in/corporate/sbi/sbi_home.html',Business:'https://corp.sbi.bank.in/corporate/sbi/sbi_home.html'},
+    'Kotak Mahindra Bank':homeOnly('https://netbanking.kotak.bank.in/knb2/'),
+    'Bank of Baroda':{Personal:'https://bobibanking.bankofbaroda.bank.in/',
+      Corporate:'https://feba.bobibanking.com/corp/AuthenticationController?FORMSGROUP_ID__=AuthenticationFG&__START_TRAN_FLAG__=Y&FG_BUTTONS__=LOAD&ACTION.LOAD=Y&AuthenticationFG.LOGIN_FLAG=1&BANK_ID=012',
+      Business:'https://feba.bobibanking.com/corp/AuthenticationController?FORMSGROUP_ID__=AuthenticationFG&__START_TRAN_FLAG__=Y&FG_BUTTONS__=LOAD&ACTION.LOAD=Y&AuthenticationFG.LOGIN_FLAG=1&BANK_ID=012'},
     'Punjab National Bank':homeOnly('https://www.pnbindia.in/'),
     'Canara Bank':homeOnly('https://www.canarabank.bank.in/'),
     'Union Bank of India':homeOnly('https://www.unionbankofindia.bank.in/'),
-    'IndusInd Bank':homeOnly('https://www.indusind.bank.in/'),
+    'IndusInd Bank':{Personal:'https://indusnet.indusind.bank.in/login',
+      Corporate:'https://indusnet.indusind.bank.in/corp/BANKAWAY?Action.RetUser.Init.001=Y&AppSignonBankId=234&AppType=corporate&CorporateSignonLangId=001',
+      Business:'https://indusnet.indusind.bank.in/corp/BANKAWAY?Action.RetUser.Init.001=Y&AppSignonBankId=234&AppType=corporate&CorporateSignonLangId=001'},
     'Yes Bank':homeOnly('https://www.yesbank.in/'),
-    'IDFC FIRST Bank':homeOnly('https://www.idfcfirstbank.com/'),
+    'IDFC FIRST Bank':homeOnly('https://my.idfcfirst.bank.in/login'),
     'RBL Bank':homeOnly('https://www.rblbank.com/'),
     'Federal Bank':homeOnly('https://www.federalbank.co.in/'),
     'Bank of India':homeOnly('https://www.bankofindia.bank.in/'),
@@ -3998,6 +4003,7 @@ function BankStatement({salon,onNavTab}={}){
               React.createElement('input',{type:'radio',name:'bsAcct',checked:!!gAcct&&gAcct.id===a.id,onChange:()=>setGAcctId(a.id)}),
               React.createElement('span',{style:{fontWeight:600,fontSize:12.5}},a.label),
               React.createElement('span',{style:{fontSize:11,color:'var(--text2)'}},a.bank+' · '+a.type+(a.last4?' · ••'+a.last4:'')+' · '+a.loginType+' login'),
+              (()=>{const u=acctLoginUrl(a);let host='';try{host=new URL(u).hostname;}catch(e){}return host?React.createElement('span',{title:u,style:{fontSize:10.5,color:'var(--text3)'}},'→ opens '+host):null;})(),
               canEditBank&&React.createElement('span',{style:{marginLeft:'auto',display:'flex',gap:4}},
                 React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'2px 8px'},onClick:e=>{e.preventDefault();setAcctForm({...a});}},'Edit'),
                 React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'2px 8px'},onClick:e=>{e.preventDefault();removeAcct(a);}},'Remove'))

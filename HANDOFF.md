@@ -85,7 +85,7 @@ this update. Login failures still log to App errors ("Login: …").
 - PDF statements: `pdfStatementToRows` (pdf.js 3.11.174 from cdnjs) — text layout → rows; columns from the header line (right
   edge for amounts, left edge for Chq/Ref), running balance settles debit/credit, wrapped narration joined, password-protected PDFs
   prompt for the password (never stored). Scanned-image PDFs are not supported (no OCR).
-- BANK_LOGIN_URLS fixed: most old per-portal paths were guesses (404/error pages). Now verified deep links only for HDFC Personal,
+- BANK_LOGIN_URLS (v.18): login pages taken from each bank's own website and checked to open: HDFC NetBanking, ICICI retail + CIBNext, Axis omni (Personal) / straight2axis (Corporate) / smedigital (Business), SBI onlinesbi + corp.sbi, Kotak knb2, BoB bobibanking + feba, IndusInd indusnet, IDFC my.idfcfirst. PNB, Canara, Union, Yes etc. still open the home page. Each saved account shows "→ opens <host>". (Earlier:
   ICICI Personal, Axis Corporate, SBI (all three); others open the bank's official home page.
 - The Account Aggregator (Setu) card + `bank-aa` edge function + `bank_aa_links` table remain but the card is not rendered.
 - Self-tests: 27 (incl. 2 PDF-statement tests using jsPDF).
