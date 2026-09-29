@@ -57,7 +57,23 @@
       put('salonos_attendance_outlet_902',{E4_2026_8:{days:days(30,0,0)}});
     })();`;
 
-    const tests=`(function(){
+    const tests=`(async function(){
+      // Login regression test (29 Sep 2026): the Supabase client must be created with this fake
+      // server, so fetch is swapped before anything creates it. No real server or password is used.
+      const b64=o=>btoa(JSON.stringify(o)).replace(/=+$/,'').replace(/[+]/g,'-').replace(/[/]/g,'_');
+      const now=Math.floor(Date.now()/1000);
+      const tok=sub=>b64({alg:'HS256',typ:'JWT'})+'.'+b64({sub:sub,role:'authenticated',aud:'authenticated',exp:now+3600,iat:now,aal:'aal1',session_id:'t'})+'.sig';
+      const NEW=tok('22222222-2222-2222-2222-222222222222'),OLD=tok('33333333-3333-3333-3333-333333333333');
+      const authSeen=[];
+      const J=(o,s)=>new Response(JSON.stringify(o),{status:s||200,headers:{'Content-Type':'application/json'}});
+      window.fetch=async(url,opts)=>{
+        const u=String(url),h=new Headers((opts&&opts.headers)||{});
+        if(u.indexOf('grant_type=password')>=0)return J({access_token:NEW,token_type:'bearer',expires_in:3600,expires_at:now+3600,refresh_token:'new-rt',user:{id:'22222222-2222-2222-2222-222222222222',aud:'authenticated',role:'authenticated'}});
+        if(u.indexOf('/auth/v1/logout')>=0)return new Response('',{status:204});
+        if(u.indexOf('/auth/v1/user')>=0)return J({id:'22222222-2222-2222-2222-222222222222',aud:'authenticated',role:'authenticated'});
+        if(u.indexOf('/rest/v1/profiles')>=0){authSeen.push((h.get('Authorization')||'').indexOf(NEW.slice(-30))>=0?'USER':'ANON');return J([]);}
+        return J({});
+      };
       const results=[];
       const eq=(name,got,want)=>results.push({name,ok:JSON.stringify(got)===JSON.stringify(want),got,want});
       try{
@@ -94,6 +110,21 @@
         eq('Merge: an old unchanged copy never deletes others\\' additions',ids(M([{id:'E1'}],[{id:'E1'}],[{id:'E1'},{id:'E2'}])),'E1,E2');
         eq('Merge: different fields edited by two people → both kept',M([{id:'E1',a:1,b:1}],[{id:'E1',a:2,b:1}],[{id:'E1',a:1,b:3}]),[{id:'E1',a:2,b:3}]);
       }catch(err){results.push({name:'Merge logic',ok:false,got:String(err),want:'no error'});}
+      try{
+        // Another SalonOS tab/window holding an old login on the shared browser storage signs out
+        // (what a failed refresh of a revoked login does). This tab's fresh login must survive.
+        const c=await getSupabaseClient();
+        eq('Login: each tab keeps its own session (not shared browser storage)',[String(c.auth.storageKey).indexOf('salonos-auth-')===0,c.auth.storage===window.sessionStorage],[true,true]);
+        const ref=(SUPABASE_URL.match(/https:[/][/]([^.]+)/)||[])[1];
+        const sharedKey='sb-'+ref+'-auth-token';
+        localStorage.setItem(sharedKey,JSON.stringify({access_token:OLD,token_type:'bearer',expires_in:3600,expires_at:now+3600,refresh_token:'stale-rt',user:{id:'33333333-3333-3333-3333-333333333333'}}));
+        const staleTab=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{storageKey:sharedKey}});
+        const si=await c.auth.signInWithPassword({email:'test@example.com',password:'not-a-real-password'});
+        await staleTab.auth.signOut({scope:'local'});
+        await new Promise(r=>setTimeout(r,300));
+        await c.from('profiles').select('*').eq('id','x');
+        eq('Login: another tab signing out does not sign this tab out',[!si.error,authSeen[authSeen.length-1]],[true,'USER']);
+      }catch(err){results.push({name:'Login across tabs',ok:false,got:String(err&&err.message||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
