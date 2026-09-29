@@ -711,6 +711,36 @@ kbd{background:var(--bg4);border:1px solid var(--border2);border-radius:4px;padd
 .phone-menu .pm-meta{font-size:11.5px;color:var(--text3);padding:8px 12px 4px;border-top:1px solid var(--border);margin-top:4px}
 .lbl-short{display:none}
 
+/* ===== READABILITY =====
+   The faintest text colour (--text3) was ~3:1 contrast — hard to read on phones and in daylight.
+   Raised to ~4.5:1 in both themes. On phones, the many inline 9–11px labels are bumped up a
+   size (outside tables, where extra width would push dense grids around). */
+:root{--text3:#7C88B0}
+body.light{--text3:#5E6A82}
+@media(max-width:640px){
+  [style*="font-size: 9px"]:not(table *),[style*="font-size: 9.5px"]:not(table *),[style*="font-size: 10px"]:not(table *),[style*="font-size: 10.5px"]:not(table *){font-size:11.5px!important}
+  [style*="font-size: 11px"]:not(table *),[style*="font-size: 11.5px"]:not(table *){font-size:12.5px!important}
+}
+
+/* ===== PHONE CARD VIEW FOR LIST TABLES =====
+   On phones, read-only list tables (a record per row — advances, vendors, due dates…) become
+   one card per record, each value labelled with its column name. Marked by the enhancer script
+   near </body> (data-mcards + data-label on cells); editable grids are left as scrolling tables. */
+@media(max-width:640px){
+  table[data-mcards]{border-collapse:separate;border-spacing:0;min-width:0!important;width:100%!important}
+  table[data-mcards] thead{display:none}
+  table[data-mcards] tbody,table[data-mcards] tfoot{display:block}
+  table[data-mcards] tr{display:block;margin:0 0 10px;padding:8px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px}
+  table[data-mcards] td{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:6px 0!important;border:0!important;border-bottom:1px dashed var(--border)!important;text-align:right!important;white-space:normal!important;position:static!important;background:none!important;min-width:0!important;width:auto!important;font-size:13px}
+  table[data-mcards] td:last-child{border-bottom:0!important}
+  table[data-mcards] td[data-label]::before{content:attr(data-label);flex-shrink:0;max-width:45%;text-align:left;color:var(--text3);font-size:11.5px;font-weight:500;text-transform:uppercase;letter-spacing:.04em;padding-top:1px}
+  table[data-mcards] td[data-label=""]::before{display:none}
+  table[data-mcards] td[colspan]{display:block;text-align:center!important}
+  table[data-mcards] td[colspan]::before{display:none}
+  .table-wrap:has(table[data-mcards]){overflow:visible}
+}
+.update-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 20px;background:rgba(76,175,125,0.12);border-bottom:1px solid rgba(76,175,125,0.35);font-size:12.5px;color:var(--text)}
+
 /* ===== PERSISTENT BACKUP STATUS PILL ===== */
 .backup-pill{display:flex;align-items:center;gap:6px;font-size:10.5px;cursor:pointer;
   padding:5px 10px;border-radius:var(--r);transition:border-color .15s}
@@ -1366,6 +1396,9 @@ try{
 // resolves last-write-wins, same as this app has always behaved locally,
 // just shared across devices now instead of trapped in one browser.
 // ============================================================================
+// Bumped with every release, together with version.json next to this file — the app compares the
+// two to offer "A new version is available — Update now" instead of people running stale code.
+const APP_VERSION='2026.09.29.2';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
@@ -6965,7 +6998,45 @@ function UserManagement(){
   );
 }
 
-function OutletDashboard({salon,period}){
+// ── "Get this outlet ready" checklist on the outlet dashboard — each step is detected from the
+// outlet's real data, links straight to the sheet that completes it, and the card disappears
+// once everything's done (or when dismissed on this device). ──
+function OutletSetupChecklist({salon,onNavTab}){
+  const sid=Number(salon&&salon.id)||1;
+  const dismissKey='sos_setup_dismissed_'+sid; // device-only preference, deliberately not synced
+  const [dismissed,setDismissed]=useState(()=>{try{return localStorage.getItem(dismissKey)==='1';}catch(e){return false;}});
+  const readJson=(k,d)=>{try{return JSON.parse(cachedLocalGet(k)||'null')||d;}catch(e){return d;}};
+  const emps=loadEmployees(sid)||[];
+  const att=readJson(attKeyFor(sid),{});
+  const sales=readJson(outletKey('salonos_daily_sales_data',sid),{});
+  // Weekly offs / holidays can be filled in automatically, so only a real mark counts.
+  const hasAttendance=Object.values(att).some(r=>r&&Array.isArray(r.days)&&r.days.some(d=>d&&d!=='off'&&d!=='holiday'));
+  const hasSales=Object.values(sales).some(day=>day&&typeof day==='object'&&Object.keys(day).length>0);
+  const steps=[
+    {done:emps.length>0,label:'Add your staff',hint:'Name, designation, joining date and Aadhaar for each employee.',tab:'master-salary',cta:'Add staff'},
+    {done:emps.some(e=>Number(e.gross)>0),label:'Set salary structures',hint:'Basic, HRA and allowances — used for salary working and P&L.',tab:'master-salary',cta:'Set salaries'},
+    {done:hasAttendance,label:'Start marking attendance',hint:'Mark each day as it happens; salary working uses it.',tab:'attendance',cta:'Open attendance'},
+    {done:hasSales,label:'Enter daily sales & expenses',hint:'Daily sales and cash drive the dashboard and P&L.',tab:'daily-sales',cta:'Enter sales'}
+  ];
+  const doneCount=steps.filter(s=>s.done).length;
+  if(dismissed||doneCount===steps.length)return null;
+  const next=steps.find(s=>!s.done);
+  return React.createElement('div',{className:'card',style:{marginBottom:16,borderColor:'var(--accent)'}},
+    React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:10}},
+      React.createElement('div',{className:'card-title',style:{marginBottom:0}},'🚀 Get this outlet ready — '+doneCount+' of '+steps.length+' done'),
+      React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{try{localStorage.setItem(dismissKey,'1');}catch(e){}setDismissed(true);}},'Hide')),
+    React.createElement('div',{style:{height:6,background:'var(--bg3)',borderRadius:3,marginBottom:12,overflow:'hidden'}},
+      React.createElement('div',{style:{height:'100%',width:(doneCount/steps.length*100)+'%',background:'var(--green)',transition:'width .3s'}})),
+    steps.map((s,i)=>React.createElement('div',{key:i,style:{display:'flex',alignItems:'center',gap:12,padding:'8px 0',borderTop:i?'1px solid var(--border)':'none'}},
+      React.createElement('span',{style:{width:22,height:22,borderRadius:'50%',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,
+        background:s.done?'var(--green)':'var(--bg3)',color:s.done?'#fff':'var(--text3)'}},s.done?'✓':String(i+1)),
+      React.createElement('div',{style:{flex:1,minWidth:0}},
+        React.createElement('div',{style:{fontSize:13.5,color:s.done?'var(--text3)':'var(--text)',textDecoration:s.done?'line-through':'none',fontWeight:500}},s.label),
+        !s.done&&React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},s.hint)),
+      !s.done&&onNavTab&&React.createElement('button',{className:'btn btn-sm '+(s===next?'btn-primary':'btn-ghost'),onClick:()=>onNavTab(s.tab)},s.cta)))
+  );
+}
+function OutletDashboard({salon,period,onNavTab}){
   const sid=Number(salon&&salon.id)||1;
   const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const MONTH_FULL=['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -7078,6 +7149,7 @@ function OutletDashboard({salon,period}){
   };
 
   return React.createElement('div',{className:'fade-in'},
+    React.createElement(OutletSetupChecklist,{salon,onNavTab}),
     // Header
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,
@@ -30578,6 +30650,29 @@ function App(){
   // applies by itself as soon as they pause. ──
   const [dataVersion,setDataVersion]=useState(0);
   const [cloudUpdateWaiting,setCloudUpdateWaiting]=useState(false);
+  // New-version check: version.json is tiny and fetched uncached; if it names a different
+  // version than the one running, offer a one-tap update (held back while edits are still saving).
+  const [newVersion,setNewVersion]=useState(null);
+  useEffect(()=>{
+    if(location.protocol==='file:')return;
+    const check=async()=>{
+      try{
+        const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});
+        if(!r.ok)return;
+        const v=(await r.json()).version;
+        if(v&&v!==APP_VERSION)setNewVersion(v);
+      }catch(e){}
+    };
+    check();
+    const t=setInterval(check,10*60*1000);
+    const onVis=()=>{if(document.visibilityState==='visible')check();};
+    document.addEventListener('visibilitychange',onVis);
+    return()=>{clearInterval(t);document.removeEventListener('visibilitychange',onVis);};
+  },[]);
+  const updateNow=()=>{
+    if(CLOUD_SYNC_ENABLED&&(_cloudDirty.size>0||_cloudPushing>0)){addToast('Finishing saving your changes first — try again in a moment','info');return;}
+    window.location.reload();
+  };
   // Phone-only chrome: the topbar ⋯ menu and the full-screen "All sheets" picker.
   const [phoneMenuOpen,setPhoneMenuOpen]=useState(false);
   const [modulePickerOpen,setModulePickerOpen]=useState(false);
@@ -30900,7 +30995,7 @@ function App(){
           React.createElement('button',{type:'button','aria-label':'Scroll sheets right',className:'btn btn-ghost btn-sm',style:{flexShrink:0,padding:'6px 9px'},onClick:()=>salonTabBarScrollTo(1)},'›')
         ),
         salonTab==='outlet-dashboard'
-          ?React.createElement(OutletDashboard,{key:'dash-outlet-'+(selectedSalon?selectedSalon.id:'none'),salon:selectedSalon,period})
+          ?React.createElement(OutletDashboard,{key:'dash-outlet-'+(selectedSalon?selectedSalon.id:'none'),salon:selectedSalon,period,onNavTab:navToSalonTab})
           :salonTab==='billing'
             ?React.createElement(BillingSheet,{key:'billing-'+(selectedSalon&&selectedSalon.id),salon:selectedSalon})
             :React.createElement(Comp,{key:salonTab+'-outlet-'+(selectedSalon?selectedSalon.id:'none'),period,salon:selectedSalon,user,
@@ -31057,6 +31152,10 @@ function App(){
           React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setBackupBannerDismissed(true)},'Dismiss for now')
         )
       ),
+      newVersion&&React.createElement('div',{className:'update-banner'},
+        React.createElement('div',null,'✨ A new version of SalonOS is available.'),
+        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:updateNow},'Update now')
+      ),
       CLOUD_SYNC_ENABLED&&cloudUpdateWaiting&&React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'8px 20px',background:'rgba(76,125,255,0.12)',borderBottom:'1px solid rgba(76,125,255,0.35)',fontSize:12.5,color:'var(--text)'}},
         React.createElement('div',null,'↻ Other users have saved new changes. They\'ll appear as soon as you pause — or load them now (finish or close any open form first).'),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:applyCloudUpdatesNow},'Show latest')
@@ -31187,6 +31286,53 @@ if('serviceWorker' in navigator){
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);
   else init();
+})();
+</script>
+<script>
+// ── Phone card view for list tables — marks read-only list tables (one record per row) so the
+// CSS above can show each row as a labelled card on phones. Editable grids (text/number inputs or
+// dropdowns in the body) and very wide tables are left alone, as are tables that opt out with
+// data-no-mcards. Uses data- attributes only, which React never manages, so re-renders can't undo
+// it; re-checked on DOM changes (debounced). Wider screens ignore the attributes entirely. ──
+(function(){
+  function labelFor(table){
+    const head=table.tHead&&table.tHead.rows[table.tHead.rows.length-1];
+    if(!head)return null;
+    const labels=[];
+    for(const th of head.cells){const span=th.colSpan||1;const txt=(th.innerText||'').replace(/[▾▴▲▼↑↓⇅⬍]/g,'').replace(/\s+/g,' ').trim();for(let i=0;i<span;i++)labels.push(txt);}
+    return labels;
+  }
+  function scan(){
+    document.querySelectorAll('.table-wrap table').forEach(table=>{
+      if(table.hasAttribute('data-no-mcards'))return;
+      const labels=labelFor(table);
+      const body=table.tBodies[0];
+      const editable=body&&body.querySelector('input:not([type=checkbox]):not([type=radio]),select,textarea');
+      // Grid-style reports (months / dates / numbers across the top) read better as a table.
+      const gridish=labels&&labels.filter(l=>/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b|^\d|^day\b|^fy\b/i.test(l)).length>labels.length/3;
+      const ok=labels&&labels.length>=2&&labels.length<=16&&!gridish&&body&&!editable;
+      if(!ok){if(table.hasAttribute('data-mcards'))table.removeAttribute('data-mcards');return;}
+      if(!table.hasAttribute('data-mcards'))table.setAttribute('data-mcards','');
+      for(const sec of [table.tBodies[0],table.tFoot]){
+        if(!sec)continue;
+        for(const tr of sec.rows){
+          let col=0;
+          for(const td of tr.cells){
+            const lab=(td.colSpan||1)>1?'':(labels[col]||'');
+            if(td.getAttribute('data-label')!==lab)td.setAttribute('data-label',lab);
+            col+=td.colSpan||1;
+          }
+        }
+      }
+    });
+  }
+  let timer=null;
+  function schedule(){clearTimeout(timer);timer=setTimeout(scan,250);}
+  function init(){
+    scan();
+    new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
 </script>
 </body>
