@@ -1398,7 +1398,7 @@ try{
 // ============================================================================
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.09.29.3';
+const APP_VERSION='2026.09.29.4';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
@@ -10234,6 +10234,71 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   // opaque colour no matter what scrolls behind it.
   const opaqueBg=opaqueStickyBg;
 
+  // ── Phone view: one day at a time as a simple form (sales & collection, then expenses), instead
+  // of the wide days × rows grid. Every input goes through the grid's own handlers
+  // (guardedSetSalesValue, setValue + blockIfExpenseGoesNegative, the entry/employee/description/
+  // invoice modals), so locks, the edit window and the negative-cash checks behave identically.
+  // The full grid stays one tap away. Shown only on phones (CSS .show-phone / .hide-phone). ──
+  const [phoneIso,setPhoneIso]=useState(()=>{const v=String(viewDate||'');return /^\d{4}-\d{2}-\d{2}$/.test(v)&&v<=todayISO?v:todayISO;});
+  const [phoneGrid,setPhoneGrid]=useState(false);
+  const shiftPhoneDay=(n)=>{
+    const d=new Date(phoneIso+'T00:00:00');d.setDate(d.getDate()+n);
+    const iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    if(iso>todayISO)return;
+    setPhoneIso(iso);
+  };
+  const renderPhoneDay=()=>{
+    const iso=phoneIso;
+    const locked=dseIsLocked(iso);
+    const dayLabel=new Date(iso+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+    const fmt=v=>(Number(v)||0).toLocaleString('en-IN');
+    const rowStyle={display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'10px 12px',borderBottom:'1px solid var(--border)'};
+    const numInput=(value,onChange,disabled)=>React.createElement('input',{type:'number',inputMode:'decimal',min:0,value,disabled,placeholder:'0',
+      onChange:e=>onChange(e.target.value),
+      style:{width:128,flexShrink:0,textAlign:'right',fontSize:16,padding:'8px 10px',background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:8,color:disabled?'var(--text3)':'var(--text)'}});
+    const tapBtn=(total,onClick)=>React.createElement('button',{type:'button',onClick,className:'btn btn-ghost btn-sm',style:{minWidth:128,flexShrink:0,justifyContent:'flex-end',fontWeight:total>0?600:400}},
+      total>0?'₹'+fmt(total)+' ✎':'+ Add');
+    const heading=(text,right)=>React.createElement('div',{style:{padding:'10px 12px',display:'flex',justifyContent:'space-between',gap:8,fontWeight:700,fontSize:12,letterSpacing:'.06em',textTransform:'uppercase',color:'var(--accent2)',background:'rgba(47,95,224,0.1)'}},
+      React.createElement('span',null,text),right?React.createElement('span',null,right):null);
+    const salesRows=SALES_ROWS.map((row,sri)=>{
+      const isComputed=row.type==='computed',isOpening=sri===IDX_OPENING;
+      const readOnly=isComputed||(isOpening&&!isFirstEverCashDay(iso));
+      const val=salesValueAt(iso,sri);
+      const right=readOnly
+        ?React.createElement('span',{style:{fontWeight:700,fontSize:15,color:val<0?'var(--red)':'var(--accent2)'}},'₹'+fmt(val))
+        :isSalesEntryRow(sri)
+          ?tapBtn(getSalesEntryTotal(iso,sri),()=>openSalesEntryModal(sri,iso))
+          :numInput(getSalesValue(iso,sri),v=>guardedSetSalesValue(iso,sri,v),false);
+      return React.createElement('div',{key:'s'+sri,style:{...rowStyle,background:readOnly?'rgba(47,95,224,0.06)':undefined}},
+        React.createElement('div',{style:{fontSize:14,fontWeight:readOnly?700:500,color:readOnly?'var(--accent2)':'var(--text)'}},row.name),right);
+    });
+    const expRows=EXPENSE_ROWS.map((row,ri)=>{
+      if(!row.name)return null;
+      const isInv=INVOICE_GATED_EXPENSE_ROWS.includes(row.name);
+      let right;
+      if(isDescRow(ri))right=tapBtn(getDescTotal(iso,ri),()=>openDescModal(ri,iso));
+      else if(isEmpRow(ri))right=tapBtn(getEmpTotal(iso,ri),()=>openEmpModal(ri,iso));
+      else if(isInv){const t=getInvEntryTotal(iso,ri);right=tapBtn(t+Math.max(0,(Number(getValue(iso,ri))||0)-t),()=>openInvModal(ri,iso));}
+      else right=numInput(getValue(iso,ri),v=>{if(blockIfExpenseGoesNegative(iso,ri,v))return;setValue(iso,ri,v);},locked);
+      return React.createElement('div',{key:'e'+ri,style:rowStyle},
+        React.createElement('div',{style:{minWidth:0}},
+          React.createElement('div',{style:{fontSize:14,fontWeight:500,color:row.name==='Penalties'?'var(--red)':'var(--text)'}},row.name),
+          React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)'}},row.group)),
+        right);
+    });
+    return React.createElement('div',{className:'show-phone',style:{flexDirection:'column',gap:12,marginBottom:14}},
+      React.createElement('div',{className:'card',style:{padding:10,margin:0,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}},
+        React.createElement('button',{type:'button',className:'btn btn-ghost','aria-label':'Previous day',style:{fontSize:20,minWidth:46},onClick:()=>shiftPhoneDay(-1)},'‹'),
+        React.createElement('div',{style:{textAlign:'center',minWidth:0}},
+          React.createElement('div',{style:{fontWeight:700,fontSize:15}},dayLabel+(iso===todayISO?' · Today':'')),
+          React.createElement('input',{type:'date',value:iso,max:todayISO,'aria-label':'Pick a date',onChange:e=>{if(e.target.value&&e.target.value<=todayISO)setPhoneIso(e.target.value);},
+            style:{fontSize:13,background:'transparent',border:'none',color:'var(--accent2)',textAlign:'center'}}),
+          locked&&React.createElement('div',{style:{fontSize:11.5,color:'var(--orange)'}},'🔒 Locked — view only')),
+        React.createElement('button',{type:'button',className:'btn btn-ghost','aria-label':'Next day',style:{fontSize:20,minWidth:46},disabled:iso>=todayISO,onClick:()=>shiftPhoneDay(1)},'›')),
+      React.createElement('div',{className:'card',style:{padding:0,margin:0,overflow:'hidden'}},heading('Sales & collection'),salesRows),
+      React.createElement('div',{className:'card',style:{padding:0,margin:0,overflow:'hidden'}},heading('Expenses','Total ₹'+fmt(dayTotal(iso))),expRows),
+      React.createElement('button',{type:'button',className:'btn btn-ghost',onClick:()=>setPhoneGrid(g=>!g)},phoneGrid?'Hide full grid':'Show full grid (several days)'));
+  };
 
   return React.createElement('div',{className:'fade-in'},
     // Header
@@ -10242,7 +10307,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
         React.createElement('div',{className:'page-title'},fixAmp('Daily Expenses & Sales Sheet')),
         React.createElement('div',{className:'page-sub'},'Every visible date is editable — entries here roll up into P&L (Monthly) automatically by Expense Group, for whichever month the date falls in')
       ),
-      React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
+      // Grid-only controls — tucked away on phones unless the full grid is open.
+      React.createElement('div',{className:phoneGrid?undefined:'hide-phone',style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
         React.createElement('label',{style:{fontSize:11,color:'var(--text3)',whiteSpace:'nowrap'}},'View up to date:'),
         React.createElement('input',{type:'date',className:'form-control',style:{width:'auto'},value:viewDate,onChange:e=>setViewDate(e.target.value)}),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:showCols,onChange:e=>setShowCols(e.target.value==='full'?'full':Number(e.target.value))},
@@ -10255,6 +10321,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:saveDay},'💾 Save Today')
       )
     ),
+    // Phone: the one-day form comes first, right under the title.
+    renderPhoneDay(),
 
     showSummaryModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowSummaryModal(false)},
       React.createElement('div',{className:'modal',style:{width:920,maxWidth:'95vw',maxHeight:'88vh',overflowY:'auto'},onClick:e=>e.stopPropagation()},
@@ -10306,7 +10374,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     ),
 
     // Main spreadsheet
-    React.createElement('div',{className:'card',style:{padding:0,overflow:'hidden'}},
+    React.createElement('div',{className:'card'+(phoneGrid?'':' hide-phone'),style:{padding:0,overflow:'hidden'}},
       // The wrap below is a bounded-height, genuinely-scrolling box (maxHeight + overflowY:'auto')
       // rather than an unbounded div that merely scrolls horizontally — this is the standard
       // "frozen header" table pattern and is what actually makes position:sticky reliable here.
