@@ -5,8 +5,12 @@ Start a new session by reading this file, then continue from **"What's next"** a
 
 ## What the app is
 A salon management suite (staff, attendance, salary/incentive working, daily sales & expenses, vendors, P&L, reports) for multiple outlets.
-Everything is in **one file, `index.html` (~31,000 lines)**: React 18 via CDN, `React.createElement` (no JSX, no build step).
+React 18 via CDN, `React.createElement` (no JSX, no build step). `index.html` holds the page shell, CSS and a few small scripts;
+the app code is in **`js/01-…14-*.js`** (split by area in #4 Stage A — the same code, loaded in that order as classic scripts sharing
+one global scope). A file may only use, *at load time*, things declared in the same or an earlier file (functions are only called
+later, so that's rarely an issue — check it when moving code between files).
 PWA: `manifest.json`, `service-worker.js` (network-first). `tests.html` = self-tests. `supabase/` = database scripts + edge function.
+`tools/bump-version.ps1` = release version helper.
 
 ## How data is stored (important)
 - **Supabase** project `cuvcxxjbcmctsajhctju`. All app data lives in table **`kv_store(key text pk, value text, updated_at, updated_by)`** — one row per "sheet per outlet", e.g. `salonos_master_employees_outlet_5`. Keys ending `_outlet_<id>` belong to that outlet; others are shared.
@@ -32,7 +36,9 @@ PWA: `manifest.json`, `service-worker.js` (network-first). `tests.html` = self-t
 - SQL scripts that built all of this: `supabase/step0…step5*.sql` (already applied — don't re-run blindly).
 
 ## How to change and publish
-1. Edit `index.html`. Bump **`APP_VERSION`** in index.html **and** `version.json` to the same new value (users get an "Update now" banner).
+1. Edit the right file in `js/` (or `index.html` for CSS/shell). Then run `powershell -File tools\bump-version.ps1 <new version>` —
+   it sets `APP_VERSION` (js/01-foundation.js), `version.json` and the `?v=` on every script tag together (users get an
+   "Update now" banner, and browsers never mix old and new files).
 2. Test locally (serve the folder, e.g. `python -m http.server`), open `tests.html` → must say all tests passed. Check phone width (≤640px) and desktop.
 3. `git commit` + `git push origin main` → GitHub Pages is live in ~40 s. (Windows: `git config core.longpaths true`, `core.autocrlf false`.)
 - Database changes: Supabase dashboard → SQL Editor. Test access rules by setting `request.jwt.claims` to a user's id inside a rolled-back transaction.
@@ -42,9 +48,9 @@ PWA: `manifest.json`, `service-worker.js` (network-first). `tests.html` = self-t
 Cloud sync fixes & live updates · per-outlet database access rules · documents in private storage · nightly cloud backups + restore · change history + restore previous version · two-step login · auto-logout 30 min · HTTPS enforced · per-outlet appointment book · unused-document cleanup · error log · phone layout (bottom tabs, sheet picker, card view for list tables, bottom-sheet forms) · readability · update banner · outlet setup checklist · branded payslips (Salary Working → 📄 Payslips) · outlet comparison + data-gap alerts on dashboards · automatic reports (awaiting email setup) · self-tests (23 passing) · **phone one-day form for Daily Sales & Exp.**
 
 ## What's next (agreed plan — owner approved, nothing started yet)
-**#4 Split `index.html` into a proper project** (do first):
-- Stage A: move the big inline script into separate plain JS files by area (sync, auth, each sheet), loaded in order — same code, no behaviour change. Verify with tests.html + manual checks.
-- Stage B: add a build step (bundle/minify/lint) with automatic deploy.
+**#4 Split `index.html` into a proper project**:
+- Stage A: ✅ DONE (29 Sep 2026) — app code moved into `js/01…14-*.js`, byte-identical to before (verified), tests pass.
+- Stage B: add a build step (bundle/minify/lint) with automatic deploy (GitHub Actions — this PC has no Node).
 - Stage C: per-area tests.
 
 **#3 Proper database tables**, one module at a time after #4 Stage A: Employees → Attendance → Daily Sales & Expenses → Advances/Penalties → Vendors/Invoices → … For each: new table with per-outlet RLS; dual-write (kv + table) with a daily parity check; backup before each step; switch reads to the table only when parity holds; keep a one-line rollback switch.

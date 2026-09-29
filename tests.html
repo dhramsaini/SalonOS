@@ -32,8 +32,12 @@
   try{
     const html=await (await fetch('index.html?t='+Date.now(),{cache:'no-store'})).text();
     const inline=[...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
-    const app=inline.find(s=>s.includes('function swWorkingsFor'));
-    const libs=[...html.matchAll(/<script[^>]*\bsrc="([^"]+)"[^>]*><\/script>/g)].map(m=>m[1]);
+    const srcs=[...html.matchAll(/<script[^>]*\bsrc="([^"]+)"[^>]*><\/script>/g)].map(m=>m[1]);
+    // App code lives in js/*.js (loaded in order); older single-file builds had it inline.
+    const appFiles=srcs.filter(s=>/^js\//.test(s));
+    const libs=srcs.filter(s=>!/^js\//.test(s));
+    let app=inline.find(s=>s.includes('function swWorkingsFor'));
+    if(!app&&appFiles.length)app=(await Promise.all(appFiles.map(u=>fetch(u,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Could not load '+u);return r.text();})))).join('\n');
     if(!app)throw new Error('Could not find the app script in index.html');
 
     // In-memory storage (the frame has no real storage at all) + made-up test data.

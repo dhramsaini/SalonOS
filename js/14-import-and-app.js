@@ -1,0 +1,1031 @@
+
+
+function InvoiceIntake({vendors,onUse,onManual,onClose}){
+  const {toast}=useToast();
+  const [stage,setStage]=useState('pick');   // pick | busy | review | error
+  const [msg,setMsg]=useState('');
+  const [file,setFile]=useState(null);
+  const [data,setData]=useState(null);
+  const [err,setErr]=useState('');
+  const [showRaw,setShowRaw]=useState(false);
+  const [drag,setDrag]=useState(false);
+  const [newVendor,setNewVendor]=useState(true);
+
+  const run=async(f)=>{
+    const ext=(f.name.split('.').pop()||'').toLowerCase();
+    if(OK_EXT.indexOf(ext)<0){setErr('“'+f.name+'” is not a supported format. Attach a PDF, Word file or photo of the bill.');setStage('error');return}
+    if(f.size>20*1024*1024){setErr('That file is '+(f.size/1048576).toFixed(1)+' MB. Please keep attachments under 20 MB.');setStage('error');return}
+    setFile(f);setStage('busy');setErr('');
+    try{
+      let text='';
+      if(ext==='pdf'){
+        setMsg('Opening the PDF');
+        text=await pdfToText(f,setMsg);
+        if(text.replace(/\s/g,'').length<40){setMsg('No text layer found — running OCR on the scan');text=await imgToText(f,setMsg)}
+      }else if(ext==='docx'){text=await docxToText(f,setMsg)}
+      else if(ext==='doc'){
+        setMsg('Reading legacy Word file');
+        const buf=new Uint8Array(await readBuf(f));
+        text=legacyDocToText(buf);
+      }else{text=await imgToText(f,setMsg)}
+      if(!text||text.replace(/\s/g,'').length<20)throw new Error('Could not read any text from this file. Try a clearer scan, or enter the details manually.');
+      setMsg('Matching against your vendor master');
+      const parsed=parseInvoice(text,vendors);parsed.fileName=f.name;
+      parsed.docNature=parsed.docNature||'Tax Invoice';
+      parsed.bookingDate=parsed.invoiceDate||'';
+      parsed.category=parsed.vendorId?((vendors.find(v=>v.id===parsed.vendorId)||{}).cat||''):'';
+      if(parsed.amount)parsed.amount=Math.round(Number(parsed.amount));
+      setData(parsed);setNewVendor(!parsed.vendorId);setStage('review');
+      toast(parsed.vendorId?'Matched to '+vendors.find(v=>v.id===parsed.vendorId).name:'Details read — no vendor match, review below',parsed.vendorId?'success':'warning');
+    }catch(e){setErr(e.message||'Extraction failed');setStage('error')}
+  };
+  const pick=(e)=>{const f=e.target.files&&e.target.files[0];if(f)run(f)};
+  const drop=(e)=>{e.preventDefault();setDrag(false);const f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f)run(f)};
+  const set=(k,v)=>setData(d=>({...d,[k]:v,conf:{...d.conf,[k]:'edited'}}));
+
+  const field=(label,k,type)=>{
+    const c=data.conf[k];
+    const b=c==='edited'?['badge-blue','Edited']:CONF_BADGE[c];
+    return h('div',{className:'form-group',key:k},
+      h('label',{style:{display:'flex',alignItems:'center',gap:8}},label,
+        b?h('span',{className:'badge '+b[0],style:{fontSize:9}},b[1]):null),
+      h('input',{className:'form-control',type:type||'text',value:data[k]||'',
+        onChange:e=>set(k,type==='number'?e.target.value:e.target.value)}));
+  };
+
+  const use=()=>{
+    if(!data.amount)return toast('Enter the '+(data.docNature==='Performa Invoice'?'PI':'invoice')+' amount before continuing','error');
+    if(!data.category)return toast('Select a Category before continuing','error');
+    onUse({...data,amount:Math.round(Number(data.amount)||0)},newVendor);
+  };
+  const isPI=data&&data.docNature==='Performa Invoice';
+
+  return h('div',{className:'modal-overlay',onClick:onClose},
+    h('div',{className:'modal',style:{width:stage==='review'?720:560},onClick:e=>e.stopPropagation()},
+      h('div',{className:'modal-title'},'Add invoice — attach the bill first'),
+
+      stage==='pick'&&h('div',null,
+        h('div',{className:'dropzone'+(drag?' on':''),
+          onDragOver:e=>{e.preventDefault();setDrag(true)},onDragLeave:()=>setDrag(false),onDrop:drop,
+          onClick:()=>document.getElementById('intake-file').click()},
+          h('div',{className:'dz-icon'},'📄'),
+          h('div',{className:'dz-title'},'Drop the vendor bill here'),
+          h('div',{className:'dz-sub'},'or click to browse — PDF, Word (.doc / .docx) or a photo (JPG, PNG)'),
+          h('input',{type:'file',id:'intake-file',style:{display:'none'},
+            accept:'.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp',onChange:pick})),
+        h('div',{className:'help-tip',style:{marginTop:14}},
+          'The bill is read in your browser — nothing is uploaded anywhere. GSTIN, invoice number, date and amount are picked up automatically and matched against your vendor master. Scanned bills and photos go through OCR, which takes a few seconds longer.'),
+        h('div',{className:'modal-actions'},
+          h('button',{className:'btn btn-ghost',onClick:onManual},'Skip — enter manually'),
+          h('button',{className:'btn btn-ghost',onClick:onClose},'Cancel'))),
+
+      stage==='busy'&&h('div',{style:{padding:'26px 0',textAlign:'center'}},
+        h('div',{className:'spinner'}),
+        h('div',{style:{fontSize:13.5,color:'var(--text)',marginTop:16}},msg||'Working…'),
+        h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},file?file.name:''),
+        h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:onClose},'Cancel'))),
+
+      stage==='error'&&h('div',null,
+        h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'⚠'),
+          h('div',{className:'empty-title'},'Could not read that file'),
+          h('div',{className:'empty-sub'},err)),
+        h('div',{className:'modal-actions'},
+          h('button',{className:'btn btn-ghost',onClick:()=>{setStage('pick');setErr('')}},'Try another file'),
+          h('button',{className:'btn btn-primary',onClick:onManual},'Enter manually'))),
+
+      stage==='review'&&data&&h('div',null,
+        h('div',{className:'intake-match '+(data.vendorId?'ok':'new')},
+          h('div',{style:{fontSize:11,letterSpacing:'.12em',textTransform:'uppercase',color:'var(--text3)',marginBottom:5}},
+            data.vendorId?'Matched by '+data.matchBy:'No vendor match'),
+          h('div',{style:{fontSize:15,color:'var(--text)',fontWeight:600}},
+            data.vendorId?vendors.find(v=>v.id===data.vendorId).name:(data.vendorName||'Unknown supplier')),
+          h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:3}},
+            data.gst?'GSTIN '+data.gst+(data.conf.gst==='high'?' · checksum valid':' · checksum failed, verify'):'No GSTIN found on the bill'),
+          !data.vendorId&&h('label',{className:'gate-remember',style:{marginTop:12,marginBottom:0}},
+            h('input',{type:'checkbox',checked:newVendor,onChange:e=>setNewVendor(e.target.checked)}),
+            h('div',null,h('div',{className:'t'},'Add this supplier to the vendor master'),
+              h('div',{className:'s'},'Creates a vendor record with the name, GSTIN and contact read from this bill.')))),
+        h('div',{className:'form-row cols2'},field('Supplier name','vendorName'),field('GSTIN','gst')),
+        h('div',{className:'form-row cols3'},
+          h('div',{className:'form-group',key:'docNature'},
+            h('label',null,'Doc Nature'),
+            h('select',{className:'form-control',value:data.docNature||'Tax Invoice',onChange:e=>set('docNature',e.target.value)},
+              ['Tax Invoice','Invoice','Performa Invoice'].map(o=>h('option',{key:o,value:o},o)))
+          ),
+          field(isPI?'PI no.':'Invoice no.','invoiceNo'),
+          field(isPI?'PI date':'Invoice date','invoiceDate','date')
+        ),
+        h('div',{className:'form-row cols3'},
+          field('Booking date','bookingDate','date'),field('Due date','dueDate','date'),
+          h('div',{className:'form-group',key:'category'},
+            h('label',null,'Category *'),
+            h('select',{className:'form-control',value:data.category||'',onChange:e=>set('category',e.target.value)},
+              h('option',{value:''},'— Select Category —'),
+              ['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Other'].map(c=>h('option',{key:c,value:c},c)))
+          )
+        ),
+        h('div',{className:'form-row cols3'},field('Taxable value','taxable','number'),field('IGST','igst','number'),field('CGST','cgst','number')),
+        h('div',{className:'form-row cols3'},field('SGST','sgst','number'),field('Round off','roundOff','number'),field((isPI?'PI total':'Invoice total')+' ₹','amount','number')),
+        h('div',{className:'form-row cols2'},field('Phone','phone'),field('Email','email')),
+        (function(){
+          const parts=(Number(data.taxable)||0)+(Number(data.cgst)||0)+(Number(data.sgst)||0)+(Number(data.igst)||0)+(Number(data.roundOff)||0);
+          const tot=Number(data.amount)||0;
+          if(!data.taxable||!tot)return null;
+          const diff=Math.abs(parts-tot);
+          return h('div',{className:'help-tip',style:{borderLeft:'3px solid '+(diff<=2?'var(--green)':'var(--orange)'),marginBottom:12}},
+            diff<=2?'Taxable value plus GST and round off equals the '+(isPI?'PI':'invoice')+' total — the bill ties.'
+                   :'Taxable value plus GST and round off comes to ₹'+Math.round(parts).toLocaleString('en-IN')+', but the total reads ₹'+Math.round(tot).toLocaleString('en-IN')+'. Difference of ₹'+Math.round(diff).toLocaleString('en-IN')+' — check for freight or a missed line.');
+        })(),
+        h('div',{style:{marginTop:6}},
+          h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowRaw(!showRaw)},showRaw?'Hide extracted text':'Show extracted text'),
+          showRaw&&h('pre',{className:'rawbox'},data.raw.slice(0,4000))),
+        h('div',{className:'modal-actions'},
+          h('button',{className:'btn btn-ghost',onClick:()=>setStage('pick')},'Attach a different file'),
+          h('button',{className:'btn btn-primary',onClick:use},'Use these details')))
+    ));
+}
+
+// Every sheet available under an outlet, and the icon/label shown for it. Module-level (not
+// recreated per-render) since it's pure static data — also lets the permission-redirect effect
+// in App() reference it safely before the logged-out early return, which a hook can't do with a
+// same-named local const declared after that return.
+// ── Import Center — a single, professional-looking landing page for every template download
+// and data import in the app, instead of each one being scattered inside its own working sheet.
+// The actual upload/parsing logic stays where it belongs (each sheet already knows how to
+// validate and reconcile its own import against its own data), so this is a directory + one-
+// click jump to the right screen, not a duplicate of six different bespoke import pipelines.
+function ImportCenter({salon,onNavTab}={}){
+  const CARDS=[
+    {icon:'🧑‍💼',title:'Employee / Staff Master Import',desc:'Bulk-add employees straight into Master Salary — download the template, fill it in, then upload it from Master Salary.',tab:'master-salary',cta:'Go to Master Salary'},
+    {icon:'🏭',title:'Vendor Invoice Import',desc:'Bulk-import vendor invoices with amounts, dates, and categories into Vendor Sheet.',tab:'vendors',cta:'Go to Vendor Sheet'},
+    {icon:'🏆',title:'Membership / Incentive Rule C Import',desc:'Bulk-load target multipliers and incentive rates for Rule C into Incentive Working.',tab:'incentive-working',cta:'Go to Incentive Working'},
+    {icon:'📥',title:'Collection Reco Import',desc:'Import daily Cash/Card/UPI/Wallet/District/Luzo/Online collection figures against Cradlee for reconciliation.',tab:'collection',cta:'Go to Collection Reco'},
+    {icon:'🏦',title:'Bank Statement Import',desc:'Import a bank statement (per-bank column template) for classification, reconciliation, and Settle Pay.',tab:'bank-statement',cta:'Go to Bank Statement'},
+    {icon:'📝',title:'Staff Work Report Import',desc:'Bulk-import daily service/target achievement figures used to compute Daily Incentive.',tab:'incentive-working',cta:'Go to Incentive Working'},
+    {icon:'🗂️',title:'Previous Months P&L Import',desc:'Bulk-load historical monthly P&L figures for months entered before this tool was in use.',tab:'previous-pnl',cta:'Go to Previous Months P&L'},
+  ];
+  return React.createElement('div',{className:'fade-in'},
+    React.createElement('div',{className:'section-header'},
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Import Center'),
+        React.createElement('div',{className:'page-sub'},'Every template download and bulk import in one place — '+(salon?salon.name.split('—')[0].trim():'this outlet'))),
+    ),
+    React.createElement('div',{style:{background:'rgba(74,158,255,0.06)',border:'1px solid rgba(74,158,255,0.18)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:16,fontSize:12,color:'var(--blue)'}},
+      'Each card below opens the actual working sheet, where you\u2019ll find both "Download Template" and "Upload" right there — the import itself needs that sheet\u2019s own preview and validation, so it always happens next to the data it affects.'
+    ),
+    React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:14,marginBottom:16}},
+      CARDS.map(c=>React.createElement('div',{key:c.title,className:'card',style:{display:'flex',flexDirection:'column',gap:10}},
+        React.createElement('div',{style:{fontSize:26}},c.icon),
+        React.createElement('div',{style:{fontWeight:700,fontSize:14,color:'var(--text)'}},c.title),
+        React.createElement('div',{style:{fontSize:12,color:'var(--text3)',lineHeight:1.5,flex:1}},c.desc),
+        React.createElement('button',{className:'btn btn-primary btn-sm',style:{alignSelf:'flex-start'},onClick:()=>onNavTab&&onNavTab(c.tab)},c.cta+' →')
+      )),
+      React.createElement('div',{className:'card',style:{display:'flex',flexDirection:'column',gap:10,background:'var(--bg3)'}},
+        React.createElement('div',{style:{fontSize:26}},'🏪'),
+        React.createElement('div',{style:{fontWeight:700,fontSize:14,color:'var(--text)'}},'Outlet / Salon Import'),
+        React.createElement('div',{style:{fontSize:12,color:'var(--text3)',lineHeight:1.5,flex:1}},'Bulk-add new outlets across the whole business — this isn\u2019t specific to one outlet, so it lives on Master Sheet in the main sidebar rather than in here.'),
+        React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',fontStyle:'italic'}},'Open Master Sheet from the sidebar → + Add Salon → Import')
+      )
+    )
+  );
+}
+
+// Color-coded by functional group (matches each tab's own `group` field below) so the tab bar
+// is scannable at a glance — Front Desk vs Payroll & HR vs Money vs Reports all read as distinct
+// color clusters instead of one long undifferentiated row of icons.
+const SALON_TAB_GROUP_COLORS={
+  'Overview':'var(--blue)',
+  'Front Desk':'var(--teal)',
+  'Payroll & HR':'var(--purple)',
+  'Money':'var(--green)',
+  'Reports & Compliance':'var(--orange)'
+};
+// RGB triplets matching the hex each var() above resolves to — needed so the tab-bar CSS can
+// build rgba() glows/washes per tab group (rgba() can't extract components back out of a var()
+// that's already a color, so the triplet has to be supplied alongside it).
+const SALON_TAB_GROUP_COLORS_RGB={
+  'Overview':'74,158,255',
+  'Front Desk':'78,205,196',
+  'Payroll & HR':'139,127,232',
+  'Money':'76,175,125',
+  'Reports & Compliance':'255,159,67'
+};
+const SALON_TABS=[
+  {id:'outlet-dashboard',label:'Dashboard',icon:'📊',group:'Overview'},
+  {id:'appointments',label:'Appointments',icon:'📅',group:'Front Desk'},
+  {id:'billing',label:'Billing',icon:'🧾',group:'Front Desk'},
+  {id:'clients',label:'Clients',icon:'👥',group:'Front Desk'},
+  {id:'inventory',label:'Inventory',icon:'📦',group:'Front Desk'},
+  {id:'master-salary',label:'Master Salary',icon:'💰',group:'Payroll & HR'},
+  {id:'daily-sales',label:'Daily Sales & Exp.',icon:'💵',group:'Money'},
+  {id:'attendance',label:'Attendance',icon:'✅',group:'Payroll & HR'},
+  {id:'salary-working',label:'Salary Working',icon:'📋',group:'Payroll & HR'},
+  {id:'incentive-working',label:'Incentive Working',icon:'🏆',group:'Payroll & HR'},
+  {id:'daily-incentive',label:'Daily Incentive',icon:'🎯',group:'Payroll & HR'},
+  {id:'advance',label:'Advances',icon:'💳',group:'Payroll & HR'},
+  {id:'penalty',label:'Penalties',icon:'⚠️',group:'Payroll & HR'},
+  {id:'vendors',label:'Vendors',icon:'🏭',group:'Money'},
+  {id:'due-dates',label:'Due Dates',icon:'📌',group:'Money'},
+  {id:'bank-statement',label:'Bank Statement',icon:'🏦',group:'Money'},
+  {id:'bank-payment',label:'Bank Payment',icon:'🏧',group:'Money'},
+  {id:'recurring-expenses',label:'Recurring Expenses',icon:'🔁',group:'Money'},
+  {id:'fixed-assets',label:'Fixed Assets',icon:'🏢',group:'Money'},
+  {id:'collection',label:'Collection Summary',icon:'📥',group:'Money'},
+  {id:'collection-sheet',label:'Collection Reco',icon:'📊',group:'Money'},
+  {id:'outlet-pnl',label:'P&L (Monthly)',icon:'📈',group:'Reports & Compliance'},
+  {id:'previous-pnl',label:'Previous Months P&L',icon:'🗂️',group:'Reports & Compliance'},
+  {id:'tally-export',label:'Tally Export',icon:'🔄',group:'Reports & Compliance'},
+  {id:'reports',label:'Reports',icon:'📇',group:'Reports & Compliance'},
+  {id:'audit-log',label:'Audit Log',icon:'🕵',group:'Reports & Compliance'},
+  {id:'import-center',label:'Import Center',icon:'📥',group:'Reports & Compliance'},
+];
+function App(){
+  // Esc closes whatever modal/popup is currently open, app-wide. Every modal in this app already
+  // closes when its backdrop (.modal-overlay) is clicked — so rather than wiring an Escape
+  // handler into each of the ~57 separate modal call sites individually (easy to miss one, and
+  // every future modal would need it added by hand too), this finds the open overlay and
+  // triggers a real click on it, reusing whatever close logic that modal already has. If more
+  // than one happens to be open at once (a confirm dialog opened from within another modal), the
+  // last one in the DOM — the most recently opened, in normal top-to-bottom render order — gets
+  // closed first, same as clicking through them would.
+  useEffect(()=>{
+    const onKeyDown=(e)=>{
+      if(e.key!=='Escape')return;
+      const overlays=document.querySelectorAll('.modal-overlay');
+      if(overlays.length)overlays[overlays.length-1].click();
+    };
+    document.addEventListener('keydown',onKeyDown);
+    return()=>document.removeEventListener('keydown',onKeyDown);
+  },[]);
+  const [loggedIn,setLoggedIn]=useState(()=>!!sessionStorage.getItem('salonos_user'));
+  const [user,setUser]=useState(()=>{try{return JSON.parse(sessionStorage.getItem('salonos_user'))}catch(e){return null}});
+  // Backup-overdue reminder — dismissible for the current session only, so it doesn't nag on
+  // every single page navigation, but comes back next time the app is opened if still overdue.
+  // 14 days is a judgment call, not a hard rule — the point is a real downloaded file exists
+  // somewhere outside this browser, not that it's exactly two weeks old.
+  const [backupBannerDismissed,setBackupBannerDismissed]=useState(false);
+  const backupDaysOverdue=daysSinceLastBackup();
+  const backupOverdue=backupDaysOverdue===null||backupDaysOverdue>=14;
+  // ── Mobile sidebar drawer — closed by default; a hamburger button (only rendered under 900px
+  // via CSS) toggles it open as an off-canvas panel over the content, closed again by picking a
+  // nav item or tapping the backdrop. Desktop/tablet widths never see the hamburger or backdrop
+  // at all (display:none in the media query), so this has zero effect above 900px. ──
+  const [sidebarOpen,setSidebarOpen]=useState(false);
+  const closeSidebar=()=>setSidebarOpen(false);
+  const [activePage,setActivePage]=useState('dashboard');
+  const [selectedSalon,setSelectedSalon]=useState(null);
+  const [salonTab,setSalonTab]=useState('master-salary');
+  // If the sheet currently open stops being accessible to this user (an admin just changed
+  // their permissions, or they logged in with an account that never had access to it), move
+  // them to the first sheet they can actually see rather than leaving them on a hidden one.
+  // Super Admin and legacy accounts with no sheetAccess configured are never redirected — same
+  // "sees everything" rule the nav filtering itself uses.
+  useEffect(()=>{
+    if(!user||user.role==='Super Admin')return;
+    const oa=(user.sheetAccessByOutlet&&selectedSalon&&user.sheetAccessByOutlet[selectedSalon.id])||user.sheetAccess;
+    if(!oa)return;
+    const currentAllowed=(oa[salonTab]||'View Only')!=='No Access';
+    if(currentAllowed)return;
+    const firstAllowed=SALON_TABS.find(t=>(oa[t.id]||'View Only')!=='No Access');
+    if(firstAllowed)setSalonTab(firstAllowed.id);
+  },[user,salonTab,selectedSalon]);
+  // Keeps the currently-active sheet visible in the horizontally-scrolling tab strip — matters
+  // most when salonTab changes from somewhere other than clicking a visible tab button (the
+  // command palette's "Go to" entries, or the permission-redirect above), where the newly active
+  // tab could otherwise be scrolled off to one side with no visual indication it changed at all.
+  const salonTabBarScrollTo=(dir)=>{
+    const el=document.getElementById('salon-tab-bar');
+    if(el)el.scrollBy({left:dir*220,behavior:'smooth'});
+  };
+  useEffect(()=>{
+    const el=document.getElementById('salon-tab-bar');
+    if(!el)return;
+    const activeBtn=el.querySelector('.tab-btn.active');
+    if(activeBtn)activeBtn.scrollIntoView({behavior:'smooth',inline:'nearest',block:'nearest'});
+  },[salonTab,selectedSalon]);
+  // Was hardcoded to '2025-26' — defaults to whatever FY today actually falls in, same as the
+  // Period Gate, so the Master Dashboard doesn't quietly default to last year's FY forever.
+  const [selFY,setSelFY]=useState(()=>pgCurrent().fy);
+  const [toasts,setToasts]=useState([]);
+  const [cmdOpen,setCmdOpen]=useState(false);
+  const [theme,setTheme]=useState(()=>{try{return cachedLocalGet('salonos_theme')||'light'}catch(e){return 'light'}});
+  useEffect(()=>{document.body.classList.toggle('light',theme==='light');safeLocalSet('salonos_theme',theme)},[theme]);
+  // Auto-backup — every 1 minute while enabled, snapshots all SalonOS data into a dedicated
+  // localStorage slot (not a file download, so it doesn't spam the browser's download prompt).
+  // Toggled from Master Settings; runs regardless of which page is open since it lives in App.
+  const [autoBackupOn,setAutoBackupOn]=useState(()=>{try{return cachedLocalGet('salonos_autobackup_enabled')==='1'}catch(e){return false}});
+  useEffect(()=>{safeLocalSet('salonos_autobackup_enabled',autoBackupOn?'1':'0')},[autoBackupOn]);
+  const [lastAutoBackup,setLastAutoBackup]=useState(()=>{try{const raw=cachedLocalGet('salonos_autobackup_snapshot');return raw?JSON.parse(raw).savedAt:null;}catch(e){return null}});
+  useEffect(()=>{
+    if(!autoBackupOn)return;
+    const doSnapshot=()=>{
+      try{
+        const data=collectSalonOSData();
+        const savedAt=new Date().toISOString();
+        safeLocalSet('salonos_autobackup_snapshot',JSON.stringify({savedAt,data}));
+        setLastAutoBackup(savedAt);
+      }catch(e){}
+    };
+    const id=setInterval(doSnapshot,60000);
+    return ()=>clearInterval(id);
+  },[autoBackupOn]);
+  const [period,setPeriod]=useState(null);
+  const [defaultPeriods,setDefaultPeriods]=useState(()=>pgLoadAll());
+  const [gateFor,setGateFor]=useState(null);
+  const [showHelp,setShowHelp]=useState(false);
+  const [pendingVendorCategory,setPendingVendorCategory]=useState(null);
+  const [pendingVendorPaymentDate,setPendingVendorPaymentDate]=useState(null);
+  const [salons,setSalons]=useState(SALONS);
+  // Every add/edit/delete goes through this instead of setSalons directly — it mutates the
+  // shared SALONS array in place (so every other component reading it sees the change
+  // immediately on the same re-render, not one tick later) and persists it, in that order,
+  // before React state updates — this is what actually makes "Master Sheet" changes show up
+  // in every outlet selector throughout the app, which never genuinely worked before.
+  const setSalonsAndSync=(updater)=>{
+    setSalons(prev=>{
+      const next=typeof updater==='function'?updater(prev):updater;
+      SALONS.length=0;SALONS.push(...next);
+      saveSalonsToStorage(next);
+      return next;
+    });
+  };
+
+  // One-time cleanup: earlier versions of this app shipped with 2 hardcoded sample submissions
+  // as the fallback default — meaning the very first time this browser ever loaded the Review
+  // Centre, before any real submission existed, those samples got saved as if they were real
+  // data. This strips out only those exact entries (matched on ID AND every field, not just the
+  // ID) so it can never mistakenly remove a genuine submission that happens to reuse an ID.
+  const KNOWN_DUMMY_SUBMISSIONS=[
+    {id:'SUB-1001',outletId:2,outlet:'Glow & Co — Sector 18',period:'June 2026',module:'Monthly Operations',submittedBy:'Rahul Mehta',submittedAt:'2026-06-26T18:30:00+05:30',status:'Submitted',remarks:'',reviewedBy:'',reviewedAt:''},
+    {id:'SUB-1000',outletId:1,outlet:'Luxe Studio — Connaught Place',period:'May 2026',module:'Payroll & Attendance',submittedBy:'Priya Sharma',submittedAt:'2026-06-05T12:15:00+05:30',status:'Approved',remarks:'Checked and approved.',reviewedBy:'Amit Verma',reviewedAt:'2026-06-06T10:00:00+05:30'}
+  ];
+  const loadSubmissionsClean=()=>{
+    try{
+      const stored=JSON.parse(cachedLocalGet('salonos_submissions'))||[];
+      return stored.filter(s=>!KNOWN_DUMMY_SUBMISSIONS.some(d=>JSON.stringify(d)===JSON.stringify(s)));
+    }catch(e){return []}
+  };
+  const [submissions,setSubmissions]=useState(loadSubmissionsClean);
+  useEffect(()=>{safeLocalSet('salonos_submissions',JSON.stringify(submissions));},[submissions]);
+  // App-level state (outlet list, submissions) is read once when the app first loads — before
+  // login, so before any cloud data arrived. Re-read it whenever cloud data lands in this browser,
+  // or it keeps showing (and later saving back) that older copy.
+  const reloadAppLevelData=useCallback(()=>{
+    const s=loadSalonsFromStorage();
+    SALONS.length=0;SALONS.push(...s);
+    setSalons(s);
+    setSubmissions(loadSubmissionsClean());
+  },[]);
+
+  // Wire toast system
+  const addToast=useCallback((msg,type='success',dur=3000,onUndo)=>{
+    const id=Date.now()+Math.random();
+    setToasts(p=>[...p,{id,msg,type,onUndo}]);
+    setTimeout(()=>setToasts(p=>p.map(t=>t.id===id?{...t,leaving:true}:t)),dur);
+    setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),dur+220);
+  },[]);
+  _addToast=addToast;
+  const saveActivity=useSaveActivity();
+  const cloudStatus=useCloudStatus();
+  // ── Live updates from other IDs: bumping dataVersion re-mounts the open screen so it re-reads
+  // the fresh data. Held back while this user is mid-edit (typing in the last 5s, a field focused,
+  // or a form/modal open) so their work is never yanked away — a banner offers it instead, and it
+  // applies by itself as soon as they pause. ──
+  const [dataVersion,setDataVersion]=useState(0);
+  const [cloudUpdateWaiting,setCloudUpdateWaiting]=useState(false);
+  // New-version check: version.json is tiny and fetched uncached; if it names a different
+  // version than the one running, offer a one-tap update (held back while edits are still saving).
+  const [newVersion,setNewVersion]=useState(null);
+  useEffect(()=>{
+    if(location.protocol==='file:')return;
+    const check=async()=>{
+      try{
+        const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});
+        if(!r.ok)return;
+        const v=(await r.json()).version;
+        if(v&&v!==APP_VERSION)setNewVersion(v);
+      }catch(e){}
+    };
+    check();
+    const t=setInterval(check,10*60*1000);
+    const onVis=()=>{if(document.visibilityState==='visible')check();};
+    document.addEventListener('visibilitychange',onVis);
+    return()=>{clearInterval(t);document.removeEventListener('visibilitychange',onVis);};
+  },[]);
+  const updateNow=()=>{
+    if(CLOUD_SYNC_ENABLED&&(_cloudDirty.size>0||_cloudPushing>0)){addToast('Finishing saving your changes first — try again in a moment','info');return;}
+    window.location.reload();
+  };
+  // Phone-only chrome: the topbar ⋯ menu and the full-screen "All sheets" picker.
+  const [phoneMenuOpen,setPhoneMenuOpen]=useState(false);
+  const [modulePickerOpen,setModulePickerOpen]=useState(false);
+  const [moduleQuery,setModuleQuery]=useState('');
+  const applyCloudUpdatesNow=useCallback(async()=>{
+    try{
+      const scroller=document.querySelector('.content');
+      const top=scroller?scroller.scrollTop:0;
+      const applied=await cloudApplyUpdates();
+      setCloudUpdateWaiting(false);
+      if(!applied.length)return;
+      reloadAppLevelData();
+      setDataVersion(v=>v+1);
+      setTimeout(()=>{const el=document.querySelector('.content');if(el)el.scrollTop=top;},60);
+    }catch(e){}
+  },[reloadAppLevelData]);
+  useEffect(()=>{
+    if(!CLOUD_SYNC_ENABLED)return;
+    let lastActivity=0,waiting=false;
+    const mark=()=>{lastActivity=Date.now();};
+    // Only genuine typing or an open form holds updates back. Scrolling, tapping, or a dropdown
+    // that simply kept focus after a pick used to block them indefinitely, so other IDs' changes
+    // never appeared until a manual refresh. (Inline edits are saved as they're typed, so a
+    // refresh after a pause can't lose them — unsaved keys are never overwritten.)
+    const evs=['keydown','input'];
+    evs.forEach(ev=>window.addEventListener(ev,mark,true));
+    const busy=()=>Date.now()-lastActivity<3000||!!document.querySelector('.modal-overlay');
+    const onUpdates=()=>{
+      if(busy()){waiting=true;setCloudUpdateWaiting(true);}
+      else{waiting=false;applyCloudUpdatesNow();}
+    };
+    const t=setInterval(()=>{if(waiting&&!busy()){waiting=false;applyCloudUpdatesNow();}},1000);
+    window.addEventListener('salonos-cloud-data',onUpdates);
+    return()=>{evs.forEach(ev=>window.removeEventListener(ev,mark,true));clearInterval(t);window.removeEventListener('salonos-cloud-data',onUpdates);};
+  },[applyCloudUpdatesNow]);
+  const removeToast=(id)=>{
+    setToasts(p=>p.map(t=>t.id===id?{...t,leaving:true}:t));
+    setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),220);
+  };
+
+  useEffect(()=>{
+    const onKey=(e)=>{
+      if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();setCmdOpen(o=>!o)}
+      if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();setCmdOpen(true)}
+    };
+    window.addEventListener('keydown',onKey);
+    return ()=>window.removeEventListener('keydown',onKey);
+  },[]);
+
+  // Cloud mode pulls every saved key down from Supabase into localStorage before the app renders
+  // any real screen — otherwise the very first render after login would briefly show whatever
+  // (possibly empty) data happened to already be cached in this browser.
+  // Starts true when the tab reopens already logged in, so no screen renders (and saves back its
+  // stale cached data) before the session check + pull below have finished.
+  const [syncing,setSyncing]=useState(()=>CLOUD_SYNC_ENABLED&&loggedIn&&!_cloudSyncReady);
+  // A page refresh (or the tab reloading after being backgrounded) restores loggedIn/user
+  // straight from sessionStorage above, bypassing handleLogin entirely — without this,
+  // _cloudSyncReady stays stuck at its initial false for the rest of this tab's life, and
+  // queueCloudPush silently no-ops on every single edit made after the refresh (see its guard
+  // near CLOUD_SYNC_ENABLED). This re-runs the same pull-and-mark-ready step handleLogin does,
+  // once, whenever the app mounts already logged in.
+  // The app's own "logged in" flag lives in sessionStorage, but every cloud read/write needs a live
+  // Supabase session too. When that session has expired or been revoked, Supabase answers with
+  // empty lists instead of an error — User Management shows 0 users, other IDs' data never loads,
+  // and saves never leave this browser. So: verify it on mount, and drop back to the login screen
+  // whenever it's found missing, rather than carrying on half-logged-in.
+  const forceRelogin=useCallback(()=>{
+    if(!sessionStorage.getItem('salonos_user'))return;
+    sessionStorage.removeItem('salonos_user');setLoggedIn(false);setUser(null);
+    addToast('Your login session has expired — please sign in again. Unsynced changes on this device will be uploaded after you sign in.','warning',9000);
+  },[]);
+  useEffect(()=>{
+    if(!CLOUD_SYNC_ENABLED)return;
+    window.addEventListener('salonos-session-lost',forceRelogin);
+    let sub=null;
+    getSupabaseClient().then(supa=>{
+      if(!supa)return;
+      sub=supa.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT')forceRelogin();}).data.subscription;
+      if(loggedIn&&!_cloudSyncReady){
+        supa.auth.getSession().then(({data:{session}})=>{
+          if(!session){setSyncing(false);forceRelogin();return;}
+          cloudPullAndHydrate().then(()=>{reloadAppLevelData();setSyncing(false);});
+        }).catch(()=>setSyncing(false));
+      }
+    }).catch(()=>setSyncing(false));
+    return()=>{window.removeEventListener('salonos-session-lost',forceRelogin);if(sub)sub.unsubscribe();};
+  },[]);
+  const handleLogin=async(u)=>{
+    if(CLOUD_SYNC_ENABLED){
+      setSyncing(true);
+      await cloudPullAndHydrate();
+      reloadAppLevelData();
+      setSyncing(false);
+    }
+    setUser(u);setLoggedIn(true);sessionStorage.setItem('salonos_user',JSON.stringify(u));
+    if(CLOUD_SYNC_ENABLED)purgeOutletDataWithoutAccess(); // needs the signed-in user, set just above
+    if(!CLOUD_SYNC_ENABLED){
+      try{
+        const accts=loadUserAccounts();
+        const stamped=accts.map(a=>a.email.toLowerCase()===u.email.toLowerCase()?{...a,lastLogin:new Date().toISOString()}:a);
+        saveUserAccounts(stamped);
+      }catch(e){}
+    }
+    setActivePage(['Super Admin','Reviewer'].includes(u.role)?'collaboration':'collaboration');
+    if(u.isDemo){
+      addToast('🎉 Demo Access — this login is available for 5 days only from your network'+(u.demoDaysLeft?' ('+u.demoDaysLeft+' day'+(u.demoDaysLeft===1?'':'s')+' left)':'')+'. Contact us to purchase SalonOS.','info',8000);
+    }else{
+      addToast('Welcome, '+u.name+'!','success');
+    }
+  };
+  const logout=()=>{
+    sessionStorage.removeItem('salonos_user');setLoggedIn(false);setUser(null);
+    // scope:'local' — Supabase's default signOut() is global and revokes this account's session on
+    // EVERY device/browser, silently breaking cloud sync wherever else it was still open.
+    if(CLOUD_SYNC_ENABLED)getSupabaseClient().then(supa=>supa&&supa.auth.signOut({scope:'local'})).catch(()=>{});
+  };
+  // Shared counter PCs and phones often stay logged in all day — sign out after 30 minutes with
+  // no activity, but never while an edit is still on its way to the cloud.
+  useEffect(()=>{
+    if(!loggedIn)return;
+    const IDLE_MS=30*60*1000;
+    let last=Date.now();
+    const mark=()=>{last=Date.now();};
+    const evs=['keydown','mousedown','touchstart','wheel','scroll'];
+    evs.forEach(ev=>window.addEventListener(ev,mark,{capture:true,passive:true}));
+    const t=setInterval(()=>{
+      if(Date.now()-last<IDLE_MS)return;
+      if(CLOUD_SYNC_ENABLED&&(_cloudDirty.size>0||_cloudPushing>0))return;
+      logout();
+      addToast('Signed out after 30 minutes of inactivity — sign in again to continue.','info',10000);
+    },30000);
+    return()=>{evs.forEach(ev=>window.removeEventListener(ev,mark,{capture:true}));clearInterval(t);};
+  },[loggedIn]);
+  const handleSelectSalon=(s)=>{
+    const dp=defaultPeriods[s.id];
+    if(!dp){setGateFor(s);return}
+    setPeriod(dp);setSelFY(dp.fy);setSelectedSalon(s);setActivePage('salon');setSalonTab('outlet-dashboard');
+  };
+  const confirmPeriod=(pd,remember)=>{
+    const target=gateFor||selectedSalon;
+    setPeriod(pd);
+    if(target){
+      if(remember){pgSave(pd,target.id);setDefaultPeriods(prev=>({...prev,[target.id]:pd}));}
+      else{pgSave(null,target.id);setDefaultPeriods(prev=>{const n={...prev};delete n[target.id];return n;});}
+    }
+    setSelFY(pd.fy);
+    if(gateFor){setSelectedSalon(gateFor);setActivePage('salon');setSalonTab('outlet-dashboard');setGateFor(null);}
+    addToast('Working in '+pgLabel(pd)+(remember?' — saved as the default for '+(target?target.name.split('—')[0].trim():'this outlet'):''),'success');
+  };
+
+  // ── Back navigation — a generic history stack that watches activePage/selectedSalon/salonTab
+  // and remembers whatever they were right before each change, regardless of which click handler
+  // caused it (sidebar nav, command palette, "Go to" links, tab switches, etc.) — so a single
+  // Back button in the topbar always returns to the previous screen without every navigation
+  // call site needing to know about history itself. isBackNavRef suppresses re-recording the
+  // screen you're leaving when the change was itself caused by pressing Back.
+  const navHistoryRef=useRef([]);
+  const prevNavRef=useRef({activePage,selectedSalon,salonTab,period,selFY});
+  const isBackNavRef=useRef(false);
+  const [canGoBack,setCanGoBack]=useState(false);
+  useEffect(()=>{
+    const prev=prevNavRef.current;
+    const changed=prev.activePage!==activePage||prev.selectedSalon?.id!==selectedSalon?.id||prev.salonTab!==salonTab;
+    if(changed){
+      if(isBackNavRef.current){
+        isBackNavRef.current=false;
+      }else{
+        navHistoryRef.current.push(prev);
+        if(navHistoryRef.current.length>50)navHistoryRef.current.shift();
+        setCanGoBack(true);
+      }
+      prevNavRef.current={activePage,selectedSalon,salonTab,period,selFY};
+    }
+  },[activePage,selectedSalon,salonTab]);
+  const goBack=()=>{
+    const hist=navHistoryRef.current;
+    if(!hist.length)return;
+    const prev=hist.pop();
+    isBackNavRef.current=true;
+    setSelectedSalon(prev.selectedSalon);
+    setSalonTab(prev.salonTab);
+    setPeriod(prev.period);
+    setSelFY(prev.selFY);
+    setActivePage(prev.activePage);
+    setCanGoBack(hist.length>0);
+  };
+  useEffect(()=>{
+    const onKey=(e)=>{
+      if(e.altKey&&e.key==='ArrowLeft'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();goBack();}
+    };
+    window.addEventListener('keydown',onKey);
+    return ()=>window.removeEventListener('keydown',onKey);
+  },[]);
+
+  if(CLOUD_SYNC_ENABLED&&isPasswordRecoveryLink())return React.createElement(ResetPasswordPage,null);
+  if(!loggedIn)return React.createElement(LoginPage,{onLogin:handleLogin});
+  if(syncing)return React.createElement('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100vh',gap:14,color:'var(--text2)',fontSize:13}},
+    React.createElement('div',{style:{width:34,height:34,border:'3px solid var(--border2)',borderTopColor:'var(--accent)',borderRadius:'50%',animation:'btn-spin 700ms linear infinite'}}),
+    'Syncing your data from the cloud…'
+  );
+
+  const isAdmin=user?.role==='Super Admin';
+  const isReviewer=['Super Admin','Reviewer'].includes(user?.role);
+  // Owner / Salon Owner / Reviewer now get a curated, read-only view — reports and oversight
+  // only, none of the day-to-day working documents (Daily Sales, Salary Working, Bank Statement,
+  // Vendor Sheet, Advances, Import Center, etc.) and no submission workflow either, since that's
+  // a working task, not a report. Everyone else (Manager, ASM, Accountant, Data Entry User,
+  // Super Admin) is unaffected — this only narrows these three specific roles.
+  const REPORTS_ONLY_ROLES=['Owner','Salon Owner','Reviewer'];
+  const isReportOnlyRole=!!(user&&REPORTS_ONLY_ROLES.includes(user.role));
+  const REPORTS_ONLY_TAB_IDS=['outlet-dashboard','outlet-pnl','previous-pnl','reports','collection','collection-sheet','due-dates','audit-log'];
+  const GLOBAL_NAV=[
+    ...(isReportOnlyRole?[]:[{id:'collaboration',label:isReviewer?'Review Centre':'My Submissions',icon:'✅'}]),
+    {id:'dashboard',label:'Dashboard',icon:'📊'},
+    ...(isAdmin?[{id:'master-sheet',label:'Master Sheet',icon:'🏪'}]:[]),
+    {id:'reports',label:'Reports Hub',icon:'📋'},
+    ...(isReviewer||isReportOnlyRole?[{id:'pnl',label:'P&L Statement',icon:'📈'}]:[]),
+    ...(isAdmin?[{id:'users',label:'User Management',icon:'👥'},{id:'settings',label:'Master Settings',icon:'⚙'}]:[]),
+  ];
+  // Sheet access is now set per outlet — look up the matrix for whichever outlet is currently
+  // selected. Falls back to the old flat sheetAccess (pre-outlet-wise accounts, not yet re-saved
+  // through the updated User Management form) so nothing changes for anyone until an admin
+  // actively opens their record and sets outlet-specific permissions.
+  const outletSheetAccess=(user&&selectedSalon&&user.sheetAccessByOutlet&&user.sheetAccessByOutlet[selectedSalon.id])||(user&&user.sheetAccess)||null;
+  // Salary Working / Incentive Working stay visible to Salon Manager / ASM even with "No Access"
+  // set for those sheets — see isSummaryApproverRole. They land on the Summary Approval screen
+  // (SalaryWorkingSheet/IncentiveWorkingSheet already branch on role for that), never the actual
+  // working sheet, so showing the tab itself is safe regardless of the sheet-permission matrix.
+  const visibleSalonTabs=((user&&user.role==='Super Admin')||!user||!outletSheetAccess
+    ?SALON_TABS
+    :SALON_TABS.filter(t=>(outletSheetAccess[t.id]||'View Only')!=='No Access'||(isSummaryApproverRole(user)&&(t.id==='salary-working'||t.id==='incentive-working')))
+  ).filter(t=>!isReportOnlyRole||REPORTS_ONLY_TAB_IDS.includes(t.id));
+  // Guards the "🔗 jump to Bank Statement / Daily Sales & Exp" links (Collection Sheet, etc.)
+  // too — a report-only user can't land on a working document by clicking through one of those
+  // either, not just by the tab bar being hidden.
+  const navToSalonTab=(tabId)=>{
+    if(isReportOnlyRole&&!REPORTS_ONLY_TAB_IDS.includes(tabId)){addToast('This is a working document — not available on a reports-only account.','info');return;}
+    setSalonTab(tabId);
+  };
+  const SALON_TAB_COMPONENTS={
+    'outlet-dashboard':(props)=>React.createElement(OutletDashboard,{salon:selectedSalon,period}),
+    'appointments':AppointmentBook,
+    'billing':(props)=>React.createElement(BillingSheet,{salon:selectedSalon}),
+    'clients':ClientCRM,
+    'inventory':InventorySheet,
+    'master-salary':MasterSalarySheet,
+    'daily-sales':DailySalesSheet,
+    'daily-incentive':DailyIncentiveSheet,
+    'attendance':AttendanceSheet,
+    'salary-working':SalaryWorkingSheet,
+    'incentive-working':IncentiveWorkingSheet,
+    'advance':AdvanceSheet,
+    'penalty':PenaltySheet,
+    'vendors':VendorSheet,
+    'due-dates':DueDateSheet,
+    'outlet-pnl':OutletPnLSheet,
+    'collection':CollectionReco,
+    'collection-sheet':CollectionSheetView,
+    'bank-statement':BankStatement,
+    'bank-payment':BankPaymentSheet,
+    'tally-export':TallyExportSheet,
+    'reports':ReportsSheet,
+    'recurring-expenses':RecurringExpensesSheet,
+    'previous-pnl':PreviousMonthsPnLSheet,
+    'fixed-assets':FixedAssetsSheet,
+    'audit-log':AuditLogSheet,
+    'import-center':ImportCenter,
+  };
+
+  const FYS=['2022-23','2023-24','2024-25','2025-26','2026-27'];
+
+  const accessibleSalons=isAdmin||isReviewer?salons:salons.filter(s=>user?.outletIds?.includes(s.id));
+  const renderPage=()=>{
+    if(gateFor||(activePage==='salon'&&!period)){
+      const gateSalon=gateFor||selectedSalon;
+      return React.createElement(PeriodGate,{salon:gateSalon,initial:period||(gateSalon&&defaultPeriods[gateSalon.id])||null,
+        hadDefault:!!(gateSalon&&defaultPeriods[gateSalon.id]),onConfirm:confirmPeriod,
+        onCancel:selectedSalon&&period?()=>setGateFor(null):(()=>{setGateFor(null);setActivePage('master-sheet')})});
+    }
+    if(activePage==='collaboration')return React.createElement(CollaborationReview,{user,salons:accessibleSalons,submissions,setSubmissions});
+    if(activePage==='dashboard'&&salons.length===0)return React.createElement(GettingStarted,{onAddSalon:()=>setActivePage('master-sheet'),isAdmin});
+    if(activePage==='dashboard')return React.createElement(MasterDashboard,{selFY,setSelFY,FYS,accessibleSalons});
+    if(activePage==='master-sheet')return React.createElement(MasterSheet,{onSelect:handleSelectSalon,salons,setSalons:setSalonsAndSync,user});
+    if(activePage==='pnl')return React.createElement(PnLSheet,null);
+    if(activePage==='reports')return React.createElement(ReportsHub,{onNav:(p)=>setActivePage(p),onSalon:(s)=>handleSelectSalon(s)});
+    if(activePage==='users')return React.createElement(UserManagement,null);
+    if(activePage==='settings')return React.createElement(MasterSettings,{autoBackupOn,setAutoBackupOn,lastAutoBackup});
+    if(activePage==='salon'){
+      const Comp=SALON_TAB_COMPONENTS[salonTab]||MasterSalarySheet;
+      return React.createElement('div',{className:'fade-in'},
+        // Phone: the outlet name is already in the topbar, so this bar is hidden there.
+        React.createElement('div',{className:'hide-phone',style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
+          React.createElement('span',{style:{fontSize:12,color:'var(--text3)'}},'Outlet:'),
+          React.createElement('span',{style:{fontSize:13,color:'var(--accent)',fontWeight:500}},selectedSalon?.name),
+          React.createElement('span',{style:{marginLeft:'auto',fontSize:11,color:'var(--text3)',cursor:'pointer'},onClick:()=>setActivePage('master-sheet')},'← Back to Master Sheet')
+        ),
+        React.createElement('div',{className:'period-bar'},
+          React.createElement('span',{style:{fontSize:11,color:'var(--text3)'}},'Period'),
+          React.createElement('span',{className:'pv'},pgLabel(period)),
+          selectedSalon&&defaultPeriods[selectedSalon.id]?React.createElement('span',{className:'badge badge-green'},'Default'):null,
+          React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},onClick:()=>setGateFor(selectedSalon)},'Change period'),
+          selectedSalon&&defaultPeriods[selectedSalon.id]?React.createElement('button',{className:'btn btn-ghost btn-sm',
+            onClick:()=>{pgSave(null,selectedSalon.id);setDefaultPeriods(prev=>{const n={...prev};delete n[selectedSalon.id];return n;});addToast('Default cleared for this outlet — it will ask for a period again','info')}},'Clear default'):null
+        ),
+        // Phone: one big "current sheet" button opening the full-screen sheet picker, instead of a
+        // 27-tab strip that shows two tabs at a time.
+        (()=>{const cur=visibleSalonTabs.find(t=>t.id===salonTab);
+          return React.createElement('button',{type:'button',className:'module-switch',onClick:()=>{setModuleQuery('');setModulePickerOpen(true);}},
+            React.createElement('span',{className:'ms-icon'},cur?cur.icon:'📋'),
+            React.createElement('span',null,cur?cur.label:'Choose a sheet'),
+            React.createElement('span',{className:'ms-more'},'All sheets ▾'));})(),
+        React.createElement('div',{className:'hide-phone',style:{display:'flex',alignItems:'center',gap:6,marginBottom:20}},
+          React.createElement('button',{type:'button','aria-label':'Scroll sheets left',className:'btn btn-ghost btn-sm',style:{flexShrink:0,padding:'6px 9px'},onClick:()=>salonTabBarScrollTo(-1)},'‹'),
+          React.createElement('div',{className:'tab-bar',id:'salon-tab-bar',style:{marginBottom:0,flex:1}},
+            visibleSalonTabs.map(t=>React.createElement('button',{key:t.id,className:`tab-btn ${salonTab===t.id?'active':''}`,onClick:()=>setSalonTab(t.id),
+              style:{'--tabc':SALON_TAB_GROUP_COLORS[t.group]||'var(--accent)','--tabc-rgb':SALON_TAB_GROUP_COLORS_RGB[t.group]||'47,95,224'}},
+              React.createElement('span',{style:{display:'inline-block',width:7,height:7,borderRadius:'50%',background:SALON_TAB_GROUP_COLORS[t.group]||'var(--text3)',boxShadow:'0 0 5px rgba('+(SALON_TAB_GROUP_COLORS_RGB[t.group]||'47,95,224')+',0.7)',flexShrink:0}}),
+              React.createElement('span',{className:'tab-btn-icon'},t.icon),t.label))
+          ),
+          React.createElement('button',{type:'button','aria-label':'Scroll sheets right',className:'btn btn-ghost btn-sm',style:{flexShrink:0,padding:'6px 9px'},onClick:()=>salonTabBarScrollTo(1)},'›')
+        ),
+        salonTab==='outlet-dashboard'
+          ?React.createElement(OutletDashboard,{key:'dash-outlet-'+(selectedSalon?selectedSalon.id:'none'),salon:selectedSalon,period,onNavTab:navToSalonTab})
+          :salonTab==='billing'
+            ?React.createElement(BillingSheet,{key:'billing-'+(selectedSalon&&selectedSalon.id),salon:selectedSalon})
+            :React.createElement(Comp,{key:salonTab+'-outlet-'+(selectedSalon?selectedSalon.id:'none'),period,salon:selectedSalon,user,
+                onRequestVendorPayment:(category,date)=>{setPendingVendorCategory(category);setPendingVendorPaymentDate(date||null);setSalonTab('vendors');},
+                pendingVendorCategory:salonTab==='vendors'?pendingVendorCategory:null,
+                pendingVendorPaymentDate:salonTab==='vendors'?pendingVendorPaymentDate:null,
+                onConsumePendingVendorCategory:()=>{setPendingVendorCategory(null);setPendingVendorPaymentDate(null);},
+                onNavTab:navToSalonTab})
+      );
+    }
+  };
+
+  // Same per-outlet sheet-permission filter as visibleSalonTabs above, but usable for ANY outlet
+  // (visibleSalonTabs is scoped to whichever outlet is currently open) — the command palette
+  // used to list every sheet of every outlet unfiltered, straight from SALON_TABS, which let
+  // Ctrl+K jump a user straight into a sheet their own permissions say "No Access" to, bypassing
+  // the tab bar being hidden (the only enforcement that existed before this).
+  const sheetsAllowedForSalon=(sn)=>{
+    if(!user||user.role==='Super Admin')return SALON_TABS;
+    const oa=(user.sheetAccessByOutlet&&user.sheetAccessByOutlet[sn.id])||user.sheetAccess||null;
+    const base=!oa?SALON_TABS:SALON_TABS.filter(t=>(oa[t.id]||'View Only')!=='No Access'||(isSummaryApproverRole(user)&&(t.id==='salary-working'||t.id==='incentive-working')));
+    return base.filter(t=>!isReportOnlyRole||REPORTS_ONLY_TAB_IDS.includes(t.id));
+  };
+  const CMD_ACTIONS=[
+    ...GLOBAL_NAV.map(n=>({label:n.label,group:'Go to',icon:n.icon,run:()=>setActivePage(n.id)})),
+    ...accessibleSalons.map(sn=>({label:sn.name,group:'Outlet',icon:'💈',run:()=>handleSelectSalon(sn)})),
+    ...accessibleSalons.flatMap(sn=>sheetsAllowedForSalon(sn).map(t=>({label:sn.name.split('—')[0].trim()+' → '+t.label,group:'Sheet',icon:'📄',
+      run:()=>{setSelectedSalon(sn);setActivePage('salon');navToSalonTab(t.id);}}))),
+    {label:'Sign out',group:'Account',icon:'⏻',run:logout},
+  ];
+
+  return React.createElement(React.Fragment,null,
+    React.createElement(ToastContainer,{toasts,remove:removeToast}),
+    showHelp&&React.createElement(HelpPanel,{onClose:()=>setShowHelp(false)}),
+    React.createElement(CommandPalette,{open:cmdOpen,setOpen:setCmdOpen,actions:CMD_ACTIONS}),
+    React.createElement('div',{className:'app'},
+    sidebarOpen&&React.createElement('div',{className:'sidebar-backdrop show',onClick:closeSidebar}),
+    React.createElement('div',{className:'sidebar'+(sidebarOpen?' open':'')},
+      React.createElement('div',{className:'sidebar-logo'},
+        React.createElement('div',{className:'logo-text'},'SalonOS'),
+        React.createElement('div',{className:'logo-sub'},'Management Suite')
+      ),
+      React.createElement('div',{className:'sidebar-nav'},
+        React.createElement('div',{className:'nav-section'},'Global'),
+        GLOBAL_NAV.map(n=>React.createElement('div',{key:n.id,className:`nav-item ${activePage===n.id?'active':''}`,tabIndex:0,role:'button',
+          onClick:()=>{setActivePage(n.id);closeSidebar();},onKeyDown:e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setActivePage(n.id);closeSidebar();}}},
+          React.createElement('span',{className:'icon'},n.icon),n.label
+        )),
+        React.createElement('div',{className:'nav-divider'}),
+        React.createElement('div',{className:'nav-section'},'Outlets'),
+        accessibleSalons.map(s=>React.createElement('div',{key:s.id,
+          className:`nav-item ${activePage==='salon'&&selectedSalon?.id===s.id?'active':''}`,
+          tabIndex:0,role:'button',
+          onClick:()=>{handleSelectSalon(s);closeSidebar();},onKeyDown:e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();handleSelectSalon(s);closeSidebar();}}},
+          React.createElement('span',{className:'icon'},'💈'),
+          React.createElement('span',{style:{fontSize:12,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},s.name.split('—')[0].trim())
+        ))
+      ),
+      React.createElement('div',{style:{padding:'0 12px 10px'}},
+        React.createElement('button',{className:'help-trigger',onClick:()=>setShowHelp(true)},
+          React.createElement('span',null,'❓'),React.createElement('span',null,'Help & Guide')
+        )
+      ),
+      React.createElement('div',{className:'sidebar-user'},
+        React.createElement('div',{className:'user-info'},
+          React.createElement('div',{className:'user-avatar'},user?.name?.slice(0,2).toUpperCase()),
+          React.createElement('div',null,
+            React.createElement('div',{className:'user-name'},user?.name),
+            React.createElement('div',{className:'user-role'},user?.role)
+          )
+        ),
+        React.createElement('div',{style:{fontSize:9.5,color:'var(--text3)',textAlign:'center',marginTop:10,paddingTop:10,borderTop:'1px solid var(--border)',letterSpacing:'0.02em'}},'Developed By CA Dharmender Saini, Gurugram')
+      )
+    ),
+    React.createElement('div',{className:'main'+(activePage==='salon'&&selectedSalon&&period&&!gateFor?' has-bottom-nav':'')},
+      React.createElement('div',{className:'topbar'},
+        React.createElement('div',{className:'topbar-breadcrumb',style:{display:'flex',alignItems:'center',gap:10}},
+          React.createElement('button',{className:'sidebar-hamburger',title:'Menu',onClick:()=>setSidebarOpen(o=>!o)},
+            React.createElement('span',null,'☰')),
+          canGoBack&&React.createElement('button',{className:'topbar-icon-btn',title:'Go back to the previous screen (Alt+←)',onClick:goBack,style:{padding:'4px 8px'}},
+            React.createElement('span',null,'←'),React.createElement('span',{className:'lbl-full'},'Back')
+          ),
+          React.createElement('span',{className:'topbar-title'},activePage==='salon'&&selectedSalon?selectedSalon.name:'SalonOS')
+        ),
+        React.createElement('div',{className:'topbar-right'},
+          React.createElement('button',{className:'topbar-icon-btn hide-phone',title:'Reload the app',
+            onClick:()=>window.location.reload()},React.createElement(IconRefresh,null),React.createElement('span',null,'Refresh')),
+          CLOUD_SYNC_ENABLED
+            // Cloud mode: show whether edits have actually reached the cloud, not just this browser.
+            ?React.createElement('button',{className:'topbar-icon-btn',
+              title:cloudStatus.state==='error'?'Not saved to the cloud yet ('+(cloudStatus.error||'network error')+') — kept on this device and retrying automatically'
+                :cloudStatus.state==='saving'?'Saving your changes to the cloud…'
+                :'Everything is saved to the cloud'+(cloudStatus.lastSyncedAt?' — last saved '+relativeTimeFromNow(cloudStatus.lastSyncedAt):''),
+              style:cloudStatus.state==='error'?{color:'var(--red)',borderColor:'var(--red)'}:undefined,
+              onClick:()=>{if(cloudStatus.state==='error'){retryDirtyCloudKeys();addToast('Retrying cloud save…','info');}else addToast(cloudStatus.state==='saving'?'Saving to the cloud…':'All changes are saved to the cloud','success');}},
+              React.createElement(IconSave,null),
+              React.createElement('span',{className:'lbl-full'},cloudStatus.state==='error'?'NOT saved — retrying':cloudStatus.state==='saving'?'Saving…':'Saved to cloud'),
+              React.createElement('span',{className:'lbl-short'},cloudStatus.state==='error'?'Not saved':cloudStatus.state==='saving'?'Saving…':'Saved'),
+              React.createElement('span',{className:'save-pulse-dot'+(saveActivity.pulsing||cloudStatus.state==='saving'?' active':'')})
+            )
+            :React.createElement('button',{className:'topbar-icon-btn',
+            title:saveActivity.lastSavedAt?'Last saved '+relativeTimeFromNow(saveActivity.lastSavedAt)+' — all changes save automatically':'All changes are saved automatically',
+            onClick:()=>addToast('All changes saved','success')},
+            React.createElement(IconSave,null),
+            React.createElement('span',null,saveActivity.lastSavedAt?'Saved '+relativeTimeFromNow(saveActivity.lastSavedAt):'Save'),
+            React.createElement('span',{className:'save-pulse-dot'+(saveActivity.pulsing?' active':'')})
+          ),
+          // FY selector in topbar — while inside an outlet, this mirrors that outlet's own period
+          // (set via the period bar below) rather than being a second, independently-changeable
+          // FY, so the two never show conflicting values. Elsewhere (Master Dashboard etc.) it's
+          // the normal editable global-report FY selector.
+          React.createElement('button',{className:'theme-toggle hide-phone',onClick:()=>setTheme(theme==='light'?'dark':'light'),
+            title:theme==='light'?'Switch to dark':'Switch to light'},theme==='light'?React.createElement(IconMoon,null):React.createElement(IconSun,null),
+            React.createElement('span',null,theme==='light'?'Dark':'Light')),
+          React.createElement('div',{className:'kbd-hint hide-phone',onClick:()=>setCmdOpen(true),title:'Quick jump'},
+            React.createElement(IconSearch,{size:13}),
+            React.createElement('span',null,'Search'),
+            React.createElement('kbd',null,navigator.platform.indexOf('Mac')>-1?'⌘K':'Ctrl K')),
+          activePage==='salon'&&period
+            ?React.createElement('span',{className:'hide-phone',title:'Set via this outlet\'s period picker below',style:{fontSize:11,padding:'4px 8px',border:'1px solid var(--border)',borderRadius:6,color:'var(--text2)'}},'FY '+period.fy)
+            :React.createElement('select',{className:'form-control hide-phone',style:{width:'auto',fontSize:11,padding:'4px 8px'},value:selFY,onChange:e=>setSelFY(e.target.value)},FYS.map(f=>React.createElement('option',{key:f,value:f},'FY '+f))),
+          React.createElement('div',{className:'hide-phone',style:{fontSize:12,color:'var(--text3)'}},new Date().toLocaleDateString('en-IN',{weekday:'short',month:'short',day:'numeric',year:'numeric'})),
+          (()=>{const c=!CLOUD_SYNC_ENABLED?'var(--green)':cloudStatus.state==='error'?'var(--red)':cloudStatus.state==='saving'?'var(--orange)':'var(--green)';
+            return React.createElement('div',{className:'hide-phone',title:!CLOUD_SYNC_ENABLED?'Synced locally on this device':cloudStatus.state==='error'?'Cloud save failing — retrying':cloudStatus.state==='saving'?'Saving to the cloud…':'Live — synced with the cloud',style:{width:8,height:8,borderRadius:'50%',background:c,boxShadow:'0 0 6px '+c}});})(),
+          React.createElement('span',{className:'role-chip hide-phone'},user?.role),
+          React.createElement('button',{className:'topbar-icon-btn hide-phone',onClick:logout},React.createElement(IconLogOut,null),React.createElement('span',null,'Sign Out')),
+          // Phone: everything above folds into one ⋯ menu so the topbar stays a single row.
+          React.createElement('button',{className:'topbar-icon-btn show-phone','aria-label':'More options','aria-expanded':phoneMenuOpen,style:{fontSize:18,padding:'4px 12px',minHeight:38},onClick:()=>setPhoneMenuOpen(o=>!o)},'⋯')
+        ),
+        phoneMenuOpen&&React.createElement(React.Fragment,null,
+          React.createElement('div',{className:'phone-menu-backdrop',onClick:()=>setPhoneMenuOpen(false)}),
+          React.createElement('div',{className:'phone-menu',role:'menu'},
+            React.createElement('button',{onClick:()=>{setPhoneMenuOpen(false);setCmdOpen(true);}},React.createElement(IconSearch,{size:16}),'Search sheets & outlets'),
+            React.createElement('button',{onClick:()=>window.location.reload()},React.createElement(IconRefresh,null),'Refresh'),
+            React.createElement('button',{onClick:()=>setTheme(theme==='light'?'dark':'light')},theme==='light'?React.createElement(IconMoon,null):React.createElement(IconSun,null),theme==='light'?'Dark mode':'Light mode'),
+            activePage==='salon'&&period
+              ?React.createElement('div',{className:'pm-row',style:{color:'var(--text2)'}},'📅 '+pgLabel(period))
+              :React.createElement('div',{className:'pm-row'},'📅',React.createElement('select',{className:'form-control',style:{flex:1,fontSize:16},value:selFY,onChange:e=>setSelFY(e.target.value)},FYS.map(f=>React.createElement('option',{key:f,value:f},'FY '+f)))),
+            React.createElement('button',{style:{color:'var(--red)'},onClick:()=>{setPhoneMenuOpen(false);logout();}},React.createElement(IconLogOut,null),'Sign Out'),
+            React.createElement('div',{className:'pm-meta'},(user?.name||'')+' · '+(user?.role||'')+' · '+new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}))
+          )
+        )
+      ),
+      !CLOUD_SYNC_ENABLED&&backupOverdue&&!backupBannerDismissed&&React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'10px 20px',background:'rgba(255,159,67,0.12)',borderBottom:'1px solid rgba(255,159,67,0.35)',fontSize:12.5,color:'var(--text)'}},
+        React.createElement('div',null,
+          React.createElement('span',{style:{marginRight:6}},'⚠'),
+          backupDaysOverdue===null
+            ?'No backup has ever been downloaded for this browser. '
+            :'It\'s been '+backupDaysOverdue+' day'+(backupDaysOverdue===1?'':'s')+' since your last downloaded backup. ',
+          'This app\'s data lives only in this browser — a cleared cache or lost device means it\'s gone unless you\'ve downloaded a copy.'
+        ),
+        React.createElement('div',{style:{display:'flex',gap:8,flexShrink:0}},
+          React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{downloadSalonOSBackup();setBackupBannerDismissed(true);}},'⬇ Download Backup Now'),
+          React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setBackupBannerDismissed(true)},'Dismiss for now')
+        )
+      ),
+      newVersion&&React.createElement('div',{className:'update-banner'},
+        React.createElement('div',null,'✨ A new version of SalonOS is available.'),
+        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:updateNow},'Update now')
+      ),
+      CLOUD_SYNC_ENABLED&&cloudUpdateWaiting&&React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'8px 20px',background:'rgba(76,125,255,0.12)',borderBottom:'1px solid rgba(76,125,255,0.35)',fontSize:12.5,color:'var(--text)'}},
+        React.createElement('div',null,'↻ Other users have saved new changes. They\'ll appear as soon as you pause — or load them now (finish or close any open form first).'),
+        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:applyCloudUpdatesNow},'Show latest')
+      ),
+      React.createElement('div',{className:'content'},React.createElement('div',{key:activePage+'_'+(selectedSalon?.id||'')+'_'+dataVersion,className:'content-frame'},renderPage())),
+      // ── Phone bottom tab bar inside an outlet: the four everyday sheets (only those this user
+      // may open) plus "All sheets". Hidden on wider screens by CSS. ──
+      activePage==='salon'&&selectedSalon&&period&&!gateFor&&(()=>{
+        const FAVS=['outlet-dashboard','daily-sales','attendance','master-salary'];
+        const SHORT={'outlet-dashboard':'Home','daily-sales':'Sales','attendance':'Attendance','master-salary':'Staff'};
+        const favs=FAVS.map(id=>visibleSalonTabs.find(t=>t.id===id)).filter(Boolean);
+        const others=visibleSalonTabs.filter(t=>!FAVS.includes(t.id));
+        while(favs.length<4&&others.length)favs.push(others.shift());
+        const onFav=favs.some(t=>t.id===salonTab);
+        return React.createElement('nav',{className:'bottom-nav','aria-label':'Outlet sheets'},
+          favs.map(t=>React.createElement('button',{key:t.id,type:'button',className:salonTab===t.id?'active':'',onClick:()=>setSalonTab(t.id)},
+            React.createElement('span',{className:'bn-icon'},t.icon),SHORT[t.id]||t.label)),
+          React.createElement('button',{type:'button',className:!onFav||modulePickerOpen?'active':'',onClick:()=>{setModuleQuery('');setModulePickerOpen(true);}},
+            React.createElement('span',{className:'bn-icon'},'▦'),'All sheets'));
+      })(),
+      modulePickerOpen&&activePage==='salon'&&React.createElement('div',{className:'module-sheet',role:'dialog','aria-label':'All sheets'},
+        React.createElement('div',{className:'module-sheet-head'},
+          React.createElement('input',{className:'form-control',placeholder:'Search sheets…',value:moduleQuery,onChange:e=>setModuleQuery(e.target.value)}),
+          React.createElement('button',{type:'button',className:'btn btn-ghost',onClick:()=>setModulePickerOpen(false)},'Close')
+        ),
+        React.createElement('div',{className:'module-grid'},
+          visibleSalonTabs.filter(t=>!moduleQuery.trim()||t.label.toLowerCase().includes(moduleQuery.trim().toLowerCase())).map(t=>
+            React.createElement('button',{key:t.id,type:'button',className:salonTab===t.id?'active':'',style:{'--mgc':SALON_TAB_GROUP_COLORS[t.group]||'var(--accent)'},
+              onClick:()=>{setSalonTab(t.id);setModulePickerOpen(false);const el=document.querySelector('.content');if(el)el.scrollTop=0;}},
+              React.createElement('span',{className:'mg-icon'},t.icon),t.label))
+        )
+      )
+    )
+  ));
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App,null));
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+  });
+}
+
+// ── Table Scroll Arrows ─────────────────────────────────────────────────────────────────────
+// Auto-applies to every .table-wrap in the app (59+ tables across every sheet), current and
+// future, without touching any of their individual render call sites. Deliberately lives outside
+// React's own DOM tree — appended once to document.body — so a table's own re-renders (typing
+// into a cell, a toast firing, a row being added) can never wipe these two buttons out the way
+// children manually injected inside a React-managed node would be.
+(function(){
+  function init(){
+    const mkBtn=(dir,label)=>{
+      const b=document.createElement('button');
+      b.type='button';b.className='table-scroll-arrow table-scroll-arrow-'+(dir<0?'left':'right');
+      b.setAttribute('aria-label',label);b.textContent=dir<0?'‹':'›';
+      document.body.appendChild(b);
+      return b;
+    };
+    const leftBtn=mkBtn(-1,'Scroll table left');
+    const rightBtn=mkBtn(1,'Scroll table right');
+    let activeWrap=null;
+
+    const isScrollable=(el)=>!!el&&el.scrollWidth>el.clientWidth+2;
+
+    // Finds the nearest horizontally-scrollable ancestor of a <table> by ACTUAL computed
+    // overflow-x behavior, not by a specific className — some tables in this app sit inside a
+    // div with className:'table-wrap', others inside a div with an inline
+    // style:{overflowX:'auto'} instead (~24 of them, including Salary Working, the one from the
+    // original screenshot this feature was requested for). Walking up from every <table> and
+    // checking getComputedStyle catches both patterns, and any future one, without needing to
+    // know which convention a given screen happens to use.
+    function scrollableAncestorOf(table){
+      let el=table.parentElement,hops=0;
+      while(el&&hops<8){
+        const cs=getComputedStyle(el);
+        if((cs.overflowX==='auto'||cs.overflowX==='scroll')&&isScrollable(el))return el;
+        el=el.parentElement;hops++;
+      }
+      return null;
+    }
+
+    // Of every currently scrollable table container on the page, pick whichever one has the most
+    // vertical space actually on-screen right now — that's almost always the one the person is
+    // looking at.
+    function pickActiveWrap(){
+      const tables=document.querySelectorAll('table');
+      let best=null,bestVisible=0;
+      tables.forEach(t=>{
+        const w=scrollableAncestorOf(t);
+        if(!w)return;
+        const r=w.getBoundingClientRect();
+        const visible=Math.min(r.bottom,window.innerHeight)-Math.max(r.top,0);
+        if(visible>bestVisible&&r.width>0){bestVisible=visible;best=w;}
+      });
+      return bestVisible>24?best:null;
+    }
+
+    function hide(){leftBtn.classList.remove('visible');rightBtn.classList.remove('visible');}
+
+    function position(){
+      activeWrap=pickActiveWrap();
+      if(!activeWrap){hide();return;}
+      const r=activeWrap.getBoundingClientRect();
+      const midY=Math.max(24,Math.min(window.innerHeight-24,r.top+Math.min(r.height,260)/2));
+      leftBtn.style.top=midY+'px';leftBtn.style.left=(r.left+6)+'px';
+      rightBtn.style.top=midY+'px';rightBtn.style.left=(r.right-36)+'px';
+      const atStart=activeWrap.scrollLeft<=2;
+      const atEnd=activeWrap.scrollLeft>=activeWrap.scrollWidth-activeWrap.clientWidth-2;
+      leftBtn.classList.toggle('visible',!atStart);
+      rightBtn.classList.toggle('visible',!atEnd);
+    }
+
+    leftBtn.addEventListener('click',()=>{if(activeWrap)activeWrap.scrollBy({left:-320,behavior:'smooth'});});
+    rightBtn.addEventListener('click',()=>{if(activeWrap)activeWrap.scrollBy({left:320,behavior:'smooth'});});
+
+    let raf=null;
+    const schedule=()=>{if(raf)return;raf=requestAnimationFrame(()=>{raf=null;position();});};
+
+    window.addEventListener('scroll',schedule,true); // capture:true so a table-wrap's own internal scroll (which doesn't bubble) still triggers a reposition
+    window.addEventListener('resize',schedule);
+    // Safety net for layout changes that don't fire a scroll/resize event at all — a tab switch,
+    // a row being added/removed, a modal opening. Cheap (a handful of getBoundingClientRect calls
+    // at most), so a light interval is simpler and more reliable here than trying to hook every
+    // possible React state change that could resize a table.
+    setInterval(schedule,600);
+    schedule();
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);
+  else init();
+})();
