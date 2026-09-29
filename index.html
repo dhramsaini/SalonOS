@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script>/* Never serve the app (and its login) over plain http on the live domain */if(location.protocol==='http:'&&/(^|\.)digitalca\.co\.in$/.test(location.hostname))location.replace('https://'+location.host+location.pathname+location.search+location.hash);</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0A0E1A">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231E40AF'/%3E%3Ctext x='16' y='22' font-family='Arial,sans-serif' font-size='16' font-weight='700' fill='white' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E">
@@ -1712,6 +1713,66 @@ function migrateInlineAttachments(){
     keys.forEach((k,i)=>queueCloudPush(k,null,i*400));
   }catch(e){}
 }
+// Removes documents nothing points to any more (employee deleted, attachment replaced). A file is
+// kept while current data OR any kept backup still references it, so restores keep working, and
+// for 7 days after upload regardless. Runs at most once a day, from a Super Admin's browser.
+async function cleanupUnusedFiles(){
+  const supa=await getSupabaseClient();
+  const refs=new Set();
+  const add=s=>{(String(s||'').match(/sbfile:[^"\\]+/g)||[]).forEach(r=>refs.add(r.slice(SBFILE_PREFIX.length)));};
+  const{data:kv,error:e1}=await supa.from('kv_store').select('value').not('value','is',null);
+  if(e1)throw e1;
+  kv.forEach(r=>add(r.value));
+  const{data:bk,error:e2}=await supa.from('kv_backups').select('data');
+  if(e2)throw e2;
+  bk.forEach(b=>add(JSON.stringify(b.data)));
+  const{data:folders,error:e3}=await supa.storage.from(FILES_BUCKET).list('',{limit:1000});
+  if(e3)throw e3;
+  const remove=[];
+  for(const f of folders||[]){
+    if(f.id)continue; // folders have no id; files at the root are left alone
+    const{data:files,error:e4}=await supa.storage.from(FILES_BUCKET).list(f.name,{limit:1000});
+    if(e4)throw e4;
+    (files||[]).forEach(o=>{
+      const path=f.name+'/'+o.name;
+      if(!refs.has(path)&&Date.now()-new Date(o.created_at).getTime()>7*86400000)remove.push(path);
+    });
+  }
+  if(remove.length){const{error}=await supa.storage.from(FILES_BUCKET).remove(remove);if(error)throw error;}
+  return remove.length;
+}
+function maybeCleanupUnusedFiles(){
+  try{
+    const u=JSON.parse(sessionStorage.getItem('salonos_user')||'null');
+    if(!u||u.role!=='Super Admin')return;
+    const last=Number(localStorage.getItem('sos_file_cleanup_at')||0); // not a salonos_ key: stays on this device
+    if(Date.now()-last<86400000)return;
+    localStorage.setItem('sos_file_cleanup_at',String(Date.now()));
+    cleanupUnusedFiles().catch(e=>reportClientError('File cleanup failed: '+((e&&e.message)||e)));
+  }catch(e){}
+}
+// Records crashes and failed operations in the cloud (client_errors) so a Super Admin can see
+// them under Master Settings → App errors. Throttled: 15 per page load, each message once.
+const _reportedErrors=new Set();
+function reportClientError(message,stack){
+  try{
+    if(!CLOUD_SYNC_ENABLED||_reportedErrors.size>=15)return;
+    const msg=String(message||'Unknown error').slice(0,500);
+    if(_reportedErrors.has(msg))return;
+    _reportedErrors.add(msg);
+    const u=JSON.parse(sessionStorage.getItem('salonos_user')||'null');
+    if(!u)return;
+    getSupabaseClient().then(supa=>supa.auth.getSession().then(({data:{session}})=>{
+      if(!session)return;
+      return supa.from('client_errors').insert({user_id:session.user.id,email:u.email||null,page:(location.hash||'')+' '+(document.title||''),
+        message:msg,stack:String(stack||'').slice(0,2000),ua:navigator.userAgent.slice(0,300)});
+    })).catch(()=>{});
+  }catch(e){}
+}
+try{
+  window.addEventListener('error',e=>{if(e&&e.message)reportClientError(e.message,e.error&&e.error.stack);});
+  window.addEventListener('unhandledrejection',e=>{const r=e&&e.reason;reportClientError('Unhandled: '+((r&&r.message)||r),r&&r.stack);});
+}catch(e){}
 // Retries anything still unsaved (after a network blip) — called by the periodic sync loop.
 function retryDirtyCloudKeys(){
   _cloudDirty.forEach(key=>{if(!_cloudPushTimers[key])queueCloudPush(key,null,0);});
@@ -1838,6 +1899,7 @@ async function cloudPullAndHydrate(){
     // Files attached before documents moved to cloud storage are still inline in some sheets —
     // re-save those once so they get moved (runs quietly in the background, a few seconds in).
     setTimeout(migrateInlineAttachments,4000);
+    setTimeout(maybeCleanupUnusedFiles,20000);
   }catch(e){
     try{if(_addToast)_addToast('Could not load your data from the cloud — showing what is cached on this device','error',7000);}catch(e2){}
     _cloudSyncReady=true; // still let the app proceed with whatever's cached locally rather than blocking forever
@@ -4914,7 +4976,7 @@ function ResetPasswordPage(){
   const submit=async(e)=>{
     e.preventDefault();
     setErr('');
-    if(pass.length<6){setErr('Password must be at least 6 characters.');return;}
+    if(pass.length<8){setErr('Password must be at least 8 characters.');return;}
     if(pass!==pass2){setErr('Passwords do not match.');return;}
     setBusy(true);
     try{
@@ -4989,6 +5051,36 @@ function LoginPage({onLogin}){
       const{data:profile,error:profErr}=await supa.from('profiles').select('*').eq('id',data.user.id).single();
       if(profErr||!profile){setErr('Signed in, but no profile is set up for this account yet — ask your Super Admin to add one in Supabase.');await supa.auth.signOut();return;}
       if(profile.status==='Inactive'){setErr('This account has been deactivated. Contact your Super Admin.');await supa.auth.signOut();return;}
+      // Two-step login: accounts with an authenticator app set up must also enter its 6-digit code.
+      // (The database only grants Super Admin powers to such an account after this step.)
+      const{data:aal}=await supa.auth.mfa.getAuthenticatorAssuranceLevel();
+      if(aal&&aal.nextLevel==='aal2'&&aal.currentLevel!=='aal2'){setMfaCode('');setMfaStep({profile,user:data.user});return;}
+      await finishCloudLogin(profile,data.user);
+    }catch(err){
+      setErr(err.message||'Could not sign in — check your internet connection and try again.');
+      if(e&&e.currentTarget&&window.flashButton)window.flashButton(e.currentTarget,'error');
+    }finally{setCloudBusy(false);}
+  };
+  const [mfaStep,setMfaStep]=useState(null); // {profile,user} while waiting for the authenticator code
+  const [mfaCode,setMfaCode]=useState('');
+  const verifyMfa=async()=>{
+    setErr('');setCloudBusy(true);
+    try{
+      const supa=await getSupabaseClient();
+      const{data:f}=await supa.auth.mfa.listFactors();
+      const factor=((f&&f.totp)||[]).find(x=>x.status==='verified');
+      if(!factor)throw new Error('No authenticator app is set up for this account.');
+      const{error}=await supa.auth.mfa.challengeAndVerify({factorId:factor.id,code:mfaCode.replace(/\s/g,'')});
+      if(error){setErr('That code isn\'t right — use the current 6-digit code from your authenticator app.');return;}
+      await finishCloudLogin(mfaStep.profile,mfaStep.user);
+    }catch(err){setErr(err.message||'Could not verify the code — try again.');}
+    finally{setCloudBusy(false);}
+  };
+  const cancelMfa=async()=>{try{const supa=await getSupabaseClient();await supa.auth.signOut({scope:'local'});}catch(e){}setMfaStep(null);setMfaCode('');setErr('');};
+  const finishCloudLogin=async(profile,authUser)=>{
+    try{
+      const supa=await getSupabaseClient();
+      const data={user:authUser};
       // Demo accounts (profiles.is_demo) are gated server-side by IP, not just by this being a
       // shared public login — demo-access-check runs with the service-role key against a table
       // this client can't read or write directly, so clearing localStorage/sessionStorage or
@@ -5012,8 +5104,7 @@ function LoginPage({onLogin}){
         isDemo:!!profile.is_demo,demoDaysLeft});
     }catch(err){
       setErr(err.message||'Could not sign in — check your internet connection and try again.');
-      if(e&&e.currentTarget&&window.flashButton)window.flashButton(e.currentTarget,'error');
-    }finally{setCloudBusy(false);}
+    }
   };
   const handleLogin=(e)=>{
     if(CLOUD_SYNC_ENABLED){cloudLogin(e);return;}
@@ -5044,7 +5135,7 @@ function LoginPage({onLogin}){
     setForgotErr('');setForgotStep('reset');
   };
   const submitNewPassword=()=>{
-    if(newPass.length<6){setForgotErr('New password must be at least 6 characters.');return;}
+    if(newPass.length<8){setForgotErr('New password must be at least 8 characters.');return;}
     if(newPass!==newPass2){setForgotErr('Passwords don\'t match.');return;}
     savePasswordOverride(forgotEmail,newPass);
     setForgotErr('');setForgotStep('done');
@@ -5057,6 +5148,16 @@ function LoginPage({onLogin}){
       React.createElement('div',{className:'login-logo'},'SalonOS'),
       React.createElement('div',{className:'login-tagline'},'Multi-user Management Suite'),
       React.createElement('div',{className:'divider'}),
+      mfaStep?React.createElement('div',{className:'login-form'},
+        React.createElement('div',{style:{fontSize:13.5,color:'var(--text2)',marginBottom:14,lineHeight:1.6}},'🔐 Two-step login is on for this account. Enter the 6-digit code shown in your authenticator app (Google Authenticator, Microsoft Authenticator, etc.).'),
+        React.createElement('div',{className:'form-group',style:{marginBottom:14}},
+          React.createElement('label',null,'Authenticator code'),
+          React.createElement('input',{className:'form-control',value:mfaCode,autoFocus:true,inputMode:'numeric',autoComplete:'one-time-code',maxLength:8,placeholder:'123456',
+            style:{fontSize:20,letterSpacing:'0.3em',textAlign:'center'},onChange:e=>setMfaCode(e.target.value.replace(/[^\d\s]/g,'')),onKeyDown:e=>e.key==='Enter'&&verifyMfa()})),
+        err&&React.createElement('div',{style:{color:'var(--red)',fontSize:12,marginBottom:12}},err),
+        React.createElement('button',{className:'btn btn-primary'+(cloudBusy?' btn-loading':''),disabled:cloudBusy||mfaCode.replace(/\s/g,'').length<6,style:{width:'100%',padding:'10px'},onClick:verifyMfa},'Verify & Sign In'),
+        React.createElement('button',{className:'btn btn-ghost',style:{width:'100%',padding:'10px',marginTop:10},disabled:cloudBusy,onClick:cancelMfa},'Use a different account')
+      ):
       React.createElement('div',{className:'login-form'},
         React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-1'},'Email Address'),React.createElement('input',{id:'f-1',className:'form-control',value:email,onChange:e=>setEmail(e.target.value),placeholder:'you@yourcompany.com'})),
         React.createElement('div',{className:'form-group',style:{marginBottom:18}},
@@ -6058,7 +6159,7 @@ function CloudBackupsCard(){
   const [restoreOutlet,setRestoreOutlet]=useState('all');
   const [confirmText,setConfirmText]=useState('');
   const salonsList=loadSalonsFromStorage();
-  const KIND={auto:'Nightly',manual:'Manual','pre-restore':'Before restore'};
+  const KIND={auto:'Nightly',manual:'Manual','pre-restore':'Before restore',archive:'Archive of old app data (kept permanently, not restorable here)'};
   const load=useCallback(async()=>{
     try{
       const supa=await getSupabaseClient();
@@ -6106,7 +6207,7 @@ function CloudBackupsCard(){
         React.createElement('div',{style:{flex:1,minWidth:0}},
           React.createElement('div',{style:{color:'var(--text)'}},fmt(r.taken_at)),
           React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},(KIND[r.kind]||r.kind)+' · '+r.rows_count+' records')),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,onClick:()=>{setRestoreFor(r);setRestoreOutlet('all');setConfirmText('');}},'Restore…')))),
+        r.kind==='archive'?null:React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,onClick:()=>{setRestoreFor(r);setRestoreOutlet('all');setConfirmText('');}},'Restore…')))),
     restoreFor&&React.createElement('div',{className:'modal-overlay',onClick:()=>!busy&&setRestoreFor(null)},
       React.createElement('div',{className:'modal',style:{width:460},onClick:e=>e.stopPropagation()},
         React.createElement('div',{className:'modal-title'},'Restore backup of '+fmt(restoreFor.taken_at)),
@@ -6126,6 +6227,163 @@ function CloudBackupsCard(){
         )
       )
     )
+  );
+}
+// Turns a storage key like "salonos_master_employees_outlet_5" into "Master Employees · Mysha…".
+function describeDataKey(key,salons){
+  const m=/_outlet_(\d+)$/.exec(key||'');
+  const base=String(key||'').replace(/^salonos_/,'').replace(/_outlet_\d+$/,'').replace(/_/g,' ');
+  const label=base.replace(/\b\w/g,c=>c.toUpperCase());
+  if(!m)return{sheet:label,outlet:'All outlets'};
+  const s=(salons||[]).find(x=>String(x.id)===m[1]);
+  return{sheet:label,outlet:s?s.name:'Outlet #'+m[1]+' (deleted)'};
+}
+// ── Change history (Super Admin) — recorded by the database itself on every save (a trigger on
+// kv_store), so it can't be edited from any browser. Saves by the same person to the same sheet
+// within 10 minutes are grouped into one entry that keeps the version from BEFORE that session,
+// which "Restore previous version" puts back. Kept 90 days. ──
+function ChangeHistoryCard(){
+  const {success,error:toastError}=useToast();
+  const salonsList=loadSalonsFromStorage();
+  const [rows,setRows]=useState(null);
+  const [outlet,setOutlet]=useState('all');
+  const [busy,setBusy]=useState(false);
+  const [confirmRow,setConfirmRow]=useState(null);
+  const load=useCallback(async()=>{
+    try{
+      const supa=await getSupabaseClient();
+      let q=supa.from('kv_audit').select('id,at,key,changed_by_email,new_len,edits').order('at',{ascending:false}).limit(150);
+      if(outlet!=='all')q=q.like('key','%\\_outlet\\_'+outlet);
+      const{data,error}=await q;
+      if(error)throw error;
+      setRows(data||[]);
+    }catch(e){setRows([]);toastError('Could not load change history: '+(e.message||'network error'));}
+  },[outlet]);
+  useEffect(()=>{load();},[load]);
+  const restore=async()=>{
+    setBusy(true);
+    try{
+      const supa=await getSupabaseClient();
+      const{error}=await supa.rpc('salonos_restore_version',{p_audit_id:confirmRow.id});
+      if(error)throw error;
+      setConfirmRow(null);success('Previous version restored — everyone\'s screens will update in a moment.');
+      notifyCloudDataChanged([]);await load();
+    }catch(e){toastError('Restore failed: '+(e.message||'network error'));}
+    setBusy(false);
+  };
+  const fmt=(ts)=>new Date(ts).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});
+  return React.createElement('div',{className:'card',style:{marginBottom:16}},
+    React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:8}},
+      React.createElement('div',{className:'card-title',style:{marginBottom:0}},'📜 Change history'),
+      React.createElement('select',{className:'form-control',style:{width:'auto',fontSize:12,padding:'4px 8px'},value:outlet,onChange:e=>setOutlet(e.target.value)},
+        React.createElement('option',{value:'all'},'All outlets'),
+        salonsList.map(s=>React.createElement('option',{key:s.id,value:String(s.id)},s.name)))
+    ),
+    React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:12,lineHeight:1.6}},
+      'Every save is recorded by the database: who changed which sheet, and when. Use "Restore previous version" to undo someone\'s changes to a sheet. Kept for 90 days.'),
+    rows===null?React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},'Loading…')
+    :rows.length===0?React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},'No changes recorded yet.')
+    :React.createElement('div',{style:{maxHeight:360,overflowY:'auto',border:'1px solid var(--border)',borderRadius:'var(--r)'}},
+      rows.map(r=>{const d=describeDataKey(r.key,salonsList);
+        return React.createElement('div',{key:r.id,style:{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',borderBottom:'1px solid var(--border)',fontSize:12.5}},
+          React.createElement('div',{style:{flex:1,minWidth:0}},
+            React.createElement('div',{style:{color:'var(--text)',fontWeight:500}},d.sheet+' · '+d.outlet),
+            React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},fmt(r.at)+' · '+(r.changed_by_email||'system')+(r.edits>1?' · '+r.edits+' saves':''))),
+          React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,onClick:()=>setConfirmRow(r)},'Restore previous version'));})),
+    confirmRow&&React.createElement('div',{className:'modal-overlay',onClick:()=>!busy&&setConfirmRow(null)},
+      React.createElement('div',{className:'modal',style:{width:440},onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-title'},'Restore previous version?'),
+        React.createElement('div',{style:{fontSize:13,color:'var(--text2)',marginBottom:16,lineHeight:1.6}},
+          (()=>{const d=describeDataKey(confirmRow.key,salonsList);return '"'+d.sheet+'" at '+d.outlet+' goes back to how it was before '+(confirmRow.changed_by_email||'this change')+'\'s changes on '+fmt(confirmRow.at)+'. Anything saved to this sheet after that is replaced too. This restore is itself recorded, so it can be undone the same way.';})()),
+        React.createElement('div',{className:'modal-actions'},
+          React.createElement('button',{className:'btn btn-ghost',disabled:busy,onClick:()=>setConfirmRow(null)},'Cancel'),
+          React.createElement('button',{className:'btn btn-danger'+(busy?' btn-loading':''),disabled:busy,onClick:restore},'Restore'))))
+  );
+}
+// ── App errors (Super Admin) — crashes and failed operations users hit are recorded in the
+// cloud (see reportClientError), so problems get noticed instead of silently annoying staff. ──
+function AppErrorsCard(){
+  const [rows,setRows]=useState(null);
+  useEffect(()=>{(async()=>{
+    try{const supa=await getSupabaseClient();const{data,error}=await supa.from('client_errors').select('id,at,email,page,message').order('at',{ascending:false}).limit(50);if(error)throw error;setRows(data||[]);}
+    catch(e){setRows([]);}
+  })();},[]);
+  if(!rows||!rows.length)return null;
+  const fmt=(ts)=>new Date(ts).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});
+  return React.createElement('div',{className:'card',style:{marginBottom:16}},
+    React.createElement('div',{className:'card-title'},'🐞 App errors (last '+rows.length+')'),
+    React.createElement('div',{style:{maxHeight:240,overflowY:'auto',border:'1px solid var(--border)',borderRadius:'var(--r)'}},
+      rows.map(r=>React.createElement('div',{key:r.id,style:{padding:'7px 12px',borderBottom:'1px solid var(--border)',fontSize:12}},
+        React.createElement('div',{style:{color:'var(--red)',wordBreak:'break-word'}},r.message),
+        React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},fmt(r.at)+' · '+(r.email||'?')+(r.page?' · '+r.page:''))))));
+}
+// ── Two-step login (authenticator app, TOTP) for the signed-in account. Once it's on, sign-in
+// asks for the app's 6-digit code, and the database only grants Super Admin powers to a
+// session that has passed that step. ──
+function TwoStepLoginCard(){
+  const {success,error:toastError}=useToast();
+  const [factors,setFactors]=useState(null);
+  const [enroll,setEnroll]=useState(null); // {id,qr,secret} while setting up
+  const [code,setCode]=useState('');
+  const [busy,setBusy]=useState(false);
+  const load=useCallback(async()=>{
+    try{const supa=await getSupabaseClient();const{data,error}=await supa.auth.mfa.listFactors();if(error)throw error;setFactors((data&&data.all)||[]);}
+    catch(e){setFactors([]);}
+  },[]);
+  useEffect(()=>{load();},[load]);
+  const verified=(factors||[]).filter(f=>f.factor_type==='totp'&&f.status==='verified');
+  const start=async()=>{
+    setBusy(true);
+    try{
+      const supa=await getSupabaseClient();
+      for(const f of (factors||[]).filter(f=>f.status!=='verified'))await supa.auth.mfa.unenroll({factorId:f.id}); // abandoned earlier setups
+      const{data,error}=await supa.auth.mfa.enroll({factorType:'totp',friendlyName:'SalonOS '+new Date().toISOString().slice(0,16)});
+      if(error)throw error;
+      setEnroll({id:data.id,qr:data.totp.qr_code,secret:data.totp.secret});setCode('');
+    }catch(e){toastError('Could not start setup: '+(e.message||'network error'));}
+    setBusy(false);
+  };
+  const confirm=async()=>{
+    setBusy(true);
+    try{
+      const supa=await getSupabaseClient();
+      const{error}=await supa.auth.mfa.challengeAndVerify({factorId:enroll.id,code:code.replace(/\s/g,'')});
+      if(error)throw error;
+      setEnroll(null);success('Two-step login is on — you\'ll be asked for a code from the app each time you sign in.');await load();
+    }catch(e){toastError('That code didn\'t work — enter the current 6-digit code shown in the app.');}
+    setBusy(false);
+  };
+  const turnOff=async(f)=>{
+    if(!window.confirm('Turn off two-step login for your account? Your account will be protected by the password only.'))return;
+    setBusy(true);
+    try{const supa=await getSupabaseClient();const{error}=await supa.auth.mfa.unenroll({factorId:f.id});if(error)throw error;success('Two-step login turned off');await load();}
+    catch(e){toastError('Could not turn it off: '+(e.message||'network error'));}
+    setBusy(false);
+  };
+  return React.createElement('div',{className:'card',style:{marginBottom:16}},
+    React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:8}},
+      React.createElement('div',{className:'card-title',style:{marginBottom:0}},'🔐 Two-step login (your account)'),
+      factors===null?null:verified.length
+        ?React.createElement('span',{className:'badge badge-green'},'ON')
+        :React.createElement('span',{className:'badge',style:{background:'rgba(255,159,67,0.15)',color:'var(--orange)'}},'OFF — recommended for Super Admins')
+    ),
+    React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:12,lineHeight:1.6}},
+      'Adds a 6-digit code from an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, Authy) to every sign-in, so a stolen password alone can\'t open your account.'),
+    verified.length
+      ?React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,onClick:()=>turnOff(verified[0])},'Turn off')
+      :enroll
+        ?React.createElement('div',{style:{display:'flex',gap:16,flexWrap:'wrap',alignItems:'flex-start'}},
+          React.createElement('img',{src:enroll.qr,alt:'QR code for your authenticator app',style:{width:170,height:170,background:'#fff',borderRadius:8,padding:6}}),
+          React.createElement('div',{style:{flex:1,minWidth:200}},
+            React.createElement('div',{style:{fontSize:12.5,color:'var(--text2)',lineHeight:1.7,marginBottom:10}},
+              '1. Open your authenticator app and scan this QR code.',React.createElement('br'),
+              '2. Can\'t scan? Add it manually with this key: ',React.createElement('code',{style:{userSelect:'all',fontSize:11.5}},enroll.secret),React.createElement('br'),
+              '3. Enter the 6-digit code the app shows:'),
+            React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+              React.createElement('input',{className:'form-control',style:{maxWidth:160,letterSpacing:'0.25em',textAlign:'center'},inputMode:'numeric',autoComplete:'one-time-code',maxLength:8,placeholder:'123456',value:code,onChange:e=>setCode(e.target.value.replace(/[^\d\s]/g,'')),onKeyDown:e=>e.key==='Enter'&&confirm()}),
+              React.createElement('button',{className:'btn btn-primary btn-sm'+(busy?' btn-loading':''),disabled:busy||code.replace(/\s/g,'').length<6,onClick:confirm},'Turn on'),
+              React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,onClick:()=>setEnroll(null)},'Cancel'))))
+        :React.createElement('button',{className:'btn btn-primary btn-sm'+(busy?' btn-loading':''),disabled:busy||factors===null,onClick:start},'Set up two-step login')
   );
 }
 function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup}={}){
@@ -6177,7 +6435,10 @@ function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup}={}){
   return React.createElement('div',{className:'fade-in'},
     React.createElement('div',{className:'page-title'},'Master Settings'),
     React.createElement('div',{className:'page-sub'},'Global configuration and statutory applicability'),
+    CLOUD_SYNC_ENABLED&&React.createElement(TwoStepLoginCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(CloudBackupsCard,null),
+    CLOUD_SYNC_ENABLED&&React.createElement(ChangeHistoryCard,null),
+    CLOUD_SYNC_ENABLED&&React.createElement(AppErrorsCard,null),
     React.createElement('div',{className:'card',style:{marginBottom:16}},
       React.createElement('div',{className:'card-title'},'💾 Backup & Restore'),
       React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:14,lineHeight:1.6}},'Every outlet\'s data — employees, attendance, salary, bank statements, collections, vendors and invoices — lives in this browser\'s local storage. Take a backup regularly, and before clearing browser data or switching devices.'),
@@ -6416,7 +6677,7 @@ function UserManagement(){
     if(!form.name.trim())return toast('Name is required','error');
     if(!form.email.trim()||!form.email.includes('@'))return toast('Enter a valid email','error');
     if(!editId&&!form.password.trim())return toast('Set a password for this new user','error');
-    if(form.password&&form.password.length<6)return toast('Password must be at least 6 characters','error');
+    if(form.password&&form.password.length<8)return toast('Password must be at least 8 characters','error');
     const emailTaken=users.some(u=>u.email.toLowerCase()===form.email.trim().toLowerCase()&&u.id!==editId);
     if(emailTaken)return toast('A user with that email already exists','error');
 
@@ -26397,9 +26658,17 @@ function AppointmentBook({salon}){
   const {toast}=useToast();
   const sid=Number(salon&&salon.id)||1;
   const [date,setDate]=useState(fdDateStr(new Date()));
-  const APPT_BOOK_KEY='salonos_appointments_book';
+  // One book per outlet (it used to be a single shared record holding every outlet's guests, so
+  // anyone with any outlet access could read all of them). Bookings for this outlet still sitting
+  // in the old shared record are carried over the first time this outlet's book is opened.
+  const APPT_BOOK_KEY=outletKey('salonos_appointments_book',sid);
   const [book,setBook]=useState(()=>{
     try{const raw=cachedLocalGet(APPT_BOOK_KEY);if(raw!==null){const p=JSON.parse(raw);if(p&&typeof p==='object')return p;}}catch(e){}
+    try{
+      const legacy=JSON.parse(cachedLocalGet('salonos_appointments_book')||'{}')||{};
+      const mine={};Object.keys(legacy).forEach(k=>{if(k.startsWith(sid+'|'))mine[k]=legacy[k];});
+      return mine;
+    }catch(e){}
     return{};
   });
   useEffect(()=>{safeLocalSet(APPT_BOOK_KEY,JSON.stringify(book));},[book]);
@@ -30425,6 +30694,23 @@ function App(){
     // EVERY device/browser, silently breaking cloud sync wherever else it was still open.
     if(CLOUD_SYNC_ENABLED)getSupabaseClient().then(supa=>supa&&supa.auth.signOut({scope:'local'})).catch(()=>{});
   };
+  // Shared counter PCs and phones often stay logged in all day — sign out after 30 minutes with
+  // no activity, but never while an edit is still on its way to the cloud.
+  useEffect(()=>{
+    if(!loggedIn)return;
+    const IDLE_MS=30*60*1000;
+    let last=Date.now();
+    const mark=()=>{last=Date.now();};
+    const evs=['keydown','mousedown','touchstart','wheel','scroll'];
+    evs.forEach(ev=>window.addEventListener(ev,mark,{capture:true,passive:true}));
+    const t=setInterval(()=>{
+      if(Date.now()-last<IDLE_MS)return;
+      if(CLOUD_SYNC_ENABLED&&(_cloudDirty.size>0||_cloudPushing>0))return;
+      logout();
+      addToast('Signed out after 30 minutes of inactivity — sign in again to continue.','info',10000);
+    },30000);
+    return()=>{evs.forEach(ev=>window.removeEventListener(ev,mark,{capture:true}));clearInterval(t);};
+  },[loggedIn]);
   const handleSelectSalon=(s)=>{
     const dp=defaultPeriods[s.id];
     if(!dp){setGateFor(s);return}
