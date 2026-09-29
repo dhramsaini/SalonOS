@@ -33,7 +33,8 @@ PWA: `manifest.json`, `service-worker.js` (network-first). `tests.html` = self-t
 - `kv_audit` + trigger `kv_store_audit` (change history, 10-min grouping) + `salonos_restore_version(id)`; purged after 90 days by cron `salonos-nightly-cleanup`.
 - `client_errors` (app error log, 60 days).
 - Edge function **`salonos-reports`** (source `supabase/functions/salonos-reports/index.ts`, verify-JWT OFF, own auth): nightly 22:00 IST + monthly 1st 09:00 IST via cron (`salonos-report-daily/monthly`, pg_net). Email needs owner-added secrets `RESEND_API_KEY` + `REPORT_FROM` (Resend, domain verified); WhatsApp optional (`WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, template `salonos_daily_summary`). **Owner chose to skip email setup for now.**
-- SQL scripts that built all of this: `supabase/step0…step5*.sql` (already applied — don't re-run blindly).
+- **`employees` table** (step6): one row per employee (`outlet_id, id, data jsonb, name, status, deleted`), filled automatically by trigger `kv_store_sync_employees` from the app's employee lists; read-only RLS by outlet access. Check it with `select * from salonos_employees_parity();` (all `mismatched` must be 0).
+- SQL scripts that built all of this: `supabase/step0…step6*.sql` (already applied — don't re-run blindly).
 
 ## How to change and publish
 1. Edit the right file in `js/` (or `index.html` for CSS/shell). Then run `powershell -File tools\bump-version.ps1 <new version>` —
@@ -47,12 +48,12 @@ PWA: `manifest.json`, `service-worker.js` (network-first). `tests.html` = self-t
 ## Done so far (Sept 2026)
 Cloud sync fixes & live updates · per-outlet database access rules · documents in private storage · nightly cloud backups + restore · change history + restore previous version · two-step login · auto-logout 30 min · HTTPS enforced · per-outlet appointment book · unused-document cleanup · error log · phone layout (bottom tabs, sheet picker, card view for list tables, bottom-sheet forms) · readability · update banner · outlet setup checklist · branded payslips (Salary Working → 📄 Payslips) · outlet comparison + data-gap alerts on dashboards · automatic reports (awaiting email setup) · self-tests (23 passing) · **phone one-day form for Daily Sales & Exp.**
 
-## What's next (agreed plan — owner approved, nothing started yet)
+## What's next (agreed plan — owner approved)
 **#4 Split `index.html` into a proper project**:
 - Stage A: ✅ DONE (29 Sep 2026) — app code moved into `js/01…14-*.js`, byte-identical to before (verified), tests pass.
-- Stage B: add a build step (bundle/minify/lint) with automatic deploy (GitHub Actions — this PC has no Node).
+- Stage B: ✅ DONE — GitHub Actions "Checks" on every push: `tools/check.mjs` (syntax, load order, duplicate names, versions) + `tools/run-tests.mjs` (self-tests in headless Chrome). (This PC has no Node/Python.)
 - Stage C: per-area tests.
 
-**#3 Proper database tables**, one module at a time after #4 Stage A: Employees → Attendance → Daily Sales & Expenses → Advances/Penalties → Vendors/Invoices → … For each: new table with per-outlet RLS; dual-write (kv + table) with a daily parity check; backup before each step; switch reads to the table only when parity holds; keep a one-line rollback switch.
+**#3 Proper database tables** — Employees Stage 1a ✅ DONE (29 Sep 2026): `employees` table kept in sync from the app by a database trigger; parity at creation: outlet 5 = 11/11, outlet 6 = 1/1, 0 mismatched. Next: Stage 1b = after a few days of clean parity, switch the app's Employees screen to read/write the table (keep kv as fallback + a rollback switch). Then, one module at a time: Employees → Attendance → Daily Sales & Expenses → Advances/Penalties → Vendors/Invoices → … For each: new table with per-outlet RLS; dual-write (kv + table) with a daily parity check; backup before each step; switch reads to the table only when parity holds; keep a one-line rollback switch.
 
 Other open items: email reports setup (owner); staff should reload the app; attendance & sales for 22–28 Sep 2026 were missing at both outlets.
