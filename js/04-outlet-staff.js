@@ -1721,9 +1721,78 @@ function needsAmountUpdate(it,asOf){
   return isNaN(updated)||updated<lastInvoiceDate;
 }
 
+// ── Variable recurring bills (Electricity, Telephone… — amount unknown until the bill comes) ──
+// A recurring item with amountType 'Variable' takes its P&L figure from the ACTUAL bills: each bill
+// (the payee's Vendor Sheet invoices — those entered with "Enter bill" carry recurringId; the
+// standing "REC-" invoice is not a bill) is spread evenly over the months it covers — its own periodFrom/periodTo (YYYY-MM) when
+// given, otherwise the N months of the frequency ending the month BEFORE the bill (billFor
+// 'previous', usual for electricity) or ending the bill's own month (billFor 'current'). Months no
+// bill covers yet get an estimate: the average monthly cost of the last 3 bills, or the item's own
+// amount ÷ N while there is no bill history.
+const RECURRING_PERIOD_MONTHS={Monthly:1,'Bi-Monthly':2,Quarterly:3,'Half-Yearly':6,Yearly:12};
+function isVariableRecurring(it){return !!it&&it.amountType==='Variable';}
+function monthIndexOfIso(iso){const m=/^(\d{4})-(\d{2})/.exec(iso||'');return m?Number(m[1])*12+Number(m[2])-1:null;}
+function monthLabelOfIndex(i){return['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][((i%12)+12)%12]+' '+Math.floor(i/12);}
+function variableRecurringBills(it,salonId){
+  const payee=String(it.payee||'').trim().toLowerCase();
+  const vendor=loadVendors(salonId).find(v=>String(v.name||'').trim().toLowerCase()===payee);
+  if(!vendor)return[];
+  const N=RECURRING_PERIOD_MONTHS[it.frequency]||1;
+  return loadVendorInvoices(salonId)
+    .filter(inv=>inv.vendorId===vendor.id&&inv.docNature!=='Performa Invoice'&&!String(inv.invoiceNo||'').startsWith('REC-')&&(!inv.recurringId||inv.recurringId===it.id))
+    .map(inv=>{
+      let first=monthIndexOfIso(inv.periodFrom),last=monthIndexOfIso(inv.periodTo);
+      if(first==null||last==null||last<first){
+        const bm=monthIndexOfIso(toISO(inv.invoiceDate));
+        if(bm==null)return null;
+        last=it.billFor==='current'?bm:bm-1;first=last-N+1;
+      }
+      return{inv,amount:Number(inv.amount)||0,first,last,months:last-first+1};
+    })
+    .filter(Boolean).sort((a,b)=>a.last-b.last);
+}
+function variableRecurringEstimatePerMonth(it,bills){
+  const recent=bills.slice(-3);
+  if(recent.length)return recent.reduce((s,b)=>s+b.amount/b.months,0)/recent.length;
+  return recurringExpenseMonthlyAmt(it); // no bill yet: the item's own amount spread over its period
+}
+function variableRecurringMonthAmt(it,salonId,year,month){
+  const t=year*12+month;
+  const bills=variableRecurringBills(it,salonId);
+  const covering=bills.filter(b=>t>=b.first&&t<=b.last);
+  if(covering.length)return{amt:covering.reduce((s,b)=>s+b.amount/b.months,0),actual:true,bills,covering};
+  const start=monthIndexOfIso(it.startDate),end=monthIndexOfIso(it.endDate);
+  if((start!=null&&t<start)||(end!=null&&t>end))return{amt:0,actual:false,bills,covering:[]}; // outside the item's active window
+  return{amt:variableRecurringEstimatePerMonth(it,bills),actual:false,bills,covering:[]};
+}
+// The latest billing period that has ended with no bill entered yet — {first,last} or null.
+function variableRecurringMissingPeriod(it,salonId,asOf){
+  if(!isVariableRecurring(it)||it.status!=='Active')return null;
+  const d=asOf||new Date();
+  const N=RECURRING_PERIOD_MONTHS[it.frequency]||1;
+  const bills=variableRecurringBills(it,salonId);
+  const now=d.getFullYear()*12+d.getMonth();
+  const lastCovered=bills.length?bills[bills.length-1].last:(monthIndexOfIso(it.startDate)!=null?monthIndexOfIso(it.startDate)-1:now-N-1);
+  const first=lastCovered+1,last=first+N-1;
+  return last<now?{first,last}:null; // that period is over, and its bill hasn't been entered
+}
 function recurringExpenseMonthlySumFor(salonId,recurringTypeName,year,month){
-  return loadRecurringExpenses(salonId).filter(it=>it.status==='Active'&&recurringExpenseNameOf(it)===recurringTypeName)
+  return loadRecurringExpenses(salonId).filter(it=>it.status==='Active'&&recurringExpenseNameOf(it)===recurringTypeName&&!isVariableRecurring(it))
     .reduce((s,it)=>s+recurringExpenseMonthlyAmt(it,year,month,salonId),0);
+}
+// Variable items of a recurring type for one month: their total, per-item detail, and the vendor
+// invoices already counted through them (so the plain "invoices booked this month" figure doesn't
+// count those bills a second time).
+function variableRecurringSumFor(salonId,recurringTypeName,year,month){
+  const rows=[];const used=new Set();let amt=0;
+  const allInvoices=loadVendorInvoices(salonId);
+  loadRecurringExpenses(salonId).filter(it=>it.status==='Active'&&recurringExpenseNameOf(it)===recurringTypeName&&isVariableRecurring(it)).forEach(it=>{
+    const r=variableRecurringMonthAmt(it,salonId,year,month);
+    r.bills.forEach(b=>used.add(b.inv.id));
+    allInvoices.forEach(inv=>{if(inv.invoiceNo==='REC-'+it.id)used.add(inv.id);}); // a standing invoice from when it was Fixed
+    amt+=r.amt;rows.push({it,amt:r.amt,actual:r.actual,covering:r.covering});
+  });
+  return{amt,rows,used};
 }
 function operatingExpensesFor(salonId,year,month){
   const lines=PL_OPEX_LINES.map(l=>{
@@ -1731,7 +1800,9 @@ function operatingExpensesFor(salonId,year,month){
     if(l.alsoNature)amt+=bankStatementNatureDebitSumFor(salonId,year,month,l.alsoNature);
     const recurringType=PL_OPEX_RECURRING_MAP[l.name];
     const recurringAmt=recurringType?recurringExpenseMonthlySumFor(salonId,recurringType,year,month):0;
-    const vendorAmt=l.alsoVendorCat?vendorInvoiceCategorySumFor(salonId,year,month,l.alsoVendorCat):0;
+    const variable=recurringType?variableRecurringSumFor(salonId,recurringType,year,month):{amt:0,used:new Set()};
+    const vendorAmt=l.alsoVendorCat?vendorInvoiceCategorySumFor(salonId,year,month,l.alsoVendorCat,variable.used):0;
+    amt+=variable.amt; // variable bills: actual bills spread over their months, estimates for the rest
     if(l.vendorWinsOverRecurring){
       // A real invoice this month is more accurate than the estimate — use it instead of adding
       // to it. Falls back to the Recurring Expenses estimate only when no invoice exists yet.
@@ -1761,9 +1832,10 @@ function operatingExpenseAnnexureFor(salonId,year,month,lineName){
   const recurring=recurringType?loadRecurringExpenses(salonId).filter(it=>recurringExpenseNameOf(it)===recurringType):[];
   const dailyAmt=line.row?dailySalesRowSumFor(salonId,year,month,line.row):dailySalesGroupSumFor(salonId,year,month,line.group);
   const bankAmt=line.alsoNature?bankStatementNatureDebitSumFor(salonId,year,month,line.alsoNature):0;
-  const vendorAmt=line.alsoVendorCat?vendorInvoiceCategorySumFor(salonId,year,month,line.alsoVendorCat):0;
+  const variable=recurringType?variableRecurringSumFor(salonId,recurringType,year,month):{amt:0,rows:[],used:new Set()};
+  const vendorAmt=line.alsoVendorCat?vendorInvoiceCategorySumFor(salonId,year,month,line.alsoVendorCat,variable.used):0;
   const recoAmt=line.alsoNetBankCharges?netBankChargesFor(salonId,year,month):0;
-  const recurringTotalRaw=recurring.filter(it=>it.status==='Active').reduce((s,it)=>s+recurringExpenseMonthlyAmt(it,year,month,salonId),0);
+  const recurringTotalRaw=recurring.filter(it=>it.status==='Active'&&!isVariableRecurring(it)).reduce((s,it)=>s+recurringExpenseMonthlyAmt(it,year,month,salonId),0);
   const vendorWins=!!line.vendorWinsOverRecurring&&vendorAmt>0;
   // Group-based lines (no single `row`) can bundle several distinct Daily Sales & Exp rows under
   // one P&L line — e.g. "Daily Expenses" folds in Pentry, Water, Conveyance, Stationary, etc. This
@@ -1771,5 +1843,6 @@ function operatingExpenseAnnexureFor(salonId,year,month,lineName){
   // the annexure shows exactly what's behind the number instead of just the bundled sum.
   const dailyRows=line.row?[]:EXPENSE_ROWS.filter(r=>r.group===line.group).map(r=>({name:r.name,amt:dailySalesRowSumFor(salonId,year,month,r.name)}));
   return{lineName,recurring,dailyAmt,dailyRows,dailyExcluded:!!line.noDaily,bankAmt,vendorAmt,recoAmt,isCredit:!!line.credit,
-    recurringTotal:vendorWins?0:recurringTotalRaw,recurringTotalRaw,vendorWinsOverRecurring:!!line.vendorWinsOverRecurring,vendorWins};
+    recurringTotal:(vendorWins?0:recurringTotalRaw)+variable.amt,recurringTotalRaw,vendorWinsOverRecurring:!!line.vendorWinsOverRecurring,vendorWins,
+    variableAmt:variable.amt,variableRows:variable.rows};
 }

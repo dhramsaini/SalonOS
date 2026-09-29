@@ -75,6 +75,7 @@ function TallyExportSheet({salon,onNavTab}={}){
   const updateConn=(patch)=>{const next={...conn,...patch};setConn(next);saveTallyConnectorCfg(next);};
   const [connState,setConnState]=useState({checking:false,ok:false,tally:false,msg:'',companies:[]});
   const [showConnSettings,setShowConnSettings]=useState(false);
+  const [tallyGuideLang,setTallyGuideLang]=useState(null); // 'en' | 'hi' while the walkthrough is open
   const checkConnector=async(cfg)=>{
     const c=cfg||conn;
     setConnState(s=>({...s,checking:true}));
@@ -199,10 +200,13 @@ function TallyExportSheet({salon,onNavTab}={}){
       ' — Masters first, then Vouchers. Or connect live with the SalonOS Tally Connector below: ledgers are read from Tally, new ones are created there, and vouchers are sent straight in with Tally’s own confirmation.'
     ),
 
+    tallyGuideLang&&React.createElement(TallyGuideModal,{initialLang:tallyGuideLang,onClose:()=>setTallyGuideLang(null)}),
     // ── Tally Connector — live link (local PC, office server or cloud desktop) ──
     React.createElement('div',{className:'card',style:{marginBottom:16,border:'1px solid '+(connState.tally?'rgba(76,175,125,0.4)':'rgba(47,95,224,0.3)')}},
       React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:6}},
         React.createElement('div',{style:{fontWeight:600,fontSize:13,color:'var(--text)'}},'🔌 Tally Connector'),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 10px'},onClick:()=>setTallyGuideLang('en')},'▶ Watch: how to run it'),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 10px'},onClick:()=>setTallyGuideLang('hi')},'▶ हिंदी में देखें'),
         React.createElement('span',{className:'badge '+(connState.tally?'badge-green':connState.ok?'badge-amber':'badge-red'),style:{fontSize:10}},connState.checking?'Checking…':connState.tally?'Connected':connState.ok?'Tally not answering':'Not connected'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},disabled:connState.checking,onClick:()=>checkConnector()},'⟳ Check'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowConnSettings(s=>!s)},showConnSettings?'Hide settings':'⚙ Settings')

@@ -1088,17 +1088,27 @@ function OutletPnLCore({salon,period}){
             h('div',{className:'table-wrap'},
               h('table',null,
                 h('thead',null,h('tr',null,['Payee / Vendor','Frequency','Amount','Monthly Equiv.','Status'].map(hh=>h('th',{key:hh},hh)))),
-                h('tbody',null,detail.recurring.map(it=>h('tr',{key:it.id,style:it.status!=='Active'?{opacity:0.5}:undefined},
-                  h('td',null,it.payee),
-                  h('td',null,it.frequency),
-                  h('td',{style:{textAlign:'right'}},'₹'+Number(it.amount).toLocaleString('en-IN')),
-                  h('td',{style:{textAlign:'right',fontWeight:it.status==='Active'?700:400}},'₹'+Math.round(recurringExpenseMonthlyAmt(it)).toLocaleString('en-IN')),
-                  h('td',null,h('span',{className:'badge '+(it.status==='Active'?'badge-green':it.status==='Expired'?'badge-red':'badge-gray')},it.status))
-                )))
+                h('tbody',null,detail.recurring.map(it=>{
+                  const vr=isVariableRecurring(it)?(detail.variableRows||[]).find(r=>r.it.id===it.id):null;
+                  return h('tr',{key:it.id,style:it.status!=='Active'?{opacity:0.5}:undefined},
+                    h('td',null,it.payee,isVariableRecurring(it)&&h('div',{style:{fontSize:10,color:'var(--text3)'}},'Variable bill')),
+                    h('td',null,it.frequency),
+                    h('td',{style:{textAlign:'right'}},'₹'+Number(it.amount).toLocaleString('en-IN')),
+                    vr
+                      ?h('td',{style:{textAlign:'right',fontWeight:700}},'₹'+Math.round(vr.amt).toLocaleString('en-IN'),
+                          h('div',{style:{fontSize:10,fontWeight:400,color:vr.actual?'var(--green)':'var(--orange)'}},vr.actual
+                            ?'actual: '+vr.covering.map(b=>(b.inv.invoiceNo||'bill')+' ₹'+Math.round(b.amount).toLocaleString('en-IN')+' ÷ '+b.months+' month'+(b.months===1?'':'s')).join(', ')
+                            :'estimate — bill not entered yet'))
+                      :h('td',{style:{textAlign:'right',fontWeight:it.status==='Active'?700:400}},'₹'+Math.round(recurringExpenseMonthlyAmt(it)).toLocaleString('en-IN')),
+                    h('td',null,h('span',{className:'badge '+(it.status==='Active'?'badge-green':it.status==='Expired'?'badge-red':'badge-gray')},it.status))
+                  );
+                }))
               )
             ),
             h('div',{style:{display:'flex',justifyContent:'flex-end',fontSize:12,fontWeight:700,color:detail.vendorWins?'var(--text3)':'var(--accent2)',marginTop:6}},
-              (detail.vendorWins?'Estimate — not counted this month, real invoice used instead: ₹':'Subtotal (Active only): ₹')+Math.round(detail.recurringTotalRaw).toLocaleString('en-IN'))
+              (detail.vendorWins?'Estimate — not counted this month, real invoice used instead: ₹':'Subtotal (Active only): ₹')+Math.round(detail.recurringTotalRaw).toLocaleString('en-IN')),
+            detail.variableAmt>0&&h('div',{style:{display:'flex',justifyContent:'flex-end',fontSize:12,fontWeight:700,color:'var(--accent2)',marginTop:2}},
+              'Variable bills this month (counted): ₹'+Math.round(detail.variableAmt).toLocaleString('en-IN'))
           ),
           detail.recurring.length===0&&h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:18,padding:'10px 12px',background:'var(--bg3)',borderRadius:'var(--r)'}},
             'No standing commitment set up for this line in Recurring Expenses yet. Add one there to have it show up here automatically.'),

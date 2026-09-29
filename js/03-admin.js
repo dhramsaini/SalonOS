@@ -1439,6 +1439,57 @@ function AppErrorsCard(){
         React.createElement('div',{style:{color:'var(--red)',wordBreak:'break-word'}},r.message),
         React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},fmt(r.at)+' · '+(r.email||'?')+(r.page?' · '+r.page:''))))));
 }
+// ── AI Assistant (Super Admin) — the Claude API key is sent once to the ai-settings cloud
+// function, checked with a tiny request and stored server-side (public.app_secrets). It is never
+// shown again or kept in the browser; only "configured", the model and its last 4 characters. ──
+async function aiSettingsCall(action,payload){
+  const supa=await getSupabaseClient();
+  const{data,error}=await supa.functions.invoke('ai-settings',{body:{action,...(payload||{})}});
+  if(error){let msg=error.message||'Could not reach the AI settings service';try{const b=error.context&&await error.context.json();if(b&&b.error)msg=b.error;}catch(e){}throw new Error(msg);}
+  if(data&&data.error)throw new Error(data.error);
+  return data||{};
+}
+function AiSettingsCard(){
+  const {success,error:toastError}=useToast();
+  const [st,setSt]=useState(null); // null = loading
+  const [key,setKey]=useState('');
+  const [showKey,setShowKey]=useState(false);
+  const [model,setModel]=useState('claude-opus-5-5');
+  const [busy,setBusy]=useState('');
+  const load=async()=>{try{const s=await aiSettingsCall('status');setSt(s);setModel(s.model);}catch(e){setSt({error:e.message});}};
+  useEffect(()=>{load();},[]);
+  const MODEL_LABELS={'claude-opus-5-5':'Claude Opus 5.5 — most capable (recommended)','claude-sonnet-5-5':'Claude Sonnet 5.5 — faster, lower cost','claude-haiku-4-5':'Claude Haiku 4.5 — fastest, lowest cost'};
+  const save=async()=>{
+    setBusy('save');
+    try{const r=await aiSettingsCall('save',{key:key.trim(),model});setKey('');setShowKey(false);success(key.trim()?'AI key saved and checked — Claude replied: "'+(r.reply||'ok')+'"':'Model updated.');await load();}
+    catch(e){toastError(e.message);}
+    setBusy('');
+  };
+  const test=async()=>{setBusy('test');try{const r=await aiSettingsCall('test');success('Working — '+r.model+' replied: "'+(r.reply||'ok')+'"');}catch(e){toastError(e.message);}setBusy('');};
+  const remove=async()=>{if(!confirm('Remove the saved AI key? AI features will stop until a new key is saved.'))return;setBusy('remove');try{await aiSettingsCall('remove');success('AI key removed.');await load();}catch(e){toastError(e.message);}setBusy('');};
+  return React.createElement('div',{className:'card',style:{marginBottom:16}},
+    React.createElement('div',{className:'card-title'},'🤖 AI Assistant (Claude API key)'),
+    React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',lineHeight:1.6,marginBottom:12}},
+      'Connects SalonOS to Anthropic’s Claude for AI features. Create a key at console.anthropic.com → API Keys (billing is on your Anthropic account). The key is checked, then stored securely on the server — it is never shown again or saved in any browser.'),
+    st===null?React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},'Checking…'):
+    st.error?React.createElement('div',{style:{fontSize:12,color:'var(--red)'}},st.error):
+    React.createElement(React.Fragment,null,
+      React.createElement('div',{style:{fontSize:12.5,marginBottom:10}},st.configured
+        ?React.createElement('span',{style:{color:'var(--green)'}},'✓ Key saved ('+st.keyHint+') · model '+st.model+(st.updatedAt?' · updated '+new Date(st.updatedAt).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})+(st.updatedBy?' by '+st.updatedBy:''):''))
+        :React.createElement('span',{style:{color:'var(--orange)'}},'No key saved yet.')),
+      React.createElement('div',{className:'form-row cols2'},
+        React.createElement('div',{className:'form-group'},React.createElement('label',null,st.configured?'Replace key (leave blank to keep the current one)':'Claude API key *'),
+          React.createElement('div',{style:{position:'relative'}},
+            React.createElement('input',{className:'form-control',type:showKey?'text':'password',autoComplete:'off',spellCheck:false,value:key,onChange:e=>setKey(e.target.value),placeholder:'sk-ant-…',style:{paddingRight:40}}),
+            React.createElement('button',{type:'button',onClick:()=>setShowKey(s=>!s),'aria-label':showKey?'Hide key':'Show key',style:{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:14}},showKey?'🙈':'👁'))),
+        React.createElement('div',{className:'form-group'},React.createElement('label',null,'Model'),
+          React.createElement('select',{className:'form-control',value:model,onChange:e=>setModel(e.target.value)},(st.models||Object.keys(MODEL_LABELS)).map(m=>React.createElement('option',{key:m,value:m},MODEL_LABELS[m]||m))))),
+      React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        React.createElement('button',{className:'btn btn-primary btn-sm',disabled:!!busy||(!key.trim()&&(!st.configured||model===st.model)),onClick:save},busy==='save'?'Checking key…':(key.trim()?'Save & check key':'Save model')),
+        st.configured&&React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:test},busy==='test'?'Testing…':'Test connection'),
+        st.configured&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},disabled:!!busy,onClick:remove},'Remove key')))
+  );
+}
 // ── Automatic reports (Super Admin) — who gets the nightly summary (22:00 IST) and the monthly
 // summary (1st, 09:00 IST), sent by the salonos-reports cloud function. Stored in a
 // salonos_secret_* record, which only Super Admins can read or change. The email/WhatsApp
@@ -1623,6 +1674,7 @@ function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup}={}){
     CLOUD_SYNC_ENABLED&&React.createElement(TwoStepLoginCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(CloudBackupsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(ReportSettingsCard,null),
+    CLOUD_SYNC_ENABLED&&React.createElement(AiSettingsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(ChangeHistoryCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(AppErrorsCard,null),
     React.createElement('div',{className:'card',style:{marginBottom:16}},

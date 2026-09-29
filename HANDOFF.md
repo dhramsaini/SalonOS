@@ -103,3 +103,18 @@ this update. Login failures still log to App errors ("Login: …").
   parseTallyImportResult, ledger cache `salonos_tally_ledgers_outlet_<id>`, per-browser cfg `sos_tally_connector`) and the Tally
   Export tab (status, company picker, fetch ledgers with parents, "missing in Tally" + create, auto-create on open, pushes with
   Tally's real CREATED/ALTERED/ERRORS). Tested against a fake Tally (scratchpad fake-tally.ps1).
+
+## Recurring expenses, Tally walkthrough, AI key (v2026.09.30.1)
+- Recurring Expenses table: TDS Payable and Payable to Payee (Invoice Value − TDS) columns (+ report/export).
+- Variable recurring bills (`amountType:'Variable'`, `billFor:'previous'|'current'`), logic in js/04-outlet-staff.js
+  (`variableRecurringBills/MonthAmt/SumFor/MissingPeriod`): each actual bill (payee's vendor invoice, "➕ Enter bill" sets
+  recurringId + periodFrom/periodTo YYYY-MM) is spread evenly over the months it covers; uncovered months in the item's window use
+  the average monthly cost of the last 3 bills (item amount ÷ N before any bill). operatingExpensesFor/annexure add it and pass
+  the used bill ids (plus the item's old REC- invoice) to vendorInvoiceCategorySumFor(…, excludeIds) so nothing counts twice.
+  Variable items get no standing REC- invoice. Row shows Last bill / "⚠ <period> bill not entered".
+- Reusable walkthrough player `GuideModal` (js/10-collections-bank.js) — BankGuideModal and TallyGuideModal (7 scenes: what it
+  is, Tally F1 connectivity setup, download, local, server -TallyHost, cloud, daily use) — EN/HI captions + speechSynthesis.
+- AI Assistant (Master Settings): edge function `ai-settings` (Verify JWT ON; Super Admin + aal2; actions status/save/test/remove;
+  Anthropic TS SDK, default model claude-opus-5-5, test call uses effort low + server-side refusal fallback "default") and
+  table `app_secrets` (step11, service role only). The key is never returned to browsers — only keyHint (last 4) and model.
+  No AI features use it yet; add a `complete`-style action to ai-settings (or a new function) when one is built.

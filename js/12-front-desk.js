@@ -973,16 +973,19 @@ function vendorInvoiceExpenseEntries(salonId){
     });
   return out;
 }
-function vendorInvoiceCategorySumFor(salonId,year,month,categoryName){
-  return vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName).reduce((s,r)=>s+r.amount,0);
+// excludeIds: invoices already counted another way (bills of a Variable recurring expense, which
+// are spread over the months they cover instead of landing whole in their invoice month).
+function vendorInvoiceCategorySumFor(salonId,year,month,categoryName,excludeIds){
+  return vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName,excludeIds).reduce((s,r)=>s+r.amount,0);
 }
 // Same category-matching + same-month filter as vendorInvoiceCategorySumFor above, but returns
 // the individual invoices instead of just their total — Vendor Name, Invoice Date, and Invoice
 // No, for the P&L's "Purchase of Cosmetic" (and any other vendor-invoice-backed) line drill-down.
-function vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName){
+function vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName,excludeIds){
   const vendorsList=loadVendors(salonId);
   const out=[];
   vendorInvoiceExpenseEntries(salonId).forEach(({inv,amount,pi})=>{
+    if(excludeIds&&excludeIds.has(inv.id))return;
     const vendor=vendorsList.find(v=>v.id===inv.vendorId);
     const effectiveCat=inv.category||(vendor?vendor.cat:'');
     if(effectiveCat!==categoryName)return;

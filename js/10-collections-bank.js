@@ -2097,18 +2097,18 @@ const BANK_GUIDE_SCENES=[
    hi:{t:'6. जाँचें, और काम पूरा',s:'नीचे कुछ एंट्री एक बार देख लें। ध्यान दें: अपने-आप इम्पोर्ट कंप्यूटर पर Chrome या Edge में चलता है। फ़ोन पर डाउनलोड की हुई फ़ाइल को अपलोड बॉक्स में डाल दें।'},
    ui:'done'},
 ];
-function BankGuideModal({onClose,initialLang}){
+function GuideModal({onClose,initialLang,scenes,title,pictures}){
   const [lang,setLang]=useState(initialLang||'en');
   const [i,setI]=useState(0);
   const [playing,setPlaying]=useState(true);
   const [noVoice,setNoVoice]=useState(false);
-  const sc=BANK_GUIDE_SCENES[i],txt=sc[lang];
+  const sc=scenes[i],txt=sc[lang];
   const synth=typeof window!=='undefined'?window.speechSynthesis:null;
   useEffect(()=>{
     let timer=null,cancelled=false;
     if(synth)synth.cancel();
     if(!playing)return()=>{};
-    const next=()=>{if(cancelled)return;if(i<BANK_GUIDE_SCENES.length-1)setI(i+1);else setPlaying(false);};
+    const next=()=>{if(cancelled)return;if(i<scenes.length-1)setI(i+1);else setPlaying(false);};
     const speak=()=>{
       const voices=synth?synth.getVoices():[];
       const want=lang==='hi'?'hi':'en';
@@ -2129,7 +2129,32 @@ function BankGuideModal({onClose,initialLang}){
   const box={background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:8,padding:'8px 10px',fontSize:11.5,color:'var(--text2)'};
   const hot={animation:'bgPulse 1.4s ease-in-out infinite',outline:'2px solid var(--accent)',outlineOffset:2};
   const pill=(label,h)=>React.createElement('span',{style:{display:'inline-block',padding:'4px 10px',borderRadius:6,fontSize:11,fontWeight:600,background:h?'var(--accent)':'var(--bg3)',color:h?'#fff':'var(--text2)',marginRight:6,...(h?hot:{})}},label);
-  const picture={
+  const picture=(pictures?pictures({box,hot,pill}):{})[sc.ui]||null;
+  const go=d=>{setI(x=>Math.min(scenes.length-1,Math.max(0,x+d)));};
+  return guideModalBody();
+  function guideModalBody(){return React.createElement('div',{className:'modal-overlay',onClick:onClose},
+    React.createElement('div',{className:'modal',style:{width:620,maxWidth:'96vw'},onClick:e=>e.stopPropagation()},
+      React.createElement('style',null,'@keyframes bgPulse{0%,100%{box-shadow:0 0 0 0 rgba(47,95,224,.45)}50%{box-shadow:0 0 0 8px rgba(47,95,224,0)}}@keyframes bgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}'),
+      React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}},
+        React.createElement('div',{className:'modal-title',style:{margin:0,flex:1}},(title&&title[lang])||''),
+        ['en','hi'].map(l=>React.createElement('button',{key:l,className:'btn btn-sm '+(lang===l?'btn-primary':'btn-ghost'),onClick:()=>{setLang(l);setPlaying(true);}},l==='en'?'English':'हिंदी'))),
+      React.createElement('div',{key:i+lang,style:{animation:'bgIn .4s ease both'}},
+        React.createElement('div',{style:{fontSize:34,marginBottom:6}},sc.icon),
+        React.createElement('div',{style:{fontSize:15,fontWeight:700,color:'var(--text)',marginBottom:10}},txt.t),
+        picture,
+        React.createElement('div',{style:{fontSize:13.5,color:'var(--text)',lineHeight:1.7,marginTop:12,minHeight:70}},txt.s)),
+      noVoice&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:4}},'This browser has no Hindi voice installed — captions only. (Windows: Settings → Time & language → Speech → add Hindi.)'),
+      React.createElement('div',{style:{display:'flex',gap:6,margin:'12px 0 4px'}},scenes.map((_,k)=>React.createElement('div',{key:k,onClick:()=>setI(k),style:{flex:1,height:4,borderRadius:2,cursor:'pointer',background:k<=i?'var(--accent)':'var(--border2)'}}))),
+      React.createElement('div',{className:'modal-actions'},
+        React.createElement('button',{className:'btn btn-ghost',disabled:i===0,onClick:()=>go(-1)},lang==='hi'?'← पिछला':'← Back'),
+        React.createElement('button',{className:'btn btn-ghost',onClick:()=>{if(!playing&&i===scenes.length-1)setI(0);setPlaying(p=>!p);}},playing?(lang==='hi'?'⏸ रोकें':'⏸ Pause'):(lang==='hi'?'▶ चलाएँ':'▶ Play')),
+        React.createElement('button',{className:'btn btn-ghost',disabled:i===scenes.length-1,onClick:()=>go(1)},lang==='hi'?'अगला →':'Next →'),
+        React.createElement('button',{className:'btn btn-primary',onClick:onClose},lang==='hi'?'बंद करें':'Close'))
+    )
+  );}
+}
+function bankGuidePictures({box,pill}){
+  return{
     folder:React.createElement('div',{style:box},React.createElement('div',{style:{fontWeight:600,marginBottom:6}},'⚡ Auto-Import from your Downloads folder'),pill('📂 Connect Downloads Folder',true),
       React.createElement('div',{style:{marginTop:10,padding:8,border:'1px dashed var(--border2)',borderRadius:6,animation:'bgIn .6s ease both .8s'}},'🗂 Downloads  ',pill('Allow',true))),
     period:React.createElement('div',{style:box},React.createElement('div',{style:{marginBottom:6}},'◉ HDFC Current · Current · ••1234'),
@@ -2140,28 +2165,59 @@ function BankGuideModal({onClose,initialLang}){
     import:React.createElement('div',{style:box},React.createElement('div',{style:{color:'var(--accent2)'}},'⏳ Watching your Downloads folder…'),
       React.createElement('div',{style:{marginTop:8,color:'var(--green)',animation:'bgIn .6s ease both 1.2s'}},'Found "Statement_Sep.xlsx" — Appended 42 new transactions · 3 already there skipped · 30 auto-classified')),
     done:React.createElement('div',{style:box},React.createElement('div',null,'05/09  UPI/CR/…  +1,200  → UPI Settlement'),React.createElement('div',null,'06/09  NEFT RENT  −5,000'),React.createElement('div',{style:{marginTop:8}},'💻 Chrome / Edge: automatic  ·  📱 Phone: upload box')),
-  }[sc.ui];
-  const go=d=>{setI(x=>Math.min(BANK_GUIDE_SCENES.length-1,Math.max(0,x+d)));};
-  return React.createElement('div',{className:'modal-overlay',onClick:onClose},
-    React.createElement('div',{className:'modal',style:{width:620,maxWidth:'96vw'},onClick:e=>e.stopPropagation()},
-      React.createElement('style',null,'@keyframes bgPulse{0%,100%{box-shadow:0 0 0 0 rgba(47,95,224,.45)}50%{box-shadow:0 0 0 8px rgba(47,95,224,0)}}@keyframes bgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}'),
-      React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}},
-        React.createElement('div',{className:'modal-title',style:{margin:0,flex:1}},lang==='hi'?'बैंक स्टेटमेंट — यह कैसे काम करता है':'Bank statement — how it works'),
-        ['en','hi'].map(l=>React.createElement('button',{key:l,className:'btn btn-sm '+(lang===l?'btn-primary':'btn-ghost'),onClick:()=>{setLang(l);setPlaying(true);}},l==='en'?'English':'हिंदी'))),
-      React.createElement('div',{key:i+lang,style:{animation:'bgIn .4s ease both'}},
-        React.createElement('div',{style:{fontSize:34,marginBottom:6}},sc.icon),
-        React.createElement('div',{style:{fontSize:15,fontWeight:700,color:'var(--text)',marginBottom:10}},txt.t),
-        picture,
-        React.createElement('div',{style:{fontSize:13.5,color:'var(--text)',lineHeight:1.7,marginTop:12,minHeight:70}},txt.s)),
-      noVoice&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:4}},'This browser has no Hindi voice installed — captions only. (Windows: Settings → Time & language → Speech → add Hindi.)'),
-      React.createElement('div',{style:{display:'flex',gap:6,margin:'12px 0 4px'}},BANK_GUIDE_SCENES.map((_,k)=>React.createElement('div',{key:k,onClick:()=>setI(k),style:{flex:1,height:4,borderRadius:2,cursor:'pointer',background:k<=i?'var(--accent)':'var(--border2)'}}))),
-      React.createElement('div',{className:'modal-actions'},
-        React.createElement('button',{className:'btn btn-ghost',disabled:i===0,onClick:()=>go(-1)},lang==='hi'?'← पिछला':'← Back'),
-        React.createElement('button',{className:'btn btn-ghost',onClick:()=>{if(!playing&&i===BANK_GUIDE_SCENES.length-1)setI(0);setPlaying(p=>!p);}},playing?(lang==='hi'?'⏸ रोकें':'⏸ Pause'):(lang==='hi'?'▶ चलाएँ':'▶ Play')),
-        React.createElement('button',{className:'btn btn-ghost',disabled:i===BANK_GUIDE_SCENES.length-1,onClick:()=>go(1)},lang==='hi'?'अगला →':'Next →'),
-        React.createElement('button',{className:'btn btn-primary',onClick:onClose},lang==='hi'?'बंद करें':'Close'))
-    )
-  );
+  };
+}
+function BankGuideModal(props){
+  return React.createElement(GuideModal,{...props,scenes:BANK_GUIDE_SCENES,pictures:bankGuidePictures,
+    title:{en:'Bank statement — how it works',hi:'बैंक स्टेटमेंट — यह कैसे काम करता है'}});
+}
+
+// ── Staff walkthrough: running the SalonOS Tally Connector (local PC, office server, cloud) ──
+const TALLY_GUIDE_SCENES=[
+  {icon:'🔌',ui:'intro',
+   en:{t:'1. What the Tally Connector does',s:'The SalonOS Tally Connector is a small program that runs next to Tally. With it, SalonOS reads your ledgers from Tally, creates new ledgers there, and sends vouchers straight in — and Tally confirms what was created.'},
+   hi:{t:'1. टैली कनेक्टर क्या करता है',s:'SalonOS टैली कनेक्टर एक छोटा प्रोग्राम है जो टैली के साथ चलता है। इससे SalonOS टैली से लेजर पढ़ता है, नए लेजर वहाँ बनाता है और वाउचर सीधे भेजता है — और टैली बताता है कि क्या बना।'}},
+  {icon:'⚙️',ui:'tallycfg',
+   en:{t:'2. Turn on Tally’s connection — once',s:'In TallyPrime press F1 (Help) › Settings › Connectivity › Client/Server configuration. Set "TallyPrime acts as" to Both, Enable ODBC to Yes, Port 9000, and save. In Tally.ERP 9 it is F12 › Advanced Configuration.'},
+   hi:{t:'2. टैली का कनेक्शन चालू करें — सिर्फ़ एक बार',s:'TallyPrime में F1 Help, फिर Settings, Connectivity, Client/Server configuration खोलें। TallyPrime acts as को Both, Enable ODBC को Yes और Port 9000 रखें, फिर सेव करें। Tally ERP 9 में यह F12, Advanced Configuration में है।'}},
+  {icon:'⬇️',ui:'download',
+   en:{t:'3. Download the connector — once',s:'In SalonOS open Tally Export and download both files: Start-SalonOS-Tally-Connector.bat and SalonOS-Tally-Connector.ps1. Keep the two files together in one folder, for example Documents\\SalonOS.'},
+   hi:{t:'3. कनेक्टर डाउनलोड करें — सिर्फ़ एक बार',s:'SalonOS में Tally Export खोलें और दोनों फ़ाइलें डाउनलोड करें — Start-SalonOS-Tally-Connector.bat और SalonOS-Tally-Connector.ps1। दोनों फ़ाइलें एक ही फ़ोल्डर में रखें, जैसे Documents\\SalonOS।'}},
+  {icon:'💻',ui:'local',
+   en:{t:'4. Local — Tally on this computer',s:'Open Tally with your company loaded. Double-click the start file. If Windows says "Windows protected your PC", click More info, then Run anyway. A window opens and says Listening — keep it open. In SalonOS click ⟳ Check: it shows Connected.'},
+   hi:{t:'4. लोकल — टैली इसी कंप्यूटर पर',s:'टैली में कंपनी खोलें। स्टार्ट फ़ाइल पर डबल-क्लिक करें। अगर विंडोज़ कहे कि उसने आपका PC सुरक्षित किया, तो More info और फिर Run anyway दबाएँ। एक विंडो खुलेगी जिसमें Listening लिखा होगा — उसे खुला रखें। SalonOS में Check दबाएँ: Connected दिखेगा।'}},
+  {icon:'🏢',ui:'server',
+   en:{t:'5. Server — Tally on another computer or office server',s:'Right-click the start file and choose Edit. At the end of the line add -TallyHost and the server’s address, for example -TallyHost 192.168.1.20. Save, then double click it. The server’s Tally port 9000 must be reachable on your office network or VPN.'},
+   hi:{t:'5. सर्वर — टैली दूसरे कंप्यूटर या ऑफ़िस सर्वर पर',s:'स्टार्ट फ़ाइल पर राइट-क्लिक करके Edit चुनें। लाइन के आख़िर में -TallyHost और सर्वर का पता लिखें, जैसे -TallyHost 192.168.1.20। सेव करके डबल-क्लिक करें। सर्वर का टैली पोर्ट 9000 आपके ऑफ़िस नेटवर्क या VPN पर पहुँचने योग्य होना चाहिए।'}},
+  {icon:'☁️',ui:'cloud',
+   en:{t:'6. Cloud — Tally on a cloud or remote desktop',s:'Log in to the cloud desktop where Tally runs. Copy both connector files there and start the connector there. Then open SalonOS in the browser of that same cloud desktop and click Check.'},
+   hi:{t:'6. क्लाउड — टैली क्लाउड या रिमोट डेस्कटॉप पर',s:'उस क्लाउड डेस्कटॉप में लॉगिन करें जहाँ टैली चलता है। दोनों कनेक्टर फ़ाइलें वहाँ कॉपी करें और कनेक्टर वहीं चालू करें। फिर उसी क्लाउड डेस्कटॉप के ब्राउज़र में SalonOS खोलें और Check दबाएँ।'}},
+  {icon:'✅',ui:'use',
+   en:{t:'7. Using it every day',s:'Choose the company and click Fetch ledgers. Ledgers missing in Tally are listed with Create them in Tally. New vendors and categories are created automatically when you open this tab. Send vouchers with the Push buttons — SalonOS shows how many Tally created or rejected.'},
+   hi:{t:'7. रोज़ाना इस्तेमाल',s:'कंपनी चुनें और Fetch ledgers दबाएँ। जो लेजर टैली में नहीं हैं वे Create them in Tally के साथ दिखेंगे। नए वेंडर और कैटेगरी इस टैब को खोलते ही अपने-आप बन जाते हैं। Push बटन से वाउचर भेजें — SalonOS बताएगा कि टैली ने कितने बनाए या रिजेक्ट किए।'}},
+];
+function tallyGuidePictures({box,pill}){
+  const mono={fontFamily:'Consolas, monospace',fontSize:11,background:'#0c1a33',color:'#9fe7a4',borderRadius:6,padding:'8px 10px',lineHeight:1.6};
+  return{
+    intro:React.createElement('div',{style:{...box,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}},pill('SalonOS'),'⇄',pill('🔌 Connector',true),'⇄',pill('Tally (port 9000)')),
+    tallycfg:React.createElement('div',{style:box},'F1 Help › Settings › Connectivity › Client/Server configuration',
+      React.createElement('div',{style:{marginTop:8}},'TallyPrime acts as ',pill('Both',true),' Enable ODBC ',pill('Yes',true),' Port ',pill('9000',true))),
+    download:React.createElement('div',{style:box},'Tally Export › 🔌 Tally Connector',React.createElement('div',{style:{marginTop:8}},pill('⬇ Start-SalonOS-Tally-Connector.bat',true),pill('⬇ SalonOS-Tally-Connector.ps1',true)),
+      React.createElement('div',{style:{marginTop:8,animation:'bgIn .6s ease both 1s'}},'📁 Documents\\SalonOS\\ (both files together)')),
+    local:React.createElement('div',{style:box},'🖱 double-click Start-SalonOS-Tally-Connector.bat',
+      React.createElement('div',{style:{...mono,marginTop:8,animation:'bgIn .6s ease both .8s'}},'SalonOS Tally Connector 1.0',React.createElement('br'),'Listening on   http://localhost:9123/',React.createElement('br'),'Tally at       http://127.0.0.1:9000'),
+      React.createElement('div',{style:{marginTop:8,animation:'bgIn .6s ease both 1.6s'}},pill('⟳ Check'),React.createElement('span',{className:'badge badge-green'},'Connected'))),
+    server:React.createElement('div',{style:box},'Right-click the .bat › Edit — add at the end of the line:',
+      React.createElement('div',{style:{...mono,marginTop:8}},'powershell ... SalonOS-Tally-Connector.ps1',React.createElement('span',{style:{color:'#ffd479'}},' -TallyHost 192.168.1.20'))),
+    cloud:React.createElement('div',{style:box},'☁️ Cloud desktop (Tally runs here)',React.createElement('div',{style:{marginTop:8}},pill('Tally'),pill('🔌 Connector',true),pill('Browser: digitalca.co.in',true)),
+      React.createElement('div',{style:{marginTop:8,fontSize:11,color:'var(--text3)'}},'All three on the same cloud desktop')),
+    use:React.createElement('div',{style:box},pill('⟳ Fetch ledgers',true),pill('➕ Create them in Tally'),pill('Push Vendor Invoices'),
+      React.createElement('div',{style:{marginTop:8,color:'var(--green)',animation:'bgIn .6s ease both 1s'}},'Vendor Invoices → Tally: 12 created')),
+  };
+}
+function TallyGuideModal(props){
+  return React.createElement(GuideModal,{...props,scenes:TALLY_GUIDE_SCENES,pictures:tallyGuidePictures,
+    title:{en:'Tally Connector — how to run it',hi:'टैली कनेक्टर — कैसे चलाएँ'}});
 }
 
 // ── PDF bank statements ─────────────────────────────────────────────────────────────────────────

@@ -82,7 +82,54 @@ function RecurringExpensesSheet({salon}={}){
     return{invoices:[...invoicesList,{...payload,payments:withTdsPayment([])}],created:true,updated:false};
   };
 
+  // ── "Enter bill" for Variable items: the actual bill is saved as this payee's vendor invoice
+  // (recurringId links it to the item) with the months it covers; the P&L spreads it over those
+  // months (variableRecurringMonthAmt). ──
+  const [billItem,setBillItem]=useState(null);
+  const [billForm,setBillForm]=useState({});
+  const ymOf=(idx)=>Math.floor(idx/12)+'-'+String(idx%12+1).padStart(2,'0');
+  const defaultBillPeriod=(it,billDateIso)=>{
+    const N=RECURRING_PERIOD_MONTHS[it.frequency]||1;const bm=monthIndexOfIso(billDateIso);
+    if(bm==null)return{from:'',to:''};
+    const last=it.billFor==='current'?bm:bm-1;return{from:ymOf(last-N+1),to:ymOf(last)};
+  };
+  const openEnterBill=(it)=>{
+    const today=new Date().toISOString().slice(0,10);const p=defaultBillPeriod(it,today);
+    setBillForm({billNo:'',billDate:today,periodFrom:p.from,periodTo:p.to,amount:'',gst:'',attachment:null,periodTouched:false});
+    setBillItem(it);
+  };
+  const saveBill=()=>{
+    const it=billItem,f=billForm;
+    if(!f.billNo.trim()){toast('Enter the bill number','error');return;}
+    if(!f.billDate){toast('Enter the bill date','error');return;}
+    if(!(Number(f.amount)>0)){toast('Enter the bill amount','error');return;}
+    if(!f.periodFrom||!f.periodTo||f.periodTo<f.periodFrom){toast('Choose the months this bill covers','error');return;}
+    if(outletSettings(salonId).attachmentRequired&&!f.attachment){toast('This outlet requires the bill copy to be attached','error');return;}
+    const{vendors:vlist,created}=ensureVendorForPayee(vendors,it.payee,it.expenseName,it.gstin);
+    if(created)setVendors(vlist);
+    const payee=String(it.payee||'').trim().toLowerCase();
+    const vendor=vlist.find(v=>v.name.trim().toLowerCase()===payee)||vlist.find(v=>v.name.toLowerCase().includes(payee)||payee.includes(v.name.toLowerCase()));
+    if(!vendor){toast('Could not find or create a vendor for this payee','error');return;}
+    const taxable=Math.round(Number(f.amount)),gst=Math.round(Number(f.gst)||0);
+    const tdsAmt=it.tdsApplicable?Math.round(taxable*(Number(it.tdsRate)||0)/100):0;
+    const id=nextPrefixedId(vendorInvoices,'VI-',4);
+    const dmy=isoToDMY2(f.billDate);
+    const months=(monthIndexOfIso(f.periodTo+'-01')-monthIndexOfIso(f.periodFrom+'-01'))+1;
+    const periodText=monthLabelOfIndex(monthIndexOfIso(f.periodFrom+'-01'))+(months>1?' – '+monthLabelOfIndex(monthIndexOfIso(f.periodTo+'-01')):'');
+    const inv={id,vendorId:vendor.id,invoiceNo:f.billNo.trim(),docNature:'Tax Invoice',invoiceDate:dmy,bookingDate:dmy,dueDate:'',
+      taxable,igst:'',cgst:gst?gst/2:'',sgst:gst?gst/2:'',roundOff:'',amount:taxable+gst,
+      tdsAmt,tdsSection:it.tdsApplicable?it.tdsSection:'',tdsRate:it.tdsApplicable?it.tdsRate:'',
+      category:vendorCategoryForExpenseType(it.expenseName),desc:displayName(it)+' bill for '+periodText,attachment:f.attachment,linkedPI:'',
+      recurringId:it.id,periodFrom:f.periodFrom,periodTo:f.periodTo,
+      payments:tdsAmt>0?[{id:'TDS-'+id,paidAmount:tdsAmt,paidDate:f.billDate,mode:'TDS',ref:'',note:'TDS deducted at source ('+(it.tdsSection||'—')+' @ '+(Number(it.tdsRate)||0)+'%)'}]:[]};
+    setVendorInvoices(prev=>[...prev,inv]);
+    setItems(prev=>prev.map(x=>x.id===it.id?{...x,amountUpdatedOn:new Date().toISOString().slice(0,10)}:x));
+    toast('Bill '+inv.invoiceNo+' saved — ₹'+inv.amount.toLocaleString('en-IN')+' for '+periodText+(months>1?' (₹'+Math.round(inv.amount/months).toLocaleString('en-IN')+' per month on the P&L)':'')+'. It is also in Vendor Sheet for payment.','success');
+    setBillItem(null);
+  };
+
   const BLANK={id:'',expenseName:RECURRING_EXPENSE_TYPES[0],customName:'',payee:'',amount:'',frequency:'Monthly',dueDay:5,paymentMode:'Bank Transfer',startDate:'',endDate:'',status:'Active',notes:'',
+    amountType:'Fixed',billFor:'previous',
     gstApplicable:false,gstin:'',gstAmount:'',
     // Reverse Charge Mechanism only applies to specific categories of supply under Section
     // 9(3)/9(4) of the CGST Act — it's not automatic just because the payee doesn't charge GST.
@@ -176,7 +223,9 @@ function RecurringExpensesSheet({salon}={}){
 
   const nextId=()=>nextPrefixedId(items,'RE',3);
   const displayName=(it)=>it.expenseName==='Other'&&it.customName?it.customName:it.expenseName;
-  const monthlyEquiv=(it)=>recurringExpenseMonthlyAmt(it); // shared with the P&L linkage — one formula, no drift
+  // Shared with the P&L linkage — one formula, no drift. Variable items: the current estimate
+  // (average of recent bills per month).
+  const monthlyEquiv=(it)=>isVariableRecurring(it)?variableRecurringEstimatePerMonth(it,variableRecurringBills(it,salonId)):recurringExpenseMonthlyAmt(it);
   // Invoice Value = Taxable/Base Amount + whatever GST actually applies — forward-charge GST
   // (as entered) when the payee charges it, or 18% under Reverse Charge when they don't (and RCM
   // was flagged as applicable). Mirrors recurringExpenseMonthlyAmt's own GST/RCM math exactly, so
@@ -210,8 +259,15 @@ function RecurringExpensesSheet({salon}={}){
     if(created)setVendors(nextVendors);
     const vendorMatch=nextVendors.find(v=>v.name.trim().toLowerCase()===rec.payee.trim().toLowerCase())
       ||nextVendors.find(v=>v.name.toLowerCase().includes(rec.payee.toLowerCase())||rec.payee.toLowerCase().includes(v.name.toLowerCase()));
-    const{invoices:nextInvoices,created:invCreated}=ensureInvoiceForRecurring(vendorInvoices,rec,vendorMatch&&vendorMatch.id);
-    setVendorInvoices(nextInvoices);
+    // Variable items have no standing invoice — each actual bill ("Enter bill") is the payable. A
+    // standing one left from when the item was Fixed is removed if nothing was paid against it.
+    let invCreated=false;
+    if(rec.amountType==='Variable'){
+      setVendorInvoices(prev=>prev.filter(i=>!(i.invoiceNo==='REC-'+rec.id&&!(i.payments||[]).some(p=>p.mode!=='TDS'))));
+    }else{
+      const r=ensureInvoiceForRecurring(vendorInvoices,rec,vendorMatch&&vendorMatch.id);
+      invCreated=r.created;setVendorInvoices(r.invoices);
+    }
     if(created)toast('Recurring expense saved — added "'+created.name+'" to Vendor List ('+created.cat+') with a linked invoice','success');
     else if(invCreated)toast((editId?'Recurring expense updated':'Recurring expense added')+' — invoice added in Vendor Sheet','success');
     else toast(editId?'Recurring expense updated — linked invoice kept in sync':'Recurring expense added','success');
@@ -239,6 +295,7 @@ function RecurringExpensesSheet({salon}={}){
       if(created)createdVendors++;
       const match=workingVendors.find(v=>v.name.trim().toLowerCase()===it.payee.trim().toLowerCase())
         ||workingVendors.find(v=>v.name.toLowerCase().includes(it.payee.toLowerCase())||it.payee.toLowerCase().includes(v.name.toLowerCase()));
+      if(it.amountType==='Variable')return; // bills are the payables for variable items
       const{invoices:nextI,created:invC,updated:invU}=ensureInvoiceForRecurring(workingInvoices,it,match&&match.id);
       workingInvoices=nextI;
       if(invC)createdInvoices++;
@@ -270,12 +327,12 @@ function RecurringExpensesSheet({salon}={}){
   const reWrapRef=useRef(null);
   const reCellRange=useExcelCellRange(reWrapRef);
 
-  const reReportBodyHtml=()=>'<table><thead><tr><th>Expense Type</th><th>Payee</th><th>Frequency</th><th class="num">Taxable Amount</th><th class="num">Invoice Value</th><th class="num">Monthly Equiv.</th><th>Due Day</th><th>Payment Mode</th><th>Status</th></tr></thead><tbody>'
-    +reFilters.filteredRows.map(i=>'<tr><td>'+displayName(i)+'</td><td>'+i.payee+'</td><td>'+i.frequency+'</td><td class="num">₹'+Number(i.amount).toLocaleString('en-IN')+'</td><td class="num">₹'+invoiceValueOf(i).toLocaleString('en-IN')+'</td><td class="num">₹'+Math.round(monthlyEquiv(i)).toLocaleString('en-IN')+'</td><td>'+i.dueDay+'</td><td>'+i.paymentMode+'</td><td>'+i.status+'</td></tr>').join('')+'</tbody></table>';
-  const reReportSheetRows=()=>[['Expense Type','Payee','Frequency','Taxable Amount','GST Applicable','GSTIN','GST Amount','Invoice Value','Monthly Equivalent','Due Day','Payment Mode','Start Date','End Date','Status','Notes'],
+  const reReportBodyHtml=()=>'<table><thead><tr><th>Expense Type</th><th>Payee</th><th>Frequency</th><th class="num">Taxable Amount</th><th class="num">Invoice Value</th><th class="num">TDS Payable</th><th class="num">Payable to Payee</th><th class="num">Monthly Equiv.</th><th>Due Day</th><th>Payment Mode</th><th>Status</th></tr></thead><tbody>'
+    +reFilters.filteredRows.map(i=>'<tr><td>'+displayName(i)+'</td><td>'+i.payee+'</td><td>'+i.frequency+'</td><td class="num">₹'+Number(i.amount).toLocaleString('en-IN')+'</td><td class="num">₹'+invoiceValueOf(i).toLocaleString('en-IN')+'</td><td class="num">'+(tdsAmountOf(i)?'₹'+tdsAmountOf(i).toLocaleString('en-IN'):'—')+'</td><td class="num">₹'+(invoiceValueOf(i)-tdsAmountOf(i)).toLocaleString('en-IN')+'</td><td class="num">₹'+Math.round(monthlyEquiv(i)).toLocaleString('en-IN')+'</td><td>'+i.dueDay+'</td><td>'+i.paymentMode+'</td><td>'+i.status+'</td></tr>').join('')+'</tbody></table>';
+  const reReportSheetRows=()=>[['Expense Type','Payee','Frequency','Taxable Amount','GST Applicable','GSTIN','GST Amount','Invoice Value','TDS Section','TDS Rate %','TDS Payable','Payable to Payee','Monthly Equivalent','Due Day','Payment Mode','Start Date','End Date','Status','Notes'],
     ...reFilters.filteredRows.map(i=>[displayName(i),i.payee,i.frequency,Number(i.amount),
       i.gstApplicable?'Yes':'No',i.gstin||'',i.gstAmount||'',
-      invoiceValueOf(i),
+      invoiceValueOf(i),i.tdsApplicable?(i.tdsSection||''):'',i.tdsApplicable?(Number(i.tdsRate)||0):'',tdsAmountOf(i),invoiceValueOf(i)-tdsAmountOf(i),
       Math.round(monthlyEquiv(i)),i.dueDay,i.paymentMode,i.startDate||'',i.endDate||'',i.status,i.notes||''])];
 
   return React.createElement('div',{className:'fade-in'},
@@ -318,6 +375,8 @@ function RecurringExpensesSheet({salon}={}){
                 onChange:e=>setBulkSelectedIds(e.target.checked?new Set(reFilters.filteredRows.map(r=>r.id)):new Set())})),
             reFilters.TH(REF_COLS[0]),reFilters.TH(REF_COLS[1]),reFilters.TH(REF_COLS[2]),reFilters.TH(REF_COLS[3]),
             React.createElement('th',{key:'invoiceValue'},'Invoice Value'),
+            React.createElement('th',{key:'tdsPayable',title:'TDS to deduct and pay to the government each period'},'TDS Payable'),
+            React.createElement('th',{key:'netPayable',title:'What is actually paid to the payee each period: Invoice Value − TDS'},'Payable to Payee'),
             React.createElement('th',{key:'monthlyEq'},'Monthly Equiv.'),
             React.createElement('th',{key:'dueDay'},'Due Day'),
             reFilters.TH(REF_COLS[4]),
@@ -326,7 +385,7 @@ function RecurringExpensesSheet({salon}={}){
             React.createElement('th',{key:'actions'},'Actions')
           )),
           reFilters.filteredRows.length===0
-            ?React.createElement('tbody',null,React.createElement('tr',null,React.createElement('td',{colSpan:12,style:{textAlign:'center',padding:32,color:'var(--text3)'}},items.length===0?'No recurring expenses set up yet. Click + Add Recurring Expense to begin.':'No recurring expenses match your filters.')))
+            ?React.createElement('tbody',null,React.createElement('tr',null,React.createElement('td',{colSpan:14,style:{textAlign:'center',padding:32,color:'var(--text3)'}},items.length===0?'No recurring expenses set up yet. Click + Add Recurring Expense to begin.':'No recurring expenses match your filters.')))
             :React.createElement('tbody',null,reFilters.filteredRows.map((it,ri)=>{
               const sel=(c)=>reCellRange.isSelected(ri,c)?'rgba(47,95,224,0.12)':undefined;
               const dueInDays=Number(it.dueDay)-today.getDate();
@@ -338,15 +397,29 @@ function RecurringExpensesSheet({salon}={}){
                 React.createElement('td',{'data-xr':ri,'data-xc':2,style:{background:sel(2)}},React.createElement('span',{className:'badge badge-blue'},it.frequency)),
                 React.createElement('td',{'data-xr':ri,'data-xc':3,style:{background:sel(3)}},
                   React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},'₹'+Number(it.amount).toLocaleString('en-IN')),
-                  it.status==='Active'&&needsAmountUpdate(it)&&React.createElement('div',{style:{fontSize:10,color:'var(--orange)',fontWeight:600,marginTop:2}},'⚠ Update Amount')
+                  isVariableRecurring(it)
+                    ?(()=>{
+                        const bills=variableRecurringBills(it,salonId);const last=bills[bills.length-1];
+                        const miss=variableRecurringMissingPeriod(it,salonId);
+                        return React.createElement('div',{style:{fontSize:10,marginTop:2,lineHeight:1.5}},
+                          React.createElement('span',{className:'badge badge-purple',style:{fontSize:9,padding:'1px 6px'}},'Variable'),
+                          last&&React.createElement('div',{style:{color:'var(--text3)'}},'Last bill ₹'+Math.round(last.amount).toLocaleString('en-IN')+' ('+monthLabelOfIndex(last.first)+(last.months>1?'–'+monthLabelOfIndex(last.last):'')+')'),
+                          miss&&React.createElement('div',{style:{color:'var(--orange)',fontWeight:600}},'⚠ '+monthLabelOfIndex(miss.first)+(miss.last>miss.first?'–'+monthLabelOfIndex(miss.last):'')+' bill not entered'));
+                      })()
+                    :(it.status==='Active'&&needsAmountUpdate(it)&&React.createElement('div',{style:{fontSize:10,color:'var(--orange)',fontWeight:600,marginTop:2}},'⚠ Update Amount'))
                 ),
                 React.createElement('td',null,'₹'+invoiceValueOf(it).toLocaleString('en-IN')),
+                React.createElement('td',null,tdsAmountOf(it)>0
+                  ?React.createElement('span',{title:(it.tdsSection||'')+' @ '+(Number(it.tdsRate)||0)+'% on ₹'+Number(it.amount).toLocaleString('en-IN'),style:{color:'var(--orange)',fontWeight:600}},'₹'+tdsAmountOf(it).toLocaleString('en-IN'))
+                  :React.createElement('span',{style:{color:'var(--text3)'}},'—')),
+                React.createElement('td',{style:{fontWeight:600}},'₹'+(invoiceValueOf(it)-tdsAmountOf(it)).toLocaleString('en-IN')),
                 React.createElement('td',null,'₹'+Math.round(monthlyEquiv(it)).toLocaleString('en-IN')),
                 React.createElement('td',null,isDueSoon?React.createElement('span',{style:{color:'var(--orange)',fontWeight:600}},'Day '+it.dueDay+' ⚠'):('Day '+it.dueDay)),
                 React.createElement('td',{'data-xr':ri,'data-xc':4,style:{background:sel(4)}},it.paymentMode),
                 React.createElement('td',null,React.createElement('div',{style:{fontSize:11}},it.startDate||'—'),it.endDate?React.createElement('div',{style:{fontSize:10,color:'var(--text3)'}},'to '+it.endDate):null),
                 React.createElement('td',{'data-xr':ri,'data-xc':5,style:{background:sel(5)}},React.createElement('span',{className:'badge '+(it.status==='Active'?'badge-green':it.status==='Expired'?'badge-red':'badge-gray')},it.status)),
                 React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:4}},
+                  isVariableRecurring(it)&&React.createElement('button',{className:'btn btn-primary btn-sm',title:'Record this period’s actual bill',onClick:()=>openEnterBill(it)},'➕ Enter bill'),
                   React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>openEdit(it)},'Edit'),
                   React.createElement('button',{'aria-label':'Delete',className:'btn btn-sm',style:{background:'rgba(255,107,107,0.1)',border:'1px solid rgba(255,107,107,0.3)',color:'var(--red)',padding:'4px 8px',borderRadius:'var(--r)',cursor:'pointer',fontSize:11},onClick:()=>setShowDelete(it)},React.createElement(IconTrash,{size:14}))
                 ))
@@ -380,6 +453,22 @@ function RecurringExpensesSheet({salon}={}){
             React.createElement('select',{className:'form-control',value:form.frequency,onChange:fc('frequency')},RECURRING_FREQUENCIES.map(f=>React.createElement('option',{key:f,value:f},f)))
           ),
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-114'},'Due Day of Month'),React.createElement('input',{id:'f-114',type:'number',min:1,max:31,className:'form-control',value:form.dueDay,onChange:fc('dueDay')}))
+        ),
+        // ── Fixed vs Variable amount — Variable is for bills whose amount is only known when the bill
+        // arrives (electricity, telephone, water…). See variableRecurringMonthAmt for the P&L rule. ──
+        React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:14}},
+          React.createElement('div',{style:{display:'flex',gap:16,flexWrap:'wrap',alignItems:'center'}},
+            React.createElement('span',{style:{fontSize:12.5,fontWeight:600,color:'var(--text)'}},'Amount:'),
+            [['Fixed','Fixed — same every period'],['Variable','Variable — actual bill each period']].map(([v,l])=>React.createElement('label',{key:v,style:{display:'flex',alignItems:'center',gap:6,fontSize:12.5,cursor:'pointer'}},
+              React.createElement('input',{type:'radio',name:'reAmountType',checked:(form.amountType||'Fixed')===v,onChange:()=>setForm(f=>({...f,amountType:v}))}),l))
+          ),
+          form.amountType==='Variable'&&React.createElement('div',{style:{marginTop:10}},
+            React.createElement('div',{style:{display:'flex',gap:16,flexWrap:'wrap',alignItems:'center',marginBottom:6}},
+              React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},'Each bill is for:'),
+              [['previous','the period just ended (usual for electricity)'],['current','the current period (billed in advance)']].map(([v,l])=>React.createElement('label',{key:v,style:{display:'flex',alignItems:'center',gap:6,fontSize:12,cursor:'pointer'}},
+                React.createElement('input',{type:'radio',name:'reBillFor',checked:(form.billFor||'previous')===v,onChange:()=>setForm(f=>({...f,billFor:v}))}),l))),
+            React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',lineHeight:1.6}},
+              'Record each actual bill with "➕ Enter bill" on this row (or as an invoice from this payee in Vendor Sheet). On the P&L, each bill is spread evenly over the months it covers — e.g. a '+(form.frequency||'Bi-Monthly')+' bill of ₹12,000 counts ₹'+Math.round(12000/(RECURRING_PERIOD_MONTHS[form.frequency]||1)).toLocaleString('en-IN')+' per month. Months whose bill hasn’t come yet use an estimate: the average of the last 3 bills (the amount above until there is a bill history).'))
         ),
 
         // ── Show More Details toggle — collapses GST/TDS/increment-schedule/agreement/
@@ -687,6 +776,48 @@ function RecurringExpensesSheet({salon}={}){
       )
     ),
 
+    billItem&&React.createElement('div',{className:'modal-overlay',onClick:()=>setBillItem(null)},
+      React.createElement('div',{className:'modal',style:{width:560,maxWidth:'96vw'},onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-title'},'Enter bill — '+displayName(billItem)),
+        React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:14,lineHeight:1.6}},billItem.payee+' · '+billItem.frequency+' · saved as this payee’s invoice in Vendor Sheet (for payment) and spread over the months it covers on the P&L.'),
+        React.createElement('div',{className:'form-row cols2'},
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Bill / Invoice No. *'),
+            React.createElement('input',{className:'form-control',autoFocus:true,value:billForm.billNo,onChange:e=>setBillForm(f=>({...f,billNo:e.target.value})),placeholder:'e.g. EB-2026-0915'})),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Bill Date *'),
+            React.createElement('input',{type:'date',className:'form-control',value:billForm.billDate,onChange:e=>{const v=e.target.value;setBillForm(f=>{const p=f.periodTouched?{}:defaultBillPeriod(billItem,v);return{...f,billDate:v,...(f.periodTouched?{}:{periodFrom:p.from,periodTo:p.to})};});}}))
+        ),
+        React.createElement('div',{className:'form-row cols2'},
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Covers from (month) *'),
+            React.createElement('input',{type:'month',className:'form-control',value:billForm.periodFrom,onChange:e=>setBillForm(f=>({...f,periodFrom:e.target.value,periodTouched:true}))})),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Covers to (month) *'),
+            React.createElement('input',{type:'month',className:'form-control',value:billForm.periodTo,onChange:e=>setBillForm(f=>({...f,periodTo:e.target.value,periodTouched:true}))}))
+        ),
+        React.createElement('div',{className:'form-row cols2'},
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,(billItem.expenseName==='Electricity Expenses'?'Bill Amount':'Taxable Amount')+' (₹) *'),
+            React.createElement('input',{type:'number',className:'form-control',value:billForm.amount,onChange:e=>setBillForm(f=>({...f,amount:e.target.value})),placeholder:'0'})),
+          billItem.expenseName!=='Electricity Expenses'&&React.createElement('div',{className:'form-group'},React.createElement('label',null,'GST on the bill (₹)'),
+            React.createElement('input',{type:'number',className:'form-control',value:billForm.gst,onChange:e=>setBillForm(f=>({...f,gst:e.target.value})),placeholder:'0'}))
+        ),
+        (()=>{
+          const amt=(Number(billForm.amount)||0)+(Number(billForm.gst)||0);
+          const mi=monthIndexOfIso((billForm.periodFrom||'')+'-01'),mj=monthIndexOfIso((billForm.periodTo||'')+'-01');
+          const months=(mi!=null&&mj!=null&&mj>=mi)?mj-mi+1:0;
+          const tds=billItem.tdsApplicable?Math.round((Number(billForm.amount)||0)*(Number(billItem.tdsRate)||0)/100):0;
+          return amt>0&&months>0&&React.createElement('div',{style:{fontSize:12,background:'rgba(47,95,224,0.08)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,lineHeight:1.7}},
+            'P&L: ₹'+Math.round(amt/months).toLocaleString('en-IN')+' in each of '+months+' month'+(months===1?'':'s')+' ('+monthLabelOfIndex(mi)+(months>1?' – '+monthLabelOfIndex(mj):'')+')',
+            tds>0&&React.createElement('div',null,'TDS payable ₹'+tds.toLocaleString('en-IN')+' · Payable to '+billItem.payee+' ₹'+(amt-tds).toLocaleString('en-IN')));
+        })(),
+        React.createElement('div',{className:'form-group'},
+          React.createElement('label',null,'Bill copy'+(outletSettings(salonId).attachmentRequired?' * (required for this outlet)':'')),
+          React.createElement('div',{style:{display:'flex',gap:10,alignItems:'center'}},
+            React.createElement('input',{type:'file',accept:'image/*,.pdf',id:'re-bill-attach',style:{display:'none'},onChange:e=>{const fl=e.target.files[0];if(fl)readFileAsAttachment(fl,rec=>setBillForm(f=>({...f,attachment:rec})),err=>toast(err==='size'?'That file is too large (max 4MB).':'Couldn’t read that file.','error'));e.target.value='';}}),
+            React.createElement('label',{htmlFor:'re-bill-attach',className:'btn btn-ghost btn-sm',style:{cursor:'pointer'}},'📎 '+(billForm.attachment?(billForm.attachment.name||'Attached'):'Attach bill (JPG / PDF)')),
+            billForm.attachment&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setBillForm(f=>({...f,attachment:null}))},'✕'))),
+        React.createElement('div',{className:'modal-actions'},
+          React.createElement('button',{className:'btn btn-ghost',onClick:()=>setBillItem(null)},'Cancel'),
+          React.createElement('button',{className:'btn btn-primary',onClick:saveBill},'Save bill'))
+      )
+    ),
     showDelete&&(()=>{
       const linked=vendorInvoices.find(i=>i.invoiceNo==='REC-'+showDelete.id);
       const hasPayments=linked&&linked.payments&&linked.payments.length>0;
