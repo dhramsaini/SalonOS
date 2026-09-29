@@ -89,3 +89,17 @@ this update. Login failures still log to App errors ("Login: …").
   ICICI Personal, Axis Corporate, SBI (all three); others open the bank's official home page.
 - The Account Aggregator (Setu) card + `bank-aa` edge function + `bank_aa_links` table remain but the card is not rendered.
 - Self-tests: 27 (incl. 2 PDF-statement tests using jsPDF).
+
+## Vendor invoices & Tally connector (v2026.09.29.19)
+- Outlet settings (Master Sheet → Vendor Invoices): `piAsExpense` — PI is an expense in its own month; the FIRST actual invoice
+  with `linkedPI` (vendorId|PI no.) adds only actual − PI in its month (`vendorInvoiceExpenseEntries` in js/12-front-desk.js,
+  used by vendorInvoiceCategorySumFor/BreakupFor → P&L). Payables/GST/Tally still exclude PIs. `attachmentRequired` — Vendor Sheet
+  and Daily Sales invoice forms refuse to save without an attachment. `outletSettings(id)` (js/02-shared.js) reads current SALONS.
+- Invoice forms: Doc Nature, Invoice/Voucher No., Invoice Date compulsory; Vendor Sheet form has "+ Add New Vendor" (name, GST,
+  mobile, terms; category from the invoice) — creates the vendor on save (reuses a same-name vendor).
+- Tally connector: `tally-connector/SalonOS-Tally-Connector.ps1` + `.bat` (PowerShell HttpListener on http://localhost:9123,
+  forwards Tally XML envelopes to -TallyHost:-TallyPort, default 127.0.0.1:9000; CORS + Private-Network headers only for
+  digitalca.co.in / localhost:8765; optional -Token). App side in js/02-shared.js (tallyConnectorCall/tallySend/withTallyCompany/
+  parseTallyImportResult, ledger cache `salonos_tally_ledgers_outlet_<id>`, per-browser cfg `sos_tally_connector`) and the Tally
+  Export tab (status, company picker, fetch ledgers with parents, "missing in Tally" + create, auto-create on open, pushes with
+  Tally's real CREATED/ALTERED/ERRORS). Tested against a fake Tally (scratchpad fake-tally.ps1).

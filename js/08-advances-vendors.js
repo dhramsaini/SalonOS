@@ -838,7 +838,8 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
   const salonId=salon?.id;
   const BLANK_V={id:'',name:'',address:'',gst:'',cat:'Purchase of Cosmetic',contact:'',phone:'',terms:'30 days',status:'Active',tdsApplicable:false,tdsSection:'',tdsRate:'',
     bankName:'',accountNo:'',ifsc:'',accountHolder:'',email:''};
-  const BLANK_INV={vendorId:'',invoiceNo:'',invoiceDate:'',amount:'',dueDate:'',desc:'',attachment:null,docNature:'Tax Invoice',bookingDate:'',igst:'',cgst:'',sgst:'',roundOff:'',freight:'',linkedPI:'',category:'',assetLines:[]};
+  const BLANK_INV={vendorId:'',invoiceNo:'',invoiceDate:'',amount:'',dueDate:'',desc:'',attachment:null,docNature:'Tax Invoice',bookingDate:'',igst:'',cgst:'',sgst:'',roundOff:'',freight:'',linkedPI:'',category:'',assetLines:[],
+    newVendorName:'',newVendorGst:'',newVendorPhone:'',newVendorTerms:'30 days'}; // new* = "+ Add New Vendor" from the invoice form
   const BLANK_PAY={invoiceId:null,editingPaymentId:null,paidAmount:'',paidDate:new Date().toISOString().slice(0,10),mode:'NEFT',ref:'',note:'',fromDailySales:false};
 
   const [vendors,setVendors]=useState(()=>loadVendors(salonId));
@@ -1031,7 +1032,13 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
   const saveInvoice=()=>{
     if(vendBlockIfLocked(invForm.bookingDate||invForm.invoiceDate))return;
     const computedTotal=(Number(invForm.taxable)||0)+(Number(invForm.igst)||0)+(Number(invForm.cgst)||0)+(Number(invForm.sgst)||0)+(Number(invForm.freight)||0)+(Number(invForm.roundOff)||0);
-    if(!invForm.vendorId||!computedTotal){alert('Vendor and at least a Taxable Value are required');return;}
+    if(!invForm.vendorId){alert('Select a vendor, or choose "+ Add New Vendor".');return;}
+    if(invForm.vendorId==='__new__'&&!(invForm.newVendorName||'').trim()){alert('Enter the new vendor’s name.');return;}
+    if(!invForm.docNature){alert('Select the Doc Nature.');return;}
+    if(!(invForm.invoiceNo||'').trim()){alert((invForm.docNature==='Performa Invoice'?'PI':'Invoice / Voucher')+' No. is required.');return;}
+    if(!invForm.invoiceDate){alert((invForm.docNature==='Performa Invoice'?'PI':'Invoice')+' Date is required.');return;}
+    if(!computedTotal){alert('Enter at least a Taxable Value.');return;}
+    if(outletSettings(salonId).attachmentRequired&&!invForm.attachment){alert('This outlet requires the document to be attached for every '+invForm.docNature+' — please attach it (📎 below) before saving.');return;}
     if(!invForm.category){alert('Please select a Category before saving.');return;}
     if(invForm.category==='Fixed Assets'){
       const lines=(invForm.assetLines||[]).filter(l=>(l.name||'').trim()||Number(l.amount)>0);
@@ -1044,7 +1051,21 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
     if(invForm.docNature!=='Performa Invoice'&&piPrompt==='yes'&&!invForm.linkedPI){alert('Select which Performa Invoice this '+invForm.docNature+' is booked against, or choose "No — standalone '+invForm.docNature+'" above.');return;}
     const amount=Math.round(computedTotal);
     const dmy=(iso)=>{const p=String(iso||'').split('-');return p.length===3&&p[0].length===4?p[2]+'/'+p[1]+'/'+p[0]:iso;};
-    const savedInvoice={...invForm,amount,invoiceDate:dmy(invForm.invoiceDate),bookingDate:dmy(invForm.bookingDate||invForm.invoiceDate),dueDate:dmy(invForm.dueDate)};
+    // "+ Add New Vendor": create the vendor (or reuse one with the same name) and book against it.
+    let vendorId=invForm.vendorId;
+    if(vendorId==='__new__'){
+      const name=invForm.newVendorName.trim();
+      const existing=vendors.find(v=>v.name.trim().toLowerCase()===name.toLowerCase());
+      if(existing){vendorId=existing.id;toastSuccess('"'+existing.name+'" already exists — using that vendor.');}
+      else{
+        vendorId=nextPrefixedId(vendors,'V',3);
+        setVendors(prev=>[...prev,{id:vendorId,name,address:'',gst:(invForm.newVendorGst||'').trim().toUpperCase(),cat:invForm.category||'Other',
+          contact:'',phone:(invForm.newVendorPhone||'').trim(),terms:invForm.newVendorTerms||'30 days',status:'Active',tdsApplicable:false,tdsSection:'',tdsRate:''}]);
+        toastSuccess('Vendor "'+name+'" added to the Master Vendor List.');
+      }
+    }
+    const {newVendorName,newVendorGst,newVendorPhone,newVendorTerms,...invFields}=invForm;
+    const savedInvoice={...invFields,vendorId,amount,invoiceDate:dmy(invForm.invoiceDate),bookingDate:dmy(invForm.bookingDate||invForm.invoiceDate),dueDate:dmy(invForm.dueDate)};
     setInvoices(prev=>{
       let next,targetIdx;
       if(editInvoiceId!==null){
@@ -1833,16 +1854,29 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
               setInvForm(f=>({...f,vendorId:vid,category:f.category?f.category:(v?v.cat:'')}));
             }},
               React.createElement('option',{value:''},'— Select Vendor —'),
+              React.createElement('option',{value:'__new__'},'+ Add New Vendor'),
               vendors.map(v=>React.createElement('option',{key:v.id,value:v.id},v.name))
             )
           ),
           React.createElement('div',{className:'form-group'},
-            React.createElement('label',null,'Doc Nature'),
+            React.createElement('label',null,'Doc Nature *'),
             React.createElement('select',{className:'form-control',value:invForm.docNature||'Tax Invoice',onChange:ic('docNature')},
               ['Tax Invoice','Invoice','Performa Invoice'].map(o=>React.createElement('option',{key:o,value:o},o))
             )
           ),
-          React.createElement('div',{className:'form-group'},React.createElement('label',null,(invForm.docNature==='Performa Invoice'?'PI No.':'Invoice / Voucher No.')),React.createElement('input',{className:'form-control',value:invForm.invoiceNo,onChange:ic('invoiceNo'),placeholder:invForm.docNature==='Performa Invoice'?'e.g. PI-2024-001':'e.g. INV-2024-001'}))
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,(invForm.docNature==='Performa Invoice'?'PI No. *':'Invoice / Voucher No. *')),React.createElement('input',{className:'form-control',value:invForm.invoiceNo,onChange:ic('invoiceNo'),placeholder:invForm.docNature==='Performa Invoice'?'e.g. PI-2024-001':'e.g. INV-2024-001'}))
+        ),
+        invForm.vendorId==='__new__'&&React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'12px 14px',marginBottom:14}},
+          React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8}},'New vendor — added to the Master Vendor List when you save (full details can be filled there later)'),
+          React.createElement('div',{className:'form-row cols2'},
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'Vendor Name *'),React.createElement('input',{className:'form-control',autoFocus:true,value:invForm.newVendorName,onChange:ic('newVendorName'),placeholder:'e.g. Rajiv A Luthria'})),
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'GST Number'),React.createElement('input',{className:'form-control',value:invForm.newVendorGst,onChange:ic('newVendorGst'),placeholder:'e.g. 07AABCX1234R1ZP',style:{textTransform:'uppercase'}}))
+          ),
+          React.createElement('div',{className:'form-row cols2',style:{marginBottom:0}},
+            React.createElement('div',{className:'form-group',style:{marginBottom:0}},React.createElement('label',null,'Mobile No.'),React.createElement('input',{className:'form-control',value:invForm.newVendorPhone,onChange:ic('newVendorPhone'),placeholder:'98xxxxxxxx'})),
+            React.createElement('div',{className:'form-group',style:{marginBottom:0}},React.createElement('label',null,'Payment Terms'),React.createElement('select',{className:'form-control',value:invForm.newVendorTerms,onChange:ic('newVendorTerms')},['7 days','15 days','30 days','45 days','60 days','90 days','Advance'].map(t=>React.createElement('option',{key:t},t))))
+          ),
+          React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:6}},'The vendor’s category is taken from the Category chosen below.')
         ),
         React.createElement('div',{className:'form-row cols3'},
           React.createElement('div',{className:'form-group'},
@@ -1908,7 +1942,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
           React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:5}},'Confirms this Tax Invoice was received against that Performa Invoice — it stops showing as pending once this is saved.')
         ),
         React.createElement('div',{className:'form-row cols2'},
-          React.createElement('div',{className:'form-group'},React.createElement('label',null,invForm.docNature==='Performa Invoice'?'PI Date':'Invoice Date'),React.createElement('input',{type:'date',className:'form-control',value:invForm.invoiceDate,onChange:ic('invoiceDate')})),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,invForm.docNature==='Performa Invoice'?'PI Date *':'Invoice Date *'),React.createElement('input',{type:'date',className:'form-control',value:invForm.invoiceDate,onChange:ic('invoiceDate')})),
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-90'},'Booking Date'),React.createElement('input',{id:'f-90',type:'date',className:'form-control',value:invForm.bookingDate||invForm.invoiceDate,onChange:ic('bookingDate')}))
         ),
         React.createElement('div',{className:'form-row cols3'},
@@ -1932,8 +1966,8 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
         ),
         // Attachment upload
         React.createElement('div',{className:'form-group',style:{marginBottom:14}},
-          React.createElement('label',null,'Attach Invoice / Voucher Copy'),
-          React.createElement('div',{style:{background:'var(--bg3)',border:'1px dashed var(--border2)',borderRadius:'var(--r)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}},
+          React.createElement('label',null,'Attach Invoice / Voucher Copy'+(outletSettings(salonId).attachmentRequired?' * (required for this outlet)':'')),
+          React.createElement('div',{style:{background:'var(--bg3)',border:'1px dashed '+(outletSettings(salonId).attachmentRequired&&!invForm.attachment?'var(--orange)':'var(--border2)'),borderRadius:'var(--r)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}},
             React.createElement('input',{type:'file',accept:'image/*,.pdf',style:{display:'none'},id:'inv-attach',onChange:e=>{const f=e.target.files[0];if(f)readFileAsAttachment(f,rec=>{setInvForm(prev=>({...prev,attachment:rec}));toastSuccess('Attachment added');},err=>toastError(err==='size'?'That file is too large (max 4MB).':"Couldn't read that file — please try again."));e.target.value='';}}),
             React.createElement('label',{htmlFor:'inv-attach',style:{cursor:'pointer',fontSize:12,color:'var(--accent)',display:'flex',alignItems:'center',gap:6}},
               '📎 ',invForm.attachment?(typeof invForm.attachment==='string'?invForm.attachment:invForm.attachment.name):'Choose file (JPG / PDF)'

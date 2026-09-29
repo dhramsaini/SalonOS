@@ -594,6 +594,11 @@ function MasterSheet({onSelect,salons,setSalons,user}){
     // matching that industry norm, with a With Effect From date since this can change (e.g. a
     // change in registration type, or a change in the law itself).
     gstInputBlocked:true,gstInputWef:'',
+    // Vendor invoices: piAsExpense — a Performa Invoice counts as an expense in its own month, and
+    // the actual invoice later booked against it adds only the difference (short/excess) in the
+    // actual invoice's month. attachmentRequired — Tax Invoice / Invoice / Performa Invoice can't be
+    // saved without the document attached.
+    piAsExpense:false,attachmentRequired:false,
     // Payment Due Dates — feeds the Due Date Tracker's auto-generated Salary Disbursement /
     // Incentive Payment items, same rolling-window pattern as PF/ESIC/PT, but on a day the outlet
     // itself sets rather than a fixed statutory one, since payroll cutoff varies salon to salon.
@@ -1167,6 +1172,20 @@ function MasterSheet({onSelect,salons,setSalons,user}){
                 ?(form.gstInputBlocked?'GST paid on purchases from this date onward is treated as a real cost (capitalized into Fixed Assets / expensed), not a recoverable credit.':'ITC treated as claimable from this date onward.')
                 :'Set a date if this status started applying from a specific point — leave blank if it\'s always applied.')
           )
+        ),
+
+        React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'18px 0 4px',paddingTop:14,borderTop:'1px solid var(--border)'}},'Vendor Invoices'),
+        React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:14,display:'flex',flexDirection:'column',gap:10}},
+          React.createElement('label',{style:{display:'flex',alignItems:'flex-start',gap:8,cursor:'pointer'}},
+            React.createElement('input',{type:'checkbox',checked:!!form.piAsExpense,onChange:fcCheck('piAsExpense'),style:{marginTop:3}}),
+            React.createElement('span',null,
+              React.createElement('span',{style:{fontSize:12.5,fontWeight:600,color:'var(--text)'}},'Treat Performa Invoice (PI) as an expense'),
+              React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',lineHeight:1.5,marginTop:2}},'A PI is booked as an expense in the month of its date. When the actual Tax Invoice / Invoice is later entered against that PI, only the difference (actual − PI, short or excess) is booked, in the month of the actual invoice. Off: PIs are not expenses; only actual invoices are.'))),
+          React.createElement('label',{style:{display:'flex',alignItems:'flex-start',gap:8,cursor:'pointer'}},
+            React.createElement('input',{type:'checkbox',checked:!!form.attachmentRequired,onChange:fcCheck('attachmentRequired'),style:{marginTop:3}}),
+            React.createElement('span',null,
+              React.createElement('span',{style:{fontSize:12.5,fontWeight:600,color:'var(--text)'}},'Attachment compulsory for invoices'),
+              React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',lineHeight:1.5,marginTop:2}},'A Tax Invoice, Invoice or Performa Invoice can’t be saved without attaching the document (in Vendor Sheet and in Daily Sales & Exp).')))
         ),
 
         React.createElement('div',{className:'modal-actions'},

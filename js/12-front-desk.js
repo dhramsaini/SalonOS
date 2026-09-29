@@ -947,32 +947,42 @@ const PL_BELOW=[['Depreciation on equipment & interiors',0.031,0.00],['Interest 
 // Category (if set on the invoice) wins over its vendor's default category, so a one-off invoice
 // can be reclassified without having to change the vendor's own category. Performa Invoices are
 // excluded, same as everywhere else — they're not a real payable yet.
-function vendorInvoiceCategorySumFor(salonId,year,month,categoryName){
-  const vendorsList=loadVendors(salonId);
+// What each vendor invoice adds to expenses, dated by its invoice date. Normally a Performa Invoice
+// adds nothing. With the outlet's "Treat Performa Invoice (PI) as an expense" (Master Sheet) on, a
+// PI adds its full amount in its own month, and the first actual invoice booked against it
+// (linkedPI) adds only the difference — actual − PI, short or excess, possibly negative — in the
+// actual invoice's month. Any further actual invoices against the same PI add their full amount.
+function vendorInvoiceExpenseEntries(salonId){
+  const salon=outletSettings(salonId);
+  const piOn=!!salon.piAsExpense;
   const invoices=loadVendorInvoices(salonId);
-  let sum=0;
-  invoices.forEach(inv=>{
-    if(inv.docNature==='Performa Invoice')return;
-    const vendor=vendorsList.find(v=>v.id===inv.vendorId);
-    const effectiveCat=inv.category||(vendor?vendor.cat:'');
-    if(effectiveCat!==categoryName)return;
-    const iso=toISO(inv.invoiceDate);
-    if(!iso)return;
-    const d=new Date(iso+'T00:00:00');
-    if(isNaN(d)||d.getFullYear()!==year||d.getMonth()!==month)return;
-    sum+=Number(inv.amount)||0;
-  });
-  return sum;
+  const isPI=inv=>inv.docNature==='Performa Invoice';
+  const piByKey={};
+  const out=[];
+  if(piOn)invoices.forEach(inv=>{if(isPI(inv)){piByKey[inv.vendorId+'|'+inv.invoiceNo]=inv;out.push({inv,amount:Number(inv.amount)||0,pi:null});}});
+  const used=new Set();
+  invoices.filter(inv=>!isPI(inv))
+    .sort((a,b)=>{const da=toISO(a.invoiceDate)||'',db=toISO(b.invoiceDate)||'';return da<db?-1:da>db?1:0;})
+    .forEach(inv=>{
+      let amount=Number(inv.amount)||0,pi=null;
+      if(piOn&&inv.linkedPI&&piByKey[inv.linkedPI]&&!used.has(inv.linkedPI)){
+        pi=piByKey[inv.linkedPI];used.add(inv.linkedPI);
+        amount=Math.round((amount-(Number(pi.amount)||0))*100)/100;
+      }
+      out.push({inv,amount,pi});
+    });
+  return out;
+}
+function vendorInvoiceCategorySumFor(salonId,year,month,categoryName){
+  return vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName).reduce((s,r)=>s+r.amount,0);
 }
 // Same category-matching + same-month filter as vendorInvoiceCategorySumFor above, but returns
 // the individual invoices instead of just their total — Vendor Name, Invoice Date, and Invoice
 // No, for the P&L's "Purchase of Cosmetic" (and any other vendor-invoice-backed) line drill-down.
 function vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName){
   const vendorsList=loadVendors(salonId);
-  const invoices=loadVendorInvoices(salonId);
   const out=[];
-  invoices.forEach(inv=>{
-    if(inv.docNature==='Performa Invoice')return;
+  vendorInvoiceExpenseEntries(salonId).forEach(({inv,amount,pi})=>{
     const vendor=vendorsList.find(v=>v.id===inv.vendorId);
     const effectiveCat=inv.category||(vendor?vendor.cat:'');
     if(effectiveCat!==categoryName)return;
@@ -980,7 +990,9 @@ function vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName){
     if(!iso)return;
     const d=new Date(iso+'T00:00:00');
     if(isNaN(d)||d.getFullYear()!==year||d.getMonth()!==month)return;
-    out.push({vendorName:vendor?vendor.name:'(vendor deleted)',invoiceDate:inv.invoiceDate,invoiceNo:inv.invoiceNo||'—',docNature:inv.docNature,amount:Number(inv.amount)||0});
+    out.push({vendorName:vendor?vendor.name:'(vendor deleted)',invoiceDate:inv.invoiceDate,
+      invoiceNo:(inv.invoiceNo||'—')+(pi?' (₹'+Math.round(Number(inv.amount)||0).toLocaleString('en-IN')+' − PI '+(pi.invoiceNo||'')+' ₹'+Math.round(Number(pi.amount)||0).toLocaleString('en-IN')+')':''),
+      docNature:inv.docNature,amount});
   });
   out.sort((a,b)=>{const da=toISO(a.invoiceDate)||'';const db=toISO(b.invoiceDate)||'';return da<db?-1:da>db?1:0;});
   return out;

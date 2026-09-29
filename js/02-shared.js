@@ -336,6 +336,9 @@ function userCanSeeOutlet(u,outletId){
   if(oa){const lvl=oa[String(outletId)];return !!lvl&&lvl!=='No Access';}
   return(u.outletIds||[]).map(String).includes(String(outletId));
 }
+// An outlet's current settings (Master Sheet saves update SALONS in place; the salon object a
+// screen was opened with can be an older copy).
+function outletSettings(salonId){return SALONS.find(s=>String(s.id)===String(salonId))||{};}
 function currentSessionUser(){try{return JSON.parse(sessionStorage.getItem('salonos_user')||'null');}catch(e){return null;}}
 // The outlets the signed-in user may see, out of `list` (default: every outlet).
 function salonsForCurrentUser(list){const u=currentSessionUser();return(list||SALONS).filter(s=>userCanSeeOutlet(u,s.id));}
@@ -1189,11 +1192,78 @@ function saveTallySyncedLedgers(synced,salonId){safeLocalSet(outletKey('salonos_
 // deliberately uses no-cors — Tally's built-in XML/HTTP server doesn't send CORS headers by
 // default, so this will often be blocked by the browser even when Tally is running and
 // reachable. Treat it the same way as Direct Push: worth trying, not guaranteed. ──
-function buildTallyLedgerListRequestXml(){
+function buildTallyLedgerListRequestXml(company){
   return '<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>List of Ledgers</ID></HEADER>'
-    +'<BODY><DESC><STATICVARIABLES><SVCURRENTCOMPANY>##SVCurrentCompany</SVCURRENTCOMPANY></STATICVARIABLES>'
-    +'<TDL><TDLMESSAGE><COLLECTION NAME="List of Ledgers" ISINITIALIZE="Yes"><TYPE>Ledger</TYPE><FETCH>NAME</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>';
+    +'<BODY><DESC><STATICVARIABLES><SVCURRENTCOMPANY>'+(company?escapeTallyXml(company):'##SVCurrentCompany')+'</SVCURRENTCOMPANY></STATICVARIABLES>'
+    +'<TDL><TDLMESSAGE><COLLECTION NAME="List of Ledgers" ISINITIALIZE="Yes"><TYPE>Ledger</TYPE><FETCH>NAME, PARENT</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>';
 }
+// Ledgers with their Tally group — [{name,parent}].
+function parseTallyLedgersDetailed(xmlText){
+  try{
+    const doc=new DOMParser().parseFromString(xmlText,'text/xml');
+    if(doc.querySelector('parsererror'))return[];
+    const seen=new Set(),out=[];
+    Array.from(doc.getElementsByTagName('LEDGER')).forEach(el=>{
+      const name=(el.getAttribute('NAME')||'').trim()||((el.getElementsByTagName('NAME')[0]||{}).textContent||'').trim();
+      if(!name||seen.has(name))return;seen.add(name);
+      out.push({name,parent:((el.getElementsByTagName('PARENT')[0]||{}).textContent||'').trim()});
+    });
+    return out.sort((a,b)=>a.name.localeCompare(b.name));
+  }catch(e){return[];}
+}
+
+// ── SalonOS Tally Connector (tally-connector/SalonOS-Tally-Connector.ps1) ────────────────────────
+// Browsers may not read Tally's XML-server replies, so a small relay runs next to the browser and
+// forwards requests to Tally (local PC, office server via -TallyHost, or inside a cloud desktop).
+// Its address/token/company are this browser's own settings (not synced — they're per computer).
+const TALLY_CONNECTOR_DEFAULT='http://localhost:9123';
+function loadTallyConnectorCfg(){try{const c=JSON.parse(localStorage.getItem('sos_tally_connector')||'null');if(c&&typeof c==='object')return{url:TALLY_CONNECTOR_DEFAULT,token:'',company:'',autoCreate:true,...c};}catch(e){}return{url:TALLY_CONNECTOR_DEFAULT,token:'',company:'',autoCreate:true};}
+function saveTallyConnectorCfg(cfg){try{localStorage.setItem('sos_tally_connector',JSON.stringify(cfg));}catch(e){}}
+async function tallyConnectorCall(cfg,path,xml){
+  const base=String(cfg.url||TALLY_CONNECTOR_DEFAULT).replace(/\/+$/,'');
+  const headers={};if(cfg.token)headers['X-SalonOS-Token']=cfg.token;
+  let res;
+  try{
+    res=await fetch(base+path,xml==null?{headers,cache:'no-store'}:{method:'POST',headers:{...headers,'Content-Type':'text/xml'},body:xml,cache:'no-store'});
+  }catch(e){
+    const err=new Error('The SalonOS Tally Connector is not running at '+base+' — start it on this computer (Start-SalonOS-Tally-Connector.bat) and try again.');
+    err.notRunning=true;throw err;
+  }
+  const text=await res.text();
+  if(!res.ok){let msg='Connector error '+res.status;try{const j=JSON.parse(text);if(j.error)msg=j.error;}catch(e){}throw new Error(msg);}
+  return text;
+}
+async function tallyConnectorStatus(cfg){return JSON.parse(await tallyConnectorCall(cfg,'/status'));}
+// Tally works on the company chosen in SalonOS (when several are open) — added to every request.
+function withTallyCompany(xml,company){
+  if(!company)return xml;
+  const sv='<STATICVARIABLES><SVCURRENTCOMPANY>'+escapeTallyXml(company)+'</SVCURRENTCOMPANY></STATICVARIABLES>';
+  if(xml.indexOf('</REPORTNAME>')>=0&&xml.indexOf('<SVCURRENTCOMPANY>')<0)return xml.replace('</REPORTNAME>','</REPORTNAME>'+sv);
+  return xml.replace('##SVCurrentCompany',escapeTallyXml(company));
+}
+async function tallySend(cfg,xml){return tallyConnectorCall(cfg,'/tally',withTallyCompany(xml,cfg.company));}
+function buildTallyCompanyListXml(){
+  return '<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>SalonOS Companies</ID></HEADER>'
+    +'<BODY><DESC><TDL><TDLMESSAGE><COLLECTION NAME="SalonOS Companies" ISINITIALIZE="Yes"><TYPE>Company</TYPE><FETCH>NAME</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>';
+}
+function parseTallyCompanies(xmlText){
+  try{const doc=new DOMParser().parseFromString(xmlText,'text/xml');
+    return Array.from(new Set(Array.from(doc.getElementsByTagName('COMPANY')).map(el=>(el.getAttribute('NAME')||((el.getElementsByTagName('NAME')[0]||{}).textContent)||'').trim()).filter(Boolean)));
+  }catch(e){return[];}
+}
+// Tally's reply to an Import: counts plus any line errors.
+function parseTallyImportResult(xmlText){
+  const num=tag=>{const m=new RegExp('<'+tag+'>\\s*(-?\\d+)\\s*</'+tag+'>','i').exec(xmlText||'');return m?Number(m[1]):0;};
+  const errs=[];const re=/<LINEERROR>([\s\S]*?)<\/LINEERROR>/gi;let m;while((m=re.exec(xmlText||''))&&errs.length<20)errs.push(m[1].trim());
+  return{created:num('CREATED'),altered:num('ALTERED'),deleted:num('DELETED'),ignored:num('IGNORED'),errors:num('ERRORS'),exceptions:num('EXCEPTIONS'),lineErrors:errs};
+}
+function tallyResultText(r){
+  return(r.created?r.created+' created':'')+(r.altered?(r.created?', ':'')+r.altered+' updated':'')+((!r.created&&!r.altered)?'nothing new':'')
+    +(r.errors||r.exceptions?' · '+(r.errors+r.exceptions)+' rejected'+(r.lineErrors.length?' ('+r.lineErrors.slice(0,3).join('; ')+')':''):'');
+}
+// Ledger list last fetched from Tally for this outlet — shared with everyone who uses the outlet.
+function loadTallyLedgerCache(salonId){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_tally_ledgers',salonId))||'null');if(v&&Array.isArray(v.ledgers))return v;}catch(e){}return null;}
+function saveTallyLedgerCache(salonId,v){safeLocalSet(outletKey('salonos_tally_ledgers',salonId),JSON.stringify(v));}
 function parseTallyLedgerListResponse(xmlText){
   try{
     const doc=new DOMParser().parseFromString(xmlText,'text/xml');

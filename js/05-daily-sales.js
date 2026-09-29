@@ -836,7 +836,11 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   const saveInvoiceForm=()=>{
     if(!invForm.vendorId){dseToastErr('Select a vendor');return;}
     if(invForm.vendorId==='__new__'&&!invForm.newVendorName.trim()){dseToastErr('Enter a name for the new vendor');return;}
+    if(!invForm.docNature){dseToastErr('Select the Doc Nature');return;}
+    if(!(invForm.invoiceNo||'').trim()){dseToastErr('Invoice / Voucher No. is required');return;}
+    if(!invForm.invoiceDate){dseToastErr('Invoice Date is required');return;}
     if(invFormTotal<=0){dseToastErr('Enter at least a Taxable Value');return;}
+    if(outletSettings(salonId).attachmentRequired&&!invForm.attachment){dseToastErr('This outlet requires the invoice / voucher copy to be attached — please attach it before saving.');return;}
     if(!(Number(invForm.amountPaid)>0)){dseToastErr('Enter Amount Paid — an invoice can\'t be saved from Daily Sales & Exp without recording a payment against it.');return;}
     const payload=showInvoiceForm;
     const category=payload.category;
@@ -1774,10 +1778,10 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
               React.createElement('option',{value:'__new__'},'+ Add New Vendor'),
               loadVendors(salonId).filter(v=>v.status==='Active').map(v=>React.createElement('option',{key:v.id,value:v.id},v.name))
             )),
-          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Doc Nature'),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Doc Nature *'),
             React.createElement('select',{className:'form-control',value:invForm.docNature,onChange:ic2('docNature')},
               ['Tax Invoice','Invoice','Performa Invoice'].map(d=>React.createElement('option',{key:d},d)))),
-          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Invoice / Voucher No.'),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Invoice / Voucher No. *'),
             React.createElement('input',{className:'form-control',value:invForm.invoiceNo,onChange:ic2('invoiceNo'),placeholder:'e.g. INV-2024-001'}))
         ),
         invForm.vendorId==='__new__'&&React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'14px',marginBottom:14}},
@@ -1817,7 +1821,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
         React.createElement('div',{className:'form-group'},React.createElement('label',null,'Category *'),
           React.createElement('input',{className:'form-control',value:showInvoiceForm.category,disabled:true,style:{opacity:0.7}})),
         React.createElement('div',{className:'form-row cols2'},
-          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Invoice Date'),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Invoice Date *'),
             React.createElement('input',{type:'date',className:'form-control',value:invForm.invoiceDate,onChange:ic2('invoiceDate')})),
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Booking Date'),
             React.createElement('input',{type:'date',className:'form-control',value:invForm.bookingDate,onChange:ic2('bookingDate')}))
@@ -1844,8 +1848,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
         React.createElement('div',{className:'form-group'},React.createElement('label',null,'Description'),
           React.createElement('input',{className:'form-control',value:invForm.desc,onChange:ic2('desc'),placeholder:'e.g. Hair products — January batch'})),
         React.createElement('div',{className:'form-group',style:{marginBottom:14}},
-          React.createElement('label',null,'Attach Invoice / Voucher Copy'),
-          React.createElement('div',{style:{background:'var(--bg3)',border:'1px dashed var(--border2)',borderRadius:'var(--r)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}},
+          React.createElement('label',null,'Attach Invoice / Voucher Copy'+(outletSettings(salonId).attachmentRequired?' * (required for this outlet)':'')),
+          React.createElement('div',{style:{background:'var(--bg3)',border:'1px dashed '+(outletSettings(salonId).attachmentRequired&&!invForm.attachment?'var(--orange)':'var(--border2)'),borderRadius:'var(--r)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}},
             React.createElement('input',{type:'file',accept:'image/*,.pdf',style:{display:'none'},id:'daily-inv-attach',onChange:e=>{const f=e.target.files[0];if(f)readFileAsAttachment(f,rec=>{setInvForm(prev=>({...prev,attachment:rec}));crToast('Attachment added','success');},err=>crToastErr(err==='size'?'That file is too large (max 4MB).':"Couldn't read that file — please try again."));e.target.value='';}}),
             React.createElement('label',{htmlFor:'daily-inv-attach',style:{cursor:'pointer',fontSize:12,color:'var(--accent)',display:'flex',alignItems:'center',gap:6}},
               '📎 ',invForm.attachment?(typeof invForm.attachment==='string'?invForm.attachment:invForm.attachment.name):'Choose file (JPG / PDF)'

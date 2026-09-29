@@ -70,17 +70,43 @@ function TallyExportSheet({salon,onNavTab}={}){
     downloadTextFile('\uFEFF'+csv,'Tally_BankStatement_'+outletTag+'.csv','text/csv;charset=utf-8');
   };
 
-  // ── Experimental direct push — see the big comment above this component's definition. ──
+  // ── Tally Connector: live link to Tally through the local SalonOS Tally Connector ──
+  const [conn,setConn]=useState(()=>loadTallyConnectorCfg());
+  const updateConn=(patch)=>{const next={...conn,...patch};setConn(next);saveTallyConnectorCfg(next);};
+  const [connState,setConnState]=useState({checking:false,ok:false,tally:false,msg:'',companies:[]});
+  const [showConnSettings,setShowConnSettings]=useState(false);
+  const checkConnector=async(cfg)=>{
+    const c=cfg||conn;
+    setConnState(s=>({...s,checking:true}));
+    try{
+      const st=await tallyConnectorStatus(c);
+      let companies=[];
+      if(st.tallyReachable){try{companies=parseTallyCompanies(await tallyConnectorCall(c,'/tally',buildTallyCompanyListXml()));}catch(e){}}
+      setConnState({checking:false,ok:true,tally:!!st.tallyReachable,companies,
+        msg:st.tallyReachable?('Connected to Tally at '+st.tally+(companies.length?' — '+companies.length+' compan'+(companies.length===1?'y':'ies')+' open':'')):('Connector is running, but Tally is not answering at '+st.tally+' — open Tally with a company loaded and enable its XML/ODBC server (port 9000).')});
+      if(st.tallyReachable&&companies.length===1&&!c.company)updateConn({company:companies[0]});
+      return !!st.tallyReachable;
+    }catch(e){setConnState({checking:false,ok:false,tally:false,companies:[],msg:e.message});return false;}
+  };
+  useEffect(()=>{checkConnector();/* eslint-disable-next-line */},[]);
   const [pushBusy,setPushBusy]=useState('');
+  // Sends XML to Tally through the connector and reports Tally's own answer (created / updated /
+  // rejected). Without the connector, falls back to the old blind send to localhost:9000.
   const tryDirectPush=async(xml,label)=>{
     setPushBusy(label);
     try{
-      await fetch('http://localhost:9000',{method:'POST',headers:{'Content-Type':'text/xml'},body:xml,mode:'no-cors'});
-      success('Sent to Tally at localhost:9000 — this page can\'t read Tally\'s response, so please check Tally\'s Import log or Day Book to confirm '+label+' actually landed.');
+      const reply=await tallySend(conn,xml);
+      const r=parseTallyImportResult(reply);
+      (r.errors||r.exceptions?tallyErr:success)(label+' → Tally: '+tallyResultText(r)+'.');
+      setPushBusy('');return r;
     }catch(err){
-      tallyErr('Could not reach Tally at localhost:9000 — make sure Tally is running on THIS machine with its ODBC/XML Server enabled (F11 → Advanced Configuration → Enable ODBC/XML Server = Yes), then try again, or use the download + manual import above instead.');
+      if(!err.notRunning){tallyErr(label+': '+err.message);setPushBusy('');return null;}
+      try{
+        await fetch('http://localhost:9000',{method:'POST',headers:{'Content-Type':'text/xml'},body:withTallyCompany(xml,conn.company),mode:'no-cors'});
+        success('Sent to Tally at localhost:9000 without the connector — Tally’s reply can’t be read this way, so check Tally’s Day Book. Start the SalonOS Tally Connector for confirmed results.');
+      }catch(e2){tallyErr(err.message);}
     }
-    setPushBusy('');
+    setPushBusy('');return null;
   };
 
   const unmappedVendors=vendors.filter(v=>!map.vendors||!map.vendors[v.id]).length;
@@ -108,26 +134,54 @@ function TallyExportSheet({salon,onNavTab}={}){
     success((newVendors.length+newCategories.length)+' new ledger(s) downloaded — import via Gateway of Tally → Import Data → Masters, then they\'re marked synced here.');
   };
 
-  // ── Fetch Tally's actual current ledger list — see buildTallyLedgerListRequestXml() for why
-  // this often won't work (no CORS headers from Tally's XML server); kept best-effort, same
-  // spirit as the existing Direct Push feature below. ──
-  const [tallyLedgerList,setTallyLedgerList]=useState(null); // null = never tried, [] = tried and got nothing, [...] = got names
+  // ── Tally's actual ledger list, read through the connector (with its Parent group).
+  // Ledgers fetched from Tally are kept per outlet (shared), so the mapping suggestions and the
+  // "missing in Tally" check work for everyone until the next fetch.
+  const [ledgerCache,setLedgerCache]=useState(()=>loadTallyLedgerCache(salonId));
+  useEffect(()=>{setLedgerCache(loadTallyLedgerCache(salonId));},[salonId,refreshTick]);
+  const tallyLedgerList=ledgerCache?ledgerCache.ledgers.map(l=>l.name):null;
   const [fetchingLedgers,setFetchingLedgers]=useState(false);
-  const fetchLedgersFromTally=async()=>{
+  const fetchLedgersFromTally=async(quiet)=>{
     setFetchingLedgers(true);
     try{
-      const res=await fetch('http://localhost:9000',{method:'POST',headers:{'Content-Type':'text/xml'},body:buildTallyLedgerListRequestXml()});
-      const text=await res.text();
-      const names=parseTallyLedgerListResponse(text);
-      setTallyLedgerList(names);
-      if(names.length)success('Fetched '+names.length+' ledger(s) from Tally — use the suggestions while typing below.');
-      else tallyErr('Reached Tally but got no ledger names back — check Tally has a company open, or type ledger names manually below.');
+      const ledgers=parseTallyLedgersDetailed(await tallySend(conn,buildTallyLedgerListRequestXml(conn.company)));
+      const cache={ledgers,company:conn.company||'',fetchedAt:new Date().toISOString()};
+      saveTallyLedgerCache(salonId,cache);setLedgerCache(cache);
+      if(!quiet){if(ledgers.length)success('Fetched '+ledgers.length+' ledger(s) from Tally'+(conn.company?' ('+conn.company+')':'')+'.');else tallyErr('Tally answered but sent no ledgers — check the right company is open/selected.');}
+      setFetchingLedgers(false);return cache;
     }catch(err){
-      setTallyLedgerList([]);
-      tallyErr('Could not read a ledger list from Tally — this is commonly blocked by the browser (Tally\'s XML server doesn\'t send CORS headers), even when Tally is running and reachable. Type ledger names manually below instead.');
+      if(!quiet)tallyErr('Could not fetch ledgers from Tally: '+err.message);
+      setFetchingLedgers(false);return null;
     }
-    setFetchingLedgers(false);
   };
+  // Ledgers SalonOS needs that Tally doesn't have yet (by exact name).
+  const missingFrom=(cache)=>{
+    if(!cache)return null;
+    const have=new Set(cache.ledgers.map(l=>l.name.toLowerCase()));
+    return tallyMastersPreviewRows(vendors,categories,gstTypesUsed,map.bankLedger,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked).filter(r=>!have.has(String(r.name).toLowerCase()));
+  };
+  const missingInTally=missingFrom(ledgerCache);
+  // Creates exactly the missing ledgers in Tally, then re-reads Tally's list to confirm.
+  const createMissingInTally=async(quiet,cache)=>{
+    const miss=missingFrom(cache||ledgerCache)||[];
+    if(!miss.length){if(!quiet)success('Tally already has every ledger SalonOS needs.');return;}
+    const names=new Set(miss.map(r=>r.name));
+    const vend=vendors.filter(v=>names.has(vendorLedgerNameFor(v.id)));
+    const cats=categories.filter(c=>names.has(categoryLedgerNameFor(c)));
+    const gst={igst:names.has('IGST Input'),cgst:names.has('CGST Input'),sgst:names.has('SGST Input')};
+    const xml=buildTallyMastersXml(vend,cats,gst,names.has(map.bankLedger)?map.bankLedger:'',vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked);
+    const r=await tryDirectPush(xml,'New ledgers ('+miss.length+')');
+    if(r){markSynced(vend.map(v=>v.id),cats,names.has(map.bankLedger));await fetchLedgersFromTally(true);}
+  };
+  // With "auto-create" on: when the connector and Tally are reachable, ledgers added in SalonOS
+  // (new vendors, new categories) are created in Tally when this tab opens.
+  const autoRanRef=useRef(false);
+  useEffect(()=>{
+    if(autoRanRef.current||!connState.tally||!conn.autoCreate)return;
+    autoRanRef.current=true;
+    (async()=>{const cache=await fetchLedgersFromTally(true);if(cache&&(missingFrom(cache)||[]).length)await createMissingInTally(false,cache);})();
+    // eslint-disable-next-line
+  },[connState.tally]);
 
   return React.createElement('div',{className:'fade-in'},
     React.createElement('div',{className:'section-header'},
@@ -142,14 +196,57 @@ function TallyExportSheet({salon,onNavTab}={}){
       React.createElement('b',{style:{color:'var(--text)'}},'How this works: '),
       'This generates the same XML format Tally itself uses to import and export data — free, and more reliable than an Excel-based import. Download the files below, then in Tally go to ',
       React.createElement('b',null,'Gateway of Tally → Import Data'),
-      ' — Masters first, then Vouchers. Before importing, press F12 (Configure) → General and set "Ignore errors & continue during data import" to Yes. A live always-on connector isn\'t something a downloadable HTML file can be — the XML files below are the complete, working equivalent.'
+      ' — Masters first, then Vouchers. Or connect live with the SalonOS Tally Connector below: ledgers are read from Tally, new ones are created there, and vouchers are sent straight in with Tally’s own confirmation.'
+    ),
+
+    // ── Tally Connector — live link (local PC, office server or cloud desktop) ──
+    React.createElement('div',{className:'card',style:{marginBottom:16,border:'1px solid '+(connState.tally?'rgba(76,175,125,0.4)':'rgba(47,95,224,0.3)')}},
+      React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:6}},
+        React.createElement('div',{style:{fontWeight:600,fontSize:13,color:'var(--text)'}},'🔌 Tally Connector'),
+        React.createElement('span',{className:'badge '+(connState.tally?'badge-green':connState.ok?'badge-amber':'badge-red'),style:{fontSize:10}},connState.checking?'Checking…':connState.tally?'Connected':connState.ok?'Tally not answering':'Not connected'),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},disabled:connState.checking,onClick:()=>checkConnector()},'⟳ Check'),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowConnSettings(s=>!s)},showConnSettings?'Hide settings':'⚙ Settings')
+      ),
+      React.createElement('div',{style:{fontSize:12,color:connState.tally?'var(--green)':'var(--text2)',lineHeight:1.6,marginBottom:8}},connState.msg||'Checking for the SalonOS Tally Connector…'),
+      connState.tally&&React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:8}},
+        React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},'Company in Tally:'),
+        React.createElement('select',{className:'form-control',style:{width:'auto',minWidth:220},value:conn.company||'',onChange:e=>{updateConn({company:e.target.value});}},
+          React.createElement('option',{value:''},'(the one currently selected in Tally)'),
+          connState.companies.map(c=>React.createElement('option',{key:c,value:c},c))),
+        React.createElement('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--text2)',cursor:'pointer'}},
+          React.createElement('input',{type:'checkbox',checked:!!conn.autoCreate,onChange:e=>updateConn({autoCreate:e.target.checked})}),
+          'Create new SalonOS ledgers in Tally automatically')),
+      !connState.tally&&React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',lineHeight:1.7,background:'var(--bg3)',borderRadius:'var(--r)',padding:'10px 12px',marginBottom:8}},
+        React.createElement('b',{style:{color:'var(--text2)'}},'Set up once (Windows): '),
+        '1) In Tally: F1 Help → Settings → Connectivity → Client/Server configuration → TallyPrime acts as "Both", Enable ODBC "Yes", Port 9000 (Tally.ERP 9: F12 → Advanced Configuration). ',
+        '2) Download both connector files below into one folder. ',
+        '3) Double-click ',React.createElement('b',null,'Start-SalonOS-Tally-Connector.bat'),' and keep its window open. ',
+        '4) Click ⟳ Check. ',
+        React.createElement('br'),
+        React.createElement('b',{style:{color:'var(--text2)'}},'Tally on a server or another PC: '),'edit the .bat file and add ',React.createElement('code',null,'-TallyHost <server IP>'),' (the server’s Tally port 9000 must be reachable on your network/VPN). ',
+        React.createElement('b',{style:{color:'var(--text2)'}},'Tally on a cloud / remote desktop: '),'run the connector inside that desktop and open SalonOS there.',
+        React.createElement('div',{style:{marginTop:8,display:'flex',gap:8,flexWrap:'wrap'}},
+          React.createElement('a',{className:'btn btn-primary btn-sm',href:'tally-connector/Start-SalonOS-Tally-Connector.bat',download:'Start-SalonOS-Tally-Connector.bat'},'⬇ Start-SalonOS-Tally-Connector.bat'),
+          React.createElement('a',{className:'btn btn-ghost btn-sm',href:'tally-connector/SalonOS-Tally-Connector.ps1',download:'SalonOS-Tally-Connector.ps1'},'⬇ SalonOS-Tally-Connector.ps1'))),
+      showConnSettings&&React.createElement('div',{className:'form-row cols2',style:{marginBottom:0}},
+        React.createElement('div',{className:'form-group'},React.createElement('label',null,'Connector address'),
+          React.createElement('input',{className:'form-control',value:conn.url,placeholder:TALLY_CONNECTOR_DEFAULT,onChange:e=>updateConn({url:e.target.value.trim()})})),
+        React.createElement('div',{className:'form-group'},React.createElement('label',null,'Connector token (only if started with -Token)'),
+          React.createElement('input',{className:'form-control',type:'password',autoComplete:'off',value:conn.token,onChange:e=>updateConn({token:e.target.value})}))),
+      connState.tally&&ledgerCache&&React.createElement('div',{style:{fontSize:12,color:'var(--text2)',marginTop:4,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+        '📒 '+ledgerCache.ledgers.length+' ledgers in Tally'+(ledgerCache.company?' ('+ledgerCache.company+')':'')+' · fetched '+new Date(ledgerCache.fetchedAt).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})+' · ',
+        (missingInTally&&missingInTally.length)
+          ?React.createElement(React.Fragment,null,
+              React.createElement('span',{style:{color:'var(--orange)'}},missingInTally.length+' SalonOS ledger(s) missing in Tally: '+missingInTally.slice(0,6).map(r=>r.name).join(', ')+(missingInTally.length>6?'…':'')),
+              React.createElement('button',{className:'btn btn-primary btn-sm',disabled:!!pushBusy,onClick:()=>createMissingInTally(false)},pushBusy?'Creating…':'➕ Create them in Tally'))
+          :React.createElement('span',{style:{color:'var(--green)'}},'✓ every SalonOS ledger exists in Tally'))
     ),
 
     // ── Ledger name mapping ──
     React.createElement('div',{className:'card',style:{marginBottom:16}},
       React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:4}},
         React.createElement('div',{style:{fontWeight:600,fontSize:13,color:'var(--text)'}},'Ledger Name Mapping'),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:fetchingLedgers,onClick:fetchLedgersFromTally},fetchingLedgers?'Fetching…':'⟳ Try Fetch from Tally')
+        React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:fetchingLedgers,onClick:()=>fetchLedgersFromTally(false)},fetchingLedgers?'Fetching…':'⟳ Fetch ledgers from Tally')
       ),
       React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:12}},'Tally matches purely by ledger name — whatever you enter here must be spelled exactly like the ledger in Tally. Leave a field blank to use the name as-is from '+(salon?salon.name.split('—')[0].trim():'this outlet')+'\'s records.'),
       tallyLedgerList&&tallyLedgerList.length>0&&React.createElement('div',{style:{fontSize:10.5,color:'var(--green)',marginBottom:12}},'✓ '+tallyLedgerList.length+' ledger name(s) fetched from Tally — typing below will now suggest matches from Tally\'s actual list.'),
@@ -252,14 +349,15 @@ function TallyExportSheet({salon,onNavTab}={}){
     ),
 
     // ── Experimental direct push ──
-    React.createElement('div',{className:'card',style:{marginTop:16,borderColor:'rgba(255,159,67,0.4)'}},
+    React.createElement('div',{className:'card',style:{marginTop:16,borderColor:connState.tally?'rgba(76,175,125,0.4)':'rgba(255,159,67,0.4)'}},
       React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:4}},
-        React.createElement('span',{className:'badge badge-amber',style:{fontSize:10}},'EXPERIMENTAL'),
-        React.createElement('span',{style:{fontWeight:600,fontSize:13}},'Try sending straight to Tally')
+        React.createElement('span',{className:'badge '+(connState.tally?'badge-green':'badge-amber'),style:{fontSize:10}},connState.tally?'LIVE':'CONNECTOR OFF'),
+        React.createElement('span',{style:{fontWeight:600,fontSize:13}},'Send straight to Tally')
       ),
       React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:12,lineHeight:1.6}},
-        'Tally can accept this same XML over HTTP on its own machine (F11 → Advanced Configuration → Enable ODBC/XML Server = Yes, default port 9000). This only has a chance of working when this file is open on the '+
-        'same computer Tally is running on, and your browser may block or silently swallow the response either way — this page cannot confirm the data actually landed. The downloads above are the dependable path; treat this as a shortcut worth trying, not a guarantee.'
+        connState.tally
+          ?'Sends through the SalonOS Tally Connector to '+(conn.company||'the company open in Tally')+' and shows Tally’s own reply (created / updated / rejected). Send Masters first, then vouchers. Vouchers use the date range above.'
+          :'Start the SalonOS Tally Connector (see above) for confirmed results. Without it, SalonOS can only send blindly to Tally on this computer (localhost:9000) and can’t read whether it landed.'
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:!!pushBusy,onClick:()=>tryDirectPush(buildTallyMastersXml(vendors,categories,gstTypesUsed,map.bankLedger,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked),'Masters')},pushBusy==='Masters'?'Sending…':'Push Masters'),
