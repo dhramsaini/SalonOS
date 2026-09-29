@@ -1,0 +1,206 @@
+// SalonOS — automatic owner reports (Supabase Edge Function "salonos-reports").
+//
+// • Nightly (22:00 IST) : today's sales / expenses / attendance per outlet + month-to-date sales.
+// • Monthly (1st, 09:00 IST): last month's sales and expenses per outlet.
+// Delivered by email (Resend) and/or WhatsApp (Meta Cloud API) to the recipients a Super Admin
+// sets in SalonOS → Master Settings → Automatic reports (stored in kv_store as
+// salonos_secret_report_settings, readable only by Super Admins).
+//
+// Secrets (Supabase → Edge Functions → Secrets), added by the owner — never stored in the app:
+//   RESEND_API_KEY            email sending key from resend.com
+//   REPORT_FROM               e.g. "SalonOS Reports <reports@digitalca.co.in>" (a domain verified in Resend)
+//   WHATSAPP_TOKEN            (optional) Meta WhatsApp Cloud API permanent token
+//   WHATSAPP_PHONE_NUMBER_ID  (optional) the sending number's ID in Meta
+//   WHATSAPP_TEMPLATE         (optional) approved template name, default "salonos_daily_summary"
+//   WHATSAPP_TEMPLATE_LANG    (optional) template language code, default "en"
+//
+// Who can trigger it: the scheduled job (no login — it can only send the one scheduled report per
+// day/month to the configured recipients, never data back to the caller), or a signed-in active
+// Super Admin via "Send test report now".
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+const REPORT_FROM = Deno.env.get("REPORT_FROM") ?? "SalonOS Reports <onboarding@resend.dev>";
+const WA_TOKEN = Deno.env.get("WHATSAPP_TOKEN") ?? "";
+const WA_PHONE_ID = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "";
+const WA_TEMPLATE = Deno.env.get("WHATSAPP_TEMPLATE") ?? "salonos_daily_summary";
+const WA_LANG = Deno.env.get("WHATSAPP_TEMPLATE_LANG") ?? "en";
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const pad = (n: number) => String(n).padStart(2, "0");
+const num = (v: unknown) => Number(v) || 0;
+const inr = (v: number) => "₹" + Math.round(v).toLocaleString("en-IN");
+// "IST date" helpers: shift the clock by +5:30 and read the UTC fields.
+const istNow = () => new Date(Date.now() + 5.5 * 3600e3);
+const isoOf = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+
+type KV = Map<string, any>;
+async function loadKv(): Promise<KV> {
+  const { data, error } = await admin.from("kv_store").select("key,value").not("value", "is", null);
+  if (error) throw error;
+  const m: KV = new Map();
+  for (const r of data ?? []) { try { m.set(r.key, JSON.parse(r.value)); } catch { /* not JSON */ } }
+  return m;
+}
+
+// Daily Sales & Collection rows 0–4: Cash, Card, UPI, Luzo, Outstanding sale. Expenses live in the
+// separate daily_sales_data record (one value per expense row).
+function dayFigures(kv: KV, sid: number, iso: string) {
+  const s = (kv.get(`salonos_daily_sales_collection_data_outlet_${sid}`) ?? {})[iso] ?? {};
+  const cash = num(s[0]), card = num(s[1]), upi = num(s[2]), luzo = num(s[3]), osale = num(s[4]);
+  const e = (kv.get(`salonos_daily_sales_data_outlet_${sid}`) ?? {})[iso] ?? {};
+  const exp = Object.values(e).reduce((t: number, v) => t + num(v), 0);
+  return { cash, card, upi, luzo, osale, sales: cash + card + upi + luzo + osale, exp, entered: Object.keys(s).length > 0 };
+}
+function rangeFigures(kv: KV, sid: number, y: number, m: number, lastDay: number) {
+  let sales = 0, exp = 0, days = 0;
+  for (let d = 1; d <= lastDay; d++) {
+    const f = dayFigures(kv, sid, `${y}-${pad(m + 1)}-${pad(d)}`);
+    sales += f.sales; exp += f.exp; if (f.entered) days++;
+  }
+  return { sales, exp, days };
+}
+function attendanceOn(kv: KV, sid: number, d: Date) {
+  const emps = (kv.get(`salonos_master_employees_outlet_${sid}`) ?? []).filter((e: any) => e.status === "Active");
+  const att = kv.get(`salonos_attendance_outlet_${sid}`) ?? {};
+  const c = { staff: emps.length, present: 0, absent: 0, half: 0, off: 0, unmarked: 0 };
+  for (const e of emps) {
+    const rec = att[`${e.id}_${d.getUTCFullYear()}_${d.getUTCMonth()}`];
+    const v = rec?.days?.[d.getUTCDate() - 1];
+    if (v === "present") c.present++; else if (v === "absent") c.absent++; else if (v === "half") c.half++;
+    else if (v === "off" || v === "holiday") c.off++; else c.unmarked++;
+  }
+  return c;
+}
+
+function buildDaily(kv: KV) {
+  const now = istNow();
+  const iso = isoOf(now);
+  const outlets = (kv.get("salonos_salons") ?? []).filter((s: any) => s.status === "Active");
+  const title = `Daily summary — ${now.getUTCDate()} ${MONTHS[now.getUTCMonth()]} ${now.getUTCFullYear()}`;
+  const rows = outlets.map((o: any) => {
+    const sid = Number(o.id);
+    const f = dayFigures(kv, sid, iso);
+    const mtd = rangeFigures(kv, sid, now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const a = attendanceOn(kv, sid, now);
+    return { name: String(o.name), f, mtd, a };
+  });
+  const html = `<h2 style="margin:0 0 4px;color:#14335e">${escapeHtml(title)}</h2>
+<p style="margin:0 0 16px;color:#5e6a82">Automatic report from SalonOS</p>
+${rows.map((r: any) => `<table cellpadding="6" style="border-collapse:collapse;width:100%;max-width:560px;margin-bottom:16px;font:14px Arial,sans-serif;border:1px solid #d9e1f0">
+<tr><th colspan="2" style="background:#14335e;color:#fff;text-align:left">${escapeHtml(r.name)}</th></tr>
+<tr><td>Sales today</td><td align="right"><b>${r.f.entered ? inr(r.f.sales) : "Not entered yet"}</b></td></tr>
+${r.f.entered ? `<tr><td style="color:#5e6a82">Cash / Card / UPI / Luzo</td><td align="right" style="color:#5e6a82">${inr(r.f.cash)} / ${inr(r.f.card)} / ${inr(r.f.upi)} / ${inr(r.f.luzo)}</td></tr>` : ""}
+<tr><td>Expenses today</td><td align="right">${inr(r.f.exp)}</td></tr>
+<tr><td>Sales this month so far</td><td align="right">${inr(r.mtd.sales)} <span style="color:#5e6a82">(${r.mtd.days} day${r.mtd.days === 1 ? "" : "s"} entered)</span></td></tr>
+<tr><td>Attendance today</td><td align="right">${r.a.present} present · ${r.a.absent} absent${r.a.half ? ` · ${r.a.half} half day` : ""}${r.a.unmarked ? ` · <span style="color:#c06a12">${r.a.unmarked} not marked</span>` : ""} (of ${r.a.staff})</td></tr>
+</table>`).join("")}`;
+  const line = rows.map((r: any) => `${r.name}: ${r.f.entered ? inr(r.f.sales) + " sales" : "sales not entered"}, ${inr(r.f.exp)} exp, ${r.a.present}/${r.a.staff} present, MTD ${inr(r.mtd.sales)}`).join(" | ");
+  return { key: `daily:${iso}`, title, html, line };
+}
+
+function buildMonthly(kv: KV) {
+  const now = istNow();
+  const y = now.getUTCMonth() === 0 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
+  const m = (now.getUTCMonth() + 11) % 12;
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const outlets = (kv.get("salonos_salons") ?? []).filter((s: any) => s.status === "Active");
+  const title = `Monthly summary — ${MONTHS[m]} ${y}`;
+  const rows = outlets.map((o: any) => ({ name: String(o.name), t: rangeFigures(kv, Number(o.id), y, m, lastDay) }));
+  const tot = rows.reduce((s: any, r: any) => ({ sales: s.sales + r.t.sales, exp: s.exp + r.t.exp }), { sales: 0, exp: 0 });
+  const html = `<h2 style="margin:0 0 4px;color:#14335e">${escapeHtml(title)}</h2>
+<p style="margin:0 0 16px;color:#5e6a82">Automatic report from SalonOS — daily sales and expense entries for the month. Open SalonOS for the full P&amp;L.</p>
+<table cellpadding="6" style="border-collapse:collapse;width:100%;max-width:560px;font:14px Arial,sans-serif;border:1px solid #d9e1f0">
+<tr style="background:#14335e;color:#fff"><th align="left">Outlet</th><th align="right">Sales</th><th align="right">Expenses</th><th align="right">Days entered</th></tr>
+${rows.map((r: any) => `<tr><td>${escapeHtml(r.name)}</td><td align="right">${inr(r.t.sales)}</td><td align="right">${inr(r.t.exp)}</td><td align="right">${r.t.days}/${lastDay}</td></tr>`).join("")}
+<tr style="font-weight:bold;border-top:2px solid #14335e"><td>Total</td><td align="right">${inr(tot.sales)}</td><td align="right">${inr(tot.exp)}</td><td></td></tr>
+</table>`;
+  const line = rows.map((r: any) => `${r.name}: ${inr(r.t.sales)} sales, ${inr(r.t.exp)} exp`).join(" | ") + ` | Total ${inr(tot.sales)} sales`;
+  return { key: `monthly:${y}-${pad(m + 1)}`, title, html, line };
+}
+
+async function sendEmail(to: string[], subject: string, html: string) {
+  if (!RESEND_API_KEY) return { ok: false, error: "Email is not set up yet — add RESEND_API_KEY in Supabase Edge Function secrets." };
+  if (!to.length) return { ok: false, error: "No email recipients set." };
+  const r = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: REPORT_FROM, to, subject: `SalonOS · ${subject}`, html: `<div style="font-family:Arial,sans-serif">${html}</div>` }),
+  });
+  return r.ok ? { ok: true } : { ok: false, error: `Email failed (${r.status}): ${(await r.text()).slice(0, 300)}` };
+}
+async function sendWhatsApp(to: string[], title: string, line: string) {
+  if (!WA_TOKEN || !WA_PHONE_ID) return { ok: false, error: "WhatsApp is not set up yet — add WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID in Supabase Edge Function secrets." };
+  if (!to.length) return { ok: false, error: "No WhatsApp numbers set." };
+  const errors: string[] = [];
+  for (const num of to) {
+    // Business-initiated WhatsApp messages must use a Meta-approved template; ours has two text
+    // parameters: {{1}} the report title and {{2}} the one-line summary (no line breaks allowed).
+    const r = await fetch(`https://graph.facebook.com/v20.0/${WA_PHONE_ID}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${WA_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp", to: num.replace(/[^\d]/g, ""), type: "template",
+        template: { name: WA_TEMPLATE, language: { code: WA_LANG },
+          components: [{ type: "body", parameters: [{ type: "text", text: title }, { type: "text", text: line.slice(0, 1000) }] }] },
+      }),
+    });
+    if (!r.ok) errors.push(`${num}: ${r.status} ${(await r.text()).slice(0, 200)}`);
+  }
+  return errors.length ? { ok: false, error: "WhatsApp failed for " + errors.join("; ") } : { ok: true };
+}
+
+async function isActiveSuperAdmin(req: Request) {
+  const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!jwt) return false;
+  const { data } = await admin.auth.getUser(jwt);
+  if (!data?.user) return false;
+  const { data: p } = await admin.from("profiles").select("role,status").eq("id", data.user.id).maybeSingle();
+  return !!p && p.role === "Super Admin" && (p.status ?? "Active") !== "Inactive";
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+  try {
+    const body = await req.json().catch(() => ({}));
+    const kind = body.kind === "monthly" ? "monthly" : "daily";
+    const test = !!body.test;
+    if (test && !(await isActiveSuperAdmin(req))) return json({ error: "Only a signed-in Super Admin can send a test report." }, 403);
+
+    const kv = await loadKv();
+    const settings = kv.get("salonos_secret_report_settings") ?? {};
+    if (!test && settings[kind] === false) return json({ skipped: `${kind} reports are turned off` });
+    const report = kind === "monthly" ? buildMonthly(kv) : buildDaily(kv);
+
+    // Scheduled runs send each report once only, however often the job is triggered.
+    const state = kv.get("salonos_secret_report_state") ?? {};
+    if (!test && state[report.key]) return json({ skipped: "already sent", report: report.key });
+
+    const emails: string[] = (settings.emails ?? []).filter((e: string) => /@/.test(e));
+    const phones: string[] = (settings.whatsapp ?? []).filter((p: string) => /\d{8,}/.test(p.replace(/[^\d]/g, "")));
+    if (!test && !emails.length && !phones.length) return json({ skipped: "no recipients set", report: report.key });
+    const results: Record<string, unknown> = {};
+    if (emails.length || test) results.email = await sendEmail(emails, (test ? "[Test] " : "") + report.title, report.html);
+    if (phones.length) results.whatsapp = await sendWhatsApp(phones, (test ? "[Test] " : "") + report.title, report.line);
+
+    if (!test) {
+      const next = { ...state, [report.key]: new Date().toISOString() };
+      await admin.from("kv_store").upsert({ key: "salonos_secret_report_state", value: JSON.stringify(next), updated_at: new Date().toISOString() });
+    }
+    return json({ report: report.key, results });
+  } catch (e) {
+    return json({ error: String((e as Error)?.message ?? e) }, 500);
+  }
+});

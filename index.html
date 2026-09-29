@@ -1398,7 +1398,7 @@ try{
 // ============================================================================
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.09.29.2';
+const APP_VERSION='2026.09.29.3';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
@@ -2472,11 +2472,31 @@ function ShareReportButton({title,subtitle,getBodyHtml,getSheetRows,execSummary,
 // localStorage, starts empty (no demo data), and is kept in sync with the Master Sheet UI via
 // setSalonsAndSync() in the App component below — mutating this array in place (not
 // reassigning) so every place that already holds a reference to it sees updates immediately.
+// Government-portal logins (GST / PF / ESIC / TDS / PT login IDs and passwords) are kept out of
+// the outlet list, which every user can read, in a separate record the database lets only Super
+// Admins read or change (salonos_secret_*). They're merged back in here for whoever can see them.
+const PORTAL_SECRETS_KEY='salonos_secret_portal_logins';
+const isPortalSecretField=k=>/(Password|LoginId)$/.test(k);
 function loadSalonsFromStorage(){
-  try{const v=JSON.parse(cachedLocalGet('salonos_salons')||'[]');if(Array.isArray(v))return v;}catch(e){}
+  try{
+    const v=JSON.parse(cachedLocalGet('salonos_salons')||'[]');
+    if(Array.isArray(v)){
+      let sec={};try{sec=JSON.parse(cachedLocalGet(PORTAL_SECRETS_KEY)||'{}')||{};}catch(e){}
+      return v.map(s=>sec[s.id]?{...s,...sec[s.id]}:s);
+    }
+  }catch(e){}
   return[];
 }
-function saveSalonsToStorage(list){safeLocalSet('salonos_salons',JSON.stringify(list));}
+function saveSalonsToStorage(list){
+  const pub=[],sec={};
+  list.forEach(s=>{
+    const p={};
+    Object.keys(s).forEach(k=>{if(isPortalSecretField(k)){if(String(s[k]||'')!==''){(sec[s.id]=sec[s.id]||{})[k]=s[k];}}else p[k]=s[k];});
+    pub.push(p);
+  });
+  safeLocalSet('salonos_salons',JSON.stringify(pub));
+  if(Object.keys(sec).length||cachedLocalGet(PORTAL_SECRETS_KEY)!=null)safeLocalSet(PORTAL_SECRETS_KEY,JSON.stringify(sec));
+}
 const SALONS=loadSalonsFromStorage();
 const EMP_STORE_KEY='salonos_master_employees';
 function empKeyFor(salonId){
@@ -5364,6 +5384,24 @@ function MasterDashboard({selFY,setSelFY,FYS,accessibleSalons}){
   const revMonthly=PG_MONTHS.map((abbr,mi)=>({label:abbr,value:aggs.reduce((s,a)=>s+(a.monthly[mi]?a.monthly[mi].revenue:0),0)}));
   const avgAttPct=totals.attCount?Math.round(totals.attSum/totals.attCount):0;
 
+  // ── Outlet comparison for one month — every figure from the same engines as the P&L and
+  // Salary Working (plBuild / swWorkingsFor), side by side and ranked by revenue. ──
+  const nowFYMI=calToFYMI(today.getFullYear(),today.getMonth());
+  const [cmpMi,setCmpMi]=useState(nowFYMI.fy===selFY?nowFYMI.mi:11);
+  const inr=v=>'₹'+Math.round(Number(v)||0).toLocaleString('en-IN');
+  const cmpRows=activeSalons.map(s=>{
+    const sid=Number(s.id);
+    const d=plBuild(sid,selFY,cmpMi);
+    const prev=cmpMi>0?plBuild(sid,selFY,cmpMi-1):null;
+    const year=Number(pgYear(selFY,cmpMi)),month=(cmpMi+3)%12;
+    const sw=swWorkingsFor(sid,year,month);
+    const staff=getEmployeesForMonth(year,month,sid).filter(e=>e.status==='Active').length;
+    const att=sw.length?Math.round(sw.reduce((t,w)=>t+(w.daysInMonth?w.totalDays/w.daysInMonth*100:0),0)/sw.length):null;
+    return{s,rev:d.revenue,exp:d.direct+d.opex,pbt:d.pbt,margin:d.revenue?Math.round(d.pbt/d.revenue*100):null,
+      chg:prev&&prev.revenue?Math.round((d.revenue-prev.revenue)/prev.revenue*100):null,staff,perStaff:staff?d.revenue/staff:0,att};
+  }).sort((a,b)=>b.rev-a.rev);
+  const topRev=cmpRows.length?cmpRows[0].rev:0;
+
   return React.createElement('div',{className:'fade-in'},
     React.createElement('div',{className:'page-title'},'Master Dashboard'),
     React.createElement('div',{className:'page-sub'},'Consolidated analytics across all outlets — FY '+selFY),
@@ -5375,6 +5413,36 @@ function MasterDashboard({selFY,setSelFY,FYS,accessibleSalons}){
       React.createElement('select',{className:'form-control',style:{width:'auto'},value:selFY,onChange:e=>setSelFY(e.target.value)},
         FYS.map(f=>React.createElement('option',{key:f,value:f},'FY '+f))
       )
+    ),
+    (()=>{const all=activeSalons.map(s=>({s,gaps:dataGapsFor(s)})).filter(x=>x.gaps.length);
+      return all.length>0&&React.createElement('div',{className:'card',style:{marginBottom:20,borderColor:'var(--orange)'}},
+        React.createElement('div',{className:'card-title'},'⚠️ Needs attention'),
+        all.map(x=>React.createElement('div',{key:x.s.id,style:{padding:'6px 0',borderTop:'1px solid var(--border)'}},
+          React.createElement('div',{style:{fontWeight:600,fontSize:13,marginBottom:2}},x.s.name),
+          x.gaps.map((g,i)=>React.createElement('div',{key:i,style:{fontSize:12.5,color:'var(--text2)'}},'• '+g.text)))),
+        React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Open the outlet to fix these — each outlet\'s dashboard has a button for each item.'));})(),
+    cmpRows.length>0&&React.createElement('div',{className:'card',style:{marginBottom:20}},
+      React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:12}},
+        React.createElement('div',{className:'card-title',style:{marginBottom:0}},'🏪 Outlet comparison'),
+        React.createElement('select',{className:'form-control',style:{width:'auto',fontSize:12},value:cmpMi,onChange:e=>setCmpMi(Number(e.target.value))},
+          PG_MONTHS.map((m,i)=>React.createElement('option',{key:i,value:i},m+' '+pgYear(selFY,i))))
+      ),
+      React.createElement('div',{className:'table-wrap'},
+        React.createElement('table',null,
+          React.createElement('thead',null,React.createElement('tr',null,
+            ['Outlet','Revenue','vs last month','Expenses','Net profit','Margin','Staff','Revenue / staff','Attendance'].map(h=>React.createElement('th',{key:h},h)))),
+          React.createElement('tbody',null,cmpRows.map(r=>React.createElement('tr',{key:r.s.id},
+            React.createElement('td',{style:{fontWeight:600}},(r.rev>0&&r.rev===topRev&&cmpRows.length>1?'🏆 ':'')+r.s.name),
+            React.createElement('td',null,inr(r.rev)),
+            React.createElement('td',{style:{color:r.chg==null?'var(--text3)':r.chg>=0?'var(--green)':'var(--red)'}},r.chg==null?'—':(r.chg>=0?'▲ ':'▼ ')+Math.abs(r.chg)+'%'),
+            React.createElement('td',null,inr(r.exp)),
+            React.createElement('td',{style:{color:r.pbt>=0?'var(--green)':'var(--red)',fontWeight:600}},inr(r.pbt)),
+            React.createElement('td',null,r.margin==null?'—':r.margin+'%'),
+            React.createElement('td',null,r.staff),
+            React.createElement('td',null,r.staff?inr(r.perStaff):'—'),
+            React.createElement('td',null,r.att==null?'—':r.att+'%')))))
+      ),
+      React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'Same figures as each outlet\'s P&L and Salary Working. Ranked by revenue.')
     ),
     activeSalons.length===0&&React.createElement('div',{className:'card',style:{marginBottom:16,color:'var(--text3)',fontSize:13}},
       'No active outlets yet — figures below will fill in as soon as an outlet and its data are added.'
@@ -6350,6 +6418,69 @@ function AppErrorsCard(){
         React.createElement('div',{style:{color:'var(--red)',wordBreak:'break-word'}},r.message),
         React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},fmt(r.at)+' · '+(r.email||'?')+(r.page?' · '+r.page:''))))));
 }
+// ── Automatic reports (Super Admin) — who gets the nightly summary (22:00 IST) and the monthly
+// summary (1st, 09:00 IST), sent by the salonos-reports cloud function. Stored in a
+// salonos_secret_* record, which only Super Admins can read or change. The email/WhatsApp
+// sending keys never live in the app — they're added as Supabase Edge Function secrets. ──
+const REPORT_SETTINGS_KEY='salonos_secret_report_settings';
+function ReportSettingsCard(){
+  const {success,error:toastError,info}=useToast();
+  const saved=(()=>{try{return JSON.parse(cachedLocalGet(REPORT_SETTINGS_KEY)||'{}')||{};}catch(e){return{};}})();
+  const [emails,setEmails]=useState((saved.emails||[]).join(', '));
+  const [phones,setPhones]=useState((saved.whatsapp||[]).join(', '));
+  const [daily,setDaily]=useState(saved.daily!==false);
+  const [monthly,setMonthly]=useState(saved.monthly!==false);
+  const [busy,setBusy]=useState(false);
+  const [lastResult,setLastResult]=useState(null);
+  const split=s=>s.split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean);
+  const save=()=>{
+    const em=split(emails),ph=split(phones);
+    const badE=em.filter(e=>!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
+    if(badE.length)return toastError('Not a valid email: '+badE.join(', '));
+    const badP=ph.filter(p=>p.replace(/[^\d]/g,'').length<10);
+    if(badP.length)return toastError('WhatsApp numbers need the country code, e.g. 91 98xxxxxxxx: '+badP.join(', '));
+    safeLocalSet(REPORT_SETTINGS_KEY,JSON.stringify({emails:em,whatsapp:ph,daily,monthly}));
+    success('Report settings saved');
+  };
+  const test=async(kind)=>{
+    setBusy(true);setLastResult(null);
+    try{
+      const supa=await getSupabaseClient();
+      const{data,error}=await supa.functions.invoke('salonos-reports',{body:{kind,test:true}});
+      if(error)throw error;
+      if(data&&data.error)throw new Error(data.error);
+      setLastResult(data&&data.results||{});
+      const r=(data&&data.results)||{};
+      const problems=Object.values(r).filter(x=>x&&!x.ok).map(x=>x.error);
+      if(problems.length)toastError(problems.join(' '));else success('Test report sent — check the inbox / WhatsApp');
+    }catch(e){
+      const msg=(e&&e.message)||String(e);
+      toastError(/not found|404|Failed to send a request/i.test(msg)?'The report service isn\'t installed in Supabase yet.':'Test failed: '+msg);
+    }
+    setBusy(false);
+  };
+  const row={display:'flex',alignItems:'center',gap:8,fontSize:13,color:'var(--text2)',marginRight:18};
+  return React.createElement('div',{className:'card',style:{marginBottom:16}},
+    React.createElement('div',{className:'card-title'},'📬 Automatic reports'),
+    React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:12,lineHeight:1.6}},
+      'A nightly summary at 10 PM (each outlet\'s sales, expenses and attendance for the day, plus month-to-date sales) and a monthly summary on the 1st at 9 AM. Needs a one-time setup in Supabase (see the SalonOS setup notes) before anything is sent.'),
+    React.createElement('div',{className:'form-group',style:{marginBottom:10}},
+      React.createElement('label',null,'Email to (comma separated)'),
+      React.createElement('input',{className:'form-control',value:emails,onChange:e=>setEmails(e.target.value),placeholder:'owner@example.com, accounts@example.com'})),
+    React.createElement('div',{className:'form-group',style:{marginBottom:10}},
+      React.createElement('label',null,'WhatsApp to (with country code, comma separated)'),
+      React.createElement('input',{className:'form-control',value:phones,onChange:e=>setPhones(e.target.value),placeholder:'91 98xxxxxxxx'})),
+    React.createElement('div',{style:{display:'flex',flexWrap:'wrap',marginBottom:12}},
+      React.createElement('label',{style:row},React.createElement('input',{type:'checkbox',checked:daily,onChange:e=>setDaily(e.target.checked)}),'Nightly summary'),
+      React.createElement('label',{style:row},React.createElement('input',{type:'checkbox',checked:monthly,onChange:e=>setMonthly(e.target.checked)}),'Monthly summary')),
+    React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      React.createElement('button',{className:'btn btn-primary btn-sm',onClick:save},'Save'),
+      React.createElement('button',{className:'btn btn-ghost btn-sm'+(busy?' btn-loading':''),disabled:busy,onClick:()=>test('daily')},'Send test nightly report'),
+      React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,onClick:()=>test('monthly')},'Send test monthly report')),
+    lastResult&&React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginTop:10}},
+      Object.keys(lastResult).map(k=>k+': '+(lastResult[k].ok?'sent ✓':lastResult[k].error)).join(' · ')||'Nothing to send — add recipients and save first.')
+  );
+}
 // ── Two-step login (authenticator app, TOTP) for the signed-in account. Once it's on, sign-in
 // asks for the app's 6-digit code, and the database only grants Super Admin powers to a
 // session that has passed that step. ──
@@ -6470,6 +6601,7 @@ function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup}={}){
     React.createElement('div',{className:'page-sub'},'Global configuration and statutory applicability'),
     CLOUD_SYNC_ENABLED&&React.createElement(TwoStepLoginCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(CloudBackupsCard,null),
+    CLOUD_SYNC_ENABLED&&React.createElement(ReportSettingsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(ChangeHistoryCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(AppErrorsCard,null),
     React.createElement('div',{className:'card',style:{marginBottom:16}},
@@ -6998,6 +7130,55 @@ function UserManagement(){
   );
 }
 
+// ── Data-gap alerts — what's missing in the last 7 days (up to yesterday, this month only):
+// days where attendance isn't marked for every active employee, and days with no daily sales
+// entered. Shown per outlet (with a button to the sheet) and summarised on the Master Dashboard. ──
+function dataGapsFor(salon){
+  const sid=Number(salon&&salon.id);
+  const gaps=[];
+  if(!sid)return gaps;
+  const today=new Date();
+  const days=[];
+  for(let back=1;back<=7;back++){
+    const d=new Date(today.getFullYear(),today.getMonth(),today.getDate()-back);
+    if(d.getMonth()!==today.getMonth())break;
+    days.push(d);
+  }
+  if(!days.length)return gaps;
+  const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const fmt=d=>d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+  const list=ds=>ds.length>3?ds.length+' days ('+fmt(ds[ds.length-1])+' – '+fmt(ds[0])+')':ds.map(fmt).reverse().join(', ');
+  // Attendance
+  try{
+    const emps=getEmployeesForMonth(today.getFullYear(),today.getMonth(),sid).filter(e=>e.status==='Active');
+    if(emps.length){
+      const att=loadAttendance(sid);
+      const missing=days.filter(d=>emps.some(e=>{
+        if(e.doj&&new Date(e.doj)>d)return false; // not joined yet
+        const rec=att[attMonthKey(e.id,d.getFullYear(),d.getMonth())];
+        return !(rec&&Array.isArray(rec.days)&&rec.days[d.getDate()-1]);
+      }));
+      if(missing.length)gaps.push({kind:'attendance',tab:'attendance',text:'Attendance not fully marked: '+list(missing)});
+    }
+  }catch(e){}
+  // Daily sales
+  try{
+    const sales=JSON.parse(cachedLocalGet(outletKey('salonos_daily_sales_collection_data',sid))||'{}')||{}; // sales & collection (the other daily record is expenses)
+    const missing=days.filter(d=>{const v=sales[iso(d)];return !(v&&typeof v==='object'&&Object.keys(v).length);});
+    if(missing.length)gaps.push({kind:'sales',tab:'daily-sales',text:'No daily sales entered: '+list(missing)});
+  }catch(e){}
+  return gaps;
+}
+function DataGapsCard({salon,onNavTab}){
+  const gaps=dataGapsFor(salon);
+  if(!gaps.length)return null;
+  return React.createElement('div',{className:'card',style:{marginBottom:16,borderColor:'var(--orange)'}},
+    React.createElement('div',{className:'card-title'},'⚠️ Needs attention'),
+    gaps.map((g,i)=>React.createElement('div',{key:i,style:{display:'flex',alignItems:'center',gap:12,padding:'8px 0',borderTop:i?'1px solid var(--border)':'none'}},
+      React.createElement('div',{style:{flex:1,fontSize:13,color:'var(--text)'}},g.text),
+      onNavTab&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>onNavTab(g.tab)},g.kind==='sales'?'Enter sales':'Mark attendance')))
+  );
+}
 // ── "Get this outlet ready" checklist on the outlet dashboard — each step is detected from the
 // outlet's real data, links straight to the sheet that completes it, and the card disappears
 // once everything's done (or when dismissed on this device). ──
@@ -7008,7 +7189,7 @@ function OutletSetupChecklist({salon,onNavTab}){
   const readJson=(k,d)=>{try{return JSON.parse(cachedLocalGet(k)||'null')||d;}catch(e){return d;}};
   const emps=loadEmployees(sid)||[];
   const att=readJson(attKeyFor(sid),{});
-  const sales=readJson(outletKey('salonos_daily_sales_data',sid),{});
+  const sales=readJson(outletKey('salonos_daily_sales_collection_data',sid),{}); // sales & collection, not expenses
   // Weekly offs / holidays can be filled in automatically, so only a real mark counts.
   const hasAttendance=Object.values(att).some(r=>r&&Array.isArray(r.days)&&r.days.some(d=>d&&d!=='off'&&d!=='holiday'));
   const hasSales=Object.values(sales).some(day=>day&&typeof day==='object'&&Object.keys(day).length>0);
@@ -7150,6 +7331,7 @@ function OutletDashboard({salon,period,onNavTab}){
 
   return React.createElement('div',{className:'fade-in'},
     React.createElement(OutletSetupChecklist,{salon,onNavTab}),
+    React.createElement(DataGapsCard,{salon,onNavTab}),
     // Header
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,
@@ -12549,6 +12731,16 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openGenerate},'🧮 Generate Salary'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:exportExcel},swSelectedIds.size>0?'⬇ Export Selected ('+swSelectedIds.size+')':'⬇ Export Excel'),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',title:'One branded payslip page per employee (the ticked ones, or everyone)',onClick:async()=>{
+          try{
+            const list=exportWorkings.filter(w=>(Number(w.grossAfterLop)||0)>0||(Number(w.net)||0)>0);
+            if(!list.length){alert('No salary for this month yet — mark attendance first.');return;}
+            const blob=await buildPayslipsPdf(salon,selYear,selMonth,list);
+            const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+            a.download='Payslips_'+String((salon&&salon.name)||'Outlet').replace(/[^\w]+/g,'_')+'_'+MONTHS[selMonth]+'_'+selYear+'.pdf';
+            document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+          }catch(e){alert('Could not create payslips: '+(e.message||e));}
+        }},swSelectedIds.size>0?'📄 Payslips ('+swSelectedIds.size+')':'📄 Payslips (PDF)'),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:'',title:'Generates a printable Challan from this month\'s Salary Working figures — opens in a new tab, ready to print or Save as PDF',onChange:e=>{if(e.target.value)generateChallan(e.target.value);e.target.value='';}},
           React.createElement('option',{value:''},'🧾 Generate Challan…'),
           React.createElement('option',{value:'esic'},'ESIC Challan'),
@@ -29936,6 +30128,92 @@ const CDN_PDFJS_WORKER_URL='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.1
 // downloaded and attached — the print-dialog PDF (still used for on-screen "Save as PDF") never
 // exists as a file the browser can pass anywhere, which is exactly why PDF previously had to be
 // silently downgraded to Word whenever sending to WhatsApp or Email.
+// Indian-style amount in words, e.g. 123456 → "One Lakh Twenty Three Thousand Four Hundred Fifty Six".
+function rupeesInWords(n){
+  n=Math.round(Math.abs(Number(n)||0));
+  if(n===0)return'Zero';
+  const a=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+  const b=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+  const two=x=>x<20?a[x]:b[Math.floor(x/10)]+(x%10?' '+a[x%10]:'');
+  const three=x=>(x>=100?a[Math.floor(x/100)]+' Hundred'+(x%100?' ':''):'')+(x%100?two(x%100):'');
+  const parts=[];
+  const crore=Math.floor(n/10000000);n%=10000000;
+  const lakh=Math.floor(n/100000);n%=100000;
+  const thousand=Math.floor(n/1000);n%=1000;
+  if(crore)parts.push(three(crore)+' Crore');
+  if(lakh)parts.push(two(lakh)+' Lakh');
+  if(thousand)parts.push(two(thousand)+' Thousand');
+  if(n)parts.push(three(n));
+  return parts.join(' ');
+}
+// ── Branded payslips — one A4 page per employee, built from swWorkingsFor (the exact figures on
+// Salary Working, so the two can never disagree), with the outlet's logo and details. ──
+async function buildPayslipsPdf(salon,year,month,workings){
+  await loadScript(CDN_JSPDF_URL);
+  await loadScript(CDN_JSPDF_AUTOTABLE_URL);
+  if(!window.jspdf||!window.jspdf.jsPDF)throw new Error('PDF engine unavailable — check your internet connection.');
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
+  const pw=doc.internal.pageSize.getWidth();
+  const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const inr=v=>'Rs. '+Math.round(Number(v)||0).toLocaleString('en-IN');
+  const firm=(salon&&(salon.firmName||salon.name))||'SalonOS';
+  const brand=salon&&salon.brandName&&salon.brandName!==firm?salon.brandName:'';
+  const addr=[salon&&salon.city,salon&&salon.state,salon&&salon.pin].filter(Boolean).join(', ');
+  let logo=null;
+  try{if(salon&&salon.logo)logo=await resolveAttachmentDataUrl(typeof salon.logo==='string'?salon.logo:salon.logo.dataUrl);}catch(e){}
+  const mask=s=>{s=String(s||'');return s.length>4?'XXXX'+s.slice(-4):(s||'—');};
+  workings.forEach((w,idx)=>{
+    if(idx)doc.addPage();
+    // Header band
+    doc.setFillColor(20,51,94);doc.rect(0,0,pw,30,'F');
+    let tx=12;
+    if(logo){try{doc.addImage(logo,'PNG',10,5,20,20,undefined,'FAST');tx=34;}catch(e){}}
+    doc.setTextColor(255,255,255);doc.setFont(undefined,'bold');doc.setFontSize(15);doc.text(firm,tx,13);
+    doc.setFont(undefined,'normal');doc.setFontSize(8.5);doc.setTextColor(205,218,238);
+    doc.text([brand,addr,salon&&salon.gst?'GSTIN: '+salon.gst:''].filter(Boolean).join('  ·  ').slice(0,110),tx,19);
+    doc.setTextColor(255,255,255);doc.setFont(undefined,'bold');doc.setFontSize(11);
+    doc.text('PAYSLIP — '+MONTHS[month].toUpperCase()+' '+year,pw-12,13,{align:'right'});
+    // Employee details
+    doc.autoTable({startY:36,theme:'plain',styles:{fontSize:9,cellPadding:1.6},columnStyles:{0:{fontStyle:'bold',cellWidth:34},2:{fontStyle:'bold',cellWidth:34}},
+      body:[
+        ['Employee',w.name||'—','Employee ID',w.id||'—'],
+        ['Designation',w.desig||'—','Date of joining',w.doj?String(w.doj).split('-').reverse().join('/'):'—'],
+        ['PAN',w.pan||'—','Bank A/c',mask(w.accountNo)+(w.bankName?' ('+w.bankName+')':'')],
+        ['Days payable',String(w.totalDays)+' of '+String(w.daysInMonth),'PF / ESIC No.',[w.pfNumber,w.esicNumber].filter(Boolean).join(' / ')||'—']
+      ]});
+    // Earnings vs deductions side by side
+    const earn=[['Gross salary (for days payable)',inr(w.grossAfterLop)]];
+    if(w.tea)earn.push(['Tea allowance',inr(w.tea)]);
+    const ded=[];
+    if(w.pfEmp)ded.push(['Provident Fund (employee)',inr(w.pfEmp)]);
+    if(w.esicEmp)ded.push(['ESIC (employee)',inr(w.esicEmp)]);
+    if(w.ptAmt)ded.push(['Professional Tax',inr(w.ptAmt)]);
+    if(w.tdsAmt)ded.push(['TDS',inr(w.tdsAmt)]);
+    if(w.advAdj)ded.push(['Advance recovery',inr(w.advAdj)]);
+    if(w.penAmt)ded.push(['Penalties',inr(w.penAmt)]);
+    const totalEarn=(Number(w.grossAfterLop)||0)+(Number(w.tea)||0);
+    const totalDed=ded.reduce((s,r)=>s+Number(String(r[1]).replace(/[^\d]/g,'')),0);
+    const n=Math.max(earn.length,ded.length,1);
+    const body=[];
+    for(let i=0;i<n;i++)body.push([(earn[i]||['',''])[0],(earn[i]||['',''])[1],(ded[i]||['',''])[0],(ded[i]||['',''])[1]]);
+    body.push([{content:'Total earnings',styles:{fontStyle:'bold'}},{content:inr(totalEarn),styles:{fontStyle:'bold'}},{content:'Total deductions',styles:{fontStyle:'bold'}},{content:inr(totalDed),styles:{fontStyle:'bold'}}]);
+    doc.autoTable({startY:doc.lastAutoTable.finalY+6,head:[['Earnings','Amount','Deductions','Amount']],body,theme:'grid',
+      headStyles:{fillColor:[235,240,248],textColor:[20,51,94]},styles:{fontSize:9,cellPadding:2.2},columnStyles:{1:{halign:'right'},3:{halign:'right'}}});
+    // Net pay
+    let y=doc.lastAutoTable.finalY+8;
+    doc.setFillColor(232,245,238);doc.roundedRect(12,y,pw-24,20,2,2,'F');
+    doc.setTextColor(18,128,92);doc.setFont(undefined,'bold');doc.setFontSize(13);
+    doc.text('Net pay: '+inr(w.net),16,y+8.5);
+    doc.setFont(undefined,'normal');doc.setFontSize(9);doc.setTextColor(60,70,90);
+    doc.text('Rupees '+rupeesInWords(w.net)+' only',16,y+15);
+    y+=30;
+    doc.setFontSize(8);doc.setTextColor(120,130,150);
+    doc.text('This is a computer-generated payslip and does not require a signature.',12,y);
+    doc.text('Generated '+new Date().toLocaleString('en-IN')+' · SalonOS',12,y+4.5);
+  });
+  return doc.output('blob');
+}
 async function exportReportPdfBlob(title,subtitle,sheetRows,opts){
   await loadScript(CDN_JSPDF_URL);
   await loadScript(CDN_JSPDF_AUTOTABLE_URL);

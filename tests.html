@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>SalonOS self-tests</title>
+<style>
+  :root{--bg:#F4F7FC;--card:#fff;--text:#0F1B33;--muted:#5E6A82;--ok:#12805C;--bad:#CF3D3D;--border:#D9E1F0}
+  @media (prefers-color-scheme: dark){:root{--bg:#0A0E1A;--card:#0F1729;--text:#E8ECF6;--muted:#7C88B0;--ok:#4caf7d;--bad:#ff6b6b;--border:#22304F}}
+  body{margin:0;padding:24px 16px;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  main{max-width:760px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 4px}
+  p{color:var(--muted);margin:0 0 16px}
+  .sum{font-weight:600;margin:12px 0}
+  .t{display:flex;gap:10px;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;margin-bottom:6px}
+  .t .s{font-weight:700;width:18px;flex-shrink:0}
+  .ok .s{color:var(--ok)} .bad .s{color:var(--bad)}
+  .t small{display:block;color:var(--muted);word-break:break-word}
+</style>
+</head>
+<body>
+<main>
+  <h1>SalonOS self-tests</h1>
+  <p>Runs the live app's own calculation code against made-up test data inside a sealed-off frame (its own in-memory storage — your real data and the cloud are never touched).</p>
+  <div id="sum" class="sum">Running…</div>
+  <div id="out"></div>
+</main>
+<script>
+(async function(){
+  const sumEl=document.getElementById('sum'),out=document.getElementById('out');
+  try{
+    const html=await (await fetch('index.html?t='+Date.now(),{cache:'no-store'})).text();
+    const inline=[...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
+    const app=inline.find(s=>s.includes('function swWorkingsFor'));
+    const libs=[...html.matchAll(/<script[^>]*\bsrc="([^"]+)"[^>]*><\/script>/g)].map(m=>m[1]);
+    if(!app)throw new Error('Could not find the app script in index.html');
+
+    // In-memory storage (the frame has no real storage at all) + made-up test data.
+    const setup=`(function(){
+      const mk=()=>{const m=new Map();return{getItem:k=>m.has(k)?m.get(k):null,setItem:(k,v)=>{m.set(k,String(v))},removeItem:k=>{m.delete(k)},clear:()=>m.clear(),key:i=>[...m.keys()][i]??null,get length(){return m.size}}};
+      Object.defineProperty(window,'localStorage',{value:mk(),configurable:true});
+      Object.defineProperty(window,'sessionStorage',{value:mk(),configurable:true});
+      const put=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+      put('salonos_salons',[
+        {id:901,name:'Test Outlet A',state:'Delhi',status:'Active',pfApplicable:true,esicApplicable:true,ptApplicable:false},
+        {id:902,name:'Test Outlet B',state:'Delhi',status:'Active',pfApplicable:false,esicApplicable:false,ptApplicable:false}]);
+      const emp=(id,gross,basic,extra)=>Object.assign({id,name:'Emp '+id,desig:'Unisex Hairdresser',dept:'Hairdresser',doj:'2024-01-01',dol:'',weeklyOff:'',status:'Active',gross,basic,hra:0,conv:0,special:0,pf:true,pfOnActualBasic:false,esic:true,pt:false,tds:false},extra||{});
+      put('salonos_master_employees_outlet_901',[emp('E1',20000,12000),emp('E2',30000,20000,{pfOnActualBasic:true}),emp('E3',20000,18000)]);
+      put('salonos_master_employees_outlet_902',[emp('E4',20000,12000)]);
+      const days=(p,a,h)=>[...Array(p).fill('present'),...Array(a).fill('absent'),...Array(h).fill('half')];
+      put('salonos_attendance_outlet_901',{E1_2026_8:{days:days(27,3,0)},E2_2026_8:{days:days(28,0,2)},E3_2026_8:{days:days(30,0,0)}});
+      put('salonos_attendance_outlet_902',{E4_2026_8:{days:days(30,0,0)}});
+    })();`;
+
+    const tests=`(function(){
+      const results=[];
+      const eq=(name,got,want)=>results.push({name,ok:JSON.stringify(got)===JSON.stringify(want),got,want});
+      try{
+        const A=swWorkingsFor(901,2026,8),B=swWorkingsFor(902,2026,8);
+        const f=id=>A.concat(B).find(w=>w.id===id)||{};
+        const e1=f('E1'),e2=f('E2'),e3=f('E3'),e4=f('E4');
+        eq('Absent days reduce pay: 27 of 30 days payable',[e1.totalDays,e1.daysInMonth],[27,30]);
+        eq('Gross for 27/30 days of ₹20,000 = ₹18,000',e1.grossAfterLop,18000);
+        eq('PF = 12% of basic ₹12,000 = ₹1,440',e1.pfEmp,1440);
+        eq('ESIC = 0.75% of gross ₹20,000 = ₹150',e1.esicEmp,150);
+        eq('No PT in Delhi',e1.ptAmt,0);
+        eq('Net = 18,000 + 800 tea − 1,440 − 150 = ₹17,210',e1.net,17210);
+        eq('Half days count as 0.5: 29 days payable',e2.totalDays,29);
+        eq('Gross for 29/30 days of ₹30,000 = ₹29,000',e2.grossAfterLop,29000);
+        eq('PF on actual basic ₹20,000 (no cap) = ₹2,400',e2.pfEmp,2400);
+        eq('No ESIC above ₹21,000 gross',e2.esicEmp,0);
+        eq('Net = 29,000 + 800 − 2,400 = ₹27,400',e2.net,27400);
+        eq('PF capped at ₹15,000 wage ceiling = ₹1,800',e3.pfEmp,1800);
+        eq('Net = 20,000 + 800 − 1,800 − 150 = ₹18,850',e3.net,18850);
+        eq('Outlet with PF off: no PF',e4.pfEmp,0);
+        eq('Outlet with ESIC off: no ESIC',e4.esicEmp,0);
+        eq('Net with no deductions = 20,000 + 800 = ₹20,800',e4.net,20800);
+      }catch(err){results.push({name:'Salary calculation',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        eq('Amount in words (lakh)',rupeesInWords(123456),'One Lakh Twenty Three Thousand Four Hundred Fifty Six');
+        eq('Amount in words (crore)',rupeesInWords(10000001),'One Crore One');
+        eq('Amount in words (payslip example)',rupeesInWords(8767),'Eight Thousand Seven Hundred Sixty Seven');
+      }catch(err){results.push({name:'Amount in words',ok:false,got:String(err),want:'no error'});}
+      try{
+        const M=(b,l,s)=>JSON.parse(mergeCloudValues(b==null?null:JSON.stringify(b),JSON.stringify(l),JSON.stringify(s)));
+        const ids=a=>a.map(x=>x.id).join(',');
+        eq('Merge: two people add different employees → both kept',ids(M([{id:'E1'}],[{id:'E1'},{id:'E2',n:'mine'}],[{id:'E1'},{id:'E3',n:'theirs'}])),'E1,E2,E3');
+        eq('Merge: same new ID from two people → second renumbered',M([{id:'E1'}],[{id:'E1'},{id:'E2',n:'mine'}],[{id:'E1'},{id:'E2',n:'theirs'}]).map(x=>x.id+':'+(x.n||'-')).join(','),'E1:-,E2:theirs,E3:mine');
+        eq('Merge: an old unchanged copy never deletes others\\' additions',ids(M([{id:'E1'}],[{id:'E1'}],[{id:'E1'},{id:'E2'}])),'E1,E2');
+        eq('Merge: different fields edited by two people → both kept',M([{id:'E1',a:1,b:1}],[{id:'E1',a:2,b:1}],[{id:'E1',a:1,b:3}]),[{id:'E1',a:2,b:3}]);
+      }catch(err){results.push({name:'Merge logic',ok:false,got:String(err),want:'no error'});}
+      parent.postMessage({salonosTests:results},'*');
+    })();`;
+
+    const esc=s=>s.replace(/<\/script>/gi,'<\\/script>');
+    const doc='<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><div id="root"></div>'
+      +'<script>'+setup+'<\/script>'
+      +libs.map(s=>'<script src="'+s+'"><\/script>').join('')
+      +'<script>'+esc(app)+'<\/script>'
+      +'<script>'+tests+'<\/script></body></html>';
+
+    const frame=document.createElement('iframe');
+    frame.setAttribute('sandbox','allow-scripts');
+    frame.style.display='none';
+    const timeout=setTimeout(()=>{sumEl.textContent='Tests did not finish (timed out after 60s).';},60000);
+    window.addEventListener('message',e=>{
+      if(e.source!==frame.contentWindow||!e.data||!e.data.salonosTests)return;
+      clearTimeout(timeout);
+      const res=e.data.salonosTests;
+      const passed=res.filter(r=>r.ok).length;
+      sumEl.textContent=(passed===res.length?'✅ ':'❌ ')+passed+' of '+res.length+' tests passed';
+      sumEl.style.color=passed===res.length?'var(--ok)':'var(--bad)';
+      out.innerHTML='';
+      res.forEach(r=>{
+        const d=document.createElement('div');d.className='t '+(r.ok?'ok':'bad');
+        const s=document.createElement('span');s.className='s';s.textContent=r.ok?'✓':'✗';
+        const b=document.createElement('div');b.textContent=r.name;
+        if(!r.ok){const sm=document.createElement('small');sm.textContent='expected '+JSON.stringify(r.want)+' · got '+JSON.stringify(r.got);b.appendChild(sm);}
+        d.appendChild(s);d.appendChild(b);out.appendChild(d);
+      });
+      window.__salonosTestResults=res;
+    });
+    frame.srcdoc=doc;
+    document.body.appendChild(frame);
+  }catch(err){sumEl.textContent='Could not run tests: '+(err.message||err);}
+})();
+</script>
+</body>
+</html>
