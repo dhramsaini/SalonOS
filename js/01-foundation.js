@@ -529,7 +529,7 @@ try{
 // ============================================================================
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.09.29.5';
+const APP_VERSION='2026.09.29.6';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
@@ -978,6 +978,7 @@ async function cloudApplyUpdates(){
     if(error)throw error;
     rows.push(...(data||[]));
   }
+  await employeesFromTable(supa,rows);
   const applied=[];
   rows.forEach(row=>{ // synchronous from here on — no await between writing and the caller's remount
     if(_cloudDirty.has(row.key)||_cloudPushTimers[row.key])return;
@@ -991,6 +992,34 @@ async function cloudApplyUpdates(){
     if(localStorage.getItem(row.key)!==row.value){applyCloudValue(row.key,row.value);applied.push(row.key);}
   });
   return applied;
+}
+// ── Employees come from the employees table (#3 Stage 1b) ────────────────────────────────────────
+// Saves still go to kv_store; the database copies each employee list into the employees table in
+// the same step (trigger, supabase/step6 + step7). Loads rebuild each outlet's list from the table
+// (pos = order, raw = each record exactly as saved). If that ever differs from the kv_store copy,
+// the kv_store copy is used and the mismatch is logged under Master Settings → App errors.
+// Rollback switch: set EMPLOYEES_FROM_TABLE to false.
+const EMPLOYEES_FROM_TABLE=true;
+const _EMP_KEY_RE=/^salonos_master_employees_outlet_(\d+)$/;
+async function employeesFromTable(supa,rows){
+  if(!EMPLOYEES_FROM_TABLE)return;
+  const emp=rows.filter(r=>r.value!=null&&_EMP_KEY_RE.test(r.key));
+  if(!emp.length)return;
+  try{
+    const ids=emp.map(r=>Number(_EMP_KEY_RE.exec(r.key)[1]));
+    const{data,error}=await supa.from('employees').select('outlet_id,raw,pos').in('outlet_id',ids).eq('deleted',false).order('outlet_id').order('pos').limit(10000);
+    if(error)throw error;
+    const byOutlet={};
+    (data||[]).forEach(t=>{(byOutlet[t.outlet_id]=byOutlet[t.outlet_id]||[]).push(t.raw);});
+    for(const r of emp){
+      const id=_EMP_KEY_RE.exec(r.key)[1];
+      const fromTable='['+(byOutlet[id]||[]).join(',')+']';
+      if(fromTable===r.value){r.value=fromTable;continue;}
+      // A save landing between the two reads is not a problem — only log a real mismatch.
+      const{data:now}=await supa.from('kv_store').select('updated_at').eq('key',r.key).maybeSingle();
+      if(now&&now.updated_at===r.updated_at)reportClientError('Employees table differs from the saved list for outlet '+id+' — used the saved list');
+    }
+  }catch(e){reportClientError('Could not read the employees table: '+((e&&e.message)||e));}
 }
 let _cloudLoopStarted=false;
 function startCloudSyncLoop(){
@@ -1045,6 +1074,7 @@ async function cloudPullAndHydrate(){
     try{localStorage.setItem(CLOUD_PENDING_KEY,JSON.stringify(stillPending));}catch(e){}
     const{data,error}=await supa.from('kv_store').select('key,value,updated_at');
     if(error)throw error;
+    await employeesFromTable(supa,data||[]);
     (data||[]).forEach(row=>{
       if(stillPending.includes(row.key))return;
       if(row.value==null){ // deleted in the cloud — drop this browser's leftover copy too
