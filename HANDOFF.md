@@ -70,3 +70,8 @@ sign-out is scope 'local' (never logs other devices out); login retries the prof
 back to the library (setSession); failures are logged to client_errors ("Login: …", with a note if another SalonOS tab is
 open); supabase-js pinned to 2.117.2 (change only with a login/2-step/live-sync test); the page and version.json bypass the
 HTTP cache so fixes arrive immediately.
+**Root cause found (v.14):** the login was shared by every tab/window through localStorage. A tab still holding an old, revoked
+login failed to refresh it, removed the shared session and broadcast SIGNED_OUT (channel = storage key), wiping new logins made in
+other tabs (reproduced with mocks: shared key → ANON, per-tab key → USER). Fix: `getSupabaseClient` stores the Supabase session in
+sessionStorage under a per-tab key (`salonos_auth_key`), matching SalonOS's existing per-tab login. Everyone signs in once after
+this update. Login failures still log to App errors ("Login: …").

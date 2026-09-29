@@ -529,7 +529,7 @@ try{
 // ============================================================================
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.09.29.13';
+const APP_VERSION='2026.09.29.14';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
@@ -565,7 +565,18 @@ async function getSupabaseClient(){
   if(!CLOUD_SYNC_ENABLED)return null;
   if(_supabaseClient)return _supabaseClient;
   await loadScript(CDN_SUPABASE_URL);
-  _supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+  // Each tab keeps its own login (sessionStorage, under a per-tab key). SalonOS already signs in
+  // per tab (salonos_user lives in sessionStorage), and a login shared through localStorage let
+  // any other SalonOS tab/window of the browser wipe it: a tab still holding an old, revoked
+  // login fails to refresh it, removes the shared session and broadcasts "signed out" on a
+  // channel named after the storage key — which signed new logins out right after sign-in
+  // (29 Sep 2026). A per-tab key also gives each tab its own broadcast channel.
+  let authKey=null;
+  try{
+    authKey=sessionStorage.getItem('salonos_auth_key');
+    if(!authKey){authKey='salonos-auth-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);sessionStorage.setItem('salonos_auth_key',authKey);}
+  }catch(e){authKey=null;}
+  _supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,authKey?{auth:{storage:window.sessionStorage,storageKey:authKey,persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}:undefined);
   return _supabaseClient;
 }
 // Guards against pushing stale/incomplete local data back up over the real
