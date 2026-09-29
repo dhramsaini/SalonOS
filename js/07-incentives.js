@@ -5,10 +5,14 @@ function IncentiveWorkingSheet({period,salon,user}={}){
   // on the sheet below and isSummaryApproverRole for the full rationale. They land on a
   // dedicated read-only Approve/Return screen instead of any of this component's own sub-tabs
   // (Incentive Working, Incentive Payment, Comparative Sheet, Staff Work Report). ──
-  if(isSummaryApproverRole(user))return React.createElement(IncentiveSummaryApproval,{salon,period,user});
+  if(summaryApprovalOnly(user,salon?.id,'incentive-working'))return React.createElement(IncentiveSummaryApproval,{salon,period,user});
+  return React.createElement(IncentiveWorkingTabs,{period,salon,user}); // separate component: switching screens when access changes live never mixes hooks
+}
+function IncentiveWorkingTabs({period,salon,user}={}){
   const [subTab,setSubTab]=useState('incentive');
+  const approver=isSummaryApproverRole(user); // given Edit here — keeps Summary Approval as a tab
   const tabBar=React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
-    [{id:'incentive',label:'Incentive Working'},{id:'incentive-payment',label:'Incentive Payment'},{id:'comparative',label:'Comparative Sheet'},{id:'staff-report',label:'Staff Work Report'}].map(t=>
+    [{id:'incentive',label:'Incentive Working'},{id:'incentive-payment',label:'Incentive Payment'},{id:'comparative',label:'Comparative Sheet'},{id:'staff-report',label:'Staff Work Report'},...(approver?[{id:'summary',label:'Summary Approval'}]:[])].map(t=>
       React.createElement('button',{key:t.id,className:`tab-btn ${subTab===t.id?'active':''}`,onClick:()=>setSubTab(t.id)},t.label)
     )
   );
@@ -20,7 +24,8 @@ function IncentiveWorkingSheet({period,salon,user}={}){
     React.createElement('div',{style:{display:subTab==='incentive'?'block':'none'}},React.createElement(IncentiveWorkingCore,{period,salon,user})),
     React.createElement('div',{style:{display:subTab==='incentive-payment'?'block':'none'}},React.createElement(IncentivePaymentSheet,{period,salon})),
     React.createElement('div',{style:{display:subTab==='comparative'?'block':'none'}},React.createElement(IncentiveComparativeSheet,{period,salon})),
-    React.createElement('div',{style:{display:subTab==='staff-report'?'block':'none'}},React.createElement(StaffReportSheet,{period,salon}))
+    React.createElement('div',{style:{display:subTab==='staff-report'?'block':'none'}},React.createElement(StaffReportSheet,{period,salon})),
+    approver&&React.createElement('div',{style:{display:subTab==='summary'?'block':'none'}},React.createElement(IncentiveSummaryApproval,{salon,period,user}))
   );
 }
 function IncentiveWorkingCore({period,salon,user}={}){

@@ -673,6 +673,14 @@ function isManagerSideRole(user){
 function isSummaryApproverRole(user){
   return !!user&&(user.role==='Salon Manager'||user.role==='ASM');
 }
+// Salon Manager / ASM get only the Summary Approval screen for Salary / Incentive Working —
+// unless a Super Admin has given them "Edit" on that sheet for this outlet in User Management,
+// in which case they get the real sheet too (with Summary Approval as an extra tab).
+function summaryApprovalOnly(user,salonId,sheetId){
+  if(!isSummaryApproverRole(user))return false;
+  const oa=user.sheetAccessByOutlet&&salonId!=null&&user.sheetAccessByOutlet[salonId];
+  return !(oa&&oa[sheetId]==='Edit');
+}
 function summaryApprovalKeyFor(salonId,sheet){return outletKey('salonos_summary_approval_'+sheet,salonId);}
 function loadSummaryApprovals(salonId,sheet){
   try{const raw=cachedLocalGet(summaryApprovalKeyFor(salonId,sheet));if(raw!==null){const parsed=JSON.parse(raw);if(parsed&&typeof parsed==='object')return parsed;}}catch(e){}

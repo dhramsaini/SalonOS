@@ -2373,17 +2373,22 @@ function SalaryWorkingSheet({period,salon,onNavTab,user}={}){
   // on the sheet below (visible to whoever DOES have edit access here) and isSummaryApproverRole
   // for the full rationale. They land on a dedicated read-only Approve/Return screen instead of
   // any of this component's own sub-tabs (Salary Working, Salary Payment). ──
-  if(isSummaryApproverRole(user))return React.createElement(SalarySummaryApproval,{salon,period,user});
+  if(summaryApprovalOnly(user,salon?.id,'salary-working'))return React.createElement(SalarySummaryApproval,{salon,period,user});
+  return React.createElement(SalaryWorkingTabs,{period,salon,onNavTab,user}); // separate component: switching screens when access changes live never mixes hooks
+}
+function SalaryWorkingTabs({period,salon,onNavTab,user}={}){
   const [subTab,setSubTab]=useState('salary');
+  const approver=isSummaryApproverRole(user); // given Edit here — keeps Summary Approval as a tab
   const tabBar=React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
-    [{id:'salary',label:'Salary Working'},{id:'salary-payment',label:'Salary Payment'}].map(t=>
+    [{id:'salary',label:'Salary Working'},{id:'salary-payment',label:'Salary Payment'},...(approver?[{id:'summary',label:'Summary Approval'}]:[])].map(t=>
       React.createElement('button',{key:t.id,className:`tab-btn ${subTab===t.id?'active':''}`,onClick:()=>setSubTab(t.id)},t.label)
     )
   );
   return React.createElement('div',{className:'fade-in'},
     tabBar,
     React.createElement('div',{style:{display:subTab==='salary'?'block':'none'}},React.createElement(SalaryWorkingCore,{period,salon,onNavTab,user})),
-    React.createElement('div',{style:{display:subTab==='salary-payment'?'block':'none'}},React.createElement(SalaryPaymentSheet,{period,salon}))
+    React.createElement('div',{style:{display:subTab==='salary-payment'?'block':'none'}},React.createElement(SalaryPaymentSheet,{period,salon})),
+    approver&&React.createElement('div',{style:{display:subTab==='summary'?'block':'none'}},React.createElement(SalarySummaryApproval,{salon,period,user}))
   );
 }
 
