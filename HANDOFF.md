@@ -214,3 +214,25 @@ the repo) — also the `salonos-local` preview in `.claude/launch.json`. Then op
 - Login screen: "Exit" (backup download before sign-in) is hidden in cloud mode — it could hand the browser's cached data to
   anyone at a shared computer's login screen. Login card keeps a 16 px margin on phones (it touched the screen edges).
 - Personal details (emails, staff names, company names) removed from this file; the repo is public. Git history still has them.
+- step15 re-creates only the cron jobs that exist; the report jobs (step4) aren't scheduled on the live project yet — when email
+  reports are set up, run step4 and then step15 again.
+
+## Improvement roadmap (owner said "implement all", 30 Sep 2026) — phases
+Owner's answers: no POS (bills are manual → SalonOS's own Billing/Client CRM screens become the source), will set up a
+WhatsApp Business API number (build now, switches on when Meta keys are added), will set up email (Resend) with guidance.
+1 ✅ (v2026.09.30.10) **Owner insights** — `js/13a-insights.js` (loaded before js/14), sidebar 💡 Owner Insights (every role,
+  outlets from userCanSeeOutlet, each card only for outlets whose source sheet userCanViewSheet allows):
+  Today per outlet (Daily Sales rows 0–4, expenses, attendance marks, MTD vs target / vs same days last month) ·
+  Forecast `insForecastMonth` (entered days + same-weekday average of the last 8 weeks, ≥2 entries, else 28-day average;
+  past gaps counted 0 and reported) and `insNextMonthEstimate` (last 3 full months ≥15 days entered × last year's seasonal
+  factor 0.5–2 when available) · last month's P&L costs vs expected close · monthly sales target kv
+  `salonos_sales_target_outlet_<id>` {"YYYY-MM":amt} (edit = userCanEditSheet daily-sales) · bills due ≤7 days / overdue
+  `insVendorDues` · staff scorecard `insStaffScores` (incWorkingsFor sales/targets; current month targets & pay pro-rated;
+  attendance = worked ÷ present+half+absent; score 50% achievement cap 120%, 30% attendance, 20% sales÷pay cap 4×) ·
+  month-end pack PDF `insMonthPackRows` → exportReportPdfBlob. Server: automation `errorWatchAlerts` (kind 'errors',
+  Super Admin, client_errors last 24 h, setting errorWatch). Tests: 62.
+2 ☐ WhatsApp (bill photo capture → AI read → invoice, reminders, weekly owner summary) — needs Meta WABA keys.
+3 ☐ Email setup guide + weekly summary / month-end pack by email (Resend).
+4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
+5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
+6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

@@ -15,6 +15,7 @@
 //   login           new sign-in network, late-night sign-in (Super Admin); temporary access ended
 //   anomaly         unusual activity: a sales day far below that weekday's usual, a day's expenses 3x the
 //                   30-day average, a vendor bill that looks entered twice
+//   errors          app errors users hit in the last 24 hours, most frequent first (Super Admin)
 //
 // Settings: Master Settings → Automation (kv salonos_secret_automation_settings, Super Admin only).
 // Optional digest of new alerts by email / WhatsApp to the "Automatic reports" recipients, using the
@@ -47,7 +48,7 @@ const json = (body: unknown, status = 200) =>
 export const DEFAULTS = {
   enabled: true, salesCheck: true, attendanceCheck: true, dueReminders: true, dueDaysAhead: 3,
   recurringReminders: true, monthEndChecklist: true, autoLock: false, autoLockDay: 10, digest: false, anomalyChecks: true,
-  loginWatch: true, backupReminder: true,
+  loginWatch: true, backupReminder: true, errorWatch: true,
 };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -272,6 +273,30 @@ export function invoiceNeedsApproval(inv: any, outlet: any) {
   const from = parseDay(outlet.invoiceApprovalFrom), d = parseDay(inv.bookingDate || inv.invoiceDate);
   return from == null || d == null || d >= from;
 }
+// ── App errors in the last 24 h (public.client_errors) — one Super Admin alert per IST day, listing the
+// most frequent messages, so problems are seen the same day instead of when someone opens App errors.
+// Pure; rows from client_errors.
+export function errorWatchAlerts(rows: { at: string; email: string | null; message: string | null }[], nowMs: number) {
+  const cut = nowMs - 24 * 3600e3;
+  const recent = rows.filter((r) => Date.parse(r.at) >= cut);
+  if (!recent.length) return [] as Alert[];
+  const byMsg = new Map<string, { n: number; people: Set<string> }>();
+  for (const r of recent) {
+    const m = String(r.message || "(no message)").split("\n")[0].slice(0, 120);
+    const g = byMsg.get(m) ?? { n: 0, people: new Set<string>() };
+    g.n++; if (r.email) g.people.add(r.email);
+    byMsg.set(m, g);
+  }
+  const top = [...byMsg.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 5);
+  const people = new Set(recent.map((r) => r.email).filter(Boolean));
+  const day = Math.floor((nowMs + 5.5 * 3600e3) / 864e5);
+  return [{ akey: `errors:${isoOfDay(day)}`, outlet_id: null, kind: "errors", severity: recent.length >= 10 ? "urgent" : "info",
+    title: `${recent.length} app error${recent.length === 1 ? "" : "s"} in the last 24 hours`,
+    body: top.map(([m, g]) => `• ${m} (${g.n}×${g.people.size ? ", " + g.people.size + " user" + (g.people.size === 1 ? "" : "s") : ""})`).join("\n") +
+      `\n${people.size} user${people.size === 1 ? "" : "s"} affected. Details: Master Settings → App errors.`,
+    tab: null, due_date: null, auto: false }] as Alert[];
+}
+
 // ── Login watch: sign-ins from a network (first two parts of the IP) the person hasn't used in the
 // previous 60 days, and sign-ins between midnight and 6 AM IST. Pure; events from salonos_login_events.
 export function loginWatchAlerts(events: { user_id: string; email: string; at: string; ip: string | null }[], nowMs: number) {
@@ -402,6 +427,11 @@ async function run(manual: boolean) {
   if (settings.loginWatch) {
     const { data: ev, error: evErr } = await admin.rpc("salonos_login_events", { since: new Date(Date.now() - 61 * 864e5).toISOString() });
     if (!evErr && Array.isArray(ev)) alerts.push(...loginWatchAlerts(ev, Date.now()));
+  }
+  if (settings.errorWatch) {
+    const { data: er, error: erErr } = await admin.from("client_errors").select("at,email,message")
+      .gte("at", new Date(Date.now() - 24 * 3600e3).toISOString()).limit(500);
+    if (!erErr && Array.isArray(er)) alerts.push(...errorWatchAlerts(er, Date.now()));
   }
 
   const lockedNow: string[] = [];

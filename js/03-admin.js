@@ -1707,6 +1707,7 @@ function AutomationSettingsCard(){
           React.createElement('span',{style:{display:'block',fontSize:11.5,color:'var(--text3)'}},'Attendance, Salary and Incentive Working for that month become read-only (unlock from Master Sheet → 🔒 Months). The checklist runs until this day.'))),
       box('loginWatch','Login watch (Super Admin)','A sign-in from a network the person hasn’t used in 60 days, and sign-ins between midnight and 6 AM.'),
       box('backupReminder','Weekly backup file reminder (Super Admin)','Until this week’s backup file is downloaded (Master Settings → Cloud Backups, or the 🔔 button).'),
+      box('errorWatch','App errors (Super Admin)','Errors users hit in the last 24 hours, most frequent first — details in Master Settings → App errors.'),
       box('digest','Also send new alerts by email / WhatsApp','To the recipients under Automatic reports — needs the same email / WhatsApp setup.')),
     React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',marginTop:6}},
       React.createElement('button',{className:'btn btn-primary btn-sm',onClick:save},'Save'),

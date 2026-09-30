@@ -842,6 +842,7 @@ function App(){
   const GLOBAL_NAV=[
     ...(isReportOnlyRole?[]:[{id:'collaboration',label:isReviewer?'Review Centre':'My Submissions',icon:'✅'}]),
     {id:'dashboard',label:'Dashboard',icon:'📊'},
+    {id:'insights',label:'Owner Insights',icon:'💡'},
     ...(isAdmin?[{id:'master-sheet',label:'Master Sheet',icon:'🏪'}]:[]),
     {id:'reports',label:'Reports Hub',icon:'📋'},
     ...(isReviewer||isReportOnlyRole?[{id:'pnl',label:'P&L Statement',icon:'📈'}]:[]),
@@ -916,6 +917,7 @@ function App(){
     if(activePage==='collaboration')return React.createElement(CollaborationReview,{user,salons:accessibleSalons,submissions,setSubmissions});
     if(activePage==='dashboard'&&salons.length===0)return React.createElement(GettingStarted,{onAddSalon:()=>setActivePage('master-sheet'),isAdmin});
     if(activePage==='dashboard')return React.createElement(MasterDashboard,{selFY,setSelFY,FYS,accessibleSalons});
+    if(activePage==='insights')return React.createElement(OwnerInsights,{accessibleSalons,user});
     if(activePage==='master-sheet')return React.createElement(MasterSheet,{onSelect:handleSelectSalon,salons,setSalons:setSalonsAndSync,user});
     if(activePage==='pnl')return React.createElement(PnLSheet,null);
     if(activePage==='reports')return React.createElement(ReportsHub,{onNav:(p)=>setActivePage(p),onSalon:(s)=>handleSelectSalon(s)});

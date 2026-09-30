@@ -58,6 +58,21 @@
       const days=(p,a,h)=>[...Array(p).fill('present'),...Array(a).fill('absent'),...Array(h).fill('half')];
       put('salonos_attendance_outlet_901',{E1_2026_8:{days:days(27,3,0)},E2_2026_8:{days:days(28,0,2)},E3_2026_8:{days:days(30,0,0)}});
       put('salonos_attendance_outlet_902',{E4_2026_8:{days:days(30,0,0)}});
+      // Owner Insights: outlet 902 daily sales 21 Jul – 15 Sep 2026, ₹1,000 a day and ₹2,000 on Sundays.
+      const ds={};
+      for(let d=new Date(2026,6,21);d<=new Date(2026,8,15);d.setDate(d.getDate()+1)){
+        const iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+        ds[iso]={0:d.getDay()===0?1200:600,2:d.getDay()===0?800:400};
+      }
+      put('salonos_daily_sales_collection_data_outlet_902',ds);
+      put('salonos_daily_sales_data_outlet_902',{'2026-09-15':{a:250,b:50}});
+      put('salonos_vendors_outlet_902',[{id:'V1',name:'Test Vendor'}]);
+      put('salonos_vendor_invoices_outlet_902',[
+        {id:'I1',vendorId:'V1',invoiceNo:'A-1',amount:500,payments:[],dueDate:'14/09/2026'},
+        {id:'I2',vendorId:'V1',invoiceNo:'A-2',amount:800,payments:[{paidAmount:500}],dueDate:'2026-09-20'},
+        {id:'I3',vendorId:'V1',invoiceNo:'A-3',amount:900,payments:[],dueDate:'10/10/2026'},
+        {id:'I4',vendorId:'V1',invoiceNo:'PI-1',docNature:'Performa Invoice',amount:700,payments:[],dueDate:'2026-09-16'},
+        {id:'I5',vendorId:'V1',invoiceNo:'A-5',amount:400,payments:[{paidAmount:400}],dueDate:'2026-09-16'}]);
     })();`;
 
     const tests=`(async function(){
@@ -301,6 +316,38 @@
         eq('Fallback: Gemini out of quota → ChatGPT answers',r5.provider,'ChatGPT');
         window.fetch=oldFetch;
       }catch(err){results.push({name:'AI providers',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
+        // Owner Insights (js/13a-insights.js), "today" = Tue 15 Sep 2026.
+        const T=new Date(2026,8,15);
+        const f=insDayFigures(902,'2026-09-13');
+        eq('Insights: a day = cash + card + UPI + Luzo + outstanding; expenses summed',[f.entered,f.sales,f.cash,f.upi,insDayFigures(902,'2026-09-15').exp,insDayFigures(902,'2026-09-16').entered],[true,2000,1200,800,300,false]);
+        const fc=insForecastMonth(902,2026,8,T);
+        eq('Insights: month-end forecast from the weekday pattern (Sundays ₹2,000, other days ₹1,000)',[fc.mtd,fc.entered,fc.missingDays,fc.daysLeft,fc.projected,fc.basis],[17000,15,0,15,34000,'weekday pattern of the last 8 weeks']);
+        const nx=insNextMonthEstimate(902,T);
+        eq('Insights: next month = average of the full months entered (August ₹36,000)',[nx.estimate,nx.basis],[36000,'average of the last 1 month']);
+        insSaveTarget(902,2026,8,40000);
+        eq('Insights: monthly sales target saved per outlet and month',[insTargetFor(902,2026,8),insTargetFor(902,2026,9)],[40000,0]);
+        const du=insVendorDues(902,T,7);
+        eq('Insights: bills due in 7 days — overdue first, PIs / paid / later bills left out',du.map(x=>[x.invoiceNo,x.days,x.bal]),[['A-1',-1,500],['A-2',5,300]]);
+        const sc=insStaffScores(901,2026,8,new Date(2026,9,5));
+        const at=id=>(sc.find(r=>r.id===id)||{}).attPct;
+        eq('Insights: staff attendance % (27 of 30; 28 + two half days; full month)',[at('E1'),at('E2'),at('E3')],[90,97,100]);
+        const rows=insMonthPackRows({id:902,name:'Test Outlet B'},2026,8,T,()=>true);
+        const find=label=>(rows.find(r=>r[0]===label)||[])[1];
+        eq('Insights: month-end pack — summary, target and vendor dues',[find('Sales (Daily Sales & Exp.)'),find('Sales target'),find('Achieved'),rows.some(r=>r[0]==='Vendor bills outstanding'),rows.filter(r=>r[0]==='Test Vendor').length],['₹17,000','₹40,000','43%',true,3]);
+        const limited=insMonthPackRows({id:902,name:'Test Outlet B'},2026,8,T,s=>s==='daily-sales');
+        eq('Insights: month-end pack leaves out sheets the login can’t see',[limited.some(r=>r[0]==='Profit & Loss'),limited.some(r=>r[0]==='Salary'),limited.some(r=>r[0]==='Vendor bills outstanding'),limited.some(r=>r[0]==='Summary')],[false,false,false,true]);
+      }catch(err){results.push({name:'Owner Insights',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
+        const mod={};new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});
+        const now=Date.parse('2026-10-05T15:30:00Z');
+        const rows=[{at:'2026-10-05T10:00:00Z',email:'a@x.in',message:'Save failed\\nstack'},{at:'2026-10-05T11:00:00Z',email:'b@x.in',message:'Save failed'},
+          {at:'2026-10-05T12:00:00Z',email:'a@x.in',message:'Login: timeout'},{at:'2026-10-03T12:00:00Z',email:'c@x.in',message:'Old error'}];
+        const a=mod.errorWatchAlerts(rows,now);
+        eq('App errors alert: last 24 h only, most frequent first, users counted',[a.length,a[0].akey,a[0].title,a[0].body.split('\\n')[0],a[0].severity,mod.errorWatchAlerts([],now).length],
+          [1,'errors:2026-10-05','3 app errors in the last 24 hours','• Save failed (2×, 2 users)','info',0]);
+      }catch(err){results.push({name:'App errors alert',ok:false,got:String(err&&err.message||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
