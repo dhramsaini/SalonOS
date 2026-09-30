@@ -299,7 +299,7 @@ function guideVideoUrl(id,lang){return 'guides/'+id+'_'+(lang==='hi'?'hi':'en')+
 function staffGuideById(id){return STAFF_GUIDES.find(g=>g.id===id)||null;}
 function GuideVideoModal({guide,initialLang,onClose}){
   const h=React.createElement;
-  const [lang,setLang]=useState(initialLang||'hi');
+  const [lang,setLang]=useState(initialLang||'en');
   const [failed,setFailed]=useState(false);
   const [animated,setAnimated]=useState(false);
   if(animated)return h(StaffGuideModal,{guide,initialLang:lang,onClose});
@@ -307,7 +307,7 @@ function GuideVideoModal({guide,initialLang,onClose}){
     h('div',{className:'modal',style:{width:860,maxWidth:'96vw',padding:16},onClick:e=>e.stopPropagation()},
       h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:10,flexWrap:'wrap'}},
         h('div',{className:'modal-title',style:{margin:0,flex:1}},'🎬 '+guide.title[lang]),
-        ['hi','en'].map(l=>h('button',{key:l,className:'btn btn-sm '+(lang===l?'btn-primary':'btn-ghost'),onClick:()=>{setLang(l);setFailed(false);}},l==='en'?'English':'हिंदी'))),
+        ['en','hi'].map(l=>h('button',{key:l,className:'btn btn-sm '+(lang===l?'btn-primary':'btn-ghost'),onClick:()=>{setLang(l);setFailed(false);}},l==='en'?'English':'हिंदी'))),
       failed
         ?h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'🎞'),h('div',{className:'empty-title'},lang==='hi'?'वीडियो लोड नहीं हुआ':'The video could not be loaded'),
             h('div',{className:'empty-sub'},lang==='hi'?'इंटरनेट जाँचें, या नीचे आवाज़ वाला ऐनिमेटेड गाइड चलाएँ।':'Check the connection, or play the animated guide with voice below.'))
@@ -327,19 +327,19 @@ function GuideVideoButton({id,label}){
   if(!g)return null;
   return h(React.Fragment,null,
     h('button',{type:'button',className:'btn btn-ghost btn-sm',title:'Short video: '+g.title.en+' / '+g.title.hi,onClick:()=>setOpen(true)},label||'🎬 How-to'),
-    open&&h(GuideVideoModal,{guide:g,initialLang:'hi',onClose:()=>setOpen(false)}));
+    open&&h(GuideVideoModal,{guide:g,initialLang:'en',onClose:()=>setOpen(false)}));
 }
 
 function StaffGuidesList(){
   const h=React.createElement;
   const {success,error:toastError}=useToast();
-  const [lang,setLang]=useState('hi');
+  const [lang,setLang]=useState('en');
   const [playing,setPlaying]=useState(null);
   const [watching,setWatching]=useState(null);
   return h('div',{style:{marginBottom:14}},
     h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:8}},
       h('div',{style:{fontWeight:700,fontSize:14,flex:1}},'🎬 Video guides'),
-      ['hi','en'].map(l=>h('button',{key:l,className:'btn btn-sm '+(lang===l?'btn-primary':'btn-ghost'),onClick:()=>setLang(l)},l==='en'?'English':'हिंदी'))),
+      ['en','hi'].map(l=>h('button',{key:l,className:'btn btn-sm '+(lang===l?'btn-primary':'btn-ghost'),onClick:()=>setLang(l)},l==='en'?'English':'हिंदी'))),
     h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:8}},lang==='hi'?'🎞 वीडियो देखें · ▶ आवाज़ के साथ ऐनिमेटेड गाइड · ⬇ वीडियो डाउनलोड करके स्टाफ़ को WhatsApp पर भेजें।':'🎞 watch the video · ▶ animated guide with voice · ⬇ download the video to send to staff on WhatsApp.'),
     STAFF_GUIDES.map(g=>h('div',{key:g.id,style:{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderTop:'1px solid var(--border)'}},
       h('div',{style:{fontSize:22}},g.icon),
