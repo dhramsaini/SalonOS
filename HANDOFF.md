@@ -200,3 +200,6 @@ Suggested models (typed names also allowed): gpt-6-astra / gpt-6.1-sol / gpt-6-l
 grok-4.7 — from each provider's docs on 30 Sep 2026; untested against the real services (no keys here).
 Also: Collection Reco's "AI reconciliation" called api.anthropic.com from the browser (never worked on the live site); it is
 now an exact calculation in the browser (same table).
+
+**Local testing (any computer):** `tools/serve-local.ps1` (read-only static server, localhost:8765, refuses paths outside
+the repo) — also the `salonos-local` preview in `.claude/launch.json`. Then open /tests.html (53 tests on 30 Sep 2026).
