@@ -321,8 +321,8 @@
         const v=mo=>Math.round(variableRecurringMonthAmt(it,908,2026,mo).amt);
         saveVendorInvoices([{...bill,enteredAt:'2026-09-15T10:00:00.000Z'}],908);
         eq('Closed August keeps its provision; September gets its half + the true-up',[v(7),v(8),v(7)+v(8)],[2000,3000,5000]);
-        saveVendorInvoices([{...bill,enteredAt:'2026-08-20T10:00:00.000Z'}],908);
-        eq('Bill entered before August was closed: each month gets its half',[v(7),v(8)],[2500,2500]);
+        saveVendorInvoices([{...bill,invoiceDate:'20/08/2026'}],908);
+        eq('Bill booked in August (in advance for Aug–Sep): each month gets its half',[v(7),v(8)],[2500,2500]);
         // Advance bill (Sep–Nov, dated Sep) and a bill whose first month was closed before it was entered.
         saveMonthLocks({'2026-08':{locked:true,source:'manual',at:'2026-09-01T00:00:00.000Z'}},908);
         saveVendorInvoices([{id:'A1',vendorId:'V2',invoiceNo:'ADV-1',invoiceDate:'10/09/2026',amount:3000,periodFrom:'2026-09',periodTo:'2026-11',category:'Rent',enteredAt:'2026-09-10T10:00:00.000Z',payments:[]},
@@ -339,10 +339,24 @@
         saveVendorInvoices([],909);
         eq('Estimate before any bill follows the 1st/2nd month amounts',[v(6),v(7)],[2000,2300]);
         saveVendorInvoices([{id:'B9',vendorId:'V1',invoiceNo:'EB-9',invoiceDate:'05/09/2026',amount:5000,recurringId:'R9',periodFrom:'2026-07',periodTo:'2026-08',payments:[]}],909);
-        eq('Actual bill split in the item’s proportion',[v(6),v(7)],[2325.58,2674.42]);
+        eq('Bill for Jul–Aug booked in Sep: Jul/Aug keep their estimates, Sep = estimate from that bill + both adjustments',[v(6),v(7),v(8)],[2000,2300,3025.58]);
         saveVendorInvoices([{id:'B9',vendorId:'V1',invoiceNo:'EB-9',invoiceDate:'05/09/2026',amount:5000,splitFirst:2100,recurringId:'R9',periodFrom:'2026-07',periodTo:'2026-08',payments:[]}],909);
-        eq('A bill’s own 1st-month amount wins',[v(6),v(7)],[2100,2900]);
+        eq('A bill’s own 1st-month amount decides the adjustments',recurringAccrualRow(it,909,2026*12+8).adjustmentsHere.map(a=>Math.round(a.diff)),[100,600]);
       }catch(err){results.push({name:'First month split',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
+        // The user's scenario: July bill ₹1,00,000 → August estimated at ₹1,00,000; August actual ₹1,10,000
+        // arrives in September → September = its estimate (from the August bill) + ₹10,000 adjustment.
+        saveVendors([{id:'V1',name:'Power Co',cat:'Electricity Expenses'}],910);
+        safeLocalSet(outletKey('salonos_recurring_expenses',910),JSON.stringify([{id:'RM',expenseName:'Electricity Expenses',payee:'Power Co',amount:90000,frequency:'Monthly',dueDay:10,status:'Active',startDate:'2026-07-01',amountType:'Variable',billFor:'previous'}]));
+        saveVendorInvoices([{id:'J',vendorId:'V1',invoiceNo:'JUL',invoiceDate:'31/07/2026',amount:100000,periodFrom:'2026-07',periodTo:'2026-07',payments:[]},
+          {id:'A',vendorId:'V1',invoiceNo:'AUG',invoiceDate:'10/09/2026',amount:110000,periodFrom:'2026-08',periodTo:'2026-08',payments:[]}],910);
+        const it=loadRecurringExpenses(910)[0];
+        const aug=recurringAccrualRow(it,910,2026*12+7),sep=recurringAccrualRow(it,910,2026*12+8);
+        eq('Audit trail — August: basis July bill, estimate, actual, claimed, adjustment booked in Sep, net',
+          [aug.basis&&aug.basis.inv.invoiceNo,aug.estimated,aug.actual,aug.claimed,aug.adjustmentLater&&aug.adjustmentLater.amount,aug.adjustmentLater&&monthLabelOfIndex(aug.adjustmentLater.bookedIn),aug.recognized],
+          ['JUL',100000,110000,100000,10000,'Sep 2026',100000]);
+        eq('Audit trail — September: estimate from the August bill + reversal for August',[sep.estimated,sep.adjustmentsHere.map(a=>a.diff),sep.recognized],[110000,[10000],120000]);
+      }catch(err){results.push({name:'Accrual register',ok:false,got:String(err&&err.message||err),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
@@ -502,7 +516,7 @@
         safeLocalSet('salonos_vendor_invoices_outlet_902',JSON.stringify(inv.concat([{id:'I6',vendorId:'V2',invoiceNo:'RENT-9',invoiceDate:'05/09/2026',amount:22000,category:'Rent',payments:[]}])));
         const m=(y,mo)=>{const r=variableRecurringSumFor(902,'Rent',y,mo);return Math.round(r.amt)+(r.rows[0]&&r.rows[0].actual?' actual':' estimate');};
         const sep=variableRecurringSumFor(902,'Rent',2026,8);
-        eq('Recurring: Bi-Monthly bill split over its 2 months, estimate in months without a bill',[m(2026,6),m(2026,7),m(2026,8),m(2026,9)],['10000 estimate','11000 actual','11000 actual','10000 estimate']);
+        eq('Recurring: Bi-Monthly Aug–Sep bill booked in Sep — Aug keeps its estimate, Sep = its half + Aug adjustment',[m(2026,6),m(2026,7),m(2026,8),m(2026,9)],['10000 estimate','10000 estimate','12000 actual','10000 estimate']);
         eq('Recurring: the split bill is not also counted whole, nor the estimate on top',[recurringExpenseMonthlySumFor(902,'Rent',2026,8),sep.used.has('I6')],[0,true]);
         const q={id:'RE2',expenseName:'Rent',payee:'Landlord',amount:30000,frequency:'Quarterly',amountType:'Fixed',status:'Active',gstApplicable:false,startDate:'2026-01-01'};
         const b=variableRecurringBills(q,902).find(x=>x.inv.id==='I6');

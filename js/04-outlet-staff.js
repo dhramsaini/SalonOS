@@ -1790,23 +1790,25 @@ function variableRecurringBills(it,salonId){
       const amount=Number(inv.amount)||0,months=last-first+1;
       const itTot=Number(it.amount)||0,itFirst=Number(it.firstMonthAmt)||0;
       const firstAmt=Number(inv.splitFirst)>0?Number(inv.splitFirst):(months>1&&itTot>0&&itFirst>0&&itFirst<itTot?amount*itFirst/itTot:null);
-      return{inv,amount,first,last,months,shares:billShares(amount,months,firstAmt)};
+      const bookIdx=monthIndexOfIso(toISO(inv.bookingDate||inv.invoiceDate));
+      return{inv,amount,first,last,months,shares:billShares(amount,months,firstAmt),bookIdx:bookIdx!=null?bookIdx:last};
     })
     .filter(Boolean).sort((a,b)=>a.last-b.last);
 }
 function variableRecurringEstimatePerMonth(it,bills){
-  const recent=bills.slice(-3);
-  if(recent.length)return recent.reduce((s,b)=>s+b.amount/b.months,0)/recent.length;
+  // The previous bill (the latest one known) is the basis — "August is estimated from July's bill".
+  const prev=bills.slice().sort((a,b)=>a.last-b.last).pop();
+  if(prev)return prev.amount/prev.months;
   return recurringExpenseMonthlyAmt(it); // no bill yet: the item's own amount spread over its period
 }
-// ── Closed months and bills that arrive later (provision → true-up) ──
-// A month is "closed" once it is locked (month lock) or its P&L is marked Final. A bill entered AFTER
-// a month it covers was closed must not change that month: the month keeps the estimate it was closed
-// with (the provision), and the difference — that month's share of the bill minus its provision — is
-// booked in the latest month of the bill that is still open (usually the bill's own month), e.g. an
-// Aug–Sep electricity bill entered in September after August was closed: August keeps its estimate,
-// September = its own half + (August's half − August's estimate). Months still open simply take their
-// share. Bills saved before this rule (no enteredAt) keep the old behaviour (every month takes its share).
+// ── Accrual method for recurring bills (estimate → actual → reversal) ──
+// Each month is recognised once and never restated:
+//  • its bill is already booked (booking month ≤ that month) → the actual share;
+//  • otherwise → an ESTIMATE from the previous bill known then (e.g. August from July's actual bill);
+//  • in the month a bill is booked, every earlier month it covers is adjusted: actual share − amount
+//    already claimed (the estimate), shown as that month's adjustment / reversal.
+// So an Aug bill received in September: August shows the estimate, September shows its own amount +
+// (August actual − August estimate). Advance bills (months after the booking month) take their shares.
 function monthClosedAtIdx(salonId,t){
   const y=Math.floor(t/12),m=((t%12)+12)%12;
   const lock=monthLockRecordFor(salonId,y,m);
@@ -1820,39 +1822,57 @@ function monthClosedBeforeBill(salonId,t,inv){
   const at=monthClosedAtIdx(salonId,t);
   return !!at&&at<inv.enteredAt;
 }
-// The estimate a month carried with the bills known by then (bills dated in or before that month).
-function variableRecurringEstimateAsOf(it,bills,t,salonId){
-  if(!isVariableRecurring(it))return recurringExpenseMonthlyAmt(it,Math.floor(t/12),t%12,salonId)*recurringSplitFactor(it,t);
-  const known=bills.filter(b=>{const bm=monthIndexOfIso(toISO(b.inv.invoiceDate));return bm==null||bm<=t;});
-  return variableRecurringEstimatePerMonth(it,known)*recurringSplitFactor(it,t);
+// The estimate month t carried: from the latest bill already booked by then for an earlier month.
+function recurringEstimateFor(it,bills,t,salonId){
+  const start=monthIndexOfIso(it.startDate),end=monthIndexOfIso(it.endDate);
+  if((start!=null&&t<start)||(end!=null&&t>end))return{amt:0,basis:null};
+  const known=bills.filter(b=>b.bookIdx<=t&&b.last<t).sort((a,b)=>a.last-b.last||a.bookIdx-b.bookIdx);
+  const prev=known[known.length-1]||null;
+  const f=recurringSplitFactor(it,t);
+  if(prev&&isVariableRecurring(it))return{amt:prev.amount/prev.months*f,basis:prev};
+  return{amt:(isVariableRecurring(it)?recurringExpenseMonthlyAmt(it):recurringExpenseMonthlyAmt(it,Math.floor(t/12),t%12,salonId))*f,basis:prev};
+}
+function variableRecurringEstimateAsOf(it,bills,t,salonId){return recurringEstimateFor(it,bills,t,salonId).amt;}
+// One month of the accrual register — everything the audit trail needs.
+function recurringAccrualRow(it,salonId,t,bills){
+  bills=bills||variableRecurringBills(it,salonId);
+  const covering=bills.filter(b=>t>=b.first&&t<=b.last);
+  const bookedByNow=covering.filter(b=>b.bookIdx<=t),bookedLater=covering.filter(b=>b.bookIdx>t);
+  const est=recurringEstimateFor(it,bills,t,salonId);
+  let own,estimated=null,claimed;
+  if(bookedByNow.length){own=bookedByNow.reduce((x,b)=>x+b.shares[t-b.first],0);claimed=own;}
+  else{own=est.amt;estimated=est.amt;claimed=est.amt;}
+  const actual=covering.length?covering.reduce((x,b)=>x+b.shares[t-b.first],0):null;
+  const later=bookedLater.length&&!bookedByNow.length?bookedLater.reduce((a,b)=>a.bookIdx<b.bookIdx?a:b):null;
+  const adjustmentLater=later?{amount:actual-claimed,bookedIn:later.bookIdx,bill:later}:null;
+  // Adjustments booked in THIS month for earlier months covered by bills booked now.
+  const adjustmentsHere=[];
+  bills.filter(b=>b.bookIdx===t).forEach(b=>{
+    for(let c=b.first;c<=Math.min(b.last,t-1);c++){
+      const prior=bills.filter(x=>x!==b&&c>=x.first&&c<=x.last&&x.bookIdx<=c);
+      if(prior.length)continue; // that month already had its actual — nothing to reverse
+      const e=recurringEstimateFor(it,bills,c,salonId).amt,share=b.shares[c-b.first];
+      adjustmentsHere.push({month:c,actual:share,claimed:e,diff:share-e,bill:b});
+    }
+  });
+  const recognized=own+adjustmentsHere.reduce((x,a)=>x+a.diff,0);
+  return{month:t,basis:est.basis,estimated,actual,actualBills:covering,claimed,adjustmentLater,adjustmentsHere,recognized,
+    own,bookedByNow};
+}
+function recurringAccrualRegister(it,salonId,fromIdx,toIdx){
+  const bills=variableRecurringBills(it,salonId);const out=[];
+  for(let t=fromIdx;t<=toIdx;t++)out.push(recurringAccrualRow(it,salonId,t,bills));
+  return out;
 }
 function variableRecurringMonthAmt(it,salonId,year,month){
   const t=year*12+month;
   const bills=variableRecurringBills(it,salonId);
-  const est=c=>variableRecurringEstimateAsOf(it,bills,c,salonId);
-  let amt=0,coveredAny=false,provision=false;const covering=[],trueUps=[];
-  bills.forEach(b=>{
-    if(t<b.first||t>b.last)return;
-    coveredAny=true;
-    if(monthClosedBeforeBill(salonId,t,b.inv)){amt+=est(t);provision=true;} // closed before the bill: keeps its provision
-    else{amt+=b.shares[t-b.first];covering.push(b);}
-  });
-  if(!coveredAny){
-    const start=monthIndexOfIso(it.startDate),end=monthIndexOfIso(it.endDate);
-    if(!((start!=null&&t<start)||(end!=null&&t>end)))amt+=est(t);
-  }
-  // True-up: this month is where a bill's differences for already-closed months are booked.
-  bills.forEach(b=>{
-    const closed=[];let lastOpen=null;
-    for(let c=b.first;c<=b.last;c++){if(monthClosedBeforeBill(salonId,c,b.inv))closed.push(c);else lastOpen=c;}
-    if(!closed.length)return;
-    const bm=monthIndexOfIso(toISO(b.inv.invoiceDate));
-    const u=lastOpen!=null?lastOpen:Math.max(b.last+1,bm!=null?bm:b.last+1);
-    if(t!==u)return;
-    closed.forEach(c=>{const share=b.shares[c-b.first],pv=est(c),diff=share-pv;amt+=diff;trueUps.push({month:c,share,provision:pv,diff,bill:b});});
-    if(!covering.includes(b))covering.push(b);
-  });
-  return{amt,actual:covering.length>0,bills,covering,trueUps,provision};
+  const r=recurringAccrualRow(it,salonId,t,bills);
+  const covering=r.bookedByNow.slice();
+  r.adjustmentsHere.forEach(a=>{if(!covering.includes(a.bill))covering.push(a.bill);});
+  return{amt:r.recognized,actual:covering.length>0,bills,covering,
+    trueUps:r.adjustmentsHere.map(a=>({month:a.month,share:a.actual,provision:a.claimed,diff:a.diff,bill:a.bill})),
+    provision:r.estimated!=null,basis:r.basis,row:r};
 }
 // The latest billing period that has ended with no bill entered yet — {first,last} or null.
 function variableRecurringMissingPeriod(it,salonId,asOf){

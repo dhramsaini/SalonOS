@@ -95,6 +95,7 @@ function RecurringExpensesSheet({salon}={}){
     const last=(!isVariableRecurring(it)||it.billFor==='current')?bm:bm-1;return{from:ymOf(last-N+1),to:ymOf(last)};
   };
   const [billReading,setBillReading]=useState(false);
+  const [registerItem,setRegisterItem]=useState(null); // accrual register (audit trail) for one item
   const openEnterBill=(it)=>{
     const today=localTodayIso();const p=defaultBillPeriod(it,today);
     setBillForm({billNo:'',billDate:today,periodFrom:p.from,periodTo:p.to,amount:'',gst:'',splitFirst:'',attachment:null,periodTouched:false});
@@ -422,6 +423,7 @@ function RecurringExpensesSheet({salon}={}){
                 React.createElement('td',null,React.createElement('div',{style:{fontSize:11}},it.startDate||'—'),it.endDate?React.createElement('div',{style:{fontSize:10,color:'var(--text3)'}},'to '+it.endDate):null),
                 React.createElement('td',{'data-xr':ri,'data-xc':5,style:{background:sel(5)}},React.createElement('span',{className:'badge '+(it.status==='Active'?'badge-green':it.status==='Expired'?'badge-red':'badge-gray')},it.status)),
                 React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:4}},
+                  isSpreadRecurring(it)&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Month by month: previous bill, estimate, actual bill, amount already claimed, adjustment and net expense',onClick:()=>setRegisterItem(it)},'📒 Register'),
                   isSpreadRecurring(it)&&React.createElement('button',{className:'btn btn-primary btn-sm',title:'Record this period’s actual bill — the P&L spreads it over the months it covers',onClick:()=>openEnterBill(it)},'➕ Enter bill'),
                   React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>openEdit(it)},'Edit'),
                   React.createElement('button',{'aria-label':'Delete',className:'btn btn-sm',style:{background:'rgba(255,107,107,0.1)',border:'1px solid rgba(255,107,107,0.3)',color:'var(--red)',padding:'4px 8px',borderRadius:'var(--r)',cursor:'pointer',fontSize:11},onClick:()=>setShowDelete(it)},React.createElement(IconTrash,{size:14}))
@@ -805,6 +807,51 @@ function RecurringExpensesSheet({salon}={}){
       )
     ),
 
+    registerItem&&(()=>{
+      // ── Accrual register (audit trail): estimate → actual → reversal, month by month ──
+      const it=registerItem;
+      const now=monthIndexOfIso(localTodayIso());
+      const bills=variableRecurringBills(it,salonId);
+      const firstBill=bills.length?Math.min(...bills.map(b=>Math.min(b.first,b.bookIdx))):now-5;
+      const start=monthIndexOfIso(it.startDate);
+      const from=Math.max(start!=null?start:-1e9,Math.min(firstBill,now-5),now-23),to=now+(bills.some(b=>b.last>now)?Math.max(...bills.map(b=>b.last))-now:0);
+      const rows=recurringAccrualRegister(it,salonId,from,to);
+      const r2=v=>v==null?'—':rupee(Math.round(v*100)/100);
+      const billRef=b=>b?(b.inv.invoiceNo||'bill')+' · '+rupee(Math.round(b.amount))+(b.months>1?' for '+monthLabelOfIndex(b.first)+'–'+monthLabelOfIndex(b.last):' for '+monthLabelOfIndex(b.first)):'';
+      const tot=rows.reduce((a,r)=>a+r.recognized,0);
+      const hdr=['Month','Previous month bill (basis)','Estimated expense','Actual bill','Amount already claimed','Adjustment / reversal','Net expense recognised'];
+      const csvRows=rows.map(r=>[monthLabelOfIndex(r.month),r.basis?billRef(r.basis):(r.estimated!=null?'Item amount':''),r.estimated==null?'':Math.round(r.estimated*100)/100,
+        r.actual==null?'':Math.round(r.actual*100)/100+' ('+r.actualBills.map(b=>(b.inv.invoiceNo||'bill')+' booked '+monthLabelOfIndex(b.bookIdx)).join(', ')+')',
+        Math.round(r.claimed*100)/100,
+        [r.adjustmentLater?'This month '+(r.adjustmentLater.amount>=0?'+':'')+Math.round(r.adjustmentLater.amount*100)/100+' booked in '+monthLabelOfIndex(r.adjustmentLater.bookedIn):'',
+         ...r.adjustmentsHere.map(a=>'For '+monthLabelOfIndex(a.month)+': '+Math.round(a.actual*100)/100+' − '+Math.round(a.claimed*100)/100+' = '+Math.round(a.diff*100)/100)].filter(Boolean).join(' | '),
+        Math.round(r.recognized*100)/100]);
+      return React.createElement('div',{className:'modal-overlay',onClick:()=>setRegisterItem(null)},
+        React.createElement('div',{className:'modal',style:{width:'min(1100px,96vw)',maxHeight:'90vh',display:'flex',flexDirection:'column'},onClick:e=>e.stopPropagation()},
+          React.createElement('div',{className:'modal-title'},'Accrual register — '+displayName(it)),
+          React.createElement('div',{style:{fontSize:12,color:'var(--text2)',marginTop:-10,marginBottom:10,lineHeight:1.6}},
+            it.payee+' · '+it.frequency+' · '+(isVariableRecurring(it)?'Variable':'Fixed')+'. A month without its bill is booked at an estimate from the previous bill; when the actual bill is booked, the difference (actual − amount already claimed) is adjusted in that month. Months are never restated.'),
+          React.createElement('div',{className:'table-wrap',style:{overflowY:'auto',flex:1,minHeight:0}},React.createElement('table',null,
+            React.createElement('thead',null,React.createElement('tr',null,hdr.map(t=>React.createElement('th',{key:t,style:{position:'sticky',top:0}},t)))),
+            React.createElement('tbody',null,rows.map(r=>React.createElement('tr',{key:r.month,style:r.month===now?{background:'rgba(47,95,224,0.06)'}:undefined},
+              React.createElement('td',{style:{fontWeight:700,whiteSpace:'nowrap'}},monthLabelOfIndex(r.month)),
+              React.createElement('td',{style:{fontSize:12,color:'var(--text2)'}},r.estimated!=null?(r.basis?billRef(r.basis):'Item amount (no bill yet)'):'—'),
+              React.createElement('td',{style:{textAlign:'right',color:r.estimated!=null?'var(--orange)':'var(--text3)'}},r2(r.estimated)),
+              React.createElement('td',{style:{textAlign:'right'}},r.actual==null?'—':React.createElement(React.Fragment,null,r2(r.actual),
+                React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)'}},r.actualBills.map(b=>(b.inv.invoiceNo||'bill')+' · booked '+monthLabelOfIndex(b.bookIdx)).join(', ')))),
+              React.createElement('td',{style:{textAlign:'right'}},r2(r.claimed)),
+              React.createElement('td',{style:{fontSize:12}},
+                r.adjustmentLater&&React.createElement('div',{style:{color:'var(--text2)'}},(r.adjustmentLater.amount>=0?'+':'')+r2(r.adjustmentLater.amount)+' → booked in '+monthLabelOfIndex(r.adjustmentLater.bookedIn)),
+                r.adjustmentsHere.map(a=>React.createElement('div',{key:a.month,style:{color:a.diff>=0?'var(--red)':'var(--green)',fontWeight:600}},'For '+monthLabelOfIndex(a.month)+': '+r2(a.actual)+' − '+r2(a.claimed)+' = '+(a.diff>=0?'+':'')+r2(a.diff))),
+                !r.adjustmentLater&&!r.adjustmentsHere.length?'—':null),
+              React.createElement('td',{style:{textAlign:'right',fontWeight:700}},r2(r.recognized)))),
+              React.createElement('tr',{style:{fontWeight:700}},React.createElement('td',{colSpan:6},'Total recognised ('+monthLabelOfIndex(from)+' – '+monthLabelOfIndex(to)+')'),React.createElement('td',{style:{textAlign:'right'}},r2(tot)))))),
+          React.createElement('div',{className:'modal-actions'},
+            React.createElement('button',{className:'btn btn-ghost',onClick:()=>{
+              const csv=[hdr,...csvRows].map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+              const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='Accrual_Register_'+displayName(it).replace(/[^a-z0-9]+/gi,'_')+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),4000);}},'⬇ Download (CSV)'),
+            React.createElement('button',{className:'btn btn-primary',onClick:()=>setRegisterItem(null)},'Close'))));
+    })(),
     billItem&&React.createElement('div',{className:'modal-overlay',onClick:()=>setBillItem(null)},
       React.createElement('div',{className:'modal',style:{width:560,maxWidth:'96vw'},onClick:e=>e.stopPropagation()},
         React.createElement('div',{className:'modal-title'},'Enter bill — '+displayName(billItem)),
