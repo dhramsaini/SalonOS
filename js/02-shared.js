@@ -1276,9 +1276,11 @@ function parseTallyLedgersDetailed(xmlText){
 // forwards requests to Tally (local PC, office server via -TallyHost, or inside a cloud desktop).
 // Its address/token/company are this browser's own settings (not synced — they're per computer).
 const TALLY_CONNECTOR_DEFAULT='http://localhost:9123';
-function loadTallyConnectorCfg(){try{const c=JSON.parse(localStorage.getItem('sos_tally_connector')||'null');if(c&&typeof c==='object')return{url:TALLY_CONNECTOR_DEFAULT,token:'',company:'',autoCreate:true,...c};}catch(e){}return{url:TALLY_CONNECTOR_DEFAULT,token:'',company:'',autoCreate:true};}
+function loadTallyConnectorCfg(){try{const c=JSON.parse(localStorage.getItem('sos_tally_connector')||'null');if(c&&typeof c==='object')return{url:TALLY_CONNECTOR_DEFAULT,token:'',company:'',...c,autoCreate:false};}catch(e){}return{url:TALLY_CONNECTOR_DEFAULT,token:'',company:'',autoCreate:false};}
 function saveTallyConnectorCfg(cfg){try{localStorage.setItem('sos_tally_connector',JSON.stringify(cfg));}catch(e){}}
 async function tallyConnectorCall(cfg,path,xml){
+  // "Disconnect" on Tally Integration: SalonOS doesn't talk to Tally at all on this computer.
+  if(cfg&&cfg.disconnected){const err=new Error('Tally is disconnected in SalonOS on this computer — click Connect on Tally Integration.');err.disconnected=true;throw err;}
   const base=String(cfg.url||TALLY_CONNECTOR_DEFAULT).replace(/\/+$/,'');
   const headers={};if(cfg.token)headers['X-SalonOS-Token']=cfg.token;
   let res;

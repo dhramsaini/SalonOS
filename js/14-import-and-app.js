@@ -804,6 +804,7 @@ function App(){
     const tick=async()=>{
       if(busy)return;
       const cfg=loadTallyConnectorCfg();
+      if(cfg.disconnected)return; // Tally Integration → Disconnect
       const auto=cfg.autoSync||{};
       const ids=Object.keys(auto);
       if(!ids.length)return;

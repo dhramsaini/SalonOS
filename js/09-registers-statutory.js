@@ -145,7 +145,8 @@ function TallyExportSheet({salon,onNavTab}={}){
   const [tallyGuideLang,setTallyGuideLang]=useState(null);
   const checkConnector=async(cfg)=>{
     let c=cfg||conn;
-    setConnState(s=>({...s,checking:true}));
+    if(c.disconnected){setConnState({checking:false,ok:false,tally:false,companies:[],background:false,version:'',disconnected:true,msg:'Disconnected — SalonOS is not talking to Tally on this computer. Click Connect to use Tally again.'});return false;}
+    setConnState(s=>({...s,checking:true,disconnected:false}));
     try{
       const found=await tallyFindConnector(c);
       if(found.url!==String(c.url||'').replace(/\/+$/,'')){c={...c,url:found.url};updateConn({url:found.url});}
@@ -165,7 +166,7 @@ function TallyExportSheet({salon,onNavTab}={}){
   // nobody has to keep pressing Check connection. Stops after about 10 minutes.
   const recheckRef=useRef(0);
   useEffect(()=>{
-    if(live||connState.checking||connState.needsToken)return;
+    if(live||connState.checking||connState.needsToken||conn.disconnected)return;
     if(recheckRef.current>=40)return;
     const t=setTimeout(()=>{recheckRef.current++;checkConnector();},15000);
     return()=>clearTimeout(t);
@@ -200,7 +201,7 @@ function TallyExportSheet({salon,onNavTab}={}){
         {igst:names.has('IGST Input'),cgst:names.has('CGST Input'),sgst:names.has('SGST Input')},names.has(map.bankLedger)?map.bankLedger:'',vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked,
         extraLedgersFor(invoices,bankRows).filter(l=>names.has(l.name)));
       const r=parseTallyImportResult(await tallySend(conn,xml));
-      (r.errors||r.exceptions?tallyErr:success)('Ledgers → Tally: '+tallyResultText(r)+'.');
+      (r.errors||r.exceptions?tallyErr:success)('Ledgers → Tally: '+tallyResultText(r)+'.'+(r.lineErrors&&r.lineErrors.length?' Tally says: '+r.lineErrors[0]+(r.lineErrors.length>1?' (+'+(r.lineErrors.length-1)+' more — see History)':''):''));
       logIt({action:'Create ledgers',created:r.created||0,altered:r.altered||0,errors:(r.errors||0)+(r.exceptions||0),detail:r.lineErrors.slice(0,5)});
       await fetchLedgersFromTally(true);
     }catch(err){tallyErr(err.message);}
@@ -264,7 +265,7 @@ function TallyExportSheet({salon,onNavTab}={}){
   const pill=(ok,text)=>h('span',{className:'badge '+(ok===true?'badge-green':ok===false?'badge-red':'badge-amber'),style:{fontSize:10.5}},text);
   const statusBar=h('div',{className:'card',style:{display:'flex',gap:18,alignItems:'center',flexWrap:'wrap',padding:'12px 16px',marginBottom:14}},
     h('div',null,h('div',{style:{fontSize:10.5,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.05em'}},'Tally'),
-      connState.checking?pill(null,'Checking…'):live?pill(true,'● Connected'):connState.ok?pill(null,'Tally not answering'):pill(false,'○ Offline — file export')),
+      conn.disconnected?pill(false,'⏏ Disconnected'):connState.checking?pill(null,'Checking…'):live?pill(true,'● Connected'):connState.ok?pill(null,'Tally not answering'):pill(false,'○ Offline — file export')),
     h('div',null,h('div',{style:{fontSize:10.5,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.05em'}},'Company'),
       h('div',{style:{fontSize:13,fontWeight:600}},conn.company||(live?'(open in Tally)':'—'))),
     h('div',null,h('div',{style:{fontSize:10.5,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.05em'}},'Bank ledger'),
@@ -272,7 +273,13 @@ function TallyExportSheet({salon,onNavTab}={}){
     h('div',null,h('div',{style:{fontSize:10.5,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.05em'}},'Last sync'),
       h('div',{style:{fontSize:13,fontWeight:600}},lastSync?when(lastSync.at)+(lastSync.sent!=null?' · '+lastSync.sent+' sent':''):'Never')),
     h('div',{style:{marginLeft:'auto',display:'flex',gap:6}},
-      h('button',{className:'btn btn-ghost btn-sm',disabled:connState.checking,onClick:()=>checkConnector()},'⟳ Check connection'),
+      conn.disconnected
+        ?h('button',{className:'btn btn-primary btn-sm',onClick:()=>{const next={...conn,disconnected:false};setConn(next);saveTallyConnectorCfg(next);recheckRef.current=0;checkConnector(next);}},'🔌 Connect')
+        :h(React.Fragment,null,
+          h('button',{className:'btn btn-ghost btn-sm',disabled:connState.checking,onClick:()=>checkConnector()},'⟳ Check connection'),
+          h('button',{className:'btn btn-ghost btn-sm',title:'Stop SalonOS talking to Tally on this computer (nothing is sent, not even the evening auto-sync) until you click Connect',
+            onClick:()=>{if(!window.confirm('Disconnect Tally on this computer? SalonOS will not read from or send anything to Tally (including the evening auto-sync) until you click Connect.'))return;
+              const next={...conn,disconnected:true};setConn(next);saveTallyConnectorCfg(next);checkConnector(next);info('Tally disconnected — nothing will be sent until you click Connect.');}},'⏏ Disconnect')),
       h('button',{className:'btn btn-ghost btn-sm',onClick:doRefresh},'↻ Refresh data')));
   const periodBar=h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:14}},
     h('span',{style:{fontSize:12,color:'var(--text2)',fontWeight:600}},'Period'),
@@ -450,8 +457,7 @@ function TallyExportSheet({salon,onNavTab}={}){
         h('span',{style:{fontSize:12.5,color:'var(--text2)'}},'Company in Tally'),
         h('select',{className:'form-control',style:{width:'auto',minWidth:240},value:conn.company||'',onChange:e=>updateConn({company:e.target.value})},
           h('option',{value:''},'(the one currently open in Tally)'),connState.companies.map(c=>h('option',{key:c,value:c},c))),
-        h('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:12.5,color:'var(--text2)',cursor:'pointer'}},
-          h('input',{type:'checkbox',checked:!!conn.autoCreate,onChange:e=>updateConn({autoCreate:e.target.checked})}),'Create new SalonOS ledgers in Tally automatically')),
+        h('span',{style:{fontSize:11.5,color:'var(--text3)'}},'Nothing is sent to Tally until you click a Sync / Create / Send button.')),
       connState.ok&&h('div',{style:{fontSize:12,color:connState.background?'var(--green)':'var(--orange)',marginBottom:10}},
         connState.background?'✓ Installed on this computer — starts by itself with Windows (connector '+connState.version+').'
           :'The connector is running in a window that was started by hand. Install it below so it starts by itself with Windows.'),
@@ -495,12 +501,13 @@ function TallyExportSheet({salon,onNavTab}={}){
         (conn.token||connState.needsToken)&&h('div',{className:'form-group'},h('label',null,'Connector token (only when the connector asks for one)'),h('input',{className:'form-control',type:'password',autoComplete:'off',value:conn.token,onChange:e=>updateConn({token:e.target.value})})))),
     h(TallyAutoSyncCard,{salonId,conn,updateConn,companies:connState.companies,tallyOk:live,onDone:doRefresh}));
 
-  // With "auto-create" on: new SalonOS ledgers are created in Tally when this screen opens.
-  const autoRanRef=useRef(false);
+  // When Tally connects, read its ledger list (read-only — nothing is created or sent until someone
+  // clicks a button; the old "create ledgers on open" setting sent masters on its own).
+  const readRanRef=useRef(false);
   useEffect(()=>{
-    if(autoRanRef.current||!live)return;
-    autoRanRef.current=true;
-    (async()=>{const cache=await fetchLedgersFromTally(true);if(conn.autoCreate&&cache){const have=new Set(cache.ledgers.map(l=>String(l.name).toLowerCase()));if(allLedgerRows().some(r=>!have.has(String(r.name).toLowerCase())))await createMissingInTally(cache);}})();
+    if(readRanRef.current||!live)return;
+    readRanRef.current=true;
+    fetchLedgersFromTally(true);
     // eslint-disable-next-line
   },[live]);
 

@@ -350,6 +350,11 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   (+1 min) in Master Sheet import, vendor bill import, Cradlee imports, bank statement import. salonos-reports daily
   attendance now counts only staff employed that day and an unmarked weekly off as off (same as the nightly check) —
   redeployed. Tests 85.
+· (v2026.09.30.31) **Tally: nothing sent without a click** — the default-on "create ledgers when the screen opens"
+  (conn.autoCreate) looped: every save re-mounted the screen and it sent masters again every few seconds (log showed
+  "Could not find Company ''" — ran before the company was chosen). Removed; autoCreate forced false; on connect only
+  reads the ledger list. **⏏ Disconnect / 🔌 Connect** in the status bar (conn.disconnected, per computer):
+  tallyConnectorCall refuses, no re-check, evening auto-sync skipped. Ledger results show Tally's first reason.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.
