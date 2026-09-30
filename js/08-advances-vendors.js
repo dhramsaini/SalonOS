@@ -2452,7 +2452,7 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
 
     (subTab==='salary'||subTab==='incentive')&&React.createElement('div',{style:{display:'flex',gap:10,alignItems:'center',marginBottom:16}},
       React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
-      React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y)))
+      React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y)))
     ),
 
     missingBankCount>0&&React.createElement('div',{className:'attention-card attention-card-sm',style:{marginBottom:14,color:'var(--orange)'}},

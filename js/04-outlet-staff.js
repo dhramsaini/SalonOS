@@ -122,7 +122,7 @@ function OutletDashboard({salon,period,onNavTab}){
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTH_FULL.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
-        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))),
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y))),
         React.createElement(ShareReportButton,{title:dashReportTitle,subtitle:'Dashboard',getBodyHtml:dashReportBodyHtml,getSheetRows:dashReportSheetRows})
       )
     ),
@@ -224,7 +224,7 @@ function OutletDashboard({salon,period,onNavTab}){
           React.createElement('span',{style:{fontSize:11,color:'var(--green)',fontWeight:600}},'Month B:'),
           React.createElement('select',{className:'form-control',style:{width:'auto'},value:cmpMonthB,onChange:e=>setCmpMonthB(Number(e.target.value))},MONTH_FULL.map((m,i)=>React.createElement('option',{key:m,value:i},m)))
         ),
-        React.createElement('select',{className:'form-control',style:{width:'auto'},value:cmpYear,onChange:e=>setCmpYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y)))
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:cmpYear,onChange:e=>setCmpYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y)))
       ),
       // Side-by-side KPI cards
       React.createElement('div',{className:'grid4',style:{marginBottom:16}},

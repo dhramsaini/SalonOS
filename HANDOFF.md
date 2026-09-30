@@ -259,6 +259,11 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   📧 Email (`EmailSettingsCard`, js/13c-email.js) and Owner Insights → Month-end pack → 📧 per outlet (`EmailPackButton`).
   step17 schedules the nightly + monthly report jobs (with the cron key). Until digitalca.co.in is verified in Resend, mail only
   reaches the Resend account's own address, from onboarding@resend.dev. Tests: 71.
+· (v2026.09.30.14) **🎬 Video guides** — js/13d-guides.js, top of Help & Guide (`StaffGuidesList`): 8 guides (login, daily sales,
+  attendance, supplier bill, WhatsApp bills, salary, alerts & Ask, Owner Insights) in EN + HI, played in the Bank/Tally
+  `GuideModal` (voice via speechSynthesis); scene pictures = chip rows `mock:[[label, hot]]`. "⬇" records the guide on a 1280×720
+  canvas with MediaRecorder (MP4 where supported, else WebM; captions burned in, no voice; real time). Also: every year picker
+  uses `appYears()` (2023…next year; 15 lists stopped at 2026) and the FY list grows with the current FY.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

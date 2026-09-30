@@ -291,7 +291,7 @@ function DailyIncentiveLinkedSheet({period,salon,rowName,icon,onNavTab}={}){
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
-        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))),
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y))),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setTick(t=>t+1)},'⟳ Refresh'),
         onNavTab&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>onNavTab('daily-sales')},'Go to Daily Sales & Exp →')
       )
@@ -666,7 +666,7 @@ function AttendanceSheet({period,salon,user}={}){
       React.createElement('div',null,React.createElement('div',{className:'page-title'},'Employee Attendance'),React.createElement('div',{className:'page-sub'},'Monthly attendance register — click any cell to mark it (previous day must be marked first)')),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},months.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
-        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))),
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y))),
         !attMonthLocked&&React.createElement('label',{title:mgrFinalMonth?'Marked Final — Manager side locked for this whole month':'Mark this month Final (locks it for Manager-side edits — Super Admin/Reviewer can still edit)',style:{display:'flex',alignItems:'center',gap:5,fontSize:11.5,fontWeight:500,color:mgrFinalMonth?'var(--green)':'var(--text2)',cursor:(mgrFinalMonth&&isManagerSide)?'not-allowed':'pointer',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'6px 10px'}},
           React.createElement('input',{type:'checkbox',checked:mgrFinalMonth,disabled:mgrFinalMonth&&isManagerSide,onChange:toggleMgrFinalMonth}),
           mgrFinalMonth?'🔒 Month Final':'Mark Month Final'
@@ -1512,7 +1512,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
         React.createElement('input',{className:'form-control',style:{width:220},placeholder:'🔍 Search employee…',value:swSearch,onChange:e=>setSwSearch(e.target.value)}),
         swSearch&&React.createElement('span',{style:{fontSize:11,color:'var(--text3)'}},swVisibleWorkings.length+' of '+workings.length+' match'),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
-        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},Array.from({length:new Date().getFullYear()-2021},(_,i)=>2023+i).map(y=>React.createElement('option',{key:y},y))),
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y))),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openGenerate},'🧮 Generate Salary'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:exportExcel},swSelectedIds.size>0?'⬇ Export Selected ('+swSelectedIds.size+')':'⬇ Export Excel'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',title:'One branded payslip page per employee (the ticked ones, or everyone)',onClick:async()=>{
@@ -1565,7 +1565,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
             React.createElement('div',{className:'form-group'},React.createElement('label',null,'Month'),
               React.createElement('select',{className:'form-control',value:genMonth,onChange:e=>setGenMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m)))),
             React.createElement('div',{className:'form-group'},React.createElement('label',null,'Year'),
-              React.createElement('select',{className:'form-control',value:genYear,onChange:e=>setGenYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))))
+              React.createElement('select',{className:'form-control',value:genYear,onChange:e=>setGenYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y))))
           ),
           React.createElement('div',{className:'modal-actions'},
             React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowGenerate(false)},'Cancel'),
@@ -2153,7 +2153,7 @@ function SalaryPaymentSheet({period,salon}={}){
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
-        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))),
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y))),
         React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},onClick:exportExcel},selectedIds.size>0?'⬇ Export Selected ('+selectedIds.size+')':'⬇ Export Excel'),
         React.createElement(ShareReportButton,{title:spReportTitle,subtitle:'Salary Payment',getBodyHtml:spReportBodyHtml,getSheetRows:spReportSheetRows})
       )
@@ -2243,7 +2243,7 @@ function SalarySummaryApproval({salon,period,user}={}){
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
-        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y)))
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y)))
       )
     ),
     !rec&&React.createElement('div',{className:'card',style:{textAlign:'center',padding:40,color:'var(--text3)'}},
@@ -2322,7 +2322,7 @@ function IncentiveSummaryApproval({salon,period,user}={}){
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
-        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y)))
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y)))
       )
     ),
     !rec&&React.createElement('div',{className:'card',style:{textAlign:'center',padding:40,color:'var(--text3)'}},

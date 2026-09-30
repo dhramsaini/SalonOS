@@ -566,7 +566,7 @@ function IncentiveWorkingCore({period,salon,user}={}){
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
-        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))),
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y))),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openIwGenerate},'🧮 Generate Incentive'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowSettings(true)},'⚙ Incentive Rules & Settings'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},onClick:exportExcel},iwSelectedIds.size>0?'⬇ Export Selected ('+iwSelectedIds.size+')':'⬇ Export Excel'),
@@ -595,7 +595,7 @@ function IncentiveWorkingCore({period,salon,user}={}){
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Month'),
             React.createElement('select',{className:'form-control',value:iwGenMonth,onChange:e=>setIwGenMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m)))),
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Year'),
-            React.createElement('select',{className:'form-control',value:iwGenYear,onChange:e=>setIwGenYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))))
+            React.createElement('select',{className:'form-control',value:iwGenYear,onChange:e=>setIwGenYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y))))
         ),
         React.createElement('div',{className:'modal-actions'},
           React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowIwGenerate(false)},'Cancel'),
@@ -1230,7 +1230,7 @@ function IncentivePaymentSheet({period,salon}={}){
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
-        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))),
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y))),
         React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},onClick:exportExcel},selectedIds.size>0?'⬇ Export Selected ('+selectedIds.size+')':'⬇ Export Excel'),
         React.createElement(ShareReportButton,{title:ipReportTitle,subtitle:'Incentive Payment',getBodyHtml:ipReportBodyHtml,getSheetRows:ipReportSheetRows})
       )
@@ -1404,7 +1404,7 @@ function IncentiveComparativeSheet({period,salon}={}){
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
-        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))),
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y))),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:empFilter,onChange:e=>setEmpFilter(e.target.value)},
           [React.createElement('option',{key:'all',value:'all'},'All Employees')].concat(employeeList.map(e=>React.createElement('option',{key:e.id,value:e.id},e.name)))),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:exportExcel},'⬇ Export Excel'),

@@ -909,7 +909,8 @@ function App(){
     'import-center':ImportCenter,
   };
 
-  const FYS=['2022-23','2023-24','2024-25','2025-26','2026-27'];
+  // FY 2022-23 up to the current FY (a fixed list used to stop at 2026-27).
+  const FYS=(()=>{const cur=Number(pgCurrent().fy.slice(0,4));const out=[];for(let y=2022;y<=cur;y++)out.push(y+'-'+String(y+1).slice(2));return out;})();
 
   const accessibleSalons=salons.filter(s=>userCanSeeOutlet(user,s.id)); // Super Admin: all; everyone else: outlets given in User Management
   // 🔔 "Open" — straight to the sheet that fixes the alert (period picker first if none is set yet).
