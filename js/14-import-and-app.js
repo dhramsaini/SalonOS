@@ -1216,39 +1216,76 @@ if('serviceWorker' in navigator){
       return null;
     }
 
-    // Of every currently scrollable table container on the page, pick whichever one has the most
-    // vertical space actually on-screen right now — that's almost always the one the person is
-    // looking at.
+    // The table under the mouse wins (several tables can be on screen at once); otherwise the one
+    // with the most vertical space on-screen right now.
+    let pointerWrap=null;
+    document.addEventListener('mousemove',e=>{
+      const t=e.target&&e.target.closest&&e.target.closest('table');
+      if(t){const w=scrollableAncestorOf(t);if(w)pointerWrap=w;}
+    },{passive:true});
+    const visibleHeight=w=>{const r=w.getBoundingClientRect();return Math.min(r.bottom,window.innerHeight)-Math.max(r.top,0);};
     function pickActiveWrap(){
+      if(pointerWrap&&document.body.contains(pointerWrap)&&isScrollable(pointerWrap)&&visibleHeight(pointerWrap)>24)return pointerWrap;
       const tables=document.querySelectorAll('table');
       let best=null,bestVisible=0;
       tables.forEach(t=>{
         const w=scrollableAncestorOf(t);
         if(!w)return;
-        const r=w.getBoundingClientRect();
-        const visible=Math.min(r.bottom,window.innerHeight)-Math.max(r.top,0);
-        if(visible>bestVisible&&r.width>0){bestVisible=visible;best=w;}
+        const visible=visibleHeight(w);
+        if(visible>bestVisible&&w.getBoundingClientRect().width>0){bestVisible=visible;best=w;}
       });
       return bestVisible>24?best:null;
     }
 
     function hide(){leftBtn.classList.remove('visible');rightBtn.classList.remove('visible');}
 
+    // A column frozen on the left (sticky with a left offset) — header cells that are only sticky
+    // to the top (so the heading stays visible while scrolling down) don't count.
+    const frozenLeft=c=>{const cs=getComputedStyle(c);return cs.position==='sticky'&&cs.left!=='auto';};
+    // Width of the frozen (sticky) columns on the left, so a step never hides a column under them.
+    function stickyWidth(wrap){
+      const row=wrap.querySelector('thead tr')||wrap.querySelector('tr');
+      if(!row)return 0;
+      let w=0;
+      for(const c of row.children){if(frozenLeft(c))w+=c.getBoundingClientRect().width;else break;}
+      return Math.min(w,wrap.clientWidth*0.6);
+    }
+    // Column start positions (in the table's own scroll coordinates), from the header row.
+    function columnStarts(wrap){
+      const row=wrap.querySelector('thead tr')||wrap.querySelector('tr');
+      if(!row)return[];
+      const base=wrap.getBoundingClientRect().left-wrap.scrollLeft;
+      return[...row.children].filter(c=>!frozenLeft(c)).map(c=>Math.round(c.getBoundingClientRect().left-base));
+    }
+    // One column at a time: the next / previous column lines up just right of the frozen columns.
+    function step(dir){
+      const w=activeWrap;if(!w)return;
+      const sw=stickyWidth(w),starts=columnStarts(w),edge=w.scrollLeft+sw;
+      let target=null;
+      if(dir>0){const next=starts.find(x=>x>edge+4);target=next!=null?next-sw:w.scrollLeft+w.clientWidth*0.6;}
+      else{const prev=starts.filter(x=>x<edge-4).pop();target=prev!=null?prev-sw:0;}
+      w.scrollTo({left:Math.max(0,Math.min(target,w.scrollWidth-w.clientWidth)),behavior:'smooth'});
+    }
+
     function position(){
       activeWrap=pickActiveWrap();
       if(!activeWrap){hide();return;}
       const r=activeWrap.getBoundingClientRect();
-      const midY=Math.max(24,Math.min(window.innerHeight-24,r.top+Math.min(r.height,260)/2));
-      leftBtn.style.top=midY+'px';leftBtn.style.left=(r.left+6)+'px';
-      rightBtn.style.top=midY+'px';rightBtn.style.left=(r.right-36)+'px';
+      // Middle of the part of the table that is actually on screen (a long table's arrows used to sit
+      // beside its first rows, far from where the person is reading).
+      const top=Math.max(r.top,64),bottom=Math.min(r.bottom,window.innerHeight-8);
+      const midY=bottom>top?(top+bottom)/2:Math.max(24,Math.min(window.innerHeight-24,r.top+r.height/2));
+      const sw=stickyWidth(activeWrap);
+      leftBtn.style.top=midY+'px';leftBtn.style.left=(r.left+sw+6)+'px';
+      rightBtn.style.top=midY+'px';rightBtn.style.left=(r.right-40)+'px';
       const atStart=activeWrap.scrollLeft<=2;
       const atEnd=activeWrap.scrollLeft>=activeWrap.scrollWidth-activeWrap.clientWidth-2;
       leftBtn.classList.toggle('visible',!atStart);
       rightBtn.classList.toggle('visible',!atEnd);
     }
 
-    leftBtn.addEventListener('click',()=>{if(activeWrap)activeWrap.scrollBy({left:-320,behavior:'smooth'});});
-    rightBtn.addEventListener('click',()=>{if(activeWrap)activeWrap.scrollBy({left:320,behavior:'smooth'});});
+    leftBtn.addEventListener('click',()=>step(-1));
+    rightBtn.addEventListener('click',()=>step(1));
 
     let raf=null;
     const schedule=()=>{if(raf)return;raf=requestAnimationFrame(()=>{raf=null;position();});};

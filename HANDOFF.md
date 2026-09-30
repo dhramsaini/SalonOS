@@ -355,6 +355,13 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   "Could not find Company ''" — ran before the company was chosen). Removed; autoCreate forced false; on connect only
   reads the ledger list. **⏏ Disconnect / 🔌 Connect** in the status bar (conn.disconnected, per computer):
   tallyConnectorCall refuses, no re-check, evening auto-sync skipped. Ledger results show Tally's first reason.
+· (v2026.09.30.32) **Preview before anything moves to Tally**: every Sync / Send selected / Create opens a preview
+  (ledgers to create + every voucher with type, party, against, amount, totals per type, Suspense highlighted,
+  ⬇ Download preview CSV); nothing is sent until "✓ Move … to Tally". Evening card's Sync now confirms counts; the
+  evening auto-sync text says it sends without a preview. **Similar Tally ledgers** on the Ledgers tab (bigram Dice +
+  word overlap, pvt/ltd/co ignored, top 3 ≥45%, "Use" fills the mapping), "Only missing" filter, Readiness "🔗 Map
+  to Tally ledgers". **Table scroll arrows** (js/14): table under the mouse wins, centred on the visible part, one
+  column per click aligned after left-frozen columns (top-sticky header cells no longer counted as frozen).
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

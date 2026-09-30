@@ -13,6 +13,7 @@ function TallyAutoSyncCard({salonId,conn,updateConn,companies,tallyOk,onDone}){
   const pending=auto?tallyAutoSyncPending(salonId,auto.from):null;
   const setAuto=(next)=>{const all={...(conn.autoSync||{})};if(next)all[salonId]=next;else delete all[salonId];updateConn({autoSync:all});};
   const runNow=async()=>{
+    if(pending&&!window.confirm('Send to Tally now: '+pending.invs.length+' purchase invoice(s) and '+pending.rows.length+' bank transaction(s) dated from '+auto.from+'?\n\nTo see every entry first, use “Preview & move” on the Overview tab.'))return;
     setBusy(true);
     try{
       const res=await runTallyAutoSync(salonId,conn,auto);
@@ -28,7 +29,7 @@ function TallyAutoSyncCard({salonId,conn,updateConn,companies,tallyOk,onDone}){
       h('input',{type:'checkbox',checked:!!auto,style:{marginTop:3},onChange:e=>setAuto(e.target.checked?{company:conn.company||'',from:todayIso()}:null)}),
       h('span',null,'Every evening from ',
         h('input',{type:'time',className:'form-control',style:{width:110,display:'inline-block',padding:'2px 6px'},value:conn.syncTime||'20:00',onChange:e=>updateConn({syncTime:e.target.value||'20:00'})}),
-        ', send this outlet’s new purchase invoices and bank transactions to Tally — while SalonOS is open on this computer with the connector running. Missing ledgers are created first; each voucher is sent once.')),
+        ', send this outlet’s new purchase invoices and bank transactions to Tally — while SalonOS is open on this computer with the connector running. Missing ledgers are created first; each voucher is sent once. ',h('b',null,'This sends without a preview'),' — leave it off to check every entry first with “Preview & move”.')),
     auto&&h('div',{style:{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',margin:'8px 0 0 22px',fontSize:12,color:'var(--text2)'}},
       'Company:',
       h('select',{className:'form-control',style:{width:'auto',minWidth:200},value:auto.company||'',onChange:e=>setAuto({...auto,company:e.target.value})},
@@ -175,6 +176,7 @@ function TallyExportSheet({salon,onNavTab}={}){
 
   const [busy,setBusy]=useState('');
   const [progress,setProgress]=useState(null);
+  const [preview,setPreview]=useState(null); // {kind:'sync'|'ledgers', only, vouchers, ledgers} — shown before anything moves to Tally
   const [lastResult,setLastResult]=useState(null);
   const [log,setLog]=useState(()=>loadTallyLog(salonId));
   useEffect(()=>{setLog(loadTallyLog(salonId));},[salonId,refreshTick]);
@@ -304,8 +306,8 @@ function TallyExportSheet({salon,onNavTab}={}){
         h('div',{className:'card-title'},'Readiness'),
         check(live?true:false,live?'Connected to Tally':'Tally not connected',live?(conn.company?'Company: '+conn.company:'Using the company open in Tally'):'Install the SalonOS Tally Connector once on this computer (Settings tab) and open Tally — or use the file downloads below.',!live&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setTab('settings')},connState.ok?'Help':'Install')),
         check(!!map.bankLedger,map.bankLedger?'Bank ledger: '+map.bankLedger:'Bank ledger not set','The Tally ledger for this outlet’s bank account.',!map.bankLedger&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setTab('ledgers')},'Set')),
-        check(missingInTally?missingInTally.length===0:null,missingInTally?(missingInTally.length?missingInTally.length+' ledger(s) missing in Tally':'All ledgers exist in Tally'):'Ledgers not checked against Tally yet',missingInTally&&missingInTally.length?missingInTally.slice(0,4).map(r=>r.name).join(', ')+(missingInTally.length>4?'…':'')+' — sync creates them first.':(missingInTally?null:'Read Tally’s ledger list to check.'),
-          live&&(missingInTally&&missingInTally.length?h('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:()=>createMissingInTally()},'Create now'):!missingInTally&&h('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:()=>fetchLedgersFromTally(false)},'Check'))),
+        check(missingInTally?missingInTally.length===0:null,missingInTally?(missingInTally.length?missingInTally.length+' ledger(s) missing in Tally':'All ledgers exist in Tally'):'Ledgers not checked against Tally yet',missingInTally&&missingInTally.length?missingInTally.slice(0,4).map(r=>r.name).join(', ')+(missingInTally.length>4?'…':'')+' — map them to similar ledgers Tally already has, or create them.':(missingInTally?null:'Read Tally’s ledger list to check.'),
+          live&&(missingInTally&&missingInTally.length?h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}},h('button',{className:'btn btn-primary btn-sm',onClick:()=>{setLMissingOnly(true);setTab('ledgers');}},'🔗 Map to Tally ledgers'),h('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:()=>askCreate()},'Preview & create')):!missingInTally&&h('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:()=>fetchLedgersFromTally(false)},'Check'))),
         check(suspenseList.length===0,suspenseList.length?suspenseList.length+' bank line(s) will go to Suspense':'Every bank line has a ledger',suspenseList.length?'No supplier and no type on Bank Statement — set their Nature there, or reclassify in Tally.':null,
           suspenseList.length>0&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setVStatus('suspense');setTab('vouchers');}},'Review')),
         check(changedList.length===0,changedList.length?changedList.length+' voucher(s) changed after sending':'Nothing changed after sending',changedList.length?'Not re-sent (that would duplicate them) — correct them in Tally.':null,
@@ -315,8 +317,8 @@ function TallyExportSheet({salon,onNavTab}={}){
         h('div',{style:{fontSize:12.5,color:'var(--text2)',lineHeight:1.6,marginBottom:12}},live
           ?'Creates any missing ledger, then sends each of the '+newCount+' new voucher'+(newCount===1?'':'s')+' in '+periodLabel+' to '+(conn.company||'the company open in Tally')+' and records Tally’s answer. Vouchers already sent are never sent twice.'
           :'Tally isn’t connected, so download the files and import them in Tally: Gateway of Tally → Import Data → Masters first, then Vouchers.'),
-        live&&h('button',{className:'btn btn-primary'+(busy==='sync'?' btn-loading':''),style:{width:'100%',padding:'10px'},disabled:!!busy||!newCount,onClick:()=>syncNow()},
-          busy==='sync'&&progress&&progress.total?'Sending '+progress.done+' of '+progress.total+'…':newCount?'🔄 Sync '+newCount+' new voucher'+(newCount===1?'':'s')+' to Tally':'✓ Everything in this period is in Tally'),
+        live&&h('button',{className:'btn btn-primary'+(busy==='sync'?' btn-loading':''),style:{width:'100%',padding:'10px'},disabled:!!busy||!newCount,onClick:()=>askSync()},
+          busy==='sync'&&progress&&progress.total?'Sending '+progress.done+' of '+progress.total+'…':newCount?'👁 Preview & move '+newCount+' new voucher'+(newCount===1?'':'s')+' to Tally':'✓ Everything in this period is in Tally'),
         lastResult&&h('div',{style:{fontSize:12,marginTop:10,color:lastResult.failed.length?'var(--orange)':'var(--green)',lineHeight:1.6}},
           'Last run: '+lastResult.sent+' sent'+(lastResult.ledgersCreated?', '+lastResult.ledgersCreated+' ledger(s) created':'')+(lastResult.failed.length?', '+lastResult.failed.length+' rejected:':'.'),
           lastResult.failed.slice(0,5).map((f,i)=>h('div',{key:i,style:{color:'var(--text2)'}},'• '+f))),
@@ -346,7 +348,7 @@ function TallyExportSheet({salon,onNavTab}={}){
       h('input',{className:'form-control',style:{width:200,marginLeft:'auto'},placeholder:'Search party / narration',value:vSearch,onChange:e=>setVSearch(e.target.value)})),
     selKeys.size>0&&h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',background:'var(--bg3)',borderRadius:'var(--r)',padding:'8px 10px',marginBottom:10,fontSize:12.5}},
       h('b',null,selKeys.size+' selected'),
-      live&&h('button',{className:'btn btn-primary btn-sm',disabled:!!busy,onClick:()=>{const only={inv:new Set(),bank:new Set()};vouchers.filter(v=>selKeys.has(v.key)&&v.status==='new').forEach(v=>(v.kind==='inv'?only.inv:only.bank).add(v.id));if(!only.inv.size&&!only.bank.size){info('Only New vouchers can be sent.');return;}syncNow(only);}},'Send to Tally'),
+      live&&h('button',{className:'btn btn-primary btn-sm',disabled:!!busy,onClick:()=>{const only={inv:new Set(),bank:new Set()};vouchers.filter(v=>selKeys.has(v.key)&&v.status==='new').forEach(v=>(v.kind==='inv'?only.inv:only.bank).add(v.id));if(!only.inv.size&&!only.bank.size){info('Only New vouchers can be sent.');return;}askSync(only);}},'👁 Preview & send'),
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(confirm('Mark '+selKeys.size+' voucher(s) as already in Tally? They won’t be sent by SalonOS.'))markSent(selKeys,true);}},'Mark as already in Tally'),
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(confirm('Mark '+selKeys.size+' voucher(s) as NOT sent? The next sync will send them again — only do this if they are not in Tally.'))markSent(selKeys,false);}},'Mark as not sent'),
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setSel(new Set())},'Clear')),
@@ -376,7 +378,27 @@ function TallyExportSheet({salon,onNavTab}={}){
   ];
   const resolved=r=>(r.value||r.def);
   const inTally=name=>tallyNames?tallyNames.has(String(name).toLowerCase()):null;
-  const lShown=ledgerRows.filter(r=>!lSearch||(r.label+' '+resolved(r)+' '+r.kind).toLowerCase().includes(lSearch.toLowerCase()));
+  const [lMissingOnly,setLMissingOnly]=useState(false);
+  const lShown=ledgerRows.filter(r=>(!lSearch||(r.label+' '+resolved(r)+' '+r.kind).toLowerCase().includes(lSearch.toLowerCase()))&&(!lMissingOnly||inTally(resolved(r))===false));
+  // Similar ledgers already in Tally, best first — so a SalonOS name can be mapped to the one Tally
+  // already has instead of creating a near-duplicate (e.g. "Rajiv A Luthria" → "Rajiv Luthria").
+  const tallyIndex=useMemo(()=>{
+    const norm=x=>String(x||'').toLowerCase().replace(/&/g,' and ').replace(/[^a-z0-9]+/g,' ').replace(/\b(pvt|private|ltd|limited|llp|co|the|m s|ms|a c|ac|account|accounts)\b/g,' ').replace(/\s+/g,' ').trim();
+    const grams=x=>{const t=x.replace(/ /g,'');const m=new Map();for(let i=0;i<t.length-1;i++){const g=t.slice(i,i+2);m.set(g,(m.get(g)||0)+1);}return m;};
+    return{norm,grams,list:((ledgerCache&&ledgerCache.ledgers)||[]).map(l=>{const n=norm(l.name);return{name:l.name,parent:l.parent,n,g:grams(n),tok:new Set(n.split(' ').filter(w=>w.length>1))};})};
+  },[ledgerCache]);
+  const suggestFor=(label)=>{
+    const {norm,grams,list}=tallyIndex;const n=norm(label);if(n.length<2||!list.length)return[];
+    const g=grams(n),tok=new Set(n.split(' ').filter(w=>w.length>1)),gl=[...g.values()].reduce((a,b)=>a+b,0);
+    return list.map(L=>{
+      let inter=0;g.forEach((c,k)=>{if(L.g.has(k))inter+=Math.min(c,L.g.get(k));});
+      const dice=(gl+[...L.g.values()].reduce((a,b)=>a+b,0))?2*inter/(gl+[...L.g.values()].reduce((a,b)=>a+b,0)):0;
+      let shared=0;tok.forEach(w=>{if(L.tok.has(w))shared++;});
+      const tokScore=tok.size&&L.tok.size?shared/Math.max(tok.size,L.tok.size):0; // one shared word like “bank” isn't enough
+      const contains=(L.n&&n&&(L.n.includes(n)||n.includes(L.n)))?0.25:0;
+      return{name:L.name,parent:L.parent,score:Math.min(1,Math.max(dice,tokScore*0.9)+contains)};
+    }).filter(x=>x.score>=0.45).sort((a,b)=>b.score-a.score).slice(0,3);
+  };
   const normName=s=>String(s||'').toLowerCase().replace(/\b(pvt|private|ltd|limited|llp|and|co|the)\b/g,'').replace(/[^a-z0-9]/g,'');
   const autoMatch=()=>{
     if(!ledgerCache){tallyErr('Read Tally’s ledgers first.');return;}
@@ -407,20 +429,25 @@ function TallyExportSheet({salon,onNavTab}={}){
         h('div',{style:{marginLeft:'auto',display:'flex',gap:6,flexWrap:'wrap'}},
           live&&h('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:()=>fetchLedgersFromTally(false)},busy==='fetch'?'Reading…':'⟳ Read ledgers from Tally'),
           ledgerCache&&h('button',{className:'btn btn-ghost btn-sm',onClick:autoMatch},'✨ Auto-match names'),
-          live&&missingInTally&&missingInTally.length>0&&h('button',{className:'btn btn-primary btn-sm',disabled:!!busy,onClick:()=>createMissingInTally()},busy==='create'?'Creating…':'➕ Create '+missingInTally.length+' missing in Tally'))),
+          live&&missingInTally&&missingInTally.length>0&&h('button',{className:'btn btn-primary btn-sm',disabled:!!busy,onClick:()=>askCreate()},busy==='create'?'Creating…':'👁 Preview & create '+missingInTally.length+' missing in Tally'))),
       h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},ledgerCache?'Tally has '+ledgerCache.ledgers.length+' ledgers'+(ledgerCache.company?' ('+ledgerCache.company+')':'')+' · read '+when(ledgerCache.fetchedAt)+'. Names must match Tally exactly; leave a field blank to use the SalonOS name.':'Tally matches ledgers by exact name. Read Tally’s list to see which exist and to get suggestions while typing.')),
     h('datalist',{id:'tally-ledger-names'},((ledgerCache&&ledgerCache.ledgers)||[]).map(l=>h('option',{key:l.name,value:l.name}))),
     h('div',{className:'card'},
       h('div',{style:{display:'flex',gap:8,alignItems:'center',marginBottom:10}},
         h('div',{className:'card-title',style:{margin:0}},'Ledger mapping'),
-        h('input',{className:'form-control',style:{width:220,marginLeft:'auto'},placeholder:'Search',value:lSearch,onChange:e=>setLSearch(e.target.value)})),
+        h('label',{style:{display:'flex',alignItems:'center',gap:5,fontSize:12,color:'var(--text2)',cursor:'pointer',marginLeft:'auto'}},
+          h('input',{type:'checkbox',checked:lMissingOnly,onChange:e=>setLMissingOnly(e.target.checked)}),'Only missing in Tally'),
+        h('input',{className:'form-control',style:{width:220},placeholder:'Search',value:lSearch,onChange:e=>setLSearch(e.target.value)})),
       h('div',{className:'table-wrap',style:{maxHeight:520,overflowY:'auto'}},h('table',null,
         h('thead',null,h('tr',null,['In SalonOS','Kind','Tally ledger','Group','In Tally'].map(t=>h('th',{key:t},t)))),
         h('tbody',null,
           lShown.map(r=>{const t=inTally(resolved(r));return h('tr',{key:r.key},
             h('td',{'data-label':'In SalonOS',style:{fontWeight:600}},r.label),
             h('td',{'data-label':'Kind',style:{fontSize:12,color:'var(--text3)'}},r.kind),
-            h('td',{'data-label':'Tally ledger'},h('input',{className:'form-control',style:{minWidth:220,fontSize:12.5,padding:'4px 8px'},list:'tally-ledger-names',placeholder:r.def,value:r.value,onChange:e=>r.set(e.target.value)})),
+            h('td',{'data-label':'Tally ledger'},h('input',{className:'form-control',style:{minWidth:220,fontSize:12.5,padding:'4px 8px'},list:'tally-ledger-names',placeholder:r.def,value:r.value,onChange:e=>r.set(e.target.value)}),
+              t===false&&(()=>{const sg=suggestFor(r.label).filter(x=>x.name!==resolved(r));return sg.length?h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',marginTop:4,alignItems:'center'}},
+                h('span',{style:{fontSize:10.5,color:'var(--text3)'}},'Similar in Tally:'),
+                sg.map(x=>h('button',{key:x.name,className:'btn btn-ghost btn-sm',style:{fontSize:10.5,padding:'1px 8px'},title:'Use Tally’s “'+x.name+'”'+(x.parent?' (under '+x.parent+')':'')+' — '+Math.round(x.score*100)+'% similar',onClick:()=>r.set(x.name)},'Use “'+x.name+'”'))):null;})()),
             h('td',{'data-label':'Group',style:{fontSize:12,color:'var(--text2)'}},r.group),
             h('td',{'data-label':'In Tally'},t===null?h('span',{style:{color:'var(--text3)'}},'—'):t?h('span',{className:'badge badge-green'},'✓ Yes'):h('span',{className:'badge badge-amber'},'Missing')));}),
           systemRows.map(r=>{const t=inTally(r.name);return h('tr',{key:'s'+r.name},
@@ -511,7 +538,58 @@ function TallyExportSheet({salon,onNavTab}={}){
     // eslint-disable-next-line
   },[live]);
 
+  // ── Preview before anything moves to Tally — every Sync / Send / Create opens this first. ──
+  const askSync=(only)=>{
+    const list=vouchers.filter(v=>v.status==='new'&&(!only||(v.kind==='inv'?only.inv.has(v.id):only.bank.has(v.id))));
+    if(!list.length){info('Nothing new to send in '+periodLabel+'.');return;}
+    setPreview({kind:'sync',only,vouchers:list,ledgers:missingInTally});
+  };
+  const askCreate=()=>{
+    if(!missingInTally||!missingInTally.length){info('Tally already has every ledger SalonOS uses.');return;}
+    setPreview({kind:'ledgers',ledgers:missingInTally,vouchers:[]});
+  };
+  const confirmPreview=()=>{const p=preview;setPreview(null);if(p.kind==='sync')syncNow(p.only);else createMissingInTally();};
+  const previewModal=preview&&(()=>{
+    const pv=preview.vouchers,lg=preview.ledgers;
+    const byT=['Purchase','Payment','Receipt','Contra'].map(t=>[t,pv.filter(v=>v.type===t)]).filter(x=>x[1].length);
+    const th=t=>h('th',{key:t,style:{position:'sticky',top:0}},t);
+    return h('div',{className:'modal-overlay',onClick:()=>setPreview(null)},
+      h('div',{className:'modal',style:{width:'min(980px,96vw)',maxHeight:'90vh',display:'flex',flexDirection:'column'},onClick:e=>e.stopPropagation()},
+        h('div',{className:'modal-title'},preview.kind==='sync'?'Preview — entries to move to Tally':'Preview — ledgers to create in Tally'),
+        h('div',{style:{fontSize:12.5,color:'var(--text2)',marginTop:-10,marginBottom:12}},
+          'Company: ',h('b',null,conn.company||'the one open in Tally'),preview.kind==='sync'?[' · Period: ',h('b',{key:'p'},periodLabel)]:null,
+          ' · Nothing has been sent yet — check the list, then click ',h('b',null,'Move to Tally'),'.'),
+        h('div',{style:{overflowY:'auto',flex:1,minHeight:0}},
+          lg&&lg.length>0&&h(React.Fragment,null,
+            h('div',{style:{fontWeight:700,fontSize:13,margin:'4px 0 6px'}},(preview.kind==='sync'?'1 · New ledgers to create first (':'New ledgers (')+lg.length+')'),
+            h('div',{className:'table-wrap',style:{marginBottom:14}},h('table',null,
+              h('thead',null,h('tr',null,['Ledger name','Under group','Type'].map(th))),
+              h('tbody',null,lg.map(r=>h('tr',{key:r.name},h('td',{style:{fontWeight:600}},r.name),h('td',null,r.parent||'—'),h('td',{style:{color:'var(--text3)'}},r.type||''))))))),
+          preview.kind==='sync'&&!lg&&h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:10}},'Tally’s ledger list hasn’t been read yet — any ledger these vouchers need that Tally doesn’t have will be created first.'),
+          preview.kind==='sync'&&h(React.Fragment,null,
+            h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'baseline',margin:'4px 0 6px'}},
+              h('span',{style:{fontWeight:700,fontSize:13}},(lg&&lg.length?'2 · ':'')+'Vouchers ('+pv.length+')'),
+              byT.map(([t,l])=>h('span',{key:t,className:'badge badge-blue',style:{fontSize:11}},t+': '+l.length+' · '+inr(sum(l))))),
+            h('div',{className:'table-wrap'},h('table',null,
+              h('thead',null,h('tr',null,['Date','Type','Party / Ledger','Against','Ref / Narration','Amount'].map(th))),
+              h('tbody',null,pv.map(v=>h('tr',{key:v.key,style:v.suspense?{background:'rgba(255,159,67,0.08)'}:undefined},
+                h('td',{style:{whiteSpace:'nowrap'}},v.date),h('td',null,v.type),
+                h('td',{style:{fontWeight:600,color:v.suspense?'var(--orange)':'var(--text)'}},v.party),
+                h('td',{style:{fontSize:12,color:'var(--text2)'}},v.other),
+                h('td',{style:{fontSize:12,color:'var(--text2)',maxWidth:280}},(v.ref?v.ref+' · ':'')+String(v.narr).slice(0,70)),
+                h('td',{style:{textAlign:'right',fontWeight:600,whiteSpace:'nowrap'}},inr(v.amount)))),
+                h('tr',{style:{fontWeight:700}},h('td',{colSpan:5},'Total'),h('td',{style:{textAlign:'right'}},inr(sum(pv)))))))),
+          preview.kind==='sync'&&pv.some(v=>v.suspense)&&h('div',{style:{fontSize:12,color:'var(--orange)',marginTop:8}},pv.filter(v=>v.suspense).length+' line(s) go to “'+TALLY_SUSPENSE_LEDGER+'” (highlighted) — reclassify them in Tally, or cancel and set their type on Bank Statement first.')),
+        h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:14,flexWrap:'wrap'}},
+          preview.kind==='sync'&&h('button',{className:'btn btn-ghost',onClick:()=>{const hdr=['Date','Type','Party / Ledger','Against','Reference','Narration','Amount'];
+            downloadTextFile('\uFEFF'+[hdr,...pv.map(v=>[v.date,v.type,v.party,v.other,v.ref,v.narr,v.amount])].map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n'),'Tally_Preview_'+outletTag+'.csv','text/csv;charset=utf-8');}},'⬇ Download preview'),
+          h('button',{className:'btn btn-ghost',onClick:()=>setPreview(null)},'Cancel'),
+          h('button',{className:'btn btn-primary',disabled:!!busy||!live,onClick:confirmPreview},
+            preview.kind==='sync'?'✓ Move '+pv.length+' voucher'+(pv.length===1?'':'s')+' to Tally':'✓ Create '+lg.length+' ledger'+(lg.length===1?'':'s')+' in Tally'))));
+  })();
+
   return h('div',{className:'fade-in'},
+    previewModal,
     h('div',{className:'section-header'},
       h('div',null,
         h('div',{className:'page-title'},'Tally Integration'),
