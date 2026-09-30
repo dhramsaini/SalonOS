@@ -838,7 +838,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
   const salonId=salon?.id;
   const BLANK_V={id:'',name:'',address:'',gst:'',cat:'Purchase of Cosmetic',contact:'',phone:'',terms:'30 days',status:'Active',tdsApplicable:false,tdsSection:'',tdsRate:'',
     bankName:'',accountNo:'',ifsc:'',accountHolder:'',email:''};
-  const BLANK_INV={periodFrom:'',periodTo:'',vendorId:'',invoiceNo:'',invoiceDate:'',amount:'',dueDate:'',desc:'',attachment:null,docNature:'Tax Invoice',bookingDate:'',igst:'',cgst:'',sgst:'',roundOff:'',freight:'',linkedPI:'',category:'',assetLines:[],
+  const BLANK_INV={periodFrom:'',periodTo:'',splitFirst:'',vendorId:'',invoiceNo:'',invoiceDate:'',amount:'',dueDate:'',desc:'',attachment:null,docNature:'Tax Invoice',bookingDate:'',igst:'',cgst:'',sgst:'',roundOff:'',freight:'',linkedPI:'',category:'',assetLines:[],
     newVendorName:'',newVendorGst:'',newVendorPhone:'',newVendorTerms:'30 days'}; // new* = "+ Add New Vendor" from the invoice form
   const BLANK_PAY={invoiceId:null,editingPaymentId:null,paidAmount:'',paidDate:localTodayIso(),mode:'NEFT',ref:'',note:'',fromDailySales:false};
 
@@ -2004,8 +2004,12 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
             on&&React.createElement('div',{style:{display:'flex',gap:10,flexWrap:'wrap',alignItems:'flex-end',marginTop:8}},
               React.createElement('div',{className:'form-group',style:{marginBottom:0}},React.createElement('label',null,'From month'),React.createElement('input',{type:'month',className:'form-control',value:invForm.periodFrom,onChange:ic('periodFrom')})),
               React.createElement('div',{className:'form-group',style:{marginBottom:0}},React.createElement('label',null,'To month'),React.createElement('input',{type:'month',className:'form-control',value:invForm.periodTo,onChange:ic('periodTo')}))),
+            on&&sp&&sp.months>1&&React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginTop:8,fontSize:12,color:'var(--text2)'}},
+              'Amount for the 1st month (optional):',
+              React.createElement('input',{type:'number',className:'form-control',style:{width:130},placeholder:'equal split',value:invForm.splitFirst||'',onChange:ic('splitFirst')}),
+              Number(invForm.splitFirst)>0&&tot>0&&React.createElement('span',null,(Number(invForm.splitFirst)<tot?'rest '+rupee(Math.round((tot-Number(invForm.splitFirst))*100)/100)+(sp.months>2?' shared by the other months':' in '+monthLabelOfIndex(sp.last)):'must be less than the total'))),
             on&&React.createElement('div',{style:{fontSize:12,marginTop:8,color:sp?'var(--text)':'var(--orange)',lineHeight:1.6}},
-              sp?(sp.months>1?(tot>0?'P&L: '+billSplitText(tot,sp):'P&L: the bill total will be split equally over '+sp.months+' months ('+monthLabelOfIndex(sp.first)+' – '+monthLabelOfIndex(sp.last)+').'):'One month — the whole bill goes in '+monthLabelOfIndex(sp.first)+'.'):'Choose the From and To months printed on the bill (To can’t be before From).'));
+              sp?(sp.months>1?(tot>0?'P&L: '+billSplitText(tot,sp,invForm.splitFirst):'P&L: the bill total will be split equally over '+sp.months+' months ('+monthLabelOfIndex(sp.first)+' – '+monthLabelOfIndex(sp.last)+').'):'One month — the whole bill goes in '+monthLabelOfIndex(sp.first)+'.'):'Choose the From and To months printed on the bill (To can’t be before From).'));
         })(),
         React.createElement('div',{className:'form-row cols2'},
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-96'},'Due Date'),React.createElement('input',{id:'f-96',type:'date',className:'form-control',value:invForm.dueDate,onChange:ic('dueDate')}))

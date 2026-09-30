@@ -97,7 +97,7 @@ function RecurringExpensesSheet({salon}={}){
   const [billReading,setBillReading]=useState(false);
   const openEnterBill=(it)=>{
     const today=localTodayIso();const p=defaultBillPeriod(it,today);
-    setBillForm({billNo:'',billDate:today,periodFrom:p.from,periodTo:p.to,amount:'',gst:'',attachment:null,periodTouched:false});
+    setBillForm({billNo:'',billDate:today,periodFrom:p.from,periodTo:p.to,amount:'',gst:'',splitFirst:'',attachment:null,periodTouched:false});
     setBillItem(it);
   };
   const saveBill=()=>{
@@ -123,6 +123,7 @@ function RecurringExpensesSheet({salon}={}){
       tdsAmt,tdsSection:it.tdsApplicable?it.tdsSection:'',tdsRate:it.tdsApplicable?it.tdsRate:'',
       category:vendorCategoryForExpenseType(it.expenseName),desc:displayName(it)+' bill for '+periodText,attachment:f.attachment,linkedPI:'',
       recurringId:it.id,periodFrom:f.periodFrom,periodTo:f.periodTo,enteredAt:new Date().toISOString(),
+      splitFirst:Number(f.splitFirst)>0&&Number(f.splitFirst)<taxable+gst?Number(f.splitFirst):'',
       payments:tdsAmt>0?[{id:'TDS-'+id,paidAmount:tdsAmt,paidDate:f.billDate,mode:'TDS',ref:'',note:'TDS deducted at source ('+(it.tdsSection||'—')+' @ '+(Number(it.tdsRate)||0)+'%)'}]:[]};
     setVendorInvoices(prev=>[...prev,inv]);
     setItems(prev=>prev.map(x=>x.id===it.id?{...x,amountUpdatedOn:localTodayIso()}:x));
@@ -131,7 +132,7 @@ function RecurringExpensesSheet({salon}={}){
   };
 
   const BLANK={id:'',expenseName:RECURRING_EXPENSE_TYPES[0],customName:'',payee:'',amount:'',frequency:'Monthly',dueDay:5,paymentMode:'Bank Transfer',startDate:'',endDate:'',status:'Active',notes:'',
-    amountType:'Fixed',billFor:'previous',
+    amountType:'Fixed',billFor:'previous',firstMonthAmt:'',
     gstApplicable:false,gstin:'',gstAmount:'',
     // Reverse Charge Mechanism only applies to specific categories of supply under Section
     // 9(3)/9(4) of the CGST Act — it's not automatic just because the payee doesn't charge GST.
@@ -252,7 +253,7 @@ function RecurringExpensesSheet({salon}={}){
     if(!form.amount||Number(form.amount)<=0){toast('Enter a valid amount','error');return;}
     if(form.expenseName==='Other'&&!form.customName.trim()){toast('Enter a name for this "Other" expense','error');return;}
     if(form.gstApplicable&&!form.gstin.trim()){toast('Enter the GSTIN, or uncheck GST Applicable','error');return;}
-    const rec={...form,amount:Math.round(Number(form.amount)),dueDay:Math.min(31,Math.max(1,Number(form.dueDay)||1)),
+    const rec={...form,firstMonthAmt:(form.frequency==='Bi-Monthly'&&Number(form.firstMonthAmt)>0&&Number(form.firstMonthAmt)<Number(form.amount))?Number(form.firstMonthAmt):'',amount:Math.round(Number(form.amount)),dueDay:Math.min(31,Math.max(1,Number(form.dueDay)||1)),
       gstAmount:form.gstApplicable?Math.round(Number(form.gstAmount)||0):'',
       gstin:form.gstApplicable?form.gstin.trim():''};
     if(editId){setItems(prev=>prev.map(i=>i.id===editId?rec:i));}
@@ -456,6 +457,27 @@ function RecurringExpensesSheet({salon}={}){
           ),
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-114'},'Due Day of Month'),React.createElement('input',{id:'f-114',type:'number',min:1,max:31,className:'form-control',value:form.dueDay,onChange:fc('dueDay')}))
         ),
+        // ── Bi-monthly bill (electricity etc.): total for the 2 months + the amount for the 1st month;
+        // the 2nd month takes the rest (blank = equal halves). Drives the estimates and splits actual bills
+        // in the same proportion unless a bill gives its own 1st-month amount. ──
+        React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:14}},
+          React.createElement('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:12.5,fontWeight:600,cursor:'pointer'}},
+            React.createElement('input',{type:'checkbox',checked:form.frequency==='Bi-Monthly',onChange:e=>setForm(f=>({...f,frequency:e.target.checked?'Bi-Monthly':'Monthly',firstMonthAmt:e.target.checked?f.firstMonthAmt:''}))}),
+            '⇄ Bi-monthly bill — one bill for 2 months, split between them'),
+          form.frequency==='Bi-Monthly'&&(()=>{
+            const tot=Number(form.amount)||0,first=Number(form.firstMonthAmt)||0,bad=first>0&&first>=tot;
+            return React.createElement('div',{style:{marginTop:8}},
+              React.createElement('div',{className:'form-row cols3',style:{marginBottom:0}},
+                React.createElement('div',{className:'form-group',style:{marginBottom:0}},React.createElement('label',null,'Total amount (2 months) ₹'),
+                  React.createElement('input',{type:'number',className:'form-control',value:form.amount,onChange:fc('amount'),placeholder:'e.g. 4300'})),
+                React.createElement('div',{className:'form-group',style:{marginBottom:0}},React.createElement('label',null,'Amount for 1st month ₹'),
+                  React.createElement('input',{type:'number',className:'form-control',value:form.firstMonthAmt||'',onChange:fc('firstMonthAmt'),placeholder:tot?String(Math.round(tot/2)):'equal split'})),
+                React.createElement('div',{className:'form-group',style:{marginBottom:0}},React.createElement('label',null,'2nd month ₹ (the rest)'),
+                  React.createElement('input',{className:'form-control',readOnly:true,value:tot?(first>0&&!bad?String(Math.round((tot-first)*100)/100):String(Math.round(tot/2*100)/100)):'',style:{background:'var(--bg2)'}}))),
+              React.createElement('div',{style:{fontSize:11.5,marginTop:6,color:bad?'var(--red)':'var(--text2)'}},
+                bad?'The 1st-month amount must be less than the total.'
+                  :'Leave the 1st-month amount blank to split equally. Actual bills are split in the same proportion (each bill can also give its own 1st-month amount in “➕ Enter bill”).'));
+          })()),
         // ── Fixed vs Variable amount — Variable is for bills whose amount is only known when the bill
         // arrives (electricity, telephone, water…). See variableRecurringMonthAmt for the P&L rule. ──
         React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:14}},
@@ -833,7 +855,10 @@ function RecurringExpensesSheet({salon}={}){
           const months=(mi!=null&&mj!=null&&mj>=mi)?mj-mi+1:0;
           const tds=billItem.tdsApplicable?Math.round((Number(billForm.amount)||0)*(Number(billItem.tdsRate)||0)/100):0;
           return amt>0&&months>0&&React.createElement('div',{style:{fontSize:12,background:'rgba(47,95,224,0.08)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,lineHeight:1.7}},
-            months>1?'P&L: '+billSplitText(amt,{first:mi,last:mj,months}):'P&L: '+rupee(amt)+' in '+monthLabelOfIndex(mi),
+            months>1?'P&L: '+billSplitText(amt,{first:mi,last:mj,months},Number(billForm.splitFirst)>0?billForm.splitFirst:((Number(billItem.firstMonthAmt)>0&&Number(billItem.amount)>Number(billItem.firstMonthAmt))?amt*Number(billItem.firstMonthAmt)/Number(billItem.amount):null)):'P&L: '+rupee(amt)+' in '+monthLabelOfIndex(mi),
+            months>1&&React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginTop:6}},
+              'Amount for the 1st month (optional):',
+              React.createElement('input',{type:'number',className:'form-control',style:{width:130,display:'inline-block'},placeholder:Number(billItem.firstMonthAmt)>0?'as set on the item':'equal split',value:billForm.splitFirst||'',onChange:e=>setBillForm(f=>({...f,splitFirst:e.target.value}))})),
             tds>0&&React.createElement('div',null,'TDS payable ₹'+tds.toLocaleString('en-IN')+' · Payable to '+billItem.payee+' ₹'+(amt-tds).toLocaleString('en-IN')));
         })(),
         React.createElement('div',{className:'form-group'},

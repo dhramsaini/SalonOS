@@ -1745,12 +1745,32 @@ function billSplitMonths(periodFrom,periodTo){
   if(a==null||b==null||b<a||b-a>23)return null;
   return{first:a,last:b,months:b-a+1};
 }
-// "₹4,300 ÷ 2 = ₹2,150 in each month: Aug 2026 ₹2,150 · Sep 2026 ₹2,150" (the last month takes the paisa rounding).
-function billSplitText(total,sp){
+// A bill's amount per month: equal shares, or — when an amount for the 1st month is given (bi-monthly
+// electricity read from the meter, say) — that amount in the first month and the rest shared equally.
+function billShares(total,months,first){
+  total=Number(total)||0;months=Math.max(1,months|0);
+  const f=Number(first);
+  if(months>1&&f>0&&f<total){const rest=(total-f)/(months-1);return[f,...Array(months-1).fill(rest)];}
+  return Array(months).fill(total/months);
+}
+// "₹4,300 ÷ 2 = ₹2,150 in each month: Aug 2026 ₹2,150 · Sep 2026 ₹2,150", or with a 1st-month amount
+// "₹4,300: Aug 2026 ₹2,000 (1st month) · Sep 2026 ₹2,300 (rest)".
+function billSplitText(total,sp,first){
   if(!sp||sp.months<2||!(total>0))return'';
-  const per=Math.round(total/sp.months*100)/100,last=Math.round((total-per*(sp.months-1))*100)/100;
-  const parts=[];for(let i=0;i<sp.months;i++)parts.push(monthLabelOfIndex(sp.first+i)+' '+rupee(i===sp.months-1?last:per));
-  return rupee(total)+' ÷ '+sp.months+' = '+rupee(per)+' in each month: '+parts.join(' · ');
+  const sh=billShares(total,sp.months,first),equal=sh.every(x=>Math.abs(x-sh[0])<0.01);
+  const parts=sh.map((x,i)=>monthLabelOfIndex(sp.first+i)+' '+rupee(Math.round(x*100)/100));
+  return equal?rupee(total)+' ÷ '+sp.months+' = '+rupee(Math.round(sh[0]*100)/100)+' in each month: '+parts.join(' · ')
+    :rupee(total)+': '+parts.map((p,i)=>p+(i===0?' (1st month)':'')).join(' · ');
+}
+// For a recurring item with an amount for the 1st month of each cycle: how much of the per-month
+// average this month carries (1st month of the cycle vs the others). 1 when split equally.
+function recurringSplitFactor(it,t){
+  const N=RECURRING_PERIOD_MONTHS[it&&it.frequency]||1,tot=Number(it&&it.amount)||0,f=Number(it&&it.firstMonthAmt)||0;
+  if(N<2||!(tot>0)||!(f>0)||f>=tot)return 1;
+  const start=monthIndexOfIso(it.startDate);
+  const anchor=start!=null?start:(isVariableRecurring(it)&&it.billFor!=='current'?-1:0);
+  const pos=(((t-anchor)%N)+N)%N;
+  return pos===0?N*f/tot:N*(tot-f)/(tot*(N-1));
 }
 function monthLabelOfIndex(i){return['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][((i%12)+12)%12]+' '+Math.floor(i/12);}
 function variableRecurringBills(it,salonId){
@@ -1767,7 +1787,10 @@ function variableRecurringBills(it,salonId){
         if(bm==null)return null;
         last=(!isVariableRecurring(it)||it.billFor==='current')?bm:bm-1;first=last-N+1;
       }
-      return{inv,amount:Number(inv.amount)||0,first,last,months:last-first+1};
+      const amount=Number(inv.amount)||0,months=last-first+1;
+      const itTot=Number(it.amount)||0,itFirst=Number(it.firstMonthAmt)||0;
+      const firstAmt=Number(inv.splitFirst)>0?Number(inv.splitFirst):(months>1&&itTot>0&&itFirst>0&&itFirst<itTot?amount*itFirst/itTot:null);
+      return{inv,amount,first,last,months,shares:billShares(amount,months,firstAmt)};
     })
     .filter(Boolean).sort((a,b)=>a.last-b.last);
 }
@@ -1799,9 +1822,9 @@ function monthClosedBeforeBill(salonId,t,inv){
 }
 // The estimate a month carried with the bills known by then (bills dated in or before that month).
 function variableRecurringEstimateAsOf(it,bills,t,salonId){
-  if(!isVariableRecurring(it))return recurringExpenseMonthlyAmt(it,Math.floor(t/12),t%12,salonId);
+  if(!isVariableRecurring(it))return recurringExpenseMonthlyAmt(it,Math.floor(t/12),t%12,salonId)*recurringSplitFactor(it,t);
   const known=bills.filter(b=>{const bm=monthIndexOfIso(toISO(b.inv.invoiceDate));return bm==null||bm<=t;});
-  return variableRecurringEstimatePerMonth(it,known);
+  return variableRecurringEstimatePerMonth(it,known)*recurringSplitFactor(it,t);
 }
 function variableRecurringMonthAmt(it,salonId,year,month){
   const t=year*12+month;
@@ -1812,11 +1835,11 @@ function variableRecurringMonthAmt(it,salonId,year,month){
     if(t<b.first||t>b.last)return;
     coveredAny=true;
     if(monthClosedBeforeBill(salonId,t,b.inv)){amt+=est(t);provision=true;} // closed before the bill: keeps its provision
-    else{amt+=b.amount/b.months;covering.push(b);}
+    else{amt+=b.shares[t-b.first];covering.push(b);}
   });
   if(!coveredAny){
     const start=monthIndexOfIso(it.startDate),end=monthIndexOfIso(it.endDate);
-    if(!((start!=null&&t<start)||(end!=null&&t>end)))amt+=isVariableRecurring(it)?est(t):recurringExpenseMonthlyAmt(it,year,month,salonId);
+    if(!((start!=null&&t<start)||(end!=null&&t>end)))amt+=est(t);
   }
   // True-up: this month is where a bill's differences for already-closed months are booked.
   bills.forEach(b=>{
@@ -1826,7 +1849,7 @@ function variableRecurringMonthAmt(it,salonId,year,month){
     const bm=monthIndexOfIso(toISO(b.inv.invoiceDate));
     const u=lastOpen!=null?lastOpen:Math.max(b.last+1,bm!=null?bm:b.last+1);
     if(t!==u)return;
-    closed.forEach(c=>{const share=b.amount/b.months,pv=est(c),diff=share-pv;amt+=diff;trueUps.push({month:c,share,provision:pv,diff,bill:b});});
+    closed.forEach(c=>{const share=b.shares[c-b.first],pv=est(c),diff=share-pv;amt+=diff;trueUps.push({month:c,share,provision:pv,diff,bill:b});});
     if(!covering.includes(b))covering.push(b);
   });
   return{amt,actual:covering.length>0,bills,covering,trueUps,provision};

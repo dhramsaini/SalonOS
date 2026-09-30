@@ -331,6 +331,19 @@
         eq('Advance bill spread into future months; closed month’s share moves to the open month',[r(7),r(8),r(9),r(10)],[0,1800,1000,1000]);
       }catch(err){results.push({name:'Provision true-up',ok:false,got:String(err&&err.message||err),want:'no error'});}
       try{
+        // Bi-monthly with an amount for the 1st month: ₹4,300 total, ₹2,000 in the 1st month, ₹2,300 in the 2nd.
+        eq('Shares with a 1st-month amount',billShares(4300,2,2000),[2000,2300]);
+        saveVendors([{id:'V1',name:'BSES',cat:'Electricity Expenses'}],909);
+        safeLocalSet(outletKey('salonos_recurring_expenses',909),JSON.stringify([{id:'R9',expenseName:'Electricity Expenses',payee:'BSES',amount:4300,firstMonthAmt:2000,frequency:'Bi-Monthly',dueDay:10,status:'Active',startDate:'2026-07-01',amountType:'Variable',billFor:'previous'}]));
+        const it=loadRecurringExpenses(909)[0];const v=mo=>Math.round(variableRecurringMonthAmt(it,909,2026,mo).amt*100)/100;
+        saveVendorInvoices([],909);
+        eq('Estimate before any bill follows the 1st/2nd month amounts',[v(6),v(7)],[2000,2300]);
+        saveVendorInvoices([{id:'B9',vendorId:'V1',invoiceNo:'EB-9',invoiceDate:'05/09/2026',amount:5000,recurringId:'R9',periodFrom:'2026-07',periodTo:'2026-08',payments:[]}],909);
+        eq('Actual bill split in the item’s proportion',[v(6),v(7)],[2325.58,2674.42]);
+        saveVendorInvoices([{id:'B9',vendorId:'V1',invoiceNo:'EB-9',invoiceDate:'05/09/2026',amount:5000,splitFirst:2100,recurringId:'R9',periodFrom:'2026-07',periodTo:'2026-08',payments:[]}],909);
+        eq('A bill’s own 1st-month amount wins',[v(6),v(7)],[2100,2900]);
+      }catch(err){results.push({name:'First month split',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
         const mod={};new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});

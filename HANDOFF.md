@@ -398,6 +398,10 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   = …)". Old bills without enteredAt behave as before. Generic Vendor Sheet period bills: a closed month's share moves
   to the latest open month. Advance bills (period in future months) spread into those months; Vendor Sheet quick
   choices Previous+this / This+next / This+next 2. Tests 93.
+· (v2026.09.30.39) **Bi-monthly bill option** in Add Recurring Expense: "⇄ Bi-monthly bill" (sets frequency) with Total
+  (2 months), Amount for 1st month (it.firstMonthAmt), 2nd month = rest (blank = equal). billShares(total,months,first);
+  bills carry shares (inv.splitFirst from Enter bill / Vendor Sheet, else the item's proportion); estimates use
+  recurringSplitFactor (cycle position from startDate). Tests 97.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.
