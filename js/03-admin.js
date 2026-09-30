@@ -1865,6 +1865,7 @@ function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup}={}){
     CLOUD_SYNC_ENABLED&&React.createElement(CloudBackupsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(ReportSettingsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(AiSettingsCard,null),
+    CLOUD_SYNC_ENABLED&&React.createElement(EmailSettingsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(WhatsAppSettingsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(AutomationSettingsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(ChangeHistoryCard,null),

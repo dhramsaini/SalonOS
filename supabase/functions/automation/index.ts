@@ -361,14 +361,20 @@ async function sendDigest(kv: KV, fresh: Alert[]) {
   const phones: string[] = (rs.whatsapp ?? []).filter((p: string) => /\d{8,}/.test(String(p).replace(/[^\d]/g, "")));
   const title = `${fresh.length} new alert${fresh.length === 1 ? "" : "s"}`;
   const res: Record<string, unknown> = {};
-  if (emails.length && RESEND_API_KEY) {
+  // Email details: Edge Function secrets if set, else the ones saved in Master Settings → Email.
+  let em = RESEND_API_KEY ? { key: RESEND_API_KEY, from: REPORT_FROM } : null;
+  if (!em && emails.length) {
+    const { data } = await admin.from("app_secrets").select("value,meta").eq("name", "email").maybeSingle();
+    if (data?.value) em = { key: String(data.value), from: String(data.meta?.from || "SalonOS Reports <onboarding@resend.dev>") };
+  }
+  if (emails.length && em) {
     const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
     const html = `<div style="font-family:Arial,sans-serif"><h2 style="color:#14335e;margin:0 0 10px">${esc(title)}</h2><ul>${fresh.map((a) =>
       `<li style="margin-bottom:6px"><b>${esc(a.title)}</b><br><span style="color:#5e6a82">${esc(a.body).replace(/\n/g, "<br>")}</span></li>`).join("")}</ul>
       <p style="color:#5e6a82">Open SalonOS → 🔔 to see and close them.</p></div>`;
     const r = await fetch("https://api.resend.com/emails", {
-      method: "POST", headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: REPORT_FROM, to: emails, subject: `SalonOS · ${title}`, html }),
+      method: "POST", headers: { Authorization: `Bearer ${em.key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: em.from, to: emails, subject: `SalonOS · ${title}`, html }),
     });
     res.email = r.ok ? "sent" : `failed (${r.status})`;
   }

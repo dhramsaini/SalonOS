@@ -44,6 +44,7 @@
     const aiTs=await (await fetch('supabase/functions/ai/index.ts?t='+Date.now(),{cache:'no-store'})).text();
     const waTs=await (await fetch('supabase/functions/whatsapp/index.ts?t='+Date.now(),{cache:'no-store'})).text();
     const repTs=await (await fetch('supabase/functions/salonos-reports/index.ts?t='+Date.now(),{cache:'no-store'})).text();
+    const emTs=await (await fetch('supabase/functions/email/index.ts?t='+Date.now(),{cache:'no-store'})).text();
 
     // In-memory storage (the frame has no real storage at all) + made-up test data.
     const setup=`(function(){
@@ -393,6 +394,10 @@
         const d=aiBillToIntake({supplierName:'Test Vendor Pvt',supplierGstin:'',invoiceNo:'B-9',invoiceDate:'2026-09-12',dueDate:'',total:1180,taxable:1000,cgst:90,sgst:90,category:'Housekeeping',docNature:'Tax Invoice',notes:''},[{id:'V1',name:'Test Vendor'}]);
         eq('WhatsApp bill → invoice form fields (vendor matched by name)',[d.vendorId,d.matchBy,d.invoiceNo,d.amount,d.taxable,d.aiCategory],['V1','name','B-9',1180,1000,'Housekeeping']);
       }catch(err){results.push({name:'Bill to invoice form',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const em=tsMod(window.__EM_TS);
+        eq('Email: From address format checked',['SalonOS Reports <reports@digitalca.co.in>','reports@digitalca.co.in','<reports@digitalca.co.in>','SalonOS Reports','a@b'].map(em.validFrom),[true,true,false,false,false]);
+      }catch(err){results.push({name:'Email',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
@@ -400,7 +405,7 @@
     const doc='<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><div id="root"></div>'
       +'<script>window.__AUTOMATION_TS='+esc(JSON.stringify(automationTs))+';<\/script>'
       +'<script>window.__AI_TS='+esc(JSON.stringify(aiTs))+';<\/script>'
-      +'<script>window.__WA_TS='+esc(JSON.stringify(waTs))+';window.__REP_TS='+esc(JSON.stringify(repTs))+';<\/script>'
+      +'<script>window.__WA_TS='+esc(JSON.stringify(waTs))+';window.__REP_TS='+esc(JSON.stringify(repTs))+';window.__EM_TS='+esc(JSON.stringify(emTs))+';<\/script>'
       +'<script>'+setup+'<\/script>'
       +libs.map(s=>'<script src="'+s+'"><\/script>').join('')
       +'<script>'+esc(app)+'<\/script>'

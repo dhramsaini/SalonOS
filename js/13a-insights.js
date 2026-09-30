@@ -362,6 +362,7 @@ function OwnerInsights({accessibleSalons,user}){
       h('div',{className:'card-title'},'📦 Month-end pack — '+INS_MONTHS[ym.m]+' '+ym.y),
       h('div',{style:{fontSize:12.5,color:'var(--text2)',marginBottom:10}},'One PDF per outlet: summary, P&L, salary, staff scorecard and vendor bills outstanding (only the parts your login can see).'),
       h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
-        shown.map(s=>h('button',{key:s.id,className:'btn btn-ghost btn-sm'+(busy?' btn-loading':''),disabled:busy,onClick:()=>savePack(s)},'⬇ '+short(s)))))
+        shown.map(s=>h('button',{key:s.id,className:'btn btn-ghost btn-sm'+(busy?' btn-loading':''),disabled:busy,onClick:()=>savePack(s)},'⬇ '+short(s))),
+        CLOUD_SYNC_ENABLED&&shown.filter(s=>can(Number(s.id),'daily-sales')).map(s=>h(EmailPackButton,{key:'e'+s.id,salon:s,ym,buildRows:()=>insMonthPackRows(s,ym.y,ym.m,today,sheet=>can(Number(s.id),sheet))}))))
   );
 }

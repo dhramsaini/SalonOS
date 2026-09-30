@@ -7,7 +7,8 @@
 // sets in SalonOS → Master Settings → Automatic reports (stored in kv_store as
 // salonos_secret_report_settings, readable only by Super Admins).
 //
-// Secrets (Supabase → Edge Functions → Secrets), added by the owner — never stored in the app:
+// Email and WhatsApp details are normally saved from Master Settings → Email / WhatsApp (app_secrets rows
+// "email" and "whatsapp", service role only). Edge Function secrets, if set, take precedence:
 //   RESEND_API_KEY            email sending key from resend.com
 //   REPORT_FROM               e.g. "SalonOS Reports <reports@digitalca.co.in>" (a domain verified in Resend)
 //   WHATSAPP_TOKEN            (optional) Meta WhatsApp Cloud API permanent token
@@ -184,13 +185,21 @@ ${rows.map((r: any) => `<table cellpadding="6" style="border-collapse:collapse;w
   return { key: `weekly:${isoOf(dOf(monday))}`, title, html, line };
 }
 
+// Email details: Edge Function secrets if set, else the ones saved in Master Settings → Email
+// (app_secrets row "email", written by the email function).
+async function emailCreds() {
+  if (RESEND_API_KEY) return { key: RESEND_API_KEY, from: REPORT_FROM };
+  const { data } = await admin.from("app_secrets").select("value,meta").eq("name", "email").maybeSingle();
+  return data?.value ? { key: String(data.value), from: String(data.meta?.from || "SalonOS Reports <onboarding@resend.dev>") } : null;
+}
 async function sendEmail(to: string[], subject: string, html: string) {
-  if (!RESEND_API_KEY) return { ok: false, error: "Email is not set up yet — add RESEND_API_KEY in Supabase Edge Function secrets." };
+  const em = await emailCreds();
+  if (!em) return { ok: false, error: "Email is not set up yet — connect it in Master Settings → Email." };
   if (!to.length) return { ok: false, error: "No email recipients set." };
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: REPORT_FROM, to, subject: `SalonOS · ${subject}`, html: `<div style="font-family:Arial,sans-serif">${html}</div>` }),
+    headers: { Authorization: `Bearer ${em.key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: em.from, to, subject: `SalonOS · ${subject}`, html: `<div style="font-family:Arial,sans-serif">${html}</div>` }),
   });
   return r.ok ? { ok: true } : { ok: false, error: `Email failed (${r.status}): ${(await r.text()).slice(0, 300)}` };
 }

@@ -251,7 +251,14 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   of the primary provider, then others if fallback; a key/credit/network failure stamps meta.failedAt/lastError and that key
   goes last for 30 min (`orderKeys`); success clears it (lastOkAt). ai-settings save/test/remove take `slot`. UI: per-key rows
   with status in `AiProviderRow` / `AiKeyEditor` (js/03). Also: Salary Working year list now runs to next year. Tests: 70.
-3 ☐ Email setup guide + weekly summary / month-end pack by email (Resend).
+3 ✅ (v2026.09.30.13) **Email** — edge function `email` (Verify JWT ON): status/save {apiKey, from}/remove/test {to} (Super Admin +
+  aal2; save checks the key with GET /domains, "restricted_api_key" = a valid sending-only key) and send_pack {outletId, month,
+  fileName, pdf base64, toSelf} (read access to the outlet's daily sales key; recipients = report settings emails + optionally
+  the sender — never a typed address). Resend key in app_secrets row `email` (value key; meta {from, keyHint, domains}); env
+  RESEND_API_KEY/REPORT_FROM still win if set. salonos-reports `emailCreds()` and automation digest use it. UI: Master Settings →
+  📧 Email (`EmailSettingsCard`, js/13c-email.js) and Owner Insights → Month-end pack → 📧 per outlet (`EmailPackButton`).
+  step17 schedules the nightly + monthly report jobs (with the cron key). Until digitalca.co.in is verified in Resend, mail only
+  reaches the Resend account's own address, from onboarding@resend.dev. Tests: 71.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.
