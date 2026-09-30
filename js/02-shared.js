@@ -1338,7 +1338,7 @@ function tallyGroupForCategory(category){
 // actually used (CGST/SGST/IGST Input, only if any invoice has that tax), and the Bank ledger.
 // Import this FIRST — vouchers referencing a ledger that doesn't exist in Tally will be
 // rejected, so masters have to land before any Purchase/Payment/Receipt voucher does. ──
-function buildTallyMastersXml(vendors,categories,gstTypesUsed,bankLedgerName,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked){
+function buildTallyMastersXml(vendors,categories,gstTypesUsed,bankLedgerName,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked,extraLedgers){
   const msgs=[];
   vendors.forEach(v=>{
     const name=vendorLedgerNameFor(v.id);
@@ -1361,13 +1361,14 @@ function buildTallyMastersXml(vendors,categories,gstTypesUsed,bankLedgerName,ven
     if(gstTypesUsed.sgst)msgs.push('<LEDGER NAME="SGST Input" ACTION="Create"><PARENT>Duties &amp; Taxes</PARENT><TAXTYPE>GST</TAXTYPE></LEDGER>');
   }
   if(bankLedgerName)msgs.push('<LEDGER NAME="'+escapeTallyXml(bankLedgerName)+'" ACTION="Create"><PARENT>Bank Accounts</PARENT></LEDGER>');
+  (extraLedgers||[]).forEach(l=>msgs.push('<LEDGER NAME="'+escapeTallyXml(l.name)+'" ACTION="Create"><PARENT>'+escapeTallyXml(l.parent)+'</PARENT></LEDGER>'));
   const tallyMsg='<TALLYMESSAGE xmlns:UDF="TallyUDF">'+msgs.join('')+'</TALLYMESSAGE>';
   return tallyEnvelope('All Masters',tallyMsg);
 }
 // Same ledger list buildTallyMastersXml would create, but as plain data for an on-screen preview
 // table rather than XML — so the person can see exactly what's about to be created in Tally
 // before downloading anything.
-function tallyMastersPreviewRows(vendors,categories,gstTypesUsed,bankLedgerName,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked){
+function tallyMastersPreviewRows(vendors,categories,gstTypesUsed,bankLedgerName,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked,extraLedgers){
   const rows=[];
   vendors.forEach(v=>{
     const name=vendorLedgerNameFor(v.id);
@@ -1385,6 +1386,7 @@ function tallyMastersPreviewRows(vendors,categories,gstTypesUsed,bankLedgerName,
     if(gstTypesUsed.sgst)rows.push({name:'SGST Input',parent:'Duties & Taxes',type:'GST',note:'Recoverable input credit'});
   }
   if(bankLedgerName)rows.push({name:bankLedgerName,parent:'Bank Accounts',type:'Bank',note:''});
+  (extraLedgers||[]).forEach(l=>rows.push({name:l.name,parent:l.parent,type:l.type||'Other',note:l.note||''}));
   return rows;
 }
 
@@ -1431,13 +1433,63 @@ function buildTallyPurchaseVouchersXml(invoices,vendorLedgerNameFor,categoryLedg
 // vendor-name-matching Bank Statement already uses for reconciliation; anything that can't be
 // matched falls back to a generic ledger so the voucher still balances, clearly named so it's
 // obvious in Tally that it needs manual reclassification. ──
-function buildTallyBankVouchersXml(rows,bankLedgerName,vendors){
-  const UNMATCHED_LEDGER='Suspense Account (Review in Tally)';
+// Where the other side of a bank line goes in Tally, in this order:
+//  1. the supplier of the bill it is linked to (or the vendor chosen for it) — its MAPPED ledger name;
+//  2. the ledger for its Nature on Bank Statement (Salary, UPI Settlement, TDS, Bank Charges…), from
+//     the Tally Export mapping or TALLY_NATURE_LEDGERS;
+//  3. a supplier named in the narration;
+//  4. the Suspense ledger, to be reclassified in Tally.
+// {ledger, parent, kind:'vendor'|'nature'|'suspense', nature, contra}
+const TALLY_SUSPENSE_LEDGER='Suspense Account (Review in Tally)';
+const TALLY_NATURE_LEDGERS={
+  'Collection':['Collections Receivable','Current Assets'],
+  'Cash Deposit':['Cash','Cash-in-Hand'],
+  'Card Settlement':['Card Settlement Receivable','Current Assets'],
+  'UPI Settlement':['UPI Settlement Receivable','Current Assets'],
+  'Bank Charges':['Bank Charges','Indirect Expenses'],
+  'Interest':['Bank Interest','Indirect Incomes'],
+  'Salary':['Salaries & Wages','Indirect Expenses'],
+  'Incentive':['Staff Incentive','Indirect Expenses'],
+  'Daily Incentive':['Staff Incentive','Indirect Expenses'],
+  'Advance Salary':['Staff Advances','Loans & Advances (Asset)'],
+  'TDS':['TDS Payable','Duties & Taxes'],
+  'GST':['GST Payable','Duties & Taxes'],
+  'ESIC Payment':['ESIC Payable','Current Liabilities'],
+  'Electricity Expenses':['Electricity Expenses','Indirect Expenses'],
+  'Drycleaning Expenses':['Drycleaning Expenses','Indirect Expenses'],
+  'Telephone & Internet Expenses':['Telephone & Internet Expenses','Indirect Expenses'],
+  'DG Rent':['DG Rent','Indirect Expenses'],
+  'Royalty':['Royalty','Indirect Expenses'],
+  'Rent':['Rent','Indirect Expenses'],
+  'Tax Payment':['Tax Payments','Duties & Taxes'],
+};
+function tallyNatureLedgerName(map,nature){return(map&&map.natures&&map.natures[nature])||(TALLY_NATURE_LEDGERS[nature]||[])[0]||'';}
+function tallyBankCounterparty(r,vendors,vendorLedgerNameFor,map){
+  const vName=vendorLedgerNameFor||(id=>{const v=vendors.find(x=>x.id===id);return v?v.name:id;});
+  let v=null;
+  const k=String(r.linkedInvoice||'');
+  if(k&&k.indexOf('due|')!==0){const vid=k.split(/[|,]/)[0];v=vendors.find(x=>String(x.id)===vid)||null;}
+  if(!v&&r.vendorOverride)v=vendors.find(x=>x.name===r.vendorOverride)||null;
+  if(v)return{ledger:vName(v.id),parent:'Sundry Creditors',kind:'vendor',vendorId:v.id};
+  if(r.nature&&TALLY_NATURE_LEDGERS[r.nature]){
+    const parent=TALLY_NATURE_LEDGERS[r.nature][1];
+    return{ledger:tallyNatureLedgerName(map,r.nature),parent,kind:'nature',nature:r.nature,contra:parent==='Cash-in-Hand'||parent==='Bank Accounts'};
+  }
+  const m=findVendorMatch(r.description,vendors);
+  if(m)return{ledger:vName(m.id),parent:'Sundry Creditors',kind:'vendor',vendorId:m.id};
+  return{ledger:TALLY_SUSPENSE_LEDGER,parent:'Suspense A/c',kind:'suspense'};
+}
+// Tally voucher type for a bank line: Contra between bank and cash, else Payment (money out) / Receipt (in).
+function tallyBankVoucherType(r,cp){return cp.contra?'Contra':(Number(r.debit)>0?'Payment':'Receipt');}
+// opts: {vendorLedgerNameFor, map} — without them (older callers) vendors keep their own names.
+function buildTallyBankVouchersXml(rows,bankLedgerName,vendors,opts){
+  const o=opts||{};
   const msgs=rows.filter(r=>r.debit||r.credit).map(r=>{
     const isDebit=Number(r.debit)>0;
     const amt=isDebit?Number(r.debit):Number(r.credit);
-    const match=findVendorMatch(r.description,vendors);
-    const counterparty=match?match.name:UNMATCHED_LEDGER;
+    const cp=tallyBankCounterparty(r,vendors,o.vendorLedgerNameFor,o.map);
+    const counterparty=cp.ledger;
+    const vtype=tallyBankVoucherType(r,cp);
     const p=String(r.transactionDate||'').split('/');
     const iso=p.length===3?p[2]+'-'+p[1]+'-'+p[0]:'';
     const entries=isDebit
@@ -1445,15 +1497,29 @@ function buildTallyBankVouchersXml(rows,bankLedgerName,vendors){
          '<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(bankLedgerName)+'</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>-'+amt.toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>' ]
       :[ '<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(bankLedgerName)+'</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+amt.toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>',
          '<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(counterparty)+'</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>-'+amt.toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>' ];
-    return '<VOUCHER VCHTYPE="'+(isDebit?'Payment':'Receipt')+'" ACTION="Create">'
+    return '<VOUCHER VCHTYPE="'+vtype+'" ACTION="Create">'
       +'<DATE>'+iso.replace(/-/g,'')+'</DATE>'
-      +'<VOUCHERTYPENAME>'+(isDebit?'Payment':'Receipt')+'</VOUCHERTYPENAME>'
+      +'<VOUCHERTYPENAME>'+vtype+'</VOUCHERTYPENAME>'
       +'<NARRATION>'+escapeTallyXml(r.description||'')+(r.refNo?' (Ref: '+escapeTallyXml(r.refNo)+')':'')+'</NARRATION>'
       +'<PARTYLEDGERNAME>'+escapeTallyXml(counterparty)+'</PARTYLEDGERNAME>'
       +entries.join('')
       +'</VOUCHER>';
   });
   return tallyEnvelope('Vouchers','<TALLYMESSAGE xmlns:UDF="TallyUDF">'+msgs.join('')+'</TALLYMESSAGE>');
+}
+// Ledgers the vouchers need besides vendors / categories / GST / bank: Round Off (purchase round-off),
+// the bank-Nature ledgers actually used, and Suspense — so Tally never rejects a voucher for a missing
+// ledger that SalonOS itself chose. Names already covered by another row are left out.
+function tallyExtraLedgers(invoices,bankRows,vendors,vendorLedgerNameFor,map,gstInputBlocked,taken){
+  const out=[],seen=new Set((taken||[]).map(n=>String(n).toLowerCase()));
+  const add=(name,parent,type,note)=>{const k=String(name||'').toLowerCase();if(!name||seen.has(k))return;seen.add(k);out.push({name,parent,type,note});};
+  if(!gstInputBlocked&&invoices.some(i=>i.docNature!=='Performa Invoice'&&Number(i.roundOff)))add('Round Off','Indirect Expenses','System','Purchase round-off');
+  bankRows.filter(r=>r.debit||r.credit).forEach(r=>{
+    const cp=tallyBankCounterparty(r,vendors,vendorLedgerNameFor,map);
+    if(cp.kind==='nature')add(cp.ledger,cp.parent,'Bank type','Bank Statement: '+cp.nature);
+    else if(cp.kind==='suspense')add(cp.ledger,cp.parent,'System','Bank lines with no supplier or type — reclassify in Tally');
+  });
+  return out;
 }
 
 // ── Shared: Card/UPI Settlement credit totals from Bank Statement, grouped by Date as per
@@ -3083,28 +3149,39 @@ function tallyAutoSyncPending(salonId,from){
   });
   return{invs,rows,changed};
 }
-async function runTallyAutoSync(salonId,cfg,setting){
+// Sends vouchers not sent before (kv salonos_tally_pushed_outlet_<id>): {from, to} ISO period (to optional),
+// company, only {inv:Set, bank:Set} to send just those ids. First creates every ledger they need that
+// Tally lacks, then sends each voucher on its own so Tally's answer is recorded per voucher.
+async function tallySyncVouchers(salonId,cfg,opts){
+  const o=opts||{};
   const salon=outletSettings(salonId);
   const map=loadTallyLedgerMap(salonId);
   if(!map.bankLedger)throw new Error('Enter the Bank ledger name on Tally Export first.');
-  const c={...cfg,company:(setting&&setting.company)||cfg.company||''};
+  const c={...cfg,company:o.company||cfg.company||''};
   const vendors=loadVendors(salonId);
   const vName=id=>{const v=vendors.find(x=>x.id===id);return(map.vendors&&map.vendors[id])||(v?v.name:id);};
   const cName=cat=>(map.categories&&map.categories[cat])||cat;
   const gstBlocked=!gstInputAllowedAsOf(salon,new Date().toISOString().slice(0,10));
-  const{invs,rows,changed}=tallyAutoSyncPending(salonId,(setting&&setting.from)||'9999');
-  const out={sent:0,failed:[],ledgersCreated:0,changed,at:new Date().toISOString()};
+  const pend=tallyAutoSyncPending(salonId,o.from||'0000');
+  const inTo=d=>!o.to||tallyIsoOf(d)<=o.to;
+  let invs=pend.invs.filter(i=>inTo(i.bookingDate||i.invoiceDate));
+  let rows=pend.rows.filter(r=>inTo(r.transactionDate));
+  if(o.only){invs=invs.filter(i=>o.only.inv&&o.only.inv.has(i.id));rows=rows.filter(r=>o.only.bank&&o.only.bank.has(r.id));}
+  const out={sent:0,failed:[],ledgersCreated:0,changed:pend.changed,at:new Date().toISOString()};
   if(!invs.length&&!rows.length)return out;
   // 1 · Ledgers the vouchers need.
   const ledgers=parseTallyLedgersDetailed(await tallySend(c,buildTallyLedgerListRequestXml(c.company)));
   const have=new Set(ledgers.map(l=>String(l.name).toLowerCase()));
   const cats=Array.from(new Set(invs.map(i=>i.category).filter(Boolean)));
   const gst={igst:invs.some(i=>Number(i.igst)>0),cgst:invs.some(i=>Number(i.cgst)>0),sgst:invs.some(i=>Number(i.sgst)>0)};
-  const miss=tallyMastersPreviewRows(vendors,cats,gst,map.bankLedger,vName,cName,gstBlocked).filter(r=>!have.has(String(r.name).toLowerCase()));
+  const base=tallyMastersPreviewRows(vendors,cats,gst,map.bankLedger,vName,cName,gstBlocked);
+  const extra=tallyExtraLedgers(invs,rows,vendors,vName,map,gstBlocked,base.map(r=>r.name));
+  const miss=base.concat(extra).filter(r=>!have.has(String(r.name).toLowerCase()));
   if(miss.length){
     const names=new Set(miss.map(r=>r.name));
     const xml=buildTallyMastersXml(vendors.filter(v=>names.has(vName(v.id))),cats.filter(x=>names.has(cName(x))),
-      {igst:names.has('IGST Input'),cgst:names.has('CGST Input'),sgst:names.has('SGST Input')},names.has(map.bankLedger)?map.bankLedger:'',vName,cName,gstBlocked);
+      {igst:names.has('IGST Input'),cgst:names.has('CGST Input'),sgst:names.has('SGST Input')},names.has(map.bankLedger)?map.bankLedger:'',vName,cName,gstBlocked,
+      extra.filter(l=>names.has(l.name)));
     const r=parseTallyImportResult(await tallySend(c,xml));
     out.ledgersCreated=r.created||0;
   }
@@ -3115,14 +3192,28 @@ async function runTallyAutoSync(salonId,cfg,setting){
     const r=parseTallyImportResult(await tallySend(c,buildTallyPurchaseVouchersXml([inv],vName,cName,gstBlocked)));
     if(ok(r)){pushed.inv[inv.id]={at:out.at,sig:tallyInvSig(inv)};out.sent++;}
     else out.failed.push('Invoice '+(inv.invoiceNo||inv.id)+': '+(r.lineErrors[0]||tallyResultText(r)));
+    if(o.onProgress)o.onProgress(out.sent+out.failed.length,invs.length+rows.length);
   }
   for(const row of rows){
-    const r=parseTallyImportResult(await tallySend(c,buildTallyBankVouchersXml([row],map.bankLedger,vendors)));
+    const r=parseTallyImportResult(await tallySend(c,buildTallyBankVouchersXml([row],map.bankLedger,vendors,{vendorLedgerNameFor:vName,map})));
     if(ok(r)){pushed.bank[row.id]={at:out.at,sig:tallyBankSig(row)};out.sent++;}
     else out.failed.push('Bank '+row.transactionDate+' '+String(row.description||'').slice(0,30)+': '+(r.lineErrors[0]||tallyResultText(r)));
+    if(o.onProgress)o.onProgress(out.sent+out.failed.length,invs.length+rows.length);
   }
   saveTallyPushed(salonId,pushed);
   return out;
+}
+async function runTallyAutoSync(salonId,cfg,setting){
+  const res=await tallySyncVouchers(salonId,cfg,{from:(setting&&setting.from)||'9999',company:setting&&setting.company});
+  if(res.sent||res.failed.length||res.ledgersCreated)addTallyLog(salonId,{action:'Evening auto-sync',period:'from '+String((setting&&setting.from)||'').split('-').reverse().join('/'),sent:res.sent,created:res.ledgersCreated,errors:res.failed.length,detail:res.failed.slice(0,10)});
+  return res;
+}
+// History of what was sent to Tally (Tally Export → History), newest first, 200 kept. Shared per outlet.
+function loadTallyLog(salonId){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_tally_log',salonId))||'[]');return Array.isArray(v)?v:[];}catch(e){return[];}}
+function addTallyLog(salonId,entry){
+  const u=currentSessionUser();
+  const list=[{id:'L'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),at:new Date().toISOString(),by:(u&&(u.name||u.email))||'',...entry},...loadTallyLog(salonId)].slice(0,200);
+  safeLocalSet(outletKey('salonos_tally_log',salonId),JSON.stringify(list));
 }
 
 // ── Weekly backup file (automation phase 5) — a copy of a cloud backup on the Super Admin's own

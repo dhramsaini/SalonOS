@@ -46,24 +46,32 @@ function TallyAutoSyncCard({salonId,conn,updateConn,companies,tallyOk,onDone}){
       last.failed&&last.failed.length?h('div',null,last.failed.slice(0,5).map((f,i)=>h('div',{key:i},'• '+f))):null)
   );
 }
+// ── Tally Export — a Tally integration screen in the style of dedicated sync tools: a status bar
+// (connector, company, last sync), one period for everything, and five tabs:
+//   Overview — totals for the period, a readiness checklist with a fix for each item, one "Sync to
+//              Tally" action (creates missing ledgers, then sends each new voucher and records Tally's
+//              answer), and file downloads for Gateway of Tally → Import Data when there's no connector.
+//   Vouchers — every Purchase / Payment / Receipt / Contra voucher for the period with its Tally ledgers,
+//              status (New / Sent / Changed after sending) and Suspense lines; send or mark selected.
+//   Ledgers  — one mapping table (vendors, categories, bank transaction types, system ledgers) with
+//              "In Tally" status, auto-match to Tally's names, and "Create missing in Tally".
+//   History  — every sync, send, ledger creation and download (kv salonos_tally_log_outlet_<id>).
+//   Settings — connector, company, evening auto-sync, set-up guide.
+// Voucher content comes from the shared builders (js/02-shared.js), so files and live sync match. ──
 function TallyExportSheet({salon,onNavTab}={}){
+  const h=React.createElement;
   const salonId=salon?.id;
-  const {success,error:tallyErr}=useToast();
+  const {success,error:tallyErr,info}=useToast();
+  const [tab,setTab]=useState('overview');
   const [refreshTick,setRefreshTick]=useState(0);
   const doRefresh=()=>setRefreshTick(t=>t+1);
+  const inr=v=>{const n=Math.round((Number(v)||0)*100)/100;return'₹'+n.toLocaleString('en-IN',{minimumFractionDigits:n%1?2:0,maximumFractionDigits:2});};
 
   const vendors=useMemo(()=>loadVendors(salonId),[salonId,refreshTick]);
   const invoices=useMemo(()=>loadVendorInvoices(salonId).filter(inv=>inv.docNature!=='Performa Invoice'),[salonId,refreshTick]);
   const bankRows=useMemo(()=>loadBankStatementRows(salonId).filter(r=>r.debit||r.credit),[salonId,refreshTick]);
   const categories=useMemo(()=>Array.from(new Set(invoices.map(inv=>inv.category).filter(Boolean))).sort(),[invoices]);
-  const gstTypesUsed=useMemo(()=>({
-    igst:invoices.some(inv=>Number(inv.igst)>0),
-    cgst:invoices.some(inv=>Number(inv.cgst)>0),
-    sgst:invoices.some(inv=>Number(inv.sgst)>0)
-  }),[invoices]);
-  // Whether this outlet can claim GST Input Credit — if blocked, Purchase Vouchers book the
-  // full invoice amount to the expense ledger directly (no separate GST Input ledgers at all),
-  // since there's no recoverable asset to track.
+  const gstTypesUsed=useMemo(()=>({igst:invoices.some(inv=>Number(inv.igst)>0),cgst:invoices.some(inv=>Number(inv.cgst)>0),sgst:invoices.some(inv=>Number(inv.sgst)>0)}),[invoices]);
   const gstInputBlocked=!gstInputAllowedAsOf(salon,new Date().toISOString().slice(0,10));
 
   const [map,setMap]=useState(()=>loadTallyLedgerMap(salonId));
@@ -72,56 +80,67 @@ function TallyExportSheet({salon,onNavTab}={}){
   const vendorLedgerNameFor=(id)=>{const v=vendors.find(x=>x.id===id);return(map.vendors&&map.vendors[id])||(v?v.name:id);};
   const categoryLedgerNameFor=(cat)=>(map.categories&&map.categories[cat])||cat;
 
-  // ── Date range — narrows which invoices/bank rows go into a Voucher export (Masters aren't
-  // date-scoped since ledgers either exist or don't). Empty = everything on file. ──
-  const [fromDate,setFromDate]=useState('');
-  const [toDate,setToDate]=useState('');
-  const dmyToIso=(dmy)=>{const p=parseInvoiceDateFlexible(dmy);return p?p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0'):'';};
-  const inRange=(dmy)=>{if(!fromDate&&!toDate)return true;const iso=dmyToIso(dmy);if(!iso)return true;if(fromDate&&iso<fromDate)return false;if(toDate&&iso>toDate)return false;return true;};
+  // ── Period (all tabs) ──
+  const today=new Date();
+  const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const fyStart=new Date(today.getMonth()>=3?today.getFullYear():today.getFullYear()-1,3,1);
+  const [fromDate,setFromDate]=useState(()=>iso(fyStart));
+  const [toDate,setToDate]=useState(()=>iso(today));
+  const quick=[
+    ['This month',()=>{setFromDate(iso(new Date(today.getFullYear(),today.getMonth(),1)));setToDate(iso(today));}],
+    ['Last month',()=>{setFromDate(iso(new Date(today.getFullYear(),today.getMonth()-1,1)));setToDate(iso(new Date(today.getFullYear(),today.getMonth(),0)));}],
+    ['This FY',()=>{setFromDate(iso(fyStart));setToDate(iso(today));}],
+    ['All',()=>{setFromDate('');setToDate('');}],
+  ];
+  const dmyToIso=(dmy)=>tallyIsoOf(dmy);
+  const inRange=(dmy)=>{if(!fromDate&&!toDate)return true;const d=dmyToIso(dmy);if(!d)return true;if(fromDate&&d<fromDate)return false;if(toDate&&d>toDate)return false;return true;};
   const filteredInvoices=invoices.filter(inv=>inRange(inv.bookingDate||inv.invoiceDate));
   const filteredBankRows=bankRows.filter(r=>inRange(r.transactionDate));
-
+  const periodLabel=fromDate||toDate?(fromDate?fromDate.split('-').reverse().join('/'):'start')+' – '+(toDate?toDate.split('-').reverse().join('/'):'today'):'all dates';
   const outletTag=salon?salon.name.split('—')[0].trim().replace(/\s+/g,''):'Outlet';
 
-  const downloadMasters=()=>{
-    if(!map.bankLedger){tallyErr('Enter the Bank ledger name (exactly as it exists in Tally) before downloading masters.');return;}
-    const xml=buildTallyMastersXml(vendors,categories,gstTypesUsed,map.bankLedger,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked);
-    downloadTextFile(xml,'Tally_Masters_'+outletTag+'.xml');
-    markSynced(vendors.map(v=>v.id),categories,true);
-    success('Masters XML downloaded — import this FIRST via Gateway of Tally → Import Data → Masters.');
-  };
-  const downloadPurchaseVouchers=()=>{
-    if(!filteredInvoices.length){tallyErr('No vendor invoices in this date range.');return;}
-    const xml=buildTallyPurchaseVouchersXml(filteredInvoices,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked);
-    downloadTextFile(xml,'Tally_PurchaseVouchers_'+outletTag+'.xml');
-    success(filteredInvoices.length+' invoice(s) exported — import via Gateway of Tally → Import Data → Vouchers (after the Masters file).');
-  };
-  const downloadBankVouchers=()=>{
-    if(!map.bankLedger){tallyErr('Enter the Bank ledger name before downloading bank vouchers.');return;}
-    if(!filteredBankRows.length){tallyErr('No bank statement transactions in this date range.');return;}
-    const xml=buildTallyBankVouchersXml(filteredBankRows,map.bankLedger,vendors);
-    downloadTextFile(xml,'Tally_BankVouchers_'+outletTag+'.xml');
-    success(filteredBankRows.length+' transaction(s) exported — import via Gateway of Tally → Import Data → Vouchers.');
-  };
-  const downloadInvoiceCsv=()=>{
-    const hdr=['Vendor (Tally Ledger)','Invoice No.','Booking Date','Category (Tally Ledger)','Taxable Value','IGST','CGST','SGST','Round Off','Total Amount','Description'];
-    const rows=filteredInvoices.map(inv=>[vendorLedgerNameFor(inv.vendorId),inv.invoiceNo||'',inv.bookingDate||inv.invoiceDate||'',categoryLedgerNameFor(inv.category),inv.taxable||0,inv.igst||0,inv.cgst||0,inv.sgst||0,inv.roundOff||0,inv.amount||0,inv.desc||''].map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(','));
-    const csv=[hdr.map(h=>'"'+h+'"').join(','),...rows].join('\n');
-    downloadTextFile('\uFEFF'+csv,'Tally_VendorInvoices_'+outletTag+'.csv','text/csv;charset=utf-8');
-  };
-  const downloadBankCsv=()=>{
-    const hdr=['Date','Narration','Debit','Credit','Voucher Type','Counterparty (Tally Ledger)'];
-    const rows=filteredBankRows.map(r=>{const match=findVendorMatch(r.description,vendors);return[r.transactionDate||'',r.description||'',r.debit||'',r.credit||'',r.debit?'Payment':'Receipt',match?match.name:''].map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',');});
-    const csv=[hdr.map(h=>'"'+h+'"').join(','),...rows].join('\n');
-    downloadTextFile('\uFEFF'+csv,'Tally_BankStatement_'+outletTag+'.csv','text/csv;charset=utf-8');
-  };
+  // ── Sent-to-Tally status per voucher ──
+  const [pushed,setPushed]=useState(()=>loadTallyPushed(salonId));
+  useEffect(()=>{setPushed(loadTallyPushed(salonId));},[salonId,refreshTick]);
+  const vouchers=useMemo(()=>{
+    const list=[];
+    filteredInvoices.forEach(inv=>{
+      const p=pushed.inv[inv.id];
+      list.push({key:'i'+inv.id,kind:'inv',id:inv.id,date:inv.bookingDate||inv.invoiceDate||'',iso:dmyToIso(inv.bookingDate||inv.invoiceDate),type:'Purchase',
+        party:vendorLedgerNameFor(inv.vendorId),other:categoryLedgerNameFor(inv.category)||'Purchase Accounts',ref:inv.invoiceNo||'',narr:inv.desc||inv.category||'',
+        amount:Number(inv.amount)||0,status:p?(p.sig===tallyInvSig(inv)?'sent':'changed'):'new',sentAt:p&&p.at,suspense:false});
+    });
+    filteredBankRows.forEach(r=>{
+      const p=pushed.bank[r.id];
+      const cp=tallyBankCounterparty(r,vendors,vendorLedgerNameFor,map);
+      list.push({key:'b'+r.id,kind:'bank',id:r.id,date:r.transactionDate||'',iso:dmyToIso(r.transactionDate),type:tallyBankVoucherType(r,cp),
+        party:cp.ledger,other:map.bankLedger||'(bank ledger not set)',ref:r.refNo||'',narr:r.description||'',amount:Number(r.debit)||Number(r.credit)||0,
+        status:p?(p.sig===tallyBankSig(r)?'sent':'changed'):'new',sentAt:p&&p.at,suspense:cp.kind==='suspense',via:cp.kind==='nature'?'Type: '+cp.nature:cp.kind==='vendor'?'Supplier':'No match'});
+    });
+    return list.sort((a,b)=>(a.iso||'').localeCompare(b.iso||''));
+    // eslint-disable-next-line
+  },[filteredInvoices.length,filteredBankRows.length,pushed,map,vendors,fromDate,toDate,refreshTick]);
+  const byType=t=>vouchers.filter(v=>v.type===t);
+  const sum=l=>l.reduce((s,v)=>s+v.amount,0);
+  const newCount=vouchers.filter(v=>v.status==='new').length;
+  const changedList=vouchers.filter(v=>v.status==='changed');
+  const suspenseList=vouchers.filter(v=>v.suspense);
 
-  // ── Tally Connector: live link to Tally through the local SalonOS Tally Connector ──
+  // ── Ledgers ──
+  const extraLedgersFor=(invs,rows)=>tallyExtraLedgers(invs,rows,vendors,vendorLedgerNameFor,map,gstInputBlocked,
+    tallyMastersPreviewRows(vendors,categories,gstTypesUsed,map.bankLedger,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked).map(r=>r.name));
+  const allLedgerRows=()=>{const base=tallyMastersPreviewRows(vendors,categories,gstTypesUsed,map.bankLedger,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked);return base.concat(extraLedgersFor(invoices,bankRows));};
+  const [ledgerCache,setLedgerCache]=useState(()=>loadTallyLedgerCache(salonId));
+  useEffect(()=>{setLedgerCache(loadTallyLedgerCache(salonId));},[salonId,refreshTick]);
+  const tallyNames=ledgerCache?new Set(ledgerCache.ledgers.map(l=>String(l.name).toLowerCase())):null;
+  const missingInTally=tallyNames?allLedgerRows().filter(r=>!tallyNames.has(String(r.name).toLowerCase())):null;
+
+  // ── Connector ──
   const [conn,setConn]=useState(()=>loadTallyConnectorCfg());
   const updateConn=(patch)=>{const next={...conn,...patch};setConn(next);saveTallyConnectorCfg(next);};
-  const [connState,setConnState]=useState({checking:false,ok:false,tally:false,msg:'',companies:[]});
+  const [connState,setConnState]=useState({checking:true,ok:false,tally:false,msg:'',companies:[]});
   const [showConnSettings,setShowConnSettings]=useState(false);
-  const [tallyGuideLang,setTallyGuideLang]=useState(null); // 'en' | 'hi' while the walkthrough is open
+  const [tallyGuideLang,setTallyGuideLang]=useState(null);
   const checkConnector=async(cfg)=>{
     const c=cfg||conn;
     setConnState(s=>({...s,checking:true}));
@@ -130,299 +149,333 @@ function TallyExportSheet({salon,onNavTab}={}){
       let companies=[];
       if(st.tallyReachable){try{companies=parseTallyCompanies(await tallyConnectorCall(c,'/tally',buildTallyCompanyListXml()));}catch(e){}}
       setConnState({checking:false,ok:true,tally:!!st.tallyReachable,companies,
-        msg:st.tallyReachable?('Connected to Tally at '+st.tally+(companies.length?' — '+companies.length+' compan'+(companies.length===1?'y':'ies')+' open':'')):('Connector is running, but Tally is not answering at '+st.tally+' — open Tally with a company loaded and enable its XML/ODBC server (port 9000).')});
+        msg:st.tallyReachable?('Connected to Tally at '+st.tally+(companies.length?' — '+companies.length+' compan'+(companies.length===1?'y':'ies')+' open':'')):('The connector is running, but Tally is not answering at '+st.tally+' — open Tally with the company loaded and turn on its XML/ODBC server (port 9000).')});
       if(st.tallyReachable&&companies.length===1&&!c.company)updateConn({company:companies[0]});
       return !!st.tallyReachable;
     }catch(e){setConnState({checking:false,ok:false,tally:false,companies:[],msg:e.message});return false;}
   };
   useEffect(()=>{checkConnector();/* eslint-disable-next-line */},[]);
-  const [pushBusy,setPushBusy]=useState('');
-  // Sends XML to Tally through the connector and reports Tally's own answer (created / updated /
-  // rejected). Without the connector, falls back to the old blind send to localhost:9000.
-  const tryDirectPush=async(xml,label)=>{
-    setPushBusy(label);
-    try{
-      const reply=await tallySend(conn,xml);
-      const r=parseTallyImportResult(reply);
-      (r.errors||r.exceptions?tallyErr:success)(label+' → Tally: '+tallyResultText(r)+'.');
-      setPushBusy('');return r;
-    }catch(err){
-      if(!err.notRunning){tallyErr(label+': '+err.message);setPushBusy('');return null;}
-      try{
-        await fetch('http://localhost:9000',{method:'POST',headers:{'Content-Type':'text/xml'},body:withTallyCompany(xml,conn.company),mode:'no-cors'});
-        success('Sent to Tally at localhost:9000 without the connector — Tally’s reply can’t be read this way, so check Tally’s Day Book. Start the SalonOS Tally Connector for confirmed results.');
-      }catch(e2){tallyErr(err.message);}
-    }
-    setPushBusy('');return null;
-  };
+  const live=connState.tally;
 
-  const unmappedVendors=vendors.filter(v=>!map.vendors||!map.vendors[v.id]).length;
+  const [busy,setBusy]=useState('');
+  const [progress,setProgress]=useState(null);
+  const [lastResult,setLastResult]=useState(null);
+  const [log,setLog]=useState(()=>loadTallyLog(salonId));
+  useEffect(()=>{setLog(loadTallyLog(salonId));},[salonId,refreshTick]);
+  const logIt=(entry)=>{addTallyLog(salonId,entry);setLog(loadTallyLog(salonId));};
 
-  // ── New-since-last-export tracking ──
-  const [synced,setSynced]=useState(()=>loadTallySyncedLedgers(salonId));
-  useEffect(()=>{setSynced(loadTallySyncedLedgers(salonId));},[salonId,refreshTick]);
-  const markSynced=(vendorIds,cats,bankToo)=>{
-    const next={
-      vendors:{...synced.vendors,...Object.fromEntries(vendorIds.map(id=>[id,true]))},
-      categories:{...synced.categories,...Object.fromEntries(cats.map(c=>[c,true]))},
-      bank:synced.bank||!!bankToo
-    };
-    setSynced(next);saveTallySyncedLedgers(next,salonId);
-  };
-  const newVendors=vendors.filter(v=>!synced.vendors[v.id]);
-  const newCategories=categories.filter(c=>!synced.categories[c]);
-  const hasNewLedgers=newVendors.length>0||newCategories.length>0;
-
-  const downloadNewLedgersOnly=()=>{
-    if(!hasNewLedgers){tallyErr('Nothing new to push — every current Vendor and Category is already marked synced.');return;}
-    const xml=buildTallyMastersXml(newVendors,newCategories,{igst:false,cgst:false,sgst:false},'',vendorLedgerNameFor,categoryLedgerNameFor);
-    downloadTextFile(xml,'Tally_NewLedgers_'+outletTag+'.xml');
-    markSynced(newVendors.map(v=>v.id),newCategories,false);
-    success((newVendors.length+newCategories.length)+' new ledger(s) downloaded — import via Gateway of Tally → Import Data → Masters, then they\'re marked synced here.');
-  };
-
-  // ── Tally's actual ledger list, read through the connector (with its Parent group).
-  // Ledgers fetched from Tally are kept per outlet (shared), so the mapping suggestions and the
-  // "missing in Tally" check work for everyone until the next fetch.
-  const [ledgerCache,setLedgerCache]=useState(()=>loadTallyLedgerCache(salonId));
-  useEffect(()=>{setLedgerCache(loadTallyLedgerCache(salonId));},[salonId,refreshTick]);
-  const tallyLedgerList=ledgerCache?ledgerCache.ledgers.map(l=>l.name):null;
-  const [fetchingLedgers,setFetchingLedgers]=useState(false);
   const fetchLedgersFromTally=async(quiet)=>{
-    setFetchingLedgers(true);
+    setBusy('fetch');
     try{
       const ledgers=parseTallyLedgersDetailed(await tallySend(conn,buildTallyLedgerListRequestXml(conn.company)));
       const cache={ledgers,company:conn.company||'',fetchedAt:new Date().toISOString()};
       saveTallyLedgerCache(salonId,cache);setLedgerCache(cache);
-      if(!quiet){if(ledgers.length)success('Fetched '+ledgers.length+' ledger(s) from Tally'+(conn.company?' ('+conn.company+')':'')+'.');else tallyErr('Tally answered but sent no ledgers — check the right company is open/selected.');}
-      setFetchingLedgers(false);return cache;
-    }catch(err){
-      if(!quiet)tallyErr('Could not fetch ledgers from Tally: '+err.message);
-      setFetchingLedgers(false);return null;
-    }
+      if(!quiet){if(ledgers.length)success('Read '+ledgers.length+' ledgers from Tally'+(conn.company?' ('+conn.company+')':'')+'.');else tallyErr('Tally answered but sent no ledgers — check the right company is open.');}
+      setBusy('');return cache;
+    }catch(err){if(!quiet)tallyErr('Could not read ledgers from Tally: '+err.message);setBusy('');return null;}
   };
-  // Ledgers SalonOS needs that Tally doesn't have yet (by exact name).
-  const missingFrom=(cache)=>{
-    if(!cache)return null;
-    const have=new Set(cache.ledgers.map(l=>l.name.toLowerCase()));
-    return tallyMastersPreviewRows(vendors,categories,gstTypesUsed,map.bankLedger,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked).filter(r=>!have.has(String(r.name).toLowerCase()));
+  const createMissingInTally=async(cache)=>{
+    const have=new Set(((cache||ledgerCache)||{ledgers:[]}).ledgers.map(l=>String(l.name).toLowerCase()));
+    const miss=allLedgerRows().filter(r=>!have.has(String(r.name).toLowerCase()));
+    if(!miss.length){success('Tally already has every ledger SalonOS uses.');return;}
+    setBusy('create');
+    try{
+      const names=new Set(miss.map(r=>r.name));
+      const xml=buildTallyMastersXml(vendors.filter(v=>names.has(vendorLedgerNameFor(v.id))),categories.filter(c=>names.has(categoryLedgerNameFor(c))),
+        {igst:names.has('IGST Input'),cgst:names.has('CGST Input'),sgst:names.has('SGST Input')},names.has(map.bankLedger)?map.bankLedger:'',vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked,
+        extraLedgersFor(invoices,bankRows).filter(l=>names.has(l.name)));
+      const r=parseTallyImportResult(await tallySend(conn,xml));
+      (r.errors||r.exceptions?tallyErr:success)('Ledgers → Tally: '+tallyResultText(r)+'.');
+      logIt({action:'Create ledgers',created:r.created||0,altered:r.altered||0,errors:(r.errors||0)+(r.exceptions||0),detail:r.lineErrors.slice(0,5)});
+      await fetchLedgersFromTally(true);
+    }catch(err){tallyErr(err.message);}
+    setBusy('');
   };
-  const missingInTally=missingFrom(ledgerCache);
-  // Creates exactly the missing ledgers in Tally, then re-reads Tally's list to confirm.
-  const createMissingInTally=async(quiet,cache)=>{
-    const miss=missingFrom(cache||ledgerCache)||[];
-    if(!miss.length){if(!quiet)success('Tally already has every ledger SalonOS needs.');return;}
-    const names=new Set(miss.map(r=>r.name));
-    const vend=vendors.filter(v=>names.has(vendorLedgerNameFor(v.id)));
-    const cats=categories.filter(c=>names.has(categoryLedgerNameFor(c)));
-    const gst={igst:names.has('IGST Input'),cgst:names.has('CGST Input'),sgst:names.has('SGST Input')};
-    const xml=buildTallyMastersXml(vend,cats,gst,names.has(map.bankLedger)?map.bankLedger:'',vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked);
-    const r=await tryDirectPush(xml,'New ledgers ('+miss.length+')');
-    if(r){markSynced(vend.map(v=>v.id),cats,names.has(map.bankLedger));await fetchLedgersFromTally(true);}
+  const syncNow=async(only)=>{
+    if(!map.bankLedger&&(only?only.bank.size:filteredBankRows.length)){setTab('ledgers');tallyErr('Enter the Bank ledger name first (Ledgers tab).');return;}
+    setBusy('sync');setProgress({done:0,total:0});
+    try{
+      const res=await tallySyncVouchers(salonId,conn,{from:fromDate||'0000',to:toDate||'',company:conn.company,only,onProgress:(d,t)=>setProgress({done:d,total:t})});
+      setLastResult(res);
+      (res.failed.length?tallyErr:success)('Tally sync: '+res.sent+' voucher'+(res.sent===1?'':'s')+' sent'+(res.ledgersCreated?', '+res.ledgersCreated+' ledger(s) created':'')+(res.failed.length?', '+res.failed.length+' rejected — see History':'')+'.');
+      logIt({action:only?'Send selected vouchers':'Sync to Tally',period:periodLabel,sent:res.sent,created:res.ledgersCreated,errors:res.failed.length,detail:res.failed.slice(0,10)});
+      setPushed(loadTallyPushed(salonId));
+      if(res.ledgersCreated)fetchLedgersFromTally(true);
+    }catch(err){tallyErr('Tally sync failed: '+err.message);logIt({action:'Sync to Tally',period:periodLabel,errors:1,detail:[err.message]});}
+    setBusy('');setProgress(null);
   };
-  // With "auto-create" on: when the connector and Tally are reachable, ledgers added in SalonOS
-  // (new vendors, new categories) are created in Tally when this tab opens.
+  const markSent=(keys,sent)=>{
+    const next={inv:{...pushed.inv},bank:{...pushed.bank}};
+    const at=new Date().toISOString();
+    vouchers.filter(v=>keys.has(v.key)).forEach(v=>{
+      if(v.kind==='inv'){const inv=invoices.find(x=>x.id===v.id);if(sent)next.inv[v.id]={at,sig:tallyInvSig(inv),manual:true};else delete next.inv[v.id];}
+      else{const r=bankRows.find(x=>x.id===v.id);if(sent)next.bank[v.id]={at,sig:tallyBankSig(r),manual:true};else delete next.bank[v.id];}
+    });
+    saveTallyPushed(salonId,next);setPushed(next);
+    logIt({action:sent?'Marked as already in Tally':'Marked as not sent',sent:keys.size});
+    success(keys.size+' voucher'+(keys.size===1?'':'s')+' marked '+(sent?'as already in Tally — they won’t be sent again.':'as not sent — they will go with the next sync.'));
+  };
+
+  // ── Files for Gateway of Tally → Import Data ──
+  const downloadMasters=()=>{
+    if(!map.bankLedger){setTab('ledgers');tallyErr('Enter the Bank ledger name first (Ledgers tab).');return;}
+    const xml=buildTallyMastersXml(vendors,categories,gstTypesUsed,map.bankLedger,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked,extraLedgersFor(invoices,bankRows));
+    downloadTextFile(xml,'Tally_Masters_'+outletTag+'.xml');
+    logIt({action:'Downloaded Masters XML'});
+    success('Masters XML downloaded — import it FIRST: Gateway of Tally → Import Data → Masters.');
+  };
+  const downloadPurchase=()=>{
+    if(!filteredInvoices.length){tallyErr('No supplier invoices in '+periodLabel+'.');return;}
+    downloadTextFile(buildTallyPurchaseVouchersXml(filteredInvoices,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked),'Tally_Purchase_'+outletTag+'.xml');
+    logIt({action:'Downloaded Purchase vouchers XML',period:periodLabel,sent:filteredInvoices.length});
+    success(filteredInvoices.length+' purchase voucher(s) — import via Gateway of Tally → Import Data → Vouchers (after Masters). Then mark them “already in Tally” on the Vouchers tab.');
+  };
+  const downloadBank=()=>{
+    if(!map.bankLedger){setTab('ledgers');tallyErr('Enter the Bank ledger name first (Ledgers tab).');return;}
+    if(!filteredBankRows.length){tallyErr('No bank transactions in '+periodLabel+'.');return;}
+    downloadTextFile(buildTallyBankVouchersXml(filteredBankRows,map.bankLedger,vendors,{vendorLedgerNameFor,map}),'Tally_Bank_'+outletTag+'.xml');
+    logIt({action:'Downloaded Bank vouchers XML',period:periodLabel,sent:filteredBankRows.length});
+    success(filteredBankRows.length+' bank voucher(s) — import via Gateway of Tally → Import Data → Vouchers. Then mark them “already in Tally” on the Vouchers tab.');
+  };
+  const downloadVoucherCsv=()=>{
+    const hdr=['Date','Voucher Type','Party / Counterparty Ledger','Other Ledger','Reference','Narration','Amount','Status'];
+    const rows=vouchers.map(v=>[v.date,v.type,v.party,v.other,v.ref,v.narr,v.amount,v.status==='sent'?'Sent':v.status==='changed'?'Changed after sending':'New'].map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(','));
+    downloadTextFile('﻿'+[hdr.map(x=>'"'+x+'"').join(','),...rows].join('\n'),'Tally_Vouchers_'+outletTag+'.csv','text/csv;charset=utf-8');
+  };
+
+  // ── UI pieces ──
+  const lastSync=log.find(l=>/Sync|Send/.test(l.action||''));
+  const when=d=>d?new Date(d).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
+  const pill=(ok,text)=>h('span',{className:'badge '+(ok===true?'badge-green':ok===false?'badge-red':'badge-amber'),style:{fontSize:10.5}},text);
+  const statusBar=h('div',{className:'card',style:{display:'flex',gap:18,alignItems:'center',flexWrap:'wrap',padding:'12px 16px',marginBottom:14}},
+    h('div',null,h('div',{style:{fontSize:10.5,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.05em'}},'Tally'),
+      connState.checking?pill(null,'Checking…'):live?pill(true,'● Connected'):connState.ok?pill(null,'Tally not answering'):pill(false,'○ Offline — file export')),
+    h('div',null,h('div',{style:{fontSize:10.5,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.05em'}},'Company'),
+      h('div',{style:{fontSize:13,fontWeight:600}},conn.company||(live?'(open in Tally)':'—'))),
+    h('div',null,h('div',{style:{fontSize:10.5,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.05em'}},'Bank ledger'),
+      h('div',{style:{fontSize:13,fontWeight:600,color:map.bankLedger?'var(--text)':'var(--orange)'}},map.bankLedger||'Not set')),
+    h('div',null,h('div',{style:{fontSize:10.5,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.05em'}},'Last sync'),
+      h('div',{style:{fontSize:13,fontWeight:600}},lastSync?when(lastSync.at)+(lastSync.sent!=null?' · '+lastSync.sent+' sent':''):'Never')),
+    h('div',{style:{marginLeft:'auto',display:'flex',gap:6}},
+      h('button',{className:'btn btn-ghost btn-sm',disabled:connState.checking,onClick:()=>checkConnector()},'⟳ Check connection'),
+      h('button',{className:'btn btn-ghost btn-sm',onClick:doRefresh},'↻ Refresh data')));
+  const periodBar=h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:14}},
+    h('span',{style:{fontSize:12,color:'var(--text2)',fontWeight:600}},'Period'),
+    quick.map(([t,fn])=>h('button',{key:t,className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 10px'},onClick:fn},t)),
+    h('input',{type:'date',className:'form-control',style:{width:'auto'},value:fromDate,onChange:e=>setFromDate(e.target.value)}),
+    h('span',{style:{color:'var(--text3)'}},'to'),
+    h('input',{type:'date',className:'form-control',style:{width:'auto'},value:toDate,onChange:e=>setToDate(e.target.value)}),
+    h('span',{style:{fontSize:11.5,color:'var(--text3)'}},vouchers.length+' voucher'+(vouchers.length===1?'':'s')+' in '+periodLabel));
+  const tabs=[['overview','Overview'],['vouchers','Vouchers ('+vouchers.length+')'],['ledgers','Ledgers'+(missingInTally&&missingInTally.length?' ⚠ '+missingInTally.length:'')],['history','History'],['settings','Settings']];
+
+  // Overview
+  const check=(ok,label,detail,fix)=>h('div',{style:{display:'flex',gap:10,alignItems:'flex-start',padding:'8px 0',borderTop:'1px solid var(--border)'}},
+    h('span',{style:{fontSize:15,lineHeight:'20px'}},ok===true?'✅':ok===false?'⚠️':'•'),
+    h('div',{style:{flex:1}},h('div',{style:{fontSize:13,fontWeight:600}},label),detail&&h('div',{style:{fontSize:11.5,color:'var(--text3)'}},detail)),
+    fix||null);
+  const overview=h(React.Fragment,null,
+    h('div',{className:'grid4',style:{marginBottom:14}},
+      [['Purchase',byType('Purchase'),'blue'],['Payments',byType('Payment'),'amber'],['Receipts',byType('Receipt'),'green'],['Contra',byType('Contra'),'purple']].map(([label,l,color])=>
+        h('div',{key:label,className:'metric-card '+color},h('div',{className:'metric-label'},label+' vouchers'),h('div',{className:'metric-value'},String(l.length)),h('div',{className:'metric-sub'},inr(sum(l))+' · '+l.filter(v=>v.status==='new').length+' not yet sent')))),
+    h('div',{className:'grid2',style:{marginBottom:14,alignItems:'start'}},
+      h('div',{className:'card'},
+        h('div',{className:'card-title'},'Readiness'),
+        check(live?true:false,live?'Connected to Tally':'Tally not connected',live?(conn.company?'Company: '+conn.company:'Using the company open in Tally'):'Start the SalonOS Tally Connector (Settings tab) — or use the file downloads below.',!live&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setTab('settings')},'Set up')),
+        check(!!map.bankLedger,map.bankLedger?'Bank ledger: '+map.bankLedger:'Bank ledger not set','The Tally ledger for this outlet’s bank account.',!map.bankLedger&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setTab('ledgers')},'Set')),
+        check(missingInTally?missingInTally.length===0:null,missingInTally?(missingInTally.length?missingInTally.length+' ledger(s) missing in Tally':'All ledgers exist in Tally'):'Ledgers not checked against Tally yet',missingInTally&&missingInTally.length?missingInTally.slice(0,4).map(r=>r.name).join(', ')+(missingInTally.length>4?'…':'')+' — sync creates them first.':(missingInTally?null:'Read Tally’s ledger list to check.'),
+          live&&(missingInTally&&missingInTally.length?h('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:()=>createMissingInTally()},'Create now'):!missingInTally&&h('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:()=>fetchLedgersFromTally(false)},'Check'))),
+        check(suspenseList.length===0,suspenseList.length?suspenseList.length+' bank line(s) will go to Suspense':'Every bank line has a ledger',suspenseList.length?'No supplier and no type on Bank Statement — set their Nature there, or reclassify in Tally.':null,
+          suspenseList.length>0&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setVStatus('suspense');setTab('vouchers');}},'Review')),
+        check(changedList.length===0,changedList.length?changedList.length+' voucher(s) changed after sending':'Nothing changed after sending',changedList.length?'Not re-sent (that would duplicate them) — correct them in Tally.':null,
+          changedList.length>0&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setVStatus('changed');setTab('vouchers');}},'View'))),
+      h('div',{className:'card',style:{borderColor:live?'rgba(76,175,125,0.45)':'var(--border)'}},
+        h('div',{className:'card-title'},'Send to Tally'),
+        h('div',{style:{fontSize:12.5,color:'var(--text2)',lineHeight:1.6,marginBottom:12}},live
+          ?'Creates any missing ledger, then sends each of the '+newCount+' new voucher'+(newCount===1?'':'s')+' in '+periodLabel+' to '+(conn.company||'the company open in Tally')+' and records Tally’s answer. Vouchers already sent are never sent twice.'
+          :'Tally isn’t connected, so download the files and import them in Tally: Gateway of Tally → Import Data → Masters first, then Vouchers.'),
+        live&&h('button',{className:'btn btn-primary'+(busy==='sync'?' btn-loading':''),style:{width:'100%',padding:'10px'},disabled:!!busy||!newCount,onClick:()=>syncNow()},
+          busy==='sync'&&progress&&progress.total?'Sending '+progress.done+' of '+progress.total+'…':newCount?'🔄 Sync '+newCount+' new voucher'+(newCount===1?'':'s')+' to Tally':'✓ Everything in this period is in Tally'),
+        lastResult&&h('div',{style:{fontSize:12,marginTop:10,color:lastResult.failed.length?'var(--orange)':'var(--green)',lineHeight:1.6}},
+          'Last run: '+lastResult.sent+' sent'+(lastResult.ledgersCreated?', '+lastResult.ledgersCreated+' ledger(s) created':'')+(lastResult.failed.length?', '+lastResult.failed.length+' rejected:':'.'),
+          lastResult.failed.slice(0,5).map((f,i)=>h('div',{key:i,style:{color:'var(--text2)'}},'• '+f))),
+        h('div',{style:{borderTop:'1px solid var(--border)',marginTop:14,paddingTop:12}},
+          h('div',{style:{fontSize:11.5,fontWeight:600,color:'var(--text2)',marginBottom:8}},'Files for manual import (Gateway of Tally → Import Data)'),
+          h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
+            h('button',{className:'btn btn-ghost btn-sm',onClick:downloadMasters},'1 · Masters XML'),
+            h('button',{className:'btn btn-ghost btn-sm',onClick:downloadPurchase},'2 · Purchase XML'),
+            h('button',{className:'btn btn-ghost btn-sm',onClick:downloadBank},'3 · Bank XML'),
+            h('button',{className:'btn btn-ghost btn-sm',onClick:downloadVoucherCsv},'Voucher list (CSV)'))))));
+
+  // Vouchers
+  const [vType,setVType]=useState('all');
+  const [vStatus,setVStatus]=useState('all');
+  const [vSearch,setVSearch]=useState('');
+  const [sel,setSel]=useState(()=>new Set());
+  const vShown=vouchers.filter(v=>(vType==='all'||v.type===vType)&&(vStatus==='all'||(vStatus==='suspense'?v.suspense:v.status===vStatus))
+    &&(!vSearch||(v.party+' '+v.narr+' '+v.ref).toLowerCase().includes(vSearch.toLowerCase())));
+  const selKeys=new Set([...sel].filter(k=>vShown.some(v=>v.key===k)));
+  const statusBadge=v=>v.status==='sent'?h('span',{className:'badge badge-green',title:'Sent '+when(v.sentAt)},'Sent'):v.status==='changed'?h('span',{className:'badge badge-amber',title:'Edited after it was sent — correct it in Tally'},'Changed'):h('span',{className:'badge badge-blue'},'New');
+  const chip=(val,cur,set,label)=>h('button',{key:val,className:'btn btn-sm '+(cur===val?'btn-primary':'btn-ghost'),style:{fontSize:11,padding:'3px 10px'},onClick:()=>set(val)},label);
+  const vouchersTab=h('div',{className:'card'},
+    h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:10}},
+      ['all','Purchase','Payment','Receipt','Contra'].map(t=>chip(t,vType,setVType,t==='all'?'All types':t)),
+      h('span',{style:{width:10}}),
+      [['all','Any status'],['new','New'],['sent','Sent'],['changed','Changed'],['suspense','Suspense']].map(([k,l])=>chip(k,vStatus,setVStatus,l)),
+      h('input',{className:'form-control',style:{width:200,marginLeft:'auto'},placeholder:'Search party / narration',value:vSearch,onChange:e=>setVSearch(e.target.value)})),
+    selKeys.size>0&&h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',background:'var(--bg3)',borderRadius:'var(--r)',padding:'8px 10px',marginBottom:10,fontSize:12.5}},
+      h('b',null,selKeys.size+' selected'),
+      live&&h('button',{className:'btn btn-primary btn-sm',disabled:!!busy,onClick:()=>{const only={inv:new Set(),bank:new Set()};vouchers.filter(v=>selKeys.has(v.key)&&v.status==='new').forEach(v=>(v.kind==='inv'?only.inv:only.bank).add(v.id));if(!only.inv.size&&!only.bank.size){info('Only New vouchers can be sent.');return;}syncNow(only);}},'Send to Tally'),
+      h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(confirm('Mark '+selKeys.size+' voucher(s) as already in Tally? They won’t be sent by SalonOS.'))markSent(selKeys,true);}},'Mark as already in Tally'),
+      h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(confirm('Mark '+selKeys.size+' voucher(s) as NOT sent? The next sync will send them again — only do this if they are not in Tally.'))markSent(selKeys,false);}},'Mark as not sent'),
+      h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setSel(new Set())},'Clear')),
+    vShown.length===0?h('div',{style:{padding:24,textAlign:'center',color:'var(--text3)',fontSize:12.5}},'No vouchers match — change the period or filters.'):
+    h('div',{className:'table-wrap',style:{maxHeight:520,overflowY:'auto'}},h('table',null,
+      h('thead',null,h('tr',null,
+        h('th',null,h('input',{type:'checkbox',checked:vShown.length>0&&vShown.every(v=>sel.has(v.key)),onChange:e=>setSel(e.target.checked?new Set(vShown.map(v=>v.key)):new Set())})),
+        ['Date','Type','Party / Ledger','Against','Ref / Narration','Amount','Status'].map(t=>h('th',{key:t},t)))),
+      h('tbody',null,vShown.slice(0,500).map(v=>h('tr',{key:v.key,style:v.suspense?{background:'rgba(255,159,67,0.07)'}:undefined},
+        h('td',null,h('input',{type:'checkbox',checked:sel.has(v.key),onChange:e=>setSel(p=>{const n=new Set(p);if(e.target.checked)n.add(v.key);else n.delete(v.key);return n;})})),
+        h('td',{'data-label':'Date',style:{whiteSpace:'nowrap'}},v.date),
+        h('td',{'data-label':'Type'},h('span',{className:'badge '+(v.type==='Purchase'?'badge-blue':v.type==='Payment'?'badge-amber':v.type==='Receipt'?'badge-green':'badge-purple')},v.type)),
+        h('td',{'data-label':'Party',style:{fontWeight:600,color:v.suspense?'var(--orange)':'var(--text)'}},v.party,v.via&&h('div',{style:{fontSize:10.5,fontWeight:400,color:'var(--text3)'}},v.via)),
+        h('td',{'data-label':'Against',style:{fontSize:12,color:'var(--text2)'}},v.other),
+        h('td',{'data-label':'Ref',style:{fontSize:12,color:'var(--text2)',maxWidth:260}},v.ref?h('div',{style:{fontWeight:600,color:'var(--text)'}},v.ref):null,String(v.narr).slice(0,80)),
+        h('td',{'data-label':'Amount',style:{textAlign:'right',fontWeight:600,whiteSpace:'nowrap'}},inr(v.amount)),
+        h('td',{'data-label':'Status'},statusBadge(v))))))),
+    vShown.length>500&&h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Showing the first 500 of '+vShown.length+' — narrow the period to see the rest.'));
+
+  // Ledgers
+  const [lSearch,setLSearch]=useState('');
+  const naturesUsed=Array.from(new Set(bankRows.map(r=>r.nature).filter(n=>n&&TALLY_NATURE_LEDGERS[n]))).sort();
+  const ledgerRows=[
+    ...vendors.map(v=>({key:'v'+v.id,kind:'Supplier',label:v.name,value:(map.vendors&&map.vendors[v.id])||'',def:v.name,group:'Sundry Creditors',set:val=>updateMap({...map,vendors:{...(map.vendors||{}),[v.id]:val}})})),
+    ...categories.map(c=>({key:'c'+c,kind:'Expense category',label:c,value:(map.categories&&map.categories[c])||'',def:c,group:tallyGroupForCategory(c),set:val=>updateMap({...map,categories:{...(map.categories||{}),[c]:val}})})),
+    ...naturesUsed.map(n=>({key:'n'+n,kind:'Bank transaction type',label:n,value:(map.natures&&map.natures[n])||'',def:TALLY_NATURE_LEDGERS[n][0],group:TALLY_NATURE_LEDGERS[n][1],set:val=>updateMap({...map,natures:{...(map.natures||{}),[n]:val}})})),
+  ];
+  const resolved=r=>(r.value||r.def);
+  const inTally=name=>tallyNames?tallyNames.has(String(name).toLowerCase()):null;
+  const lShown=ledgerRows.filter(r=>!lSearch||(r.label+' '+resolved(r)+' '+r.kind).toLowerCase().includes(lSearch.toLowerCase()));
+  const normName=s=>String(s||'').toLowerCase().replace(/\b(pvt|private|ltd|limited|llp|and|co|the)\b/g,'').replace(/[^a-z0-9]/g,'');
+  const autoMatch=()=>{
+    if(!ledgerCache){tallyErr('Read Tally’s ledgers first.');return;}
+    const tl=ledgerCache.ledgers.map(l=>l.name);
+    let n=0;const next={...map,vendors:{...(map.vendors||{})},categories:{...(map.categories||{})},natures:{...(map.natures||{})}};
+    ledgerRows.forEach(r=>{
+      if(inTally(resolved(r)))return;
+      const want=normName(r.label);if(want.length<3)return;
+      let hits=tl.filter(t=>normName(t)===want);
+      if(!hits.length&&want.length>=5)hits=tl.filter(t=>{const x=normName(t);return x.length>=5&&(x.includes(want)||want.includes(x));});
+      if(hits.length!==1)return;
+      const bucket=r.key[0]==='v'?'vendors':r.key[0]==='c'?'categories':'natures';
+      next[bucket][r.key.slice(1)]=hits[0];n++;
+    });
+    updateMap(next);
+    (n?success:info)(n?'Matched '+n+' ledger'+(n===1?'':'s')+' to Tally’s existing names — check them below.':'No confident matches found — pick names from the list, or create the missing ledgers.');
+  };
+  const systemRows=[
+    ...(!gstInputBlocked?[gstTypesUsed.igst&&'IGST Input',gstTypesUsed.cgst&&'CGST Input',gstTypesUsed.sgst&&'SGST Input'].filter(Boolean).map(n=>({name:n,group:'Duties & Taxes'})):[]),
+    ...extraLedgersFor(invoices,bankRows).filter(l=>l.type==='System').map(l=>({name:l.name,group:l.parent})),
+  ];
+  const ledgersTab=h(React.Fragment,null,
+    h('div',{className:'card',style:{marginBottom:14}},
+      h('div',{style:{display:'flex',gap:10,alignItems:'flex-end',flexWrap:'wrap'}},
+        h('div',{className:'form-group',style:{marginBottom:0}},h('label',null,'Bank ledger in Tally *'),
+          h('input',{className:'form-control',style:{width:300},list:'tally-ledger-names',placeholder:'e.g. HDFC Bank - Current A/c',value:map.bankLedger||'',onChange:e=>updateMap({...map,bankLedger:e.target.value})})),
+        map.bankLedger&&inTally(map.bankLedger)!==null&&h('span',{style:{fontSize:12,color:inTally(map.bankLedger)?'var(--green)':'var(--orange)',paddingBottom:8}},inTally(map.bankLedger)?'✓ in Tally':'Not in Tally yet — it will be created'),
+        h('div',{style:{marginLeft:'auto',display:'flex',gap:6,flexWrap:'wrap'}},
+          live&&h('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:()=>fetchLedgersFromTally(false)},busy==='fetch'?'Reading…':'⟳ Read ledgers from Tally'),
+          ledgerCache&&h('button',{className:'btn btn-ghost btn-sm',onClick:autoMatch},'✨ Auto-match names'),
+          live&&missingInTally&&missingInTally.length>0&&h('button',{className:'btn btn-primary btn-sm',disabled:!!busy,onClick:()=>createMissingInTally()},busy==='create'?'Creating…':'➕ Create '+missingInTally.length+' missing in Tally'))),
+      h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},ledgerCache?'Tally has '+ledgerCache.ledgers.length+' ledgers'+(ledgerCache.company?' ('+ledgerCache.company+')':'')+' · read '+when(ledgerCache.fetchedAt)+'. Names must match Tally exactly; leave a field blank to use the SalonOS name.':'Tally matches ledgers by exact name. Read Tally’s list to see which exist and to get suggestions while typing.')),
+    h('datalist',{id:'tally-ledger-names'},((ledgerCache&&ledgerCache.ledgers)||[]).map(l=>h('option',{key:l.name,value:l.name}))),
+    h('div',{className:'card'},
+      h('div',{style:{display:'flex',gap:8,alignItems:'center',marginBottom:10}},
+        h('div',{className:'card-title',style:{margin:0}},'Ledger mapping'),
+        h('input',{className:'form-control',style:{width:220,marginLeft:'auto'},placeholder:'Search',value:lSearch,onChange:e=>setLSearch(e.target.value)})),
+      h('div',{className:'table-wrap',style:{maxHeight:520,overflowY:'auto'}},h('table',null,
+        h('thead',null,h('tr',null,['In SalonOS','Kind','Tally ledger','Group','In Tally'].map(t=>h('th',{key:t},t)))),
+        h('tbody',null,
+          lShown.map(r=>{const t=inTally(resolved(r));return h('tr',{key:r.key},
+            h('td',{'data-label':'In SalonOS',style:{fontWeight:600}},r.label),
+            h('td',{'data-label':'Kind',style:{fontSize:12,color:'var(--text3)'}},r.kind),
+            h('td',{'data-label':'Tally ledger'},h('input',{className:'form-control',style:{minWidth:220,fontSize:12.5,padding:'4px 8px'},list:'tally-ledger-names',placeholder:r.def,value:r.value,onChange:e=>r.set(e.target.value)})),
+            h('td',{'data-label':'Group',style:{fontSize:12,color:'var(--text2)'}},r.group),
+            h('td',{'data-label':'In Tally'},t===null?h('span',{style:{color:'var(--text3)'}},'—'):t?h('span',{className:'badge badge-green'},'✓ Yes'):h('span',{className:'badge badge-amber'},'Missing')));}),
+          systemRows.map(r=>{const t=inTally(r.name);return h('tr',{key:'s'+r.name},
+            h('td',{style:{fontWeight:600}},r.name),h('td',{style:{fontSize:12,color:'var(--text3)'}},'System'),h('td',{style:{fontSize:12.5,color:'var(--text2)'}},r.name),
+            h('td',{style:{fontSize:12,color:'var(--text2)'}},r.group),
+            h('td',null,t===null?h('span',{style:{color:'var(--text3)'}},'—'):t?h('span',{className:'badge badge-green'},'✓ Yes'):h('span',{className:'badge badge-amber'},'Missing')));})))),
+      h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8,lineHeight:1.6}},'Bank transaction types come from the Nature set on Bank Statement (Salary, UPI Settlement, TDS…). A bank line linked to a supplier bill always goes to that supplier. Lines with neither go to “'+TALLY_SUSPENSE_LEDGER+'” to reclassify in Tally.')));
+
+  // History
+  const historyTab=h('div',{className:'card'},
+    log.length===0?h('div',{style:{padding:24,textAlign:'center',color:'var(--text3)',fontSize:12.5}},'Nothing sent or downloaded yet.'):
+    h('div',{className:'table-wrap'},h('table',null,
+      h('thead',null,h('tr',null,['When','What','Period','Result','By'].map(t=>h('th',{key:t},t)))),
+      h('tbody',null,log.map(l=>h('tr',{key:l.id},
+        h('td',{'data-label':'When',style:{whiteSpace:'nowrap'}},when(l.at)),
+        h('td',{'data-label':'What',style:{fontWeight:600}},l.action),
+        h('td',{'data-label':'Period',style:{fontSize:12,color:'var(--text2)'}},l.period||'—'),
+        h('td',{'data-label':'Result',style:{fontSize:12,color:l.errors?'var(--orange)':'var(--text2)'}},
+          [l.sent!=null&&l.sent+' voucher(s)',l.created&&l.created+' ledger(s) created',l.errors&&l.errors+' rejected'].filter(Boolean).join(' · ')||'—',
+          (l.detail||[]).length>0&&h('details',null,h('summary',{style:{cursor:'pointer',fontSize:11.5}},'Details'),(l.detail||[]).map((d,i)=>h('div',{key:i,style:{fontSize:11.5}},'• '+d)))),
+        h('td',{'data-label':'By',style:{fontSize:12,color:'var(--text3)'}},l.by||'—')))))));
+
+  // Settings
+  const settingsTab=h(React.Fragment,null,
+    tallyGuideLang&&h(TallyGuideModal,{initialLang:tallyGuideLang,onClose:()=>setTallyGuideLang(null)}),
+    h('div',{className:'card',style:{marginBottom:14}},
+      h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:6}},
+        h('div',{className:'card-title',style:{margin:0}},'🔌 SalonOS Tally Connector'),
+        h('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 10px'},onClick:()=>setTallyGuideLang('en')},'▶ How to run it'),
+        h('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 10px'},onClick:()=>setTallyGuideLang('hi')},'▶ हिंदी में देखें'),
+        h('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},onClick:()=>setShowConnSettings(s=>!s)},showConnSettings?'Hide advanced':'⚙ Advanced')),
+      h('div',{style:{fontSize:12.5,color:live?'var(--green)':'var(--text2)',lineHeight:1.6,marginBottom:10}},connState.msg||'Checking for the connector…'),
+      live&&h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:10}},
+        h('span',{style:{fontSize:12.5,color:'var(--text2)'}},'Company in Tally'),
+        h('select',{className:'form-control',style:{width:'auto',minWidth:240},value:conn.company||'',onChange:e=>updateConn({company:e.target.value})},
+          h('option',{value:''},'(the one currently open in Tally)'),connState.companies.map(c=>h('option',{key:c,value:c},c))),
+        h('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:12.5,color:'var(--text2)',cursor:'pointer'}},
+          h('input',{type:'checkbox',checked:!!conn.autoCreate,onChange:e=>updateConn({autoCreate:e.target.checked})}),'Create new SalonOS ledgers in Tally automatically')),
+      !live&&h('ol',{style:{fontSize:12.5,color:'var(--text2)',lineHeight:1.8,paddingLeft:18,margin:'0 0 10px'}},
+        h('li',null,'In Tally: F1 Help → Settings → Connectivity → Client/Server configuration → TallyPrime acts as “Both”, Enable ODBC “Yes”, Port 9000 (Tally.ERP 9: F12 → Advanced Configuration).'),
+        h('li',null,'Download both connector files below into one folder.'),
+        h('li',null,'Double-click Start-SalonOS-Tally-Connector.bat and keep its window open, then click ⟳ Check connection.'),
+        h('li',null,'Tally on another PC or server: edit the .bat and add -TallyHost <server IP>. Tally on a cloud desktop: run the connector and SalonOS inside that desktop.')),
+      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        h('a',{className:'btn btn-ghost btn-sm',href:'tally-connector/Start-SalonOS-Tally-Connector.bat',download:'Start-SalonOS-Tally-Connector.bat'},'⬇ Start-SalonOS-Tally-Connector.bat'),
+        h('a',{className:'btn btn-ghost btn-sm',href:'tally-connector/SalonOS-Tally-Connector.ps1',download:'SalonOS-Tally-Connector.ps1'},'⬇ SalonOS-Tally-Connector.ps1')),
+      showConnSettings&&h('div',{className:'form-row cols2',style:{marginTop:12,marginBottom:0}},
+        h('div',{className:'form-group'},h('label',null,'Connector address'),h('input',{className:'form-control',value:conn.url,placeholder:TALLY_CONNECTOR_DEFAULT,onChange:e=>updateConn({url:e.target.value.trim()})})),
+        h('div',{className:'form-group'},h('label',null,'Connector token (only if started with -Token)'),h('input',{className:'form-control',type:'password',autoComplete:'off',value:conn.token,onChange:e=>updateConn({token:e.target.value})})))),
+    h(TallyAutoSyncCard,{salonId,conn,updateConn,companies:connState.companies,tallyOk:live,onDone:doRefresh}));
+
+  // With "auto-create" on: new SalonOS ledgers are created in Tally when this screen opens.
   const autoRanRef=useRef(false);
   useEffect(()=>{
-    if(autoRanRef.current||!connState.tally||!conn.autoCreate)return;
+    if(autoRanRef.current||!live)return;
     autoRanRef.current=true;
-    (async()=>{const cache=await fetchLedgersFromTally(true);if(cache&&(missingFrom(cache)||[]).length)await createMissingInTally(false,cache);})();
+    (async()=>{const cache=await fetchLedgersFromTally(true);if(conn.autoCreate&&cache){const have=new Set(cache.ledgers.map(l=>String(l.name).toLowerCase()));if(allLedgerRows().some(r=>!have.has(String(r.name).toLowerCase())))await createMissingInTally(cache);}})();
     // eslint-disable-next-line
-  },[connState.tally]);
+  },[live]);
 
-  return React.createElement('div',{className:'fade-in'},
-    React.createElement('div',{className:'section-header'},
-      React.createElement('div',null,
-        React.createElement('div',{className:'page-title'},'Tally Export'),
-        React.createElement('div',{className:'page-sub'},'Push Vendor invoices and Bank Statement data into Tally — as its own native import format')
-      ),
-      React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:doRefresh},'⟳ Refresh')
-    ),
-
-    React.createElement('div',{style:{fontSize:12.5,color:'var(--text2)',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'12px 16px',marginBottom:16,lineHeight:1.6}},
-      React.createElement('b',{style:{color:'var(--text)'}},'How this works: '),
-      'This generates the same XML format Tally itself uses to import and export data — free, and more reliable than an Excel-based import. Download the files below, then in Tally go to ',
-      React.createElement('b',null,'Gateway of Tally → Import Data'),
-      ' — Masters first, then Vouchers. Or connect live with the SalonOS Tally Connector below: ledgers are read from Tally, new ones are created there, and vouchers are sent straight in with Tally’s own confirmation.'
-    ),
-
-    tallyGuideLang&&React.createElement(TallyGuideModal,{initialLang:tallyGuideLang,onClose:()=>setTallyGuideLang(null)}),
-    // ── Tally Connector — live link (local PC, office server or cloud desktop) ──
-    React.createElement('div',{className:'card',style:{marginBottom:16,border:'1px solid '+(connState.tally?'rgba(76,175,125,0.4)':'rgba(47,95,224,0.3)')}},
-      React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:6}},
-        React.createElement('div',{style:{fontWeight:600,fontSize:13,color:'var(--text)'}},'🔌 Tally Connector'),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 10px'},onClick:()=>setTallyGuideLang('en')},'▶ Watch: how to run it'),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 10px'},onClick:()=>setTallyGuideLang('hi')},'▶ हिंदी में देखें'),
-        React.createElement('span',{className:'badge '+(connState.tally?'badge-green':connState.ok?'badge-amber':'badge-red'),style:{fontSize:10}},connState.checking?'Checking…':connState.tally?'Connected':connState.ok?'Tally not answering':'Not connected'),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},disabled:connState.checking,onClick:()=>checkConnector()},'⟳ Check'),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowConnSettings(s=>!s)},showConnSettings?'Hide settings':'⚙ Settings')
-      ),
-      React.createElement('div',{style:{fontSize:12,color:connState.tally?'var(--green)':'var(--text2)',lineHeight:1.6,marginBottom:8}},connState.msg||'Checking for the SalonOS Tally Connector…'),
-      connState.tally&&React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:8}},
-        React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},'Company in Tally:'),
-        React.createElement('select',{className:'form-control',style:{width:'auto',minWidth:220},value:conn.company||'',onChange:e=>{updateConn({company:e.target.value});}},
-          React.createElement('option',{value:''},'(the one currently selected in Tally)'),
-          connState.companies.map(c=>React.createElement('option',{key:c,value:c},c))),
-        React.createElement('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--text2)',cursor:'pointer'}},
-          React.createElement('input',{type:'checkbox',checked:!!conn.autoCreate,onChange:e=>updateConn({autoCreate:e.target.checked})}),
-          'Create new SalonOS ledgers in Tally automatically')),
-      !connState.tally&&React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',lineHeight:1.7,background:'var(--bg3)',borderRadius:'var(--r)',padding:'10px 12px',marginBottom:8}},
-        React.createElement('b',{style:{color:'var(--text2)'}},'Set up once (Windows): '),
-        '1) In Tally: F1 Help → Settings → Connectivity → Client/Server configuration → TallyPrime acts as "Both", Enable ODBC "Yes", Port 9000 (Tally.ERP 9: F12 → Advanced Configuration). ',
-        '2) Download both connector files below into one folder. ',
-        '3) Double-click ',React.createElement('b',null,'Start-SalonOS-Tally-Connector.bat'),' and keep its window open. ',
-        '4) Click ⟳ Check. ',
-        React.createElement('br'),
-        React.createElement('b',{style:{color:'var(--text2)'}},'Tally on a server or another PC: '),'edit the .bat file and add ',React.createElement('code',null,'-TallyHost <server IP>'),' (the server’s Tally port 9000 must be reachable on your network/VPN). ',
-        React.createElement('b',{style:{color:'var(--text2)'}},'Tally on a cloud / remote desktop: '),'run the connector inside that desktop and open SalonOS there.',
-        React.createElement('div',{style:{marginTop:8,display:'flex',gap:8,flexWrap:'wrap'}},
-          React.createElement('a',{className:'btn btn-primary btn-sm',href:'tally-connector/Start-SalonOS-Tally-Connector.bat',download:'Start-SalonOS-Tally-Connector.bat'},'⬇ Start-SalonOS-Tally-Connector.bat'),
-          React.createElement('a',{className:'btn btn-ghost btn-sm',href:'tally-connector/SalonOS-Tally-Connector.ps1',download:'SalonOS-Tally-Connector.ps1'},'⬇ SalonOS-Tally-Connector.ps1'))),
-      showConnSettings&&React.createElement('div',{className:'form-row cols2',style:{marginBottom:0}},
-        React.createElement('div',{className:'form-group'},React.createElement('label',null,'Connector address'),
-          React.createElement('input',{className:'form-control',value:conn.url,placeholder:TALLY_CONNECTOR_DEFAULT,onChange:e=>updateConn({url:e.target.value.trim()})})),
-        React.createElement('div',{className:'form-group'},React.createElement('label',null,'Connector token (only if started with -Token)'),
-          React.createElement('input',{className:'form-control',type:'password',autoComplete:'off',value:conn.token,onChange:e=>updateConn({token:e.target.value})}))),
-      connState.tally&&ledgerCache&&React.createElement('div',{style:{fontSize:12,color:'var(--text2)',marginTop:4,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
-        '📒 '+ledgerCache.ledgers.length+' ledgers in Tally'+(ledgerCache.company?' ('+ledgerCache.company+')':'')+' · fetched '+new Date(ledgerCache.fetchedAt).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})+' · ',
-        (missingInTally&&missingInTally.length)
-          ?React.createElement(React.Fragment,null,
-              React.createElement('span',{style:{color:'var(--orange)'}},missingInTally.length+' SalonOS ledger(s) missing in Tally: '+missingInTally.slice(0,6).map(r=>r.name).join(', ')+(missingInTally.length>6?'…':'')),
-              React.createElement('button',{className:'btn btn-primary btn-sm',disabled:!!pushBusy,onClick:()=>createMissingInTally(false)},pushBusy?'Creating…':'➕ Create them in Tally'))
-          :React.createElement('span',{style:{color:'var(--green)'}},'✓ every SalonOS ledger exists in Tally'))
-    ),
-    React.createElement(TallyAutoSyncCard,{salonId,conn,updateConn,companies:connState.companies,tallyOk:connState.tally,onDone:doRefresh}),
-
-    // ── Ledger name mapping ──
-    React.createElement('div',{className:'card',style:{marginBottom:16}},
-      React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:4}},
-        React.createElement('div',{style:{fontWeight:600,fontSize:13,color:'var(--text)'}},'Ledger Name Mapping'),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:fetchingLedgers,onClick:()=>fetchLedgersFromTally(false)},fetchingLedgers?'Fetching…':'⟳ Fetch ledgers from Tally')
-      ),
-      React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:12}},'Tally matches purely by ledger name — whatever you enter here must be spelled exactly like the ledger in Tally. Leave a field blank to use the name as-is from '+(salon?salon.name.split('—')[0].trim():'this outlet')+'\'s records.'),
-      tallyLedgerList&&tallyLedgerList.length>0&&React.createElement('div',{style:{fontSize:10.5,color:'var(--green)',marginBottom:12}},'✓ '+tallyLedgerList.length+' ledger name(s) fetched from Tally — typing below will now suggest matches from Tally\'s actual list.'),
-      React.createElement('datalist',{id:'tally-ledger-names'},(tallyLedgerList||[]).map(n=>React.createElement('option',{key:n,value:n}))),
-      React.createElement('div',{className:'form-group',style:{marginBottom:14}},
-        React.createElement('label',null,'Bank Ledger Name in Tally *'),
-        React.createElement('input',{className:'form-control',style:{maxWidth:320},list:'tally-ledger-names',placeholder:'e.g. HDFC Bank - Current A/c',value:map.bankLedger||'',onChange:e=>updateMap({...map,bankLedger:e.target.value})})
-      ),
-      vendors.length>0&&React.createElement('div',{style:{marginBottom:14}},
-        React.createElement('div',{style:{fontSize:11,fontWeight:600,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:6}},'Vendors → Tally Ledger'+(unmappedVendors?' ('+unmappedVendors+' using default name)':'')),
-        React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,maxHeight:220,overflowY:'auto'}},
-          vendors.map(v=>React.createElement('div',{key:v.id,style:{display:'flex',alignItems:'center',gap:8}},
-            React.createElement('div',{style:{fontSize:12,color:'var(--text2)',minWidth:130,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',display:'flex',alignItems:'center',gap:4},title:v.name},
-              !synced.vendors[v.id]&&React.createElement('span',{className:'badge badge-amber',style:{fontSize:9,padding:'1px 5px'}},'🆕'),v.name),
-            React.createElement('input',{className:'form-control',style:{fontSize:12,padding:'4px 8px'},list:'tally-ledger-names',placeholder:v.name,value:(map.vendors&&map.vendors[v.id])||'',onChange:e=>updateMap({...map,vendors:{...map.vendors,[v.id]:e.target.value}})})
-          ))
-        )
-      ),
-      categories.length>0&&React.createElement('div',null,
-        React.createElement('div',{style:{fontSize:11,fontWeight:600,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:6}},'Categories → Tally Ledger'),
-        React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}},
-          categories.map(cat=>React.createElement('div',{key:cat,style:{display:'flex',alignItems:'center',gap:8}},
-            React.createElement('div',{style:{fontSize:12,color:'var(--text2)',minWidth:130,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',display:'flex',alignItems:'center',gap:4},title:cat+' (suggested group: '+tallyGroupForCategory(cat)+')'},
-              !synced.categories[cat]&&React.createElement('span',{className:'badge badge-amber',style:{fontSize:9,padding:'1px 5px'}},'🆕'),cat),
-            React.createElement('input',{className:'form-control',style:{fontSize:12,padding:'4px 8px'},list:'tally-ledger-names',placeholder:cat,value:(map.categories&&map.categories[cat])||'',onChange:e=>updateMap({...map,categories:{...map.categories,[cat]:e.target.value}})})
-          ))
-        )
-      )
-    ),
-
-    // ── Masters (Ledgers) Preview — exactly what buildTallyMastersXml would create, shown as a
-    // plain table so there's nothing to guess about before downloading. ──
-    (()=>{
-      const previewRows=tallyMastersPreviewRows(vendors,categories,gstTypesUsed,map.bankLedger,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked);
-      return React.createElement('div',{className:'card',style:{marginBottom:16,padding:0,overflow:'hidden'}},
-        React.createElement('div',{style:{padding:'12px 14px',borderBottom:'1px solid var(--border)'}},
-          React.createElement('div',{style:{fontWeight:600,fontSize:13,color:'var(--text)'}},'Masters (Ledgers) — Preview'),
-          React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:2}},previewRows.length+' ledger(s) will be created when Masters is downloaded'+(gstInputBlocked?' — GST Input ledgers excluded since Input Credit is blocked for this outlet':'')+'.')
-        ),
-        previewRows.length===0
-          ?React.createElement('div',{style:{padding:24,textAlign:'center',color:'var(--text3)',fontSize:12}},'Nothing to create yet — add a Vendor or book an invoice first.')
-          :React.createElement('div',{style:{overflowX:'auto',maxHeight:280,overflowY:'auto'}},
-              React.createElement('table',null,
-                React.createElement('thead',null,React.createElement('tr',null,['Ledger Name','Parent Group','Type','Note'].map(h=>React.createElement('th',{key:h},h)))),
-                React.createElement('tbody',null,previewRows.map((r,i)=>React.createElement('tr',{key:i},
-                  React.createElement('td',{style:{fontWeight:500}},r.name),
-                  React.createElement('td',null,r.parent),
-                  React.createElement('td',null,React.createElement('span',{className:'badge '+(r.type==='Vendor'?'badge-blue':r.type==='GST'?'badge-purple':r.type==='Bank'?'badge-green':'badge-amber')},r.type)),
-                  React.createElement('td',{style:{color:'var(--text3)',fontSize:11}},r.note||'—')
-                )))
-              )
-            )
-      );
-    })(),
-
-    // ── New Ledgers Since Last Export — lets a newly-added Vendor or a Category seen for the
-    // first time get pushed to Tally right away, without re-exporting everything. ──
-    hasNewLedgers&&React.createElement('div',{className:'attention-card',style:{marginBottom:16}},
-      React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:6}},
-        React.createElement('span',{className:'badge badge-amber',style:{fontSize:10}},'🆕 NEW'),
-        React.createElement('span',{style:{fontWeight:600,fontSize:13}},'New Ledgers Since Last Export')
-      ),
-      React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:10}},
-        newVendors.length+' new vendor(s), '+newCategories.length+' new categor'+(newCategories.length===1?'y':'ies')+' — created here since the last time Masters were exported. Push just these instead of re-sending the full ledger list.'),
-      React.createElement('button',{className:'btn btn-primary btn-sm',onClick:downloadNewLedgersOnly},'⬇ Download New Ledgers Only')
-    ),
-
-    // ── Date range for voucher exports ──
-    React.createElement('div',{style:{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',marginBottom:16}},
-      React.createElement('span',{style:{fontSize:11.5,color:'var(--text3)'}},'Date range (Vouchers only — leave blank for everything on file):'),
-      React.createElement('input',{type:'date',className:'form-control',style:{width:'auto'},value:fromDate,onChange:e=>setFromDate(e.target.value)}),
-      React.createElement('span',{style:{color:'var(--text3)'}},'to'),
-      React.createElement('input',{type:'date',className:'form-control',style:{width:'auto'},value:toDate,onChange:e=>setToDate(e.target.value)}),
-      (fromDate||toDate)&&React.createElement('span',{style:{color:'var(--accent2)',cursor:'pointer',fontSize:11.5,textDecoration:'underline'},onClick:()=>{setFromDate('');setToDate('');}},'clear')
-    ),
-
-    // ── Step cards ──
-    React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:14}},
-      React.createElement('div',{className:'card'},
-        React.createElement('div',{style:{fontWeight:600,fontSize:13,marginBottom:4}},'Step 1 · Masters (Ledgers)'),
-        React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:12}},vendors.length+' vendor(s), '+categories.length+' categor'+(categories.length===1?'y':'ies')+', plus GST and Bank ledgers as needed. Import this before any vouchers.'),
-        React.createElement('button',{className:'btn btn-primary btn-sm',style:{width:'100%'},onClick:downloadMasters},'⬇ Download Masters XML')
-      ),
-      React.createElement('div',{className:'card'},
-        React.createElement('div',{style:{fontWeight:600,fontSize:13,marginBottom:4}},'Step 2 · Vendor Invoices'),
-        React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:12}},filteredInvoices.length+' invoice(s) in range — becomes a Purchase Voucher each. '+(gstInputBlocked?'GST Input is blocked for this outlet, so the full invoice amount books to the category ledger directly — no separate GST split.':'GST is split out separately, with the category as the expense/asset ledger.')),
-        React.createElement('div',{style:{display:'flex',gap:8}},
-          React.createElement('button',{className:'btn btn-primary btn-sm',style:{flex:1},onClick:downloadPurchaseVouchers},'⬇ Download XML'),
-          React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:downloadInvoiceCsv,title:'Plain CSV reference — for manual review or Excel-based import tools'},'⬇ CSV')
-        )
-      ),
-      React.createElement('div',{className:'card'},
-        React.createElement('div',{style:{fontWeight:600,fontSize:13,marginBottom:4}},'Step 3 · Bank Statement'),
-        React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:12}},filteredBankRows.length+' transaction(s) in range — debits become Payment vouchers, credits become Receipt vouchers. Unmatched counterparties land in "'+('Suspense Account (Review in Tally)')+'" for you to reclassify.'),
-        React.createElement('div',{style:{display:'flex',gap:8}},
-          React.createElement('button',{className:'btn btn-primary btn-sm',style:{flex:1},onClick:downloadBankVouchers},'⬇ Download XML'),
-          React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:downloadBankCsv,title:'Plain CSV reference — for manual review or Excel-based import tools'},'⬇ CSV')
-        )
-      )
-    ),
-
-    // ── Experimental direct push ──
-    React.createElement('div',{className:'card',style:{marginTop:16,borderColor:connState.tally?'rgba(76,175,125,0.4)':'rgba(255,159,67,0.4)'}},
-      React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:4}},
-        React.createElement('span',{className:'badge '+(connState.tally?'badge-green':'badge-amber'),style:{fontSize:10}},connState.tally?'LIVE':'CONNECTOR OFF'),
-        React.createElement('span',{style:{fontWeight:600,fontSize:13}},'Send straight to Tally')
-      ),
-      React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:12,lineHeight:1.6}},
-        connState.tally
-          ?'Sends through the SalonOS Tally Connector to '+(conn.company||'the company open in Tally')+' and shows Tally’s own reply (created / updated / rejected). Send Masters first, then vouchers. Vouchers use the date range above.'
-          :'Start the SalonOS Tally Connector (see above) for confirmed results. Without it, SalonOS can only send blindly to Tally on this computer (localhost:9000) and can’t read whether it landed.'
-      ),
-      React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
-        React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:!!pushBusy,onClick:()=>tryDirectPush(buildTallyMastersXml(vendors,categories,gstTypesUsed,map.bankLedger,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked),'Masters')},pushBusy==='Masters'?'Sending…':'Push Masters'),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:!!pushBusy,onClick:()=>tryDirectPush(buildTallyPurchaseVouchersXml(filteredInvoices,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked),'Vendor Invoices')},pushBusy==='Vendor Invoices'?'Sending…':'Push Vendor Invoices'),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:!!pushBusy,onClick:()=>tryDirectPush(buildTallyBankVouchersXml(filteredBankRows,map.bankLedger,vendors),'Bank Statement')},pushBusy==='Bank Statement'?'Sending…':'Push Bank Statement')
-      )
-    ),
-
-    onNavTab&&React.createElement('div',{style:{marginTop:16,fontSize:11.5,color:'var(--text3)'}},
-      'Need to fix something before exporting? ',
-      React.createElement('span',{style:{color:'var(--blue)',cursor:'pointer',textDecoration:'underline'},onClick:()=>onNavTab('vendors')},'Go to Vendors'),
-      ' · ',
-      React.createElement('span',{style:{color:'var(--blue)',cursor:'pointer',textDecoration:'underline'},onClick:()=>onNavTab('bank-statement')},'Go to Bank Statement')
-    )
+  return h('div',{className:'fade-in'},
+    h('div',{className:'section-header'},
+      h('div',null,
+        h('div',{className:'page-title'},'Tally Integration'),
+        h('div',{className:'page-sub'},'Purchase invoices and bank transactions into Tally — live through the SalonOS Tally Connector, or as Tally import files'))),
+    statusBar,
+    h('div',{className:'tab-bar',style:{marginBottom:14}},tabs.map(([id,label])=>h('button',{key:id,className:'tab-btn '+(tab===id?'active':''),onClick:()=>setTab(id)},label))),
+    (tab==='overview'||tab==='vouchers')&&periodBar,
+    tab==='overview'&&overview,
+    tab==='vouchers'&&vouchersTab,
+    tab==='ledgers'&&ledgersTab,
+    tab==='history'&&historyTab,
+    tab==='settings'&&settingsTab,
+    onNavTab&&h('div',{style:{marginTop:16,fontSize:11.5,color:'var(--text3)'}},
+      'Fix something at the source? ',
+      h('span',{style:{color:'var(--blue)',cursor:'pointer',textDecoration:'underline'},onClick:()=>onNavTab('vendors')},'Vendors'),' · ',
+      h('span',{style:{color:'var(--blue)',cursor:'pointer',textDecoration:'underline'},onClick:()=>onNavTab('bank-statement')},'Bank Statement'))
   );
 }
 

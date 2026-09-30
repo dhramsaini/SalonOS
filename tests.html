@@ -244,6 +244,23 @@
         eq('Tally sync: an invoice edited after sending is flagged, not re-sent',tallyAutoSyncPending(901,'2026-10-01').changed,['Invoice REC-R1-2026-10']);
       }catch(err){results.push({name:'Tally sync',ok:false,got:String(err&&err.message||err),want:'no error'});}
       try{
+        // Tally Integration: which ledger each bank line posts to, and which extra ledgers must exist.
+        const vs=[{id:'V1',name:'Loreal India'},{id:'V2',name:'Kumar Traders'}];
+        const nm=id=>id==='V1'?"LOreal India Pvt Ltd":(vs.find(v=>v.id===id)||{}).name;
+        const mp={bankLedger:'HDFC Bank',natures:{'Salary':'Staff Salary A/c'}};
+        const cps=[{linkedInvoice:'V1|INV-9',description:'NEFT KUMAR',debit:10},{nature:'Salary',description:'SAL',debit:10},{nature:'Cash Deposit',description:'CASH DEP',credit:10},{description:'NEFT KUMAR TRADERS',debit:5},{description:'MISC',credit:7}]
+          .map(r=>tallyBankCounterparty(r,vs,nm,mp));
+        eq('Tally: bank line ledger — linked bill, mapped type, contra, name match, suspense',cps.map(c=>c.ledger+'/'+c.kind),["LOreal India Pvt Ltd/vendor",'Staff Salary A/c/nature','Cash/nature','Kumar Traders/vendor',TALLY_SUSPENSE_LEDGER+'/suspense']);
+        eq('Tally: cash deposit is a Contra voucher',[tallyBankVoucherType({credit:10},cps[2]),tallyBankVoucherType({debit:10},cps[1]),tallyBankVoucherType({credit:7},cps[4])],['Contra','Payment','Receipt']);
+        const bx=buildTallyBankVouchersXml([{transactionDate:'05/10/2026',linkedInvoice:'V1|X',description:'P',debit:10}],'HDFC Bank',vs,{vendorLedgerNameFor:nm,map:mp});
+        eq('Tally: bank voucher XML uses the mapped supplier ledger',bx.indexOf("LOreal India Pvt Ltd")!==-1,true);
+        const ex=tallyExtraLedgers([{roundOff:0.4}],[{nature:'Salary',debit:1},{description:'MISC',credit:2}],vs,nm,mp,false,[]).map(l=>l.name);
+        eq('Tally: Round Off, bank-type and Suspense ledgers are created',ex,['Round Off','Staff Salary A/c',TALLY_SUSPENSE_LEDGER]);
+        eq('Tally: no Round Off ledger when GST input is blocked',tallyExtraLedgers([{roundOff:0.4}],[],vs,nm,mp,true,[]).length,0);
+        const mx=buildTallyMastersXml([],[],{},'HDFC Bank',nm,c=>c,false,[{name:'Round Off',parent:'Indirect Expenses'}]);
+        eq('Tally: masters XML includes the extra ledgers',mx.indexOf('<LEDGER NAME="Round Off"')!==-1&&mx.indexOf('<PARENT>Indirect Expenses</PARENT>')!==-1,true);
+      }catch(err){results.push({name:'Tally ledgers',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
         const mod={};new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});

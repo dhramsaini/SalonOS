@@ -300,6 +300,16 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   a new export replaces that month's rows (latest wins). parseCSVText now uses parseCSVToRows (quoted commas) and finds the
   EmpId/Emp_Name heading in the first 30 rows; Total lines dropped. Folder card fixed to "a folder inside Downloads".
   Tested on two real exports (17 then 14 rows, replaced). 11th video guide `staff-report`.
+· (v2026.09.30.22) **Tally Integration redesign** (TallyExportSheet, js/09): status bar (connector/company/bank ledger/last
+  sync), one period bar, tabs Overview (KPI per voucher type, readiness checklist with fix buttons, one "Sync N new vouchers"
+  via `tallySyncVouchers` with progress, manual-import files), Vouchers (all Purchase/Payment/Receipt/Contra with ledgers +
+  New/Sent/Changed/Suspense; send selected via `only`, mark as already in Tally / not sent), Ledgers (bank ledger + one mapping
+  table for suppliers, categories, bank types `map.natures`, system ledgers; In-Tally status, ✨ auto-match, create missing),
+  History (kv `salonos_tally_log_outlet_<id>`, addTallyLog/loadTallyLog; evening auto-sync logs too), Settings (connector,
+  company, auto-create, guides, TallyAutoSyncCard). Accounting fixes in js/02: Round Off ledger now created; bank vouchers use
+  mapped supplier names; `tallyBankCounterparty` (linked bill → Nature → name match → Suspense) + TALLY_NATURE_LEDGERS
+  (Cash Deposit = Contra); `tallyExtraLedgers` feeds Masters XML/sync (Round Off, bank-type ledgers, Suspense).
+  Tests 80. Local visual check: local-test/tally-preview.html (sample data + pretend Tally, git-excluded).
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.
