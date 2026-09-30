@@ -1502,7 +1502,7 @@ const AI_PROVIDERS=[
     models:{'claude-opus-5-5':'Claude Opus 5.5 — most capable (recommended)','claude-sonnet-5-5':'Claude Sonnet 5.5 — faster, lower cost','claude-haiku-4-5':'Claude Haiku 4.5 — fastest, lowest cost'}},
   {id:'openai',name:'ChatGPT',company:'OpenAI',site:'platform.openai.com → API keys',ph:'sk-…',
     models:{'gpt-6-astra':'GPT-6 Astra — most capable','gpt-6.1-sol':'GPT-6.1 Sol — lower cost','gpt-6-luna':'GPT-6 Luna — fastest, lowest cost'}},
-  {id:'gemini',name:'Gemini',company:'Google AI Studio',site:'aistudio.google.com → Get API key',ph:'AIza…',
+  {id:'gemini',name:'Gemini',company:'Google AI Studio',site:'aistudio.google.com → Get API key',ph:'AQ.… or AIza…',
     models:{'gemini-3.8-flash':'Gemini 3.8 Flash — fast, low cost','gemini-3.1-pro-preview':'Gemini 3.1 Pro (preview) — most capable'}},
   {id:'xai',name:'Grok',company:'xAI',site:'console.x.ai → API Keys',ph:'xai-…',note:'Grok reads photos (JPG/PNG) but not PDF bills — PDFs go to another saved AI, or are read in the browser.',
     models:{'grok-4.7':'Grok 4.7 — most capable'}},

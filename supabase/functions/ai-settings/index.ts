@@ -63,8 +63,8 @@ function checkKeyShape(p: Provider, key: string) {
   const ok = p === "anthropic" ? /^sk-ant-[A-Za-z0-9_-]{20,}$/.test(key)
     : p === "openai" ? /^sk-[A-Za-z0-9_-]{20,}$/.test(key)
     : p === "xai" ? /^xai-[A-Za-z0-9_-]{20,}$/.test(key)
-    : /^[A-Za-z0-9_-]{30,}$/.test(key);
-  const hint = p === "anthropic" ? "starts with sk-ant-" : p === "openai" ? "starts with sk-" : p === "xai" ? "starts with xai-" : "is a long code from aistudio.google.com → Get API key";
+    : /^[A-Za-z0-9._-]{30,}$/.test(key); // Google: older "AIza…" keys and the newer "AQ.…" auth keys (with a dot)
+  const hint = p === "anthropic" ? "starts with sk-ant-" : p === "openai" ? "starts with sk-" : p === "xai" ? "starts with xai-" : "is a long code from aistudio.google.com → Get API key, starting AQ. or AIza";
   if (!ok) throw new HttpError(400, "That doesn't look like a " + LABEL[p] + " API key (it " + hint + ").");
 }
 
