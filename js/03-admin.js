@@ -139,6 +139,9 @@ function LoginPage({onLogin}){
   const finishCloudLogin=async(profile,authUser)=>{
     try{
       const supa=await getSupabaseClient();
+      // Login watch (automation phase 5): record this sign-in (who comes from the session, the IP from
+      // the request — supabase/step14_login_events.sql). Never blocks or fails the login.
+      supa.rpc('salonos_record_login',{p_ua:String(navigator.userAgent||'').slice(0,300)}).then(()=>{},()=>{});
       const data={user:authUser};
       // Demo accounts (profiles.is_demo) are gated server-side by IP, not just by this being a
       // shared public login — demo-access-check runs with the service-role key against a table

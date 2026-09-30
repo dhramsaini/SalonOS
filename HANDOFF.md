@@ -170,7 +170,10 @@ this update. Login failures still log to App errors ("Login: …").
 5 ✅ (v2026.09.30.5) supabase/step13_access_security.sql:
   • profiles.access_until + salonos_expire_users() (pg_cron 18:35 UTC = 00:05 IST → Inactive + Super Admin alert);
     User Management "Access until" (not for Super Admin); accessEnded() checked at login and in the 30-s access refresh.
-  • salonos_login_events(since) from auth.audit_log_entries (service role only) → loginWatchAlerts (new /16 network
+  • Login events: this project's auth.audit_log_entries is EMPTY (Supabase keeps auth logs outside the DB), so
+    step14_login_events.sql adds public.login_events + rpc salonos_record_login(ua) called after every successful
+    sign-in (finishCloudLogin; user = auth.uid(), IP from request.headers x-forwarded-for).
+    salonos_login_events(since) (service role only) reads login_events ∪ audit log → loginWatchAlerts (new /16 network
     vs previous 60 days; sign-ins 00:00–06:00 IST), Super Admin-only alerts. Setting loginWatch.
   • Weekly backup file: Cloud Backups "⬇ Download latest as file" / per-row "⬇ File" (downloadCloudBackupFile, records
     salonos_secret_backup_downloaded) and "⬆ Upload backup file" → salonos_import_backup (kind 'uploaded', restorable).
