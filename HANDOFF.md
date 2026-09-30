@@ -212,5 +212,5 @@ the repo) — also the `salonos-local` preview in `.claude/launch.json`. Then op
   unlimited), counted in `ai_usage` via rpc `salonos_ai_bump` (service role only). Over the limit → 429, except read_bill,
   which returns {notConfigured} so the bill is read in the browser instead.
 - Login screen: "Exit" (backup download before sign-in) is hidden in cloud mode — it could hand the browser's cached data to
-  anyone at a shared computer's login screen.
+  anyone at a shared computer's login screen. Login card keeps a 16 px margin on phones (it touched the screen edges).
 - Personal details (emails, staff names, company names) removed from this file; the repo is public. Git history still has them.
