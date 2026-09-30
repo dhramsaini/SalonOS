@@ -320,10 +320,10 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
 · (v2026.09.30.24) **Automation / code review fixes**:
   - SECURITY: in-browser auto-backup snapshot (all data the login sees, incl. salonos_secret_*) was pushed to kv_store as a
     global key — readable by every signed-in user. DEVICE_ONLY_KEYS (js/01: salonos_autobackup_snapshot, _enabled, theme)
-    are never pushed/pulled. supabase/step18_device_only_keys.sql deletes existing rows + restrictive policy (RUN IT).
+    are never pushed/pulled. supabase/step18_device_only_keys.sql deletes existing rows + restrictive policy (run 30 Sep: 0 left, policy on).
   - kv_store reads capped at 1000 rows by the API: kvSelectAll (js/01) pages the initial pull, update check and
     cleanupUnusedFiles (a truncated list there would delete files still in use); automation + salonos-reports loadKv page
-    too (REDEPLOY both functions).
+    too (both redeployed 30 Sep via dashboard; unauthenticated call → 403 "Not allowed.").
   - automation month-end checklist read bank rows' `date` (field is transactionDate) → always said "bank statement not
     imported". Fixed + test.
   - tallySyncVouchers: records each accepted voucher immediately (a stop half-way re-sent them → duplicates in Tally); an
