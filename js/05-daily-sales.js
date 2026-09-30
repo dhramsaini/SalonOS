@@ -1317,7 +1317,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,
         React.createElement('div',{className:'page-title'},fixAmp('Daily Expenses & Sales Sheet')),
-        React.createElement('div',{className:'page-sub'},'Every visible date is editable — entries here roll up into P&L (Monthly) automatically by Expense Group, for whichever month the date falls in')
+        React.createElement('div',{className:'page-sub'},'Every visible date is editable — entries here roll up into P&L (Monthly) automatically by Expense Group, for whichever month the date falls in'),
+        React.createElement('div',{style:{marginTop:6}},React.createElement(GuideVideoButton,{id:'daily-sales'}))
       ),
       // Grid-only controls — tucked away on phones unless the full grid is open.
       React.createElement('div',{className:phoneGrid?undefined:'hide-phone',style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},

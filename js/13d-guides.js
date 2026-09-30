@@ -223,7 +223,47 @@ function drawGuideFrame(ctx,guide,lang,si,tMs){
   ctx.fillStyle='#4c7dff';ctx.fillRect(0,H-8,W*((si+Math.min(1,tMs/total))/guide.scenes.length),8);
 }
 function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+// Preferred: encode frame by frame with WebCodecs into an MP4 (mp4-muxer) — exact timing, faster than
+// real time, and not affected by the tab being in the background (which pauses canvas recording).
+const CDN_MP4_MUXER_URL='https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.min.js';
+async function encodeGuideMp4(guide,lang,onProgress){
+  await loadScript(CDN_MP4_MUXER_URL);
+  const M=window.Mp4Muxer;
+  if(!M)throw new Error('Video library unavailable — check your internet connection.');
+  const W=1280,H=720,FPS=30;
+  const cfg={codec:'avc1.4d0028',width:W,height:H,bitrate:1200000,framerate:FPS};
+  const sup=await VideoEncoder.isConfigSupported(cfg).catch(()=>({supported:false}));
+  if(!sup.supported)throw new Error('unsupported');
+  const muxer=new M.Muxer({target:new M.ArrayBufferTarget(),video:{codec:'avc',width:W,height:H},fastStart:'in-memory'});
+  let failure=null;
+  const enc=new VideoEncoder({output:(chunk,meta)=>muxer.addVideoChunk(chunk,meta),error:e=>{failure=e;}});
+  enc.configure(cfg);
+  const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
+  const ctx=canvas.getContext('2d');
+  const durations=guide.scenes.map(s=>guideSceneMs(s,lang)+1200);
+  const total=durations.reduce((a,b)=>a+b,0);
+  const frames=Math.ceil(total/1000*FPS);
+  for(let f=0;f<frames;f++){
+    if(failure)throw failure;
+    const t=f*1000/FPS;
+    let acc=0,si=0;while(si<durations.length-1&&t>=acc+durations[si]){acc+=durations[si];si++;}
+    drawGuideFrame(ctx,guide,lang,si,t-acc);
+    const frame=new VideoFrame(canvas,{timestamp:Math.round(f*1e6/FPS),duration:Math.round(1e6/FPS)});
+    enc.encode(frame,{keyFrame:f%(FPS*2)===0});frame.close();
+    if(enc.encodeQueueSize>8)await new Promise(r=>setTimeout(r,0));
+    if(onProgress&&f%15===0)onProgress(f/frames);
+  }
+  await enc.flush();enc.close();
+  if(failure)throw failure;
+  muxer.finalize();
+  if(onProgress)onProgress(1);
+  return new Blob([muxer.target.buffer],{type:'video/mp4'});
+}
 async function recordGuideVideo(guide,lang,onProgress){
+  if(typeof VideoEncoder==='function'&&typeof VideoFrame==='function'){
+    try{return await encodeGuideMp4(guide,lang,onProgress);}
+    catch(e){if(!(e&&e.message==='unsupported'))throw e;}
+  }
   const mime=guideVideoMime();
   if(!mime)throw new Error('This browser can’t record video — use Chrome or Edge on a computer.');
   const canvas=document.createElement('canvas');canvas.width=1280;canvas.height=720;
@@ -252,38 +292,64 @@ async function recordGuideVideo(guide,lang,onProgress){
   return new Blob(chunks,{type:mime.split(';')[0]});
 }
 
+// Ready-made videos of every guide, published with the site: guides/<id>_<hi|en>.mp4 (made with
+// recordGuideVideo; bump GUIDE_VIDEO_REV when they are re-made so browsers fetch the new files).
+const GUIDE_VIDEO_REV='1';
+function guideVideoUrl(id,lang){return 'guides/'+id+'_'+(lang==='hi'?'hi':'en')+'.mp4?r='+GUIDE_VIDEO_REV;}
+function staffGuideById(id){return STAFF_GUIDES.find(g=>g.id===id)||null;}
+function GuideVideoModal({guide,initialLang,onClose}){
+  const h=React.createElement;
+  const [lang,setLang]=useState(initialLang||'hi');
+  const [failed,setFailed]=useState(false);
+  const [animated,setAnimated]=useState(false);
+  if(animated)return h(StaffGuideModal,{guide,initialLang:lang,onClose});
+  return h('div',{className:'modal-overlay',onClick:onClose},
+    h('div',{className:'modal',style:{width:860,maxWidth:'96vw',padding:16},onClick:e=>e.stopPropagation()},
+      h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:10,flexWrap:'wrap'}},
+        h('div',{className:'modal-title',style:{margin:0,flex:1}},'🎬 '+guide.title[lang]),
+        ['hi','en'].map(l=>h('button',{key:l,className:'btn btn-sm '+(lang===l?'btn-primary':'btn-ghost'),onClick:()=>{setLang(l);setFailed(false);}},l==='en'?'English':'हिंदी'))),
+      failed
+        ?h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'🎞'),h('div',{className:'empty-title'},lang==='hi'?'वीडियो लोड नहीं हुआ':'The video could not be loaded'),
+            h('div',{className:'empty-sub'},lang==='hi'?'इंटरनेट जाँचें, या नीचे आवाज़ वाला ऐनिमेटेड गाइड चलाएँ।':'Check the connection, or play the animated guide with voice below.'))
+        :h('video',{key:lang,src:guideVideoUrl(guide.id,lang),controls:true,autoPlay:true,playsInline:true,preload:'metadata',onError:()=>setFailed(true),
+            style:{width:'100%',aspectRatio:'16/9',background:'#000',borderRadius:10,display:'block'}}),
+      h('div',{className:'modal-actions'},
+        h('button',{className:'btn btn-ghost',onClick:()=>setAnimated(true)},lang==='hi'?'▶ आवाज़ के साथ चलाएँ':'▶ Play with voice'),
+        h('a',{className:'btn btn-ghost',href:guideVideoUrl(guide.id,lang),download:'SalonOS_'+guide.id+'_'+(lang==='hi'?'Hindi':'English')+'.mp4'},lang==='hi'?'⬇ डाउनलोड (WhatsApp पर भेजें)':'⬇ Download (to send on WhatsApp)'),
+        h('button',{className:'btn btn-primary',onClick:onClose},lang==='hi'?'बंद करें':'Close')))
+  );
+}
+// Small "🎬 How-to" button for the screen a guide is about.
+function GuideVideoButton({id,label}){
+  const h=React.createElement;
+  const [open,setOpen]=useState(false);
+  const g=staffGuideById(id);
+  if(!g)return null;
+  return h(React.Fragment,null,
+    h('button',{type:'button',className:'btn btn-ghost btn-sm',title:'Short video: '+g.title.en+' / '+g.title.hi,onClick:()=>setOpen(true)},label||'🎬 How-to'),
+    open&&h(GuideVideoModal,{guide:g,initialLang:'hi',onClose:()=>setOpen(false)}));
+}
+
 function StaffGuidesList(){
   const h=React.createElement;
   const {success,error:toastError}=useToast();
   const [lang,setLang]=useState('hi');
   const [playing,setPlaying]=useState(null);
-  const [rec,setRec]=useState(null); // {id, p}
-  const save=async(g)=>{
-    if(rec)return;
-    setRec({id:g.id,p:0});
-    try{
-      const blob=await recordGuideVideo(g,lang,p=>setRec({id:g.id,p}));
-      const ext=blob.type.indexOf('mp4')>=0?'mp4':'webm';
-      const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-      a.download='SalonOS_'+g.id+'_'+(lang==='hi'?'Hindi':'English')+'.'+ext;document.body.appendChild(a);a.click();document.body.removeChild(a);
-      setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-      success('Video saved — send it to staff on WhatsApp.');
-    }catch(e){toastError(e.message||String(e));}
-    setRec(null);
-  };
+  const [watching,setWatching]=useState(null);
   return h('div',{style:{marginBottom:14}},
     h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:8}},
       h('div',{style:{fontWeight:700,fontSize:14,flex:1}},'🎬 Video guides'),
       ['hi','en'].map(l=>h('button',{key:l,className:'btn btn-sm '+(lang===l?'btn-primary':'btn-ghost'),onClick:()=>setLang(l)},l==='en'?'English':'हिंदी'))),
-    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:8}},lang==='hi'?'▶ से ऐप में आवाज़ के साथ चलाएँ। ⬇ से वीडियो फ़ाइल बनाएँ (स्क्रीन पर लिखा हुआ, बिना आवाज़) और स्टाफ़ को WhatsApp पर भेजें — रिकॉर्डिंग के दौरान (लगभग 40 सेकंड) यह टैब खुला रखें।':'▶ plays it here with a voice. ⬇ makes a video file (captions on screen, no voice) to send to staff on WhatsApp — keep this tab open while it records (about 40 seconds).'),
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:8}},lang==='hi'?'🎞 वीडियो देखें · ▶ आवाज़ के साथ ऐनिमेटेड गाइड · ⬇ वीडियो डाउनलोड करके स्टाफ़ को WhatsApp पर भेजें।':'🎞 watch the video · ▶ animated guide with voice · ⬇ download the video to send to staff on WhatsApp.'),
     STAFF_GUIDES.map(g=>h('div',{key:g.id,style:{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderTop:'1px solid var(--border)'}},
       h('div',{style:{fontSize:22}},g.icon),
       h('div',{style:{flex:1,minWidth:0}},
         h('div',{style:{fontSize:13,fontWeight:600}},g.title[lang]),
         h('div',{style:{fontSize:11,color:'var(--text3)'}},g.who[lang]+' · '+g.scenes.length+(lang==='hi'?' भाग':' steps'))),
-      h('button',{className:'btn btn-primary btn-sm',onClick:()=>setPlaying(g)},'▶'),
-      h('button',{className:'btn btn-ghost btn-sm',disabled:!!rec,title:lang==='hi'?'वीडियो फ़ाइल बनाएँ':'Save as video file',onClick:()=>save(g)},
-        rec&&rec.id===g.id?Math.round(rec.p*100)+'%':'⬇'))),
+      h('button',{className:'btn btn-primary btn-sm',title:lang==='hi'?'वीडियो देखें':'Watch the video',onClick:()=>setWatching(g)},'🎞'),
+      h('button',{className:'btn btn-ghost btn-sm',title:lang==='hi'?'आवाज़ के साथ ऐनिमेटेड गाइड':'Animated guide with voice',onClick:()=>setPlaying(g)},'▶'),
+      h('a',{className:'btn btn-ghost btn-sm',title:lang==='hi'?'वीडियो डाउनलोड करें':'Download the video',href:guideVideoUrl(g.id,lang),download:'SalonOS_'+g.id+'_'+(lang==='hi'?'Hindi':'English')+'.mp4'},'⬇'))),
+    watching&&h(GuideVideoModal,{guide:watching,initialLang:lang,onClose:()=>setWatching(null)}),
     playing&&h(StaffGuideModal,{guide:playing,initialLang:lang,onClose:()=>setPlaying(null)})
   );
 }

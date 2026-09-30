@@ -233,6 +233,7 @@ function LoginPage({onLogin}){
         ),
         err&&React.createElement('div',{style:{color:'var(--red)',fontSize:12,marginBottom:12}},err),
         React.createElement('button',{className:'btn btn-primary'+(cloudBusy?' btn-loading':''),disabled:cloudBusy,style:{width:'100%',padding:'10px'},onClick:e=>handleLogin(e)},'Sign In'),
+        React.createElement('div',{style:{textAlign:'center',marginTop:10}},React.createElement(GuideVideoButton,{id:'login',label:'🎬 How to sign in · लॉगिन कैसे करें'})),
         // Local-only mode: Exit offers a backup of this browser's data. Not in cloud mode — the data is in
         // the cloud (with nightly backups), and a backup offered BEFORE sign-in would hand this
         // browser's cached business data to anyone at the login screen of a shared computer.

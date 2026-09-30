@@ -28,6 +28,7 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // let Supabase/API calls pass straight through
+  if (/\.(mp4|webm)$/i.test(url.pathname)) return; // guide videos: streamed by the browser (range requests), never cached here
 
   // Network-first for the app shell so users always get the latest version when online,
   // falling back to cache when offline. The page itself and version.json skip the browser's

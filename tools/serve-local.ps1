@@ -10,7 +10,7 @@ $l.Prefixes.Add("http://localhost:$Port/")
 $l.Start()
 Write-Host "Serving $Root on http://localhost:$Port/"
 $types = @{ '.html'='text/html; charset=utf-8'; '.js'='application/javascript; charset=utf-8'; '.json'='application/json';
-            '.png'='image/png'; '.svg'='image/svg+xml'; '.css'='text/css'; '.ts'='text/plain; charset=utf-8'; '.sql'='text/plain; charset=utf-8' }
+            '.png'='image/png'; '.svg'='image/svg+xml'; '.css'='text/css'; '.ts'='text/plain; charset=utf-8'; '.sql'='text/plain; charset=utf-8'; '.mp4'='video/mp4' }
 while ($l.IsListening) {
   $c = $l.GetContext()
   try {

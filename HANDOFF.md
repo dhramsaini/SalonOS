@@ -264,6 +264,12 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   `GuideModal` (voice via speechSynthesis); scene pictures = chip rows `mock:[[label, hot]]`. "⬇" records the guide on a 1280×720
   canvas with MediaRecorder (MP4 where supported, else WebM; captions burned in, no voice; real time). Also: every year picker
   uses `appYears()` (2023…next year; 15 lists stopped at 2026) and the FY list grows with the current FY.
+  (v2026.09.30.15) Videos are published with the site: `guides/<id>_<hi|en>.mp4` (1280×720 H.264, made by `encodeGuideMp4` —
+  WebCodecs VideoEncoder + mp4-muxer 5.2.2 from jsDelivr, frame by frame, exact length; the MediaRecorder path is only a fallback
+  because background tabs pause canvas recording). `GuideVideoModal` plays them (EN/HI switch, ▶ animated-with-voice, ⬇ download);
+  `GuideVideoButton {id}` "🎬 How-to" sits on Daily Sales, Attendance, Salary Working, Vendors, Owner Insights and the login card.
+  service-worker.js never caches .mp4/.webm. To re-make videos after changing a guide: open the app locally, run
+  `recordGuideVideo(STAFF_GUIDES[i], 'hi'|'en')` for each, save as guides/<id>_<lang>.mp4, and bump GUIDE_VIDEO_REV.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.
