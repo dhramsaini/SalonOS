@@ -185,3 +185,18 @@ this update. Login failures still log to App errors ("Login: …").
   Tests: 47.
 
 **Local testing note:** opening index.html on the local preview (localhost:8765) registers the service worker, which then answers every request (even tests.html?x=) with the cached app page. After checking the app locally, unregister it (navigator.serviceWorker.getRegistrations → unregister, clear caches) before running tests.html.
+
+**AI providers (v2026.09.30.7)** — Master Settings → AI Assistant now takes keys for Claude (Anthropic), ChatGPT (OpenAI),
+Gemini (Google AI Studio) and Grok (xAI). app_secrets rows anthropic_api_key / openai_api_key / gemini_api_key / xai_api_key
+(meta.model, keyHint) + "ai_settings" (meta {primary, fallback}). `ai-settings` actions: status, save {provider,key,model},
+test {provider}, remove {provider}, prefs {primary,fallback} (no provider = anthropic, for old app versions). `ai`:
+aiConfig() → ordered list (primary first; others if fallback), callAI(cfgs, parts, schema) tries each:
+Claude = SDK + output_config json_schema; OpenAI = Responses API (text.format json_schema strict, input_file/input_image data
+URLs); Gemini = v1beta generateContent (x-goog-api-key header, inline_data, responseSchema converted by geminiSchema: upper-case
+types, no additionalProperties, enums containing "" moved to the description); Grok = api.x.ai chat/completions
+(response_format json_schema strict, image_url data URL; JPG/PNG only, no PDF → "unsupported" → next provider, or 415 →
+{notConfigured} so the app reads the bill in the browser). Auth/credit/busy/404/5xx/refusal → next provider; cut-off → stop.
+Suggested models (typed names also allowed): gpt-6-astra / gpt-6.1-sol / gpt-6-luna, gemini-3.8-flash / gemini-3.1-pro-preview,
+grok-4.7 — from each provider's docs on 30 Sep 2026; untested against the real services (no keys here).
+Also: Collection Reco's "AI reconciliation" called api.anthropic.com from the browser (never worked on the live site); it is
+now an exact calculation in the browser (same table).

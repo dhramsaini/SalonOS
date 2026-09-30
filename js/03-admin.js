@@ -1485,7 +1485,7 @@ function AppErrorsCard(){
         React.createElement('div',{style:{color:'var(--red)',wordBreak:'break-word'}},r.message),
         React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},fmt(r.at)+' · '+(r.email||'?')+(r.page?' · '+r.page:''))))));
 }
-// ── AI Assistant (Super Admin) — the Claude API key is sent once to the ai-settings cloud
+// ── AI Assistant (Super Admin) — each AI API key (Claude, ChatGPT, Gemini, Grok) is sent once to the ai-settings cloud
 // function, checked with a tiny request and stored server-side (public.app_secrets). It is never
 // shown again or kept in the browser; only "configured", the model and its last 4 characters. ──
 async function aiSettingsCall(action,payload){
@@ -1495,45 +1495,89 @@ async function aiSettingsCall(action,payload){
   if(data&&data.error)throw new Error(data.error);
   return data||{};
 }
-function AiSettingsCard(){
+// Four AI providers. Each key is checked with a tiny request, then stored server-side; the Super
+// Admin picks which one SalonOS uses first and whether to fall back to the others.
+const AI_PROVIDERS=[
+  {id:'anthropic',name:'Claude',company:'Anthropic',site:'console.anthropic.com → API Keys',ph:'sk-ant-…',
+    models:{'claude-opus-5-5':'Claude Opus 5.5 — most capable (recommended)','claude-sonnet-5-5':'Claude Sonnet 5.5 — faster, lower cost','claude-haiku-4-5':'Claude Haiku 4.5 — fastest, lowest cost'}},
+  {id:'openai',name:'ChatGPT',company:'OpenAI',site:'platform.openai.com → API keys',ph:'sk-…',
+    models:{'gpt-6-astra':'GPT-6 Astra — most capable','gpt-6.1-sol':'GPT-6.1 Sol — lower cost','gpt-6-luna':'GPT-6 Luna — fastest, lowest cost'}},
+  {id:'gemini',name:'Gemini',company:'Google AI Studio',site:'aistudio.google.com → Get API key',ph:'AIza…',
+    models:{'gemini-3.8-flash':'Gemini 3.8 Flash — fast, low cost','gemini-3.1-pro-preview':'Gemini 3.1 Pro (preview) — most capable'}},
+  {id:'xai',name:'Grok',company:'xAI',site:'console.x.ai → API Keys',ph:'xai-…',note:'Grok reads photos (JPG/PNG) but not PDF bills — PDFs go to another saved AI, or are read in the browser.',
+    models:{'grok-4.7':'Grok 4.7 — most capable'}},
+];
+function AiProviderRow({p,st,onChanged,isPrimary}){
   const {success,error:toastError}=useToast();
-  const [st,setSt]=useState(null); // null = loading
+  const [open,setOpen]=useState(false);
   const [key,setKey]=useState('');
   const [showKey,setShowKey]=useState(false);
-  const [model,setModel]=useState('claude-opus-5-5');
+  const known=Object.keys(p.models);
+  const [model,setModel]=useState(st.model||known[0]);
+  const [custom,setCustom]=useState(known.indexOf(st.model||known[0])===-1);
   const [busy,setBusy]=useState('');
-  const load=async()=>{try{const s=await aiSettingsCall('status');setSt(s);setModel(s.model);}catch(e){setSt({error:e.message});}};
-  useEffect(()=>{load();},[]);
-  const MODEL_LABELS={'claude-opus-5-5':'Claude Opus 5.5 — most capable (recommended)','claude-sonnet-5-5':'Claude Sonnet 5.5 — faster, lower cost','claude-haiku-4-5':'Claude Haiku 4.5 — fastest, lowest cost'};
+  useEffect(()=>{setModel(st.model||known[0]);setCustom(known.indexOf(st.model||known[0])===-1);},[st.model]);
   const save=async()=>{
     setBusy('save');
-    try{const r=await aiSettingsCall('save',{key:key.trim(),model});setKey('');setShowKey(false);success(key.trim()?'AI key saved and checked — Claude replied: "'+(r.reply||'ok')+'"':'Model updated.');await load();}
+    try{const r=await aiSettingsCall('save',{provider:p.id,key:key.trim(),model:model.trim()});setKey('');setShowKey(false);setOpen(false);
+      success(p.name+(key.trim()?' key saved and checked':' model updated')+' — it replied: "'+(r.reply||'ok')+'"');await onChanged();}
     catch(e){toastError(e.message);}
     setBusy('');
   };
-  const test=async()=>{setBusy('test');try{const r=await aiSettingsCall('test');success('Working — '+r.model+' replied: "'+(r.reply||'ok')+'"');}catch(e){toastError(e.message);}setBusy('');};
-  const remove=async()=>{if(!confirm('Remove the saved AI key? AI features will stop until a new key is saved.'))return;setBusy('remove');try{await aiSettingsCall('remove');success('AI key removed.');await load();}catch(e){toastError(e.message);}setBusy('');};
-  return React.createElement('div',{className:'card',style:{marginBottom:16}},
-    React.createElement('div',{className:'card-title'},'🤖 AI Assistant (Claude API key)'),
-    React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',lineHeight:1.6,marginBottom:12}},
-      'Connects SalonOS to Anthropic’s Claude for AI features. Create a key at console.anthropic.com → API Keys (billing is on your Anthropic account). The key is checked, then stored securely on the server — it is never shown again or saved in any browser.'),
-    st===null?React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},'Checking…'):
-    st.error?React.createElement('div',{style:{fontSize:12,color:'var(--red)'}},st.error):
-    React.createElement(React.Fragment,null,
-      React.createElement('div',{style:{fontSize:12.5,marginBottom:10}},st.configured
-        ?React.createElement('span',{style:{color:'var(--green)'}},'✓ Key saved ('+st.keyHint+') · model '+st.model+(st.updatedAt?' · updated '+new Date(st.updatedAt).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})+(st.updatedBy?' by '+st.updatedBy:''):''))
-        :React.createElement('span',{style:{color:'var(--orange)'}},'No key saved yet.')),
-      React.createElement('div',{className:'form-row cols2'},
-        React.createElement('div',{className:'form-group'},React.createElement('label',null,st.configured?'Replace key (leave blank to keep the current one)':'Claude API key *'),
-          React.createElement('div',{style:{position:'relative'}},
-            React.createElement('input',{className:'form-control',type:showKey?'text':'password',autoComplete:'off',spellCheck:false,value:key,onChange:e=>setKey(e.target.value),placeholder:'sk-ant-…',style:{paddingRight:40}}),
-            React.createElement('button',{type:'button',onClick:()=>setShowKey(s=>!s),'aria-label':showKey?'Hide key':'Show key',style:{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:14}},showKey?'🙈':'👁'))),
-        React.createElement('div',{className:'form-group'},React.createElement('label',null,'Model'),
-          React.createElement('select',{className:'form-control',value:model,onChange:e=>setModel(e.target.value)},(st.models||Object.keys(MODEL_LABELS)).map(m=>React.createElement('option',{key:m,value:m},MODEL_LABELS[m]||m))))),
-      React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
-        React.createElement('button',{className:'btn btn-primary btn-sm',disabled:!!busy||(!key.trim()&&(!st.configured||model===st.model)),onClick:save},busy==='save'?'Checking key…':(key.trim()?'Save & check key':'Save model')),
-        st.configured&&React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:test},busy==='test'?'Testing…':'Test connection'),
-        st.configured&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},disabled:!!busy,onClick:remove},'Remove key')))
+  const test=async()=>{setBusy('test');try{const r=await aiSettingsCall('test',{provider:p.id});success(p.name+' is working — '+r.model+' replied: "'+(r.reply||'ok')+'"');}catch(e){toastError(e.message);}setBusy('');};
+  const remove=async()=>{if(!confirm('Remove the saved '+p.name+' key?'))return;setBusy('remove');try{await aiSettingsCall('remove',{provider:p.id});success(p.name+' key removed.');await onChanged();}catch(e){toastError(e.message);}setBusy('');};
+  const h=React.createElement;
+  return h('div',{style:{border:'1px solid '+(isPrimary?'rgba(47,95,224,0.45)':'var(--border)'),borderRadius:'var(--r)',padding:'10px 12px',marginBottom:8,background:isPrimary?'rgba(47,95,224,0.04)':'transparent'}},
+    h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}},
+      h('div',{style:{fontWeight:600,fontSize:13,minWidth:150}},p.name,h('span',{style:{fontWeight:400,color:'var(--text3)',fontSize:11.5}},' · '+p.company)),
+      st.configured
+        ?h('span',{style:{fontSize:12,color:'var(--green)'}},'✓ '+st.keyHint+' · '+st.model+(isPrimary?' · used first':''))
+        :h('span',{style:{fontSize:12,color:'var(--text3)'}},'No key'),
+      h('div',{style:{marginLeft:'auto',display:'flex',gap:6}},
+        st.configured&&h('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:test},busy==='test'?'Testing…':'Test'),
+        h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setOpen(o=>!o)},open?'Close':st.configured?'Change':'Add key'),
+        st.configured&&h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},disabled:!!busy,onClick:remove},'Remove'))),
+    open&&h('div',{style:{marginTop:10}},
+      h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:8}},'Create a key at '+p.site+' (billing is on your '+p.company+' account).'+(p.note?' '+p.note:'')),
+      h('div',{className:'form-row cols2'},
+        h('div',{className:'form-group'},h('label',null,st.configured?'Replace key (leave blank to keep the current one)':p.name+' API key *'),
+          h('div',{style:{position:'relative'}},
+            h('input',{className:'form-control',type:showKey?'text':'password',autoComplete:'off',spellCheck:false,value:key,onChange:e=>setKey(e.target.value),placeholder:p.ph,style:{paddingRight:40}}),
+            h('button',{type:'button',onClick:()=>setShowKey(s=>!s),'aria-label':showKey?'Hide key':'Show key',style:{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:14}},showKey?'🙈':'👁'))),
+        h('div',{className:'form-group'},h('label',null,'Model'),
+          h('select',{className:'form-control',value:custom?'__custom__':model,onChange:e=>{if(e.target.value==='__custom__'){setCustom(true);setModel('');}else{setCustom(false);setModel(e.target.value);}}},
+            known.map(m=>h('option',{key:m,value:m},p.models[m])),h('option',{value:'__custom__'},'Other model — type its name')),
+          custom&&h('input',{className:'form-control',style:{marginTop:6},value:model,placeholder:'exact model name from '+p.company,onChange:e=>setModel(e.target.value)}))),
+      h('button',{className:'btn btn-primary btn-sm',disabled:!!busy||!model.trim()||(!key.trim()&&(!st.configured||model.trim()===st.model)),onClick:save},busy==='save'?'Checking…':(key.trim()||!st.configured?'Save & check key':'Save & check model')))
+  );
+}
+function AiSettingsCard(){
+  const {success,error:toastError}=useToast();
+  const [st,setSt]=useState(null); // null = loading
+  const load=async()=>{try{setSt(await aiSettingsCall('status'));}catch(e){setSt({error:e.message});}};
+  useEffect(()=>{load();},[]);
+  const h=React.createElement;
+  const providers=(st&&st.providers)||{};
+  const saved=AI_PROVIDERS.filter(p=>providers[p.id]&&providers[p.id].configured);
+  const setPrefs=async(primary,fallback)=>{
+    try{await aiSettingsCall('prefs',{primary,fallback});success('Saved — SalonOS uses '+AI_PROVIDERS.find(p=>p.id===primary).name+' first'+(fallback?', then the other saved keys if it fails.':'.'));await load();}
+    catch(e){toastError(e.message);}
+  };
+  return h('div',{className:'card',style:{marginBottom:16}},
+    h('div',{className:'card-title'},'🤖 AI Assistant (API keys)'),
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',lineHeight:1.6,marginBottom:12}},
+      'Powers bill reading, bank-row tagging, “Explain this month” and 💬 Ask. Add a key for any of these AI services — one is enough; more give a backup. Each key is checked, then stored securely on the server — never shown again or saved in any browser.'),
+    st===null?h('div',{style:{fontSize:12,color:'var(--text3)'}},'Checking…'):
+    st.error?h('div',{style:{fontSize:12,color:'var(--red)'}},st.error):
+    h(React.Fragment,null,
+      !st.providers&&h('div',{style:{fontSize:12,color:'var(--orange)',marginBottom:8}},'The AI settings service on the server is an older version — only Claude can be set until it is updated.'),
+      AI_PROVIDERS.map(p=>h(AiProviderRow,{key:p.id,p,st:providers[p.id]||{configured:!!(p.id==='anthropic'&&st.configured),model:p.id==='anthropic'?st.model:'',keyHint:st.keyHint||''},onChanged:load,isPrimary:saved.length>0&&st.primary===p.id})),
+      saved.length>0&&h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginTop:8,fontSize:12.5,color:'var(--text2)'}},
+        'Use first:',
+        h('select',{className:'form-control',style:{width:'auto'},value:st.primary||saved[0].id,onChange:e=>setPrefs(e.target.value,st.fallback!==false)},saved.map(p=>h('option',{key:p.id,value:p.id},p.name))),
+        h('label',{style:{display:'flex',alignItems:'center',gap:6,cursor:'pointer'}},
+          h('input',{type:'checkbox',checked:st.fallback!==false,onChange:e=>setPrefs(st.primary||saved[0].id,e.target.checked)}),
+          'If it fails (key expired, no credit, busy), try the other saved keys')))
   );
 }
 // ── Automatic reports (Super Admin) — who gets the nightly summary (22:00 IST) and the monthly

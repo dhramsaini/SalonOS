@@ -470,7 +470,8 @@ function CollectionReco({salon,onNavTab}={}){
   },[rows,salonId]);
 
   // ── AI Reconciliation Sheet — cross-checks Collection Reco against the Bank Statement's
-  // Card/UPI Settlement credits (linked by Date as per Cradlee) using the Claude API. ──
+  // Card/UPI Settlement credits (linked by Date as per Cradlee) — an exact calculation in the browser
+  // (it used to ask an AI model, which only worked inside Claude and was never needed for sums). ──
   const [aiRows,setAiRows]=useState(null);
   const [aiLoading,setAiLoading]=useState(false);
   const [aiError,setAiError]=useState('');
@@ -484,28 +485,25 @@ function CollectionReco({salon,onNavTab}={}){
       if(!rows.length)throw new Error('Import a Collection Report first — there\'s nothing to reconcile yet.');
       if(!settlements.length)throw new Error('No Card Settlement / UPI Settlement rows found in Bank Statement yet — import a bank statement and classify (or auto-classify) those rows first.');
       const collections=rows.map(r=>({date:r.invoiceDate,centre:r.centerName,cash:r.cash,card:r.card,upi:r.upi,wallet:r.wallet,total:r.total}));
-      const prompt='You are reconciling salon collections (from a Cradlee Collection Report) against bank settlement credits.\n\n'+
-        'Bank settlements (Card/UPI Settlement credits from Bank Statement, keyed by "Date as per Cradlee"):\n'+JSON.stringify(settlements)+'\n\n'+
-        'Collection Reco entries (one per centre per day):\n'+JSON.stringify(collections)+'\n\n'+
-        'For each unique (date, nature) settlement, sum the matching Collection Reco amounts for that exact date across all centres '+
-        '(Card Settlement -> sum "card"; UPI Settlement -> sum "upi"), and compare that sum to the bank settlement amount.\n'+
-        'Respond with ONLY a raw JSON array (no markdown fences, no prose, no explanation) of objects shaped exactly like:\n'+
-        '{"date":"DD/MM/YYYY","nature":"Card Settlement or UPI Settlement","bankAmount":number,"collectionAmount":number,"difference":number,"status":"Matched or Mismatch or No Collection Data","note":"one short sentence"}\n'+
-        'Keep it concise: one entry per (date, nature) pair, at most 15 entries, sorted by date descending.';
-      const response=await fetch('https://api.anthropic.com/v1/messages',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:prompt}]})
-      });
-      if(!response.ok)throw new Error('API request failed (HTTP '+response.status+')');
-      const data=await response.json();
-      const textOut=(data.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('\n');
-      const clean=textOut.replace(/```json|```/g,'').trim();
-      const parsed=JSON.parse(clean);
-      if(!Array.isArray(parsed))throw new Error('Unexpected response shape from the AI.');
-      setAiRows(parsed);
+      // Exact arithmetic, done here: for each (date, Card/UPI) bank settlement, the Collection Reco
+      // card / UPI amounts of that same date summed across centres, and the difference.
+      const dkey=d=>toISO(d)||String(d||'').trim();
+      const sums={};
+      collections.forEach(c=>{const k=dkey(c.date);if(!sums[k])sums[k]={card:0,upi:0,n:0};sums[k].card+=Number(c.card)||0;sums[k].upi+=Number(c.upi)||0;sums[k].n++;});
+      const groups={};
+      settlements.forEach(s=>{const k=dkey(s.date)+'|'+s.nature;if(!groups[k])groups[k]={date:s.date,iso:dkey(s.date),nature:s.nature,bankAmount:0};groups[k].bankAmount+=Number(s.amount)||0;});
+      const out=Object.values(groups).map(g=>{
+        const c=sums[g.iso];
+        const coll=c?(g.nature==='Card Settlement'?c.card:c.upi):0;
+        const diff=Math.round((g.bankAmount-coll)*100)/100;
+        const status=!c?'No Collection Data':Math.abs(diff)<1?'Matched':'Mismatch';
+        const note=status==='Matched'?'Bank credit equals the collection report.':status==='No Collection Data'?'No Collection Reco entry for this date.'
+          :diff>0?'Bank received ₹'+Math.abs(diff).toLocaleString('en-IN')+' more than the report shows.':'Bank received ₹'+Math.abs(diff).toLocaleString('en-IN')+' less than the report shows.';
+        return{date:g.date,nature:g.nature,bankAmount:Math.round(g.bankAmount*100)/100,collectionAmount:Math.round(coll*100)/100,difference:diff,status,note,iso:g.iso};
+      }).sort((a,b)=>a.iso<b.iso?1:a.iso>b.iso?-1:0).slice(0,60).map(({iso,...r})=>r);
+      setAiRows(out);
     }catch(err){
-      setAiError('Could not generate the AI reconciliation ('+err.message+'). This calls the Anthropic API directly from the page — it only works while this is running inside Claude; if you\'ve saved this file and are opening it as a plain local file in your own browser, this specific button won\'t be able to reach the API. The Settlement Reconciliation table on the Bank Statement tab does the same date-based matching without needing the API, as a fallback.');
+      setAiError('Could not build the reconciliation: '+err.message);
     }
     setAiLoading(false);
   };
@@ -1190,7 +1188,7 @@ function CollectionReco({salon,onNavTab}={}){
           React.createElement('button',{className:'btn btn-primary btn-sm',disabled:aiLoading,onClick:generateAIReco},aiLoading?'Reconciling…':'✨ Generate Reconciliation with AI')
         ),
         React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:12,lineHeight:1.6}},
-          'Asks Claude to match this Collection Report against Bank Statement\'s Card/UPI Settlement credits (linked by Date as per Cradlee) and flag any mismatches — the same linking used in the Settlement Reconciliation table on the Bank Statement tab, but written up as a readable sheet.'
+          'Matches this Collection Report against Bank Statement\'s Card/UPI Settlement credits (linked by Date as per Cradlee) and flags any mismatches — the same linking used in the Settlement Reconciliation table on the Bank Statement tab, but written up as a readable sheet.'
         ),
         aiError&&React.createElement('div',{style:{background:'rgba(255,107,107,.08)',border:'1px solid rgba(255,107,107,.25)',borderRadius:'var(--r)',padding:'10px 12px',fontSize:11.5,color:'var(--red)',lineHeight:1.6}},aiError),
         aiRows&&aiRows.length===0&&!aiError&&React.createElement('div',{style:{textAlign:'center',padding:20,color:'var(--text3)',fontSize:12}},'AI returned no reconciliation entries.'),
@@ -4057,7 +4055,7 @@ function BankStatement({salon,onNavTab}={}){
     else toastInfo('No confident matches \u2014 a payment is linked automatically only when the vendor or employee is recognised in the narration and the amount matches an open invoice / unpaid salary exactly. Use \ud83d\udd17 Link or Settle Pay on individual rows for the rest.');
   };
   // ── 🤖 AI tagging (automation phase 4) — rows the rules above left without a Nature get one
-  // suggested by Claude (only high/medium confidence is applied; low is left blank). Marked aiTagged
+  // suggested by the AI (only high/medium confidence is applied; low is left blank). Marked aiTagged
   // so they show as AI suggestions; the Nature dropdown still changes them as usual. ──
   const [aiBusy,setAiBusy]=useState(false);
   const aiTagRows=async()=>{

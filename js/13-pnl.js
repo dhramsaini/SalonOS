@@ -2661,7 +2661,7 @@ function parseInvoice(text,vendors){
 
 /* --- UI --- */
 const CONF_BADGE={high:['badge-green','Verified'],medium:['badge-amber','Likely'],low:['badge-red','Check this'],ai:['badge-purple','AI']};
-// ── AI bill reading (the "ai" cloud function, using the Claude key from Master Settings → AI
+// ── AI bill reading (the "ai" cloud function, using the AI key(s) from Master Settings → AI
 // Assistant). Returns the same shape parseInvoice gives, or null when AI isn't set up — callers
 // then fall back to reading the bill in the browser. Throws on a real AI error.
 const AI_BILL_CATEGORIES=['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Fixed Assets','Other'];
@@ -2687,7 +2687,7 @@ async function aiReadBill(file,vendors){
   if(error){let msg=error.message||'AI could not read the bill';try{const b=error.context&&await error.context.json();if(b&&b.error)msg=b.error;}catch(e){}throw new Error(msg);}
   if(!data||data.notConfigured)return null;
   if(data.error)throw new Error(data.error);
-  const R={conf:{},raw:'Read by AI ('+(data.model||'Claude')+').'+(data.notes?'\nNotes from the AI: '+data.notes:'')+'\n\n'+JSON.stringify(data,null,2)};
+  const R={conf:{},raw:'Read by AI ('+(data.provider?data.provider+' · ':'')+(data.model||'')+').'+(data.notes?'\nNotes from the AI: '+data.notes:'')+'\n\n'+JSON.stringify(data,null,2)};
   const put=(k,v)=>{if(v!==''&&v!=null&&!(typeof v==='number'&&v===0)){R[k]=v;R.conf[k]='ai';}};
   put('vendorName',String(data.supplierName||'').trim());put('gst',String(data.supplierGstin||'').toUpperCase().replace(/\s/g,''));
   put('phone',data.supplierPhone);put('email',data.supplierEmail);put('invoiceNo',data.invoiceNo);
