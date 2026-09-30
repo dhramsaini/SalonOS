@@ -247,7 +247,8 @@ function OwnerInsights({accessibleSalons,user}){
         h('div',{style:{fontSize:12.5,marginTop:8}},'This month so far: ',h('b',null,insInr(mtd.sales)),
           tgt?h('span',{style:{color:'var(--text3)'}},' of '+insInr(tgt)+' target ('+pct(mtd.sales,tgt)+'%)'):null),
         tgt?bar(pct(mtd.sales,tgt),pct(mtd.sales,tgt)>=Math.round(td/insDaysIn(ty,tm)*100)?'var(--green)':'var(--orange)'):null,
-        lm.sales>0&&h('div',{style:{fontSize:11.5,marginTop:4,color:mtd.sales>=lm.sales?'var(--green)':'var(--red)'}},
+        mtd.days===0&&h('div',{style:{fontSize:11.5,marginTop:4,color:'var(--orange)'}},'No daily sales entered this month yet'),
+        mtd.days>0&&lm.sales>0&&h('div',{style:{fontSize:11.5,marginTop:4,color:mtd.sales>=lm.sales?'var(--green)':'var(--red)'}},
           (mtd.sales>=lm.sales?'▲ ':'▼ ')+Math.abs(pct(mtd.sales,lm.sales)-100)+'% vs the same '+td+' day'+(td>1?'s':'')+' last month')),
       a&&h('div',{style:{fontSize:12.5,marginTop:10,paddingTop:8,borderTop:'1px solid var(--border)'}},
         '👥 ',h('b',null,a.present+(a.half?' + '+a.half+' half':'')),' present of '+a.staff,
@@ -273,7 +274,8 @@ function OwnerInsights({accessibleSalons,user}){
   const dueTotal=dues.reduce((t,x)=>t+x.bal,0),overdueTotal=dues.filter(x=>x.days<0).reduce((t,x)=>t+x.bal,0);
 
   // ── Staff ──
-  const staffBlocks=shown.filter(s=>can(Number(s.id),'incentive-working')&&can(Number(s.id),'salary-working')).map(s=>({s,rows:insStaffScores(Number(s.id),ym.y,ym.m,today)})).filter(b=>b.rows.length);
+  const staffBlocks=shown.filter(s=>can(Number(s.id),'incentive-working')&&can(Number(s.id),'salary-working')).map(s=>({s,rows:insStaffScores(Number(s.id),ym.y,ym.m,today)})).filter(b=>b.rows.length)
+    .map(b=>({...b,empty:b.rows.every(r=>!r.sales&&r.attPct==null)}));
 
   const savePack=async(s)=>{
     setBusy(true);
@@ -342,10 +344,11 @@ function OwnerInsights({accessibleSalons,user}){
     staffBlocks.length===0&&h('div',{className:'card',style:{fontSize:12.5,color:'var(--text3)',marginBottom:16}},'No staff figures for this month yet (needs Incentive Working and Salary Working access).'),
     staffBlocks.map(b=>h('div',{key:b.s.id,className:'card',style:{marginBottom:16}},
       h('div',{style:{fontWeight:700,fontSize:13.5,marginBottom:8}},short(b.s)),
+      b.empty?h('div',{style:{fontSize:12.5,color:'var(--text3)'}},'No staff sales or attendance recorded for '+INS_MONTHS[ym.m]+' '+ym.y+' yet ('+b.rows.length+' staff).'):
       h('div',{className:'table-wrap'},h('table',null,
         h('thead',null,h('tr',null,['#','Employee','Sales','Target','Achieved','Attendance','Sales ÷ pay','Score'].map(th))),
         h('tbody',null,b.rows.map((r,i)=>h('tr',{key:r.id},
-          h('td',{'data-label':'#'},r.score==null?'—':i===0?'🥇':i===1?'🥈':i===2?'🥉':String(i+1)),
+          h('td',{'data-label':'#'},!r.score?'—':i===0?'🥇':i===1?'🥈':i===2?'🥉':String(i+1)),
           h('td',{'data-label':'Employee',style:{fontWeight:600}},r.name,h('div',{style:{fontSize:11,color:'var(--text3)',fontWeight:400}},r.desig||'')),
           h('td',{'data-label':'Sales'},insInr(r.sales)),
           h('td',{'data-label':'Target'},r.target?insInr(r.target):'—'),
@@ -353,7 +356,7 @@ function OwnerInsights({accessibleSalons,user}){
           h('td',{'data-label':'Attendance'},r.attPct==null?'—':r.attPct+'%'),
           h('td',{'data-label':'Sales ÷ pay'},r.perPay==null?'—':r.perPay+'×'),
           h('td',{'data-label':'Score'},r.score==null?'—':h('span',{className:'badge '+(r.score>=75?'badge-green':r.score>=50?'badge-amber':'badge-red')},r.score))))))),
-      h('div',{style:{fontSize:11,color:'var(--text3)',marginTop:6}},'Score = 50% target achieved (120% = full marks) + 30% attendance + 20% sales per ₹ of pay (4× = full marks).'+(ym.y===ty&&ym.m===tm?' This month: targets and pay counted for the '+td+' days so far.':'')))),
+      !b.empty&&h('div',{style:{fontSize:11,color:'var(--text3)',marginTop:6}},'Score = 50% target achieved (120% = full marks) + 30% attendance + 20% sales per ₹ of pay (4× = full marks).'+(ym.y===ty&&ym.m===tm?' This month: targets and pay counted for the '+td+' days so far.':'')))),
 
     shown.length>0&&h('div',{className:'card',style:{marginBottom:20}},
       h('div',{className:'card-title'},'📦 Month-end pack — '+INS_MONTHS[ym.m]+' '+ym.y),
