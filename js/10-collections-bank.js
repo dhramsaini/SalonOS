@@ -741,7 +741,7 @@ function CollectionReco({salon,onNavTab}={}){
       await loadWorkbook(best.file);
       lastAutoRef.current=tag;
       safeLocalSet(outletKey('salonos_cradlee_last_auto',salonId),tag);
-      setAutoStatus('Auto-imported "'+best.file.name+'" from your Downloads folder.');
+      setAutoStatus('Auto-imported "'+best.file.name+'" from your connected folder.');
       setDirNeedsPermission(false);
     }catch(err){
       setAutoStatus('Auto-import check failed: '+err.message);
@@ -763,7 +763,7 @@ function CollectionReco({salon,onNavTab}={}){
   const disconnectDownloads=async()=>{
     try{await fsIdbDelete(outletKey('cradleeDir',salonId));}catch(e){}
     setDirHandle(null);setDirNeedsPermission(false);
-    setAutoStatus('Disconnected from Downloads folder.');
+    setAutoStatus('Disconnected from the statements folder.');
   };
 
   const checkNow=async()=>{
@@ -1078,17 +1078,17 @@ function CollectionReco({salon,onNavTab}={}){
       React.createElement('div',{style:{display:'flex',gap:12,alignItems:'flex-start',flexWrap:'wrap'}},
         React.createElement('div',{style:{fontSize:20}},'⚡'),
         React.createElement('div',{style:{flex:1,minWidth:260}},
-          React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)',marginBottom:4}},'Auto-Import from your Downloads folder'),
+          React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)',marginBottom:4}},'Auto-Import from a folder inside Downloads'),
           !fsSupported?React.createElement('div',{style:{fontSize:12,color:'var(--text2)',lineHeight:1.7}},
             'This browser doesn\u2019t support folder watching (works in Chrome/Edge desktop only). Please use the upload box below instead.'
           ):React.createElement(React.Fragment,null,
             React.createElement('div',{style:{fontSize:12,color:'var(--text2)',lineHeight:1.7,marginBottom:8}},
               !dirHandle
-                ?'Connect your Downloads folder once. From then on, every time a Cradlee export lands there, this page can pick it up automatically \u2014 no manual browsing.'
+                ?'Chrome and Edge don\u2019t let websites open the whole Downloads folder (\u201ccontains system files\u201d). Click Connect, then in Downloads click New folder, name it Cradlee Exports, open it and click Select folder \u2014 once. Save Cradlee exports there, and from then on this page picks them up automatically \u2014 no manual browsing.'
                 :'Connected. Click "Check Now" any time after exporting from Cradlee, or just reopen this tab \u2014 it checks automatically on load.'
             ),
             React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
-              !dirHandle?React.createElement('button',{className:'btn btn-primary btn-sm',onClick:connectDownloads},'📂 Connect Downloads Folder'):
+              !dirHandle?React.createElement('button',{className:'btn btn-primary btn-sm',onClick:connectDownloads},'📂 Connect a folder inside Downloads'):
               React.createElement(React.Fragment,null,
                 React.createElement('button',{className:'btn btn-primary btn-sm',disabled:autoBusy,onClick:checkNow},autoBusy?'Checking…':(dirNeedsPermission?'🔓 Reconnect & Check':'🔄 Check Now')),
                 React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:disconnectDownloads},'Disconnect')
@@ -1491,7 +1491,7 @@ function CollectionSheetView({salon,onNavTab}={}){
       await loadWorkbook(best.file);
       lastAutoRef.current=tag;
       safeLocalSet(outletKey('salonos_cradlee_last_auto',salonId),tag);
-      setAutoStatus('Auto-imported "'+best.file.name+'" from your Downloads folder.');
+      setAutoStatus('Auto-imported "'+best.file.name+'" from your connected folder.');
       setDirNeedsPermission(false);
     }catch(err){
       setAutoStatus('Auto-import check failed: '+err.message);
@@ -1513,7 +1513,7 @@ function CollectionSheetView({salon,onNavTab}={}){
   const disconnectDownloads=async()=>{
     try{await fsIdbDelete(outletKey('cradleeDir',salonId));}catch(e){}
     setDirHandle(null);setDirNeedsPermission(false);
-    setAutoStatus('Disconnected from Downloads folder.');
+    setAutoStatus('Disconnected from the statements folder.');
   };
 
   const checkNow=async()=>{
@@ -2076,8 +2076,8 @@ function CollectionSheetView({salon,onNavTab}={}){
 // the real screen with the part to click highlighted, a caption, and spoken narration where the
 // browser has a voice for that language (captions always show). Plays by itself; Back/Next/Pause.
 const BANK_GUIDE_SCENES=[
-  {icon:'📂',en:{t:'1. Connect your Downloads folder — once',s:'Click "Connect Downloads Folder" and choose your Downloads folder. The browser asks for permission: click Allow. You do this only once on each computer.'},
-   hi:{t:'1. Downloads फ़ोल्डर जोड़ें — सिर्फ़ एक बार',s:'"Connect Downloads Folder" पर क्लिक करें और अपना Downloads फ़ोल्डर चुनें। ब्राउज़र अनुमति माँगेगा, Allow पर क्लिक करें। यह हर कंप्यूटर पर सिर्फ़ एक बार करना है।'},
+  {icon:'📂',en:{t:'1. Connect a folder inside Downloads — once',s:'Chrome and Edge don’t let websites open the whole Downloads folder. Click "Connect a folder inside Downloads", click New folder, name it Bank Statements, open it, click Select folder, then Allow. Once on each computer.'},
+   hi:{t:'1. Downloads के अंदर एक फ़ोल्डर जोड़ें — सिर्फ़ एक बार',s:'Chrome और Edge पूरे Downloads फ़ोल्डर को खोलने नहीं देते। "Connect a folder inside Downloads" दबाएँ, New folder बनाकर उसका नाम Bank Statements रखें, उसे खोलें, Select folder दबाएँ, फिर Allow करें। हर कंप्यूटर पर सिर्फ़ एक बार।'},
    ui:'folder'},
   {icon:'🏦',en:{t:'2. Pick the bank account and the period',s:'Under "Get statement", choose the account and the period — for example This month, Last month, or your own From and To dates.'},
    hi:{t:'2. बैंक खाता और अवधि चुनें',s:'"Get statement" में खाता चुनें और अवधि चुनें, जैसे This month, Last month, या अपनी From और To तारीख।'},
@@ -2085,8 +2085,8 @@ const BANK_GUIDE_SCENES=[
   {icon:'🔐',en:{t:'3. Open the bank website and log in there',s:'Click "Open bank website". The bank’s own site opens in a new tab. Log in there as you always do. Your bank password never goes into SalonOS.'},
    hi:{t:'3. बैंक की वेबसाइट खोलें और वहीं लॉगिन करें',s:'"Open bank website" पर क्लिक करें। बैंक की अपनी वेबसाइट नए टैब में खुलेगी। वहीं हमेशा की तरह लॉगिन करें। आपका बैंक पासवर्ड SalonOS में कभी नहीं जाता।'},
    ui:'bank'},
-  {icon:'⬇️',en:{t:'4. Download the statement for the same period',s:'On the bank’s site, open Account Statement, choose the same dates and download it as Excel, CSV or PDF. It saves into your Downloads folder.'},
-   hi:{t:'4. उसी अवधि का स्टेटमेंट डाउनलोड करें',s:'बैंक की साइट पर Account Statement खोलें, वही तारीखें चुनें और Excel, CSV या PDF में डाउनलोड करें। फ़ाइल आपके Downloads फ़ोल्डर में सेव होगी।'},
+  {icon:'⬇️',en:{t:'4. Download the statement for the same period',s:'On the bank’s site, open Account Statement, choose the same dates and download it as Excel, CSV or PDF into the Bank Statements folder (in Chrome settings turn on "Ask where to save each file"). No folder connected? Just press Choose file afterwards — it opens right in Downloads.'},
+   hi:{t:'4. उसी अवधि का स्टेटमेंट डाउनलोड करें',s:'बैंक की साइट पर Account Statement खोलें, वही तारीखें चुनें और Excel, CSV या PDF में Bank Statements फ़ोल्डर में डाउनलोड करें (Chrome settings में "Ask where to save each file" चालू करें)। फ़ोल्डर नहीं जोड़ा? बाद में Choose file दबाएँ — वह सीधे Downloads में खुलता है।'},
    ui:'download'},
   {icon:'⚡',en:{t:'5. SalonOS imports it by itself',s:'Within a few seconds SalonOS spots the new file and imports it — only the period you chose, rows already there are skipped, and each row is tagged automatically.'},
    hi:{t:'5. SalonOS अपने-आप इम्पोर्ट कर लेता है',s:'कुछ ही सेकंड में SalonOS नई फ़ाइल पहचान लेता है और इम्पोर्ट कर देता है — सिर्फ़ चुनी हुई अवधि, पहले से मौजूद एंट्री छोड़ दी जाती हैं, और हर एंट्री अपने-आप टैग होती है।'},
@@ -2153,14 +2153,14 @@ function GuideModal({onClose,initialLang,scenes,title,pictures}){
 }
 function bankGuidePictures({box,pill}){
   return{
-    folder:React.createElement('div',{style:box},React.createElement('div',{style:{fontWeight:600,marginBottom:6}},'⚡ Auto-Import from your Downloads folder'),pill('📂 Connect Downloads Folder',true),
-      React.createElement('div',{style:{marginTop:10,padding:8,border:'1px dashed var(--border2)',borderRadius:6,animation:'bgIn .6s ease both .8s'}},'🗂 Downloads  ',pill('Allow',true))),
+    folder:React.createElement('div',{style:box},React.createElement('div',{style:{fontWeight:600,marginBottom:6}},'⚡ Auto-Import from a folder inside Downloads'),pill('📂 Connect a folder inside Downloads',true),
+      React.createElement('div',{style:{marginTop:10,padding:8,border:'1px dashed var(--border2)',borderRadius:6,animation:'bgIn .6s ease both .8s'}},'🗂 Downloads › ',pill('New folder',true),' Bank Statements  ',pill('Select folder',true),pill('Allow',true))),
     period:React.createElement('div',{style:box},React.createElement('div',{style:{marginBottom:6}},'◉ HDFC Current · Current · ••1234'),
       React.createElement('div',null,pill('Yesterday'),pill('This month',true),pill('Last month'),pill('This FY')),React.createElement('div',{style:{marginTop:8}},'From 01/09/2026  →  To 29/09/2026')),
     bank:React.createElement('div',{style:box},pill('🔗 Open bank website',true),React.createElement('div',{style:{marginTop:10,padding:8,borderRadius:6,background:'var(--bg3)',animation:'bgIn .6s ease both .8s'}},'🔒 https://netbanking.yourbank…  ',React.createElement('b',null,'Login'),'  · User ID · Password')),
     download:React.createElement('div',{style:box},'Account Statement · 01/09/2026 – 29/09/2026',React.createElement('div',{style:{marginTop:8}},pill('Excel'),pill('CSV'),pill('PDF'),pill('⬇ Download',true)),
-      React.createElement('div',{style:{marginTop:8,animation:'bgIn .6s ease both 1s'}},'✅ Statement_Sep.xlsx → Downloads')),
-    import:React.createElement('div',{style:box},React.createElement('div',{style:{color:'var(--accent2)'}},'⏳ Watching your Downloads folder…'),
+      React.createElement('div',{style:{marginTop:8,animation:'bgIn .6s ease both 1s'}},'✅ Statement_Sep.xlsx → Downloads › Bank Statements')),
+    import:React.createElement('div',{style:box},React.createElement('div',{style:{color:'var(--accent2)'}},'⏳ Watching your Bank Statements folder…'),
       React.createElement('div',{style:{marginTop:8,color:'var(--green)',animation:'bgIn .6s ease both 1.2s'}},'Found "Statement_Sep.xlsx" — Appended 42 new transactions · 3 already there skipped · 30 auto-classified')),
     done:React.createElement('div',{style:box},React.createElement('div',null,'05/09  UPI/CR/…  +1,200  → UPI Settlement'),React.createElement('div',null,'06/09  NEFT RENT  −5,000'),React.createElement('div',{style:{marginTop:8}},'💻 Chrome / Edge: automatic  ·  📱 Phone: upload box')),
   };
@@ -2708,7 +2708,7 @@ function BankStatement({salon,onNavTab}={}){
       await loadWorkbook(best.file);
       lastAutoRef.current=tag;
       safeLocalSet(outletKey('salonos_bank_last_auto',salonId),tag);
-      setAutoStatus('Auto-imported "'+best.file.name+'" from your Downloads folder.');
+      setAutoStatus('Auto-imported "'+best.file.name+'" from your connected folder.');
       setDirNeedsPermission(false);
     }catch(err){
       setAutoStatus('Auto-import check failed: '+err.message);
@@ -2716,6 +2716,22 @@ function BankStatement({salon,onNavTab}={}){
     setAutoBusy(false);
   };
 
+  // "📄 Choose file": opens the file window straight in Downloads (Chrome/Edge), newest statement one
+  // click away; other browsers get the normal file box.
+  const chooseStatementFile=async()=>{
+    if(typeof window.showOpenFilePicker==='function'){
+      try{
+        const [h]=await window.showOpenFilePicker({id:'bank-statement-file',startIn:'downloads',multiple:false,
+          types:[{description:'Bank statement',accept:{'application/vnd.ms-excel':['.xls'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx'],'text/csv':['.csv'],'application/pdf':['.pdf']}}]});
+        if(h)await onGuidedFile(await h.getFile());
+        return;
+      }catch(err){if(err&&err.name==='AbortError')return;}
+    }
+    gFileRef.current&&gFileRef.current.click();
+  };
+  // Chrome and Edge never let a website open the whole Downloads (or Desktop / Documents) folder —
+  // "can't open this folder because it contains system files". A folder INSIDE Downloads is allowed,
+  // so the window opens in Downloads and the card asks for a "Bank Statements" folder there.
   const connectDownloads=async()=>{
     try{
       const handle=await window.showDirectoryPicker({id:'bank-statement-downloads',mode:'read',startIn:'downloads'});
@@ -2730,7 +2746,7 @@ function BankStatement({salon,onNavTab}={}){
   const disconnectDownloads=async()=>{
     try{await fsIdbDelete(outletKey('bankStatementDir',salonId));}catch(e){}
     setDirHandle(null);setDirNeedsPermission(false);
-    setAutoStatus('Disconnected from Downloads folder.');
+    setAutoStatus('Disconnected from the statements folder.');
   };
 
   const checkNow=async()=>{
@@ -2797,7 +2813,7 @@ function BankStatement({salon,onNavTab}={}){
     if(dirHandle){
       try{let perm=await dirHandle.queryPermission({mode:'read'});if(perm!=='granted')perm=await dirHandle.requestPermission({mode:'read'});setDirNeedsPermission(perm!=='granted');}catch(e){}
     }
-    setGStatus({text:'Bank website opened. Log in there, choose '+gFrom.split('-').reverse().join('/')+' to '+gTo.split('-').reverse().join('/')+' and download the statement (Excel, CSV or PDF). '+(dirHandle?'This page will import it by itself.':'Then drop the file in the upload box below, or connect your Downloads folder so it happens by itself.'),bad:false});
+    setGStatus({text:'Bank website opened. Log in there, choose '+gFrom.split('-').reverse().join('/')+' to '+gTo.split('-').reverse().join('/')+' and download the statement (Excel, CSV or PDF). '+(dirHandle?'This page will import it by itself once it is saved in your connected folder.':'Then press 📄 Choose file (it opens in Downloads) or drop the file in the upload box below.'),bad:false});
   };
   // While waiting, look for the new download every 3 s (up to 20 minutes). The folder's file names
   // are noted when waiting starts; any file that appears after that is the download — whatever its
@@ -2843,7 +2859,7 @@ function BankStatement({salon,onNavTab}={}){
         setWatchInfo(otherNew.size
           ?'A new file arrived but it is not Excel, CSV or PDF: "'+[...otherNew].slice(-1)[0]+'". If it is a ZIP, open it and save the statement into "'+dirHandle.name+'"; or download the statement again as Excel/CSV/PDF. (checked '+t+')'
           :'Watching folder "'+dirHandle.name+'" — no new file yet (checked '+t+'). If your download finished, it may have gone to another folder: use "Choose file" below, or reconnect the folder your browser saves to.');
-      }catch(e){setWatchInfo('');setGStatus({text:'Could not read the Downloads folder: '+e.message,bad:true});}
+      }catch(e){setWatchInfo('');setGStatus({text:'Could not read the connected folder: '+e.message,bad:true});}
       finally{busy=false;}
     };
     const t=setInterval(tick,3000);tick();
@@ -2853,7 +2869,7 @@ function BankStatement({salon,onNavTab}={}){
   // Backup: pick the downloaded file by hand — same period filter and duplicate check.
   const gFileRef=useRef(null);
   const onGuidedFile=async(e)=>{
-    const f=e.target.files&&e.target.files[0];e.target.value='';
+    const f=e&&e.target?(e.target.files&&e.target.files[0]):e;if(e&&e.target)e.target.value='';
     if(!f)return;
     setWaitSince(0);setWatchInfo('');
     setGStatus({text:'Importing "'+f.name+'"…',bad:false});
@@ -4213,13 +4229,13 @@ function BankStatement({salon,onNavTab}={}){
               React.createElement('label',{style:{fontSize:12,color:'var(--text2)'}},'To'),
               React.createElement('input',{type:'date',className:'form-control',style:{width:'auto'},value:gTo,min:gFrom,max:gIso(gToday),onChange:e=>setGTo(e.target.value)}),
               React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openBankSite},'🔗 Open bank website'),
-              React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Pick the downloaded statement yourself (same period filter and duplicate check)',onClick:()=>gFileRef.current&&gFileRef.current.click()},'📄 Choose file'),
+              React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Pick the downloaded statement yourself (same period filter and duplicate check) — opens in your Downloads folder',onClick:chooseStatementFile},'📄 Choose file'),
               React.createElement('input',{ref:gFileRef,type:'file',accept:'.xlsx,.xls,.csv,.pdf',style:{display:'none'},onChange:onGuidedFile}),
               waitSince>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setWaitSince(0);setWatchInfo('');setGStatus({text:'Stopped waiting.',bad:false});}},'Stop waiting')
             ),
-            waitSince>0&&dirHandle&&React.createElement('div',{style:{fontSize:12,color:'var(--accent2)',lineHeight:1.6}},'⏳ '+(watchInfo||'Watching your Downloads folder for the new statement…'),
+            waitSince>0&&dirHandle&&React.createElement('div',{style:{fontSize:12,color:'var(--accent2)',lineHeight:1.6}},'⏳ '+(watchInfo||'Watching your connected folder for the new statement…'),
               dirNeedsPermission&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:8,fontSize:11,padding:'2px 8px'},onClick:async()=>{try{const p=await dirHandle.requestPermission({mode:'read'});setDirNeedsPermission(p!=='granted');}catch(e){}}},'🔓 Allow folder access')),
-            waitSince>0&&!dirHandle&&fsSupported&&React.createElement('div',{style:{fontSize:12,color:'var(--orange)'}},'Tip: ',React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'2px 8px'},onClick:connectDownloads},'📂 Connect Downloads folder'),' once, and downloads are imported by themselves from then on.')
+            waitSince>0&&!dirHandle&&fsSupported&&React.createElement('div',{style:{fontSize:12,color:'var(--orange)'}},'Tip: ',React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'2px 8px'},onClick:connectDownloads},'📂 Connect a statements folder'),' once, and statements saved there are imported by themselves from then on. Or press 📄 Choose file after downloading.')
           ),
           canEditBank&&(acctForm
             ?React.createElement('div',{style:{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap',padding:10,border:'1px dashed var(--border2)',borderRadius:'var(--r)'}},
@@ -4248,17 +4264,23 @@ function BankStatement({salon,onNavTab}={}){
         React.createElement('div',{style:{fontSize:20}},'⚡'),
         React.createElement('div',{style:{flex:1,minWidth:260}},
           React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:4}},
-            React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)'}},'Auto-Import from your Downloads folder'),guideButtons),
+            React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)'}},'Auto-Import from a statements folder'),guideButtons),
           !fsSupported?React.createElement('div',{style:{fontSize:12,color:'var(--text2)',lineHeight:1.7}},
             'This browser doesn\u2019t support folder watching (works in Chrome/Edge desktop only). Please use the upload box below instead.'
           ):React.createElement(React.Fragment,null,
             React.createElement('div',{style:{fontSize:12,color:'var(--text2)',lineHeight:1.7,marginBottom:8}},
               !dirHandle
-                ?'Connect your Downloads folder once (the browser asks permission \u2014 click Allow). After that, statements you download are imported by themselves: right away when you use "Open bank website" above, or whenever you click "Check Now" / reopen this tab.'
+                ?React.createElement(React.Fragment,null,
+                    'Chrome and Edge don’t let any website open the whole Downloads folder (“contains system files”), so use a folder inside it — once on each computer:',
+                    React.createElement('ol',{style:{margin:'6px 0 0',paddingLeft:18}},
+                      React.createElement('li',null,'Click ',React.createElement('b',null,'Connect a folder inside Downloads'),'. The window opens in Downloads — click ',React.createElement('b',null,'New folder'),', name it ',React.createElement('b',null,'Bank Statements'),', open it and click ',React.createElement('b',null,'Select folder'),', then ',React.createElement('b',null,'Allow'),'.'),
+                      React.createElement('li',null,'Make the bank’s download go there: Chrome/Edge Settings → Downloads → turn on ',React.createElement('b',null,'Ask where to save each file'),' (and pick Bank Statements when saving), or set the download Location to that folder.'),
+                      React.createElement('li',null,'After that, statements saved there are imported by themselves when you use "Open bank website" above, click "Check Now" or reopen this tab.')),
+                    React.createElement('div',{style:{marginTop:4}},'Simpler: skip this and press ',React.createElement('b',null,'📄 Choose file'),' above after downloading — it opens right in Downloads.'))
                 :'Connected. After "Open bank website" above, the new download is imported by itself within seconds. You can also click "Check Now" any time, or just reopen this tab \u2014 it checks automatically on load.'
             ),
             React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
-              !dirHandle?React.createElement('button',{className:'btn btn-primary btn-sm',onClick:connectDownloads},'📂 Connect Downloads Folder'):
+              !dirHandle?React.createElement('button',{className:'btn btn-primary btn-sm',onClick:connectDownloads},'📂 Connect a folder inside Downloads'):
               React.createElement(React.Fragment,null,
                 React.createElement('button',{className:'btn btn-primary btn-sm',disabled:autoBusy,onClick:checkNow},autoBusy?'Checking…':(dirNeedsPermission?'🔓 Reconnect & Check':'🔄 Check Now')),
                 React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:disconnectDownloads},'Disconnect')
