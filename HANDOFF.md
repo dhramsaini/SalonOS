@@ -346,6 +346,10 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   CDN scripts get crossorigin (index.html + loadScript) so client_errors shows real messages instead of "Script error.".
   Bank Statement toolbar wraps on phones (was 65 px wider than a 375 px screen). local-test/smoke.html renders all 31
   screens with sample data (?phone=1 for 375 px) and reports crashes / console errors / sideways overflow.
+· (v2026.09.30.30) Excel date cells (XLSX cellDates) arrive ~10 s before local midnight → a day early: excelCellDate()
+  (+1 min) in Master Sheet import, vendor bill import, Cradlee imports, bank statement import. salonos-reports daily
+  attendance now counts only staff employed that day and an unmarked weekly off as off (same as the nightly check) —
+  redeployed. Tests 85.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

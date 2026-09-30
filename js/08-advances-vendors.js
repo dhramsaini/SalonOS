@@ -981,7 +981,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
   };
   const parseTemplateDate=(v)=>{
     if(!v)return'';
-    if(v instanceof Date)return String(v.getDate()).padStart(2,'0')+'/'+String(v.getMonth()+1).padStart(2,'0')+'/'+v.getFullYear();
+    if(v instanceof Date){v=excelCellDate(v);return String(v.getDate()).padStart(2,'0')+'/'+String(v.getMonth()+1).padStart(2,'0')+'/'+v.getFullYear();}
     return String(v).trim();
   };
   const matchVendorByName=(name)=>{

@@ -280,6 +280,15 @@
         eq('Tally sync: no company open in Tally stops with a clear message',/not open/.test(err2),true);
       }catch(err){results.push({name:'Tally sync stop',ok:false,got:String(err&&err.message||err),want:'no error'});}
       try{
+        // Excel date cells: 15 Sep 2026 must come back as 15 Sep, not 14 Sep (library quirk).
+        const ws=XLSX.utils.aoa_to_sheet([['d'],[46280]]);ws.A2.z='dd/mm/yyyy';
+        const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'S');
+        const wb2=XLSX.read(XLSX.write(wb,{type:'array',bookType:'xlsx'}),{type:'array',cellDates:true});
+        const v=XLSX.utils.sheet_to_json(wb2.Sheets.S,{defval:''})[0].d;
+        eq('Excel date cell reads as the right day',[v instanceof Date,localIsoOf(excelCellDate(v))],[true,'2026-09-15']);
+        eq('Local today is this computer’s date',localTodayIso(),localIsoOf(new Date()));
+      }catch(err){results.push({name:'Excel dates',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
         const mod={};new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});

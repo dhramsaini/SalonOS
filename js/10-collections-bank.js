@@ -881,6 +881,7 @@ function CollectionReco({salon,onNavTab}={}){
   const normalizeDate=(v,swap)=>{
     if(v===undefined||v===null||v==='')return'';
     if(v instanceof Date&&!isNaN(v)){
+      v=excelCellDate(v);
       return String(v.getDate()).padStart(2,'0')+'/'+String(v.getMonth()+1).padStart(2,'0')+'/'+v.getFullYear();
     }
     if(typeof v==='number'&&window.XLSX&&XLSX.SSF){
@@ -1661,6 +1662,7 @@ function CollectionSheetView({salon,onNavTab}={}){
   const normalizeDate=(v,swap)=>{
     if(v===undefined||v===null||v==='')return'';
     if(v instanceof Date&&!isNaN(v)){
+      v=excelCellDate(v);
       return String(v.getDate()).padStart(2,'0')+'/'+String(v.getMonth()+1).padStart(2,'0')+'/'+v.getFullYear();
     }
     if(typeof v==='number'&&window.XLSX&&XLSX.SSF){
@@ -3016,7 +3018,7 @@ function BankStatement({salon,onNavTab}={}){
   const MONTH_ABBR={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12};
   const fmtDate=(v,swap)=>{
     if(v===undefined||v===null||v==='')return'';
-    if(v instanceof Date&&!isNaN(v))return String(v.getDate()).padStart(2,'0')+'/'+String(v.getMonth()+1).padStart(2,'0')+'/'+v.getFullYear();
+    if(v instanceof Date&&!isNaN(v)){v=excelCellDate(v);return String(v.getDate()).padStart(2,'0')+'/'+String(v.getMonth()+1).padStart(2,'0')+'/'+v.getFullYear();}
     if(typeof v==='number'&&window.XLSX&&XLSX.SSF){const d=XLSX.SSF.parse_date_code(v);if(d)return String(d.d).padStart(2,'0')+'/'+String(d.m).padStart(2,'0')+'/'+d.y;}
     const x=String(v).trim();
     let m=x.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);

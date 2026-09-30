@@ -83,12 +83,19 @@ function rangeFigures(kv: KV, sid: number, y: number, m: number, lastDay: number
 function attendanceOn(kv: KV, sid: number, d: Date) {
   const emps = (kv.get(`salonos_master_employees_outlet_${sid}`) ?? []).filter((e: any) => e.status === "Active");
   const att = kv.get(`salonos_attendance_outlet_${sid}`) ?? {};
-  const c = { staff: emps.length, present: 0, absent: 0, half: 0, off: 0, unmarked: 0 };
-  for (const e of emps) {
+  const iso = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+  // Same rule as the nightly check: only staff employed that day count, and an unmarked weekly off is an off day.
+  const dayIso = (s: unknown) => { const t = String(s ?? "").trim(); let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+    m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : ""; };
+  const employed = emps.filter((e: any) => { const j = dayIso(e.doj), l = dayIso(e.dol); return !(j && j > iso) && !(l && l < iso); });
+  const c = { staff: employed.length, present: 0, absent: 0, half: 0, off: 0, unmarked: 0 };
+  const dow = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d.getUTCDay()];
+  for (const e of employed) {
     const rec = att[`${e.id}_${d.getUTCFullYear()}_${d.getUTCMonth()}`];
     const v = rec?.days?.[d.getUTCDate() - 1];
     if (v === "present") c.present++; else if (v === "absent") c.absent++; else if (v === "half") c.half++;
-    else if (v === "off" || v === "holiday") c.off++; else c.unmarked++;
+    else if (v === "off" || v === "holiday" || (!v && e.weeklyOff && e.weeklyOff === dow)) c.off++; else c.unmarked++;
   }
   return c;
 }
