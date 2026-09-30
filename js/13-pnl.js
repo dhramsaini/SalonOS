@@ -42,7 +42,7 @@ function DepreciationSheet({salon,period}={}){
   const methodLabel=isCompaniesAct?'Companies Act, 2013 — Schedule II (Straight Line Method)':'Income Tax Act, 1961 — Block of Assets (Written Down Value)';
 
   const BLANK={id:'',block:blocks[0]?blocks[0].key:'',description:'',isOpening:false,
-    cost:'',addedDate:new Date().toISOString().slice(0,10),
+    cost:'',addedDate:localTodayIso(),
     openingWDV:'',openingAsOfFy:fy,remainingUsefulLifeYears:'',
     disposed:false,disposalDate:'',disposalValue:''};
   const nextId=()=>'FA'+(Math.max(0,...assets.map(a=>Number(String(a.id).replace('FA',''))||0))+1);
@@ -193,7 +193,7 @@ function DepreciationSheet({salon,period}={}){
                   React.createElement('td',null,
                     React.createElement('div',{style:{display:'flex',gap:4}},
                       React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>openEdit(a)},'Edit'),
-                      !a.disposed&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowDisposeModal({...a,disposalDate:new Date().toISOString().slice(0,10),disposalValue:''})},'Dispose'),
+                      !a.disposed&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowDisposeModal({...a,disposalDate:localTodayIso(),disposalValue:''})},'Dispose'),
                       React.createElement('button',{'aria-label':'Delete',className:'btn btn-sm',style:{background:'rgba(255,107,107,0.08)',border:'1px solid rgba(255,107,107,0.2)',color:'var(--red)',padding:'4px 8px',borderRadius:'var(--r)',cursor:'pointer',fontSize:11},onClick:()=>setShowDeleteModal(a)},React.createElement(IconTrash,{size:14}))
                     )
                   )
@@ -214,7 +214,7 @@ function DepreciationSheet({salon,period}={}){
         FG('Category / Block *',React.createElement('select',{className:'form-control',value:showModal.block,onChange:e=>setShowModal(f=>({...f,block:e.target.value}))},
           blocks.map(b=>React.createElement('option',{key:b.key,value:b.key},b.label+(isCompaniesAct?' — '+b.years+' yrs':' — '+(b.rate*100).toFixed(0)+'%'))))),
         FG('Description',React.createElement('input',{className:'form-control',value:showModal.description,onChange:e=>setShowModal(f=>({...f,description:e.target.value})),placeholder:'e.g. Salon chairs (4), reception desk'})),
-        (()=>{const itcAllowed=gstInputAllowedAsOf(salon,showModal.addedDate||new Date().toISOString().slice(0,10));return React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginBottom:10}},
+        (()=>{const itcAllowed=gstInputAllowedAsOf(salon,showModal.addedDate||localTodayIso());return React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginBottom:10}},
           itcAllowed
             ?'Enter the pre-GST (Taxable Value) cost — GST is tracked separately as recoverable input credit for this outlet.'
             :'This outlet can\'t claim GST Input Credit — enter the GST-INCLUSIVE cost, since the GST paid is a real, non-recoverable cost that belongs in the capitalized value.');
@@ -1687,7 +1687,7 @@ const _loaded={};
 function loadScript(url){
   if(_loaded[url])return _loaded[url];
   _loaded[url]=new Promise((res,rej)=>{
-    const s=document.createElement('script');s.src=url;s.async=true;
+    const s=document.createElement('script');s.src=url;s.async=true;s.crossOrigin='anonymous'; // lets errors inside it show their real message (not just "Script error.")
     const timer=setTimeout(()=>{
       finish(rej,new Error('Timed out loading '+url.split('/').pop()+' — check your internet connection and try again'));
     },15000);

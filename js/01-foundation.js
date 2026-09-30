@@ -1,5 +1,9 @@
 
 const {useState,useEffect,useRef,useCallback,useMemo}=React;
+// Today's date on this computer as yyyy-mm-dd. (new Date().toISOString() is the UTC date — in India
+// that is still yesterday between midnight and 5:30 AM, so late-night entries got the wrong date.)
+function localIsoOf(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function localTodayIso(){return localIsoOf(new Date());}
 
 // ── Shared currency formatter, used by every screen ──
 // decimals: number of fraction digits (default 0)
@@ -302,7 +306,7 @@ function useExcelCellRange(wrapRef){
     const hasSelection=!!range;
     const spansCols=!!range&&range.c2>range.c1;
     return React.createElement('div',{
-      style:{display:'inline-flex',gap:4,background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:8,padding:4}
+      style:{display:'inline-flex',flexWrap:'wrap',maxWidth:'100%',gap:4,background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:8,padding:4}
     },
       React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:10.5,padding:'4px 8px'},disabled:!hasSelection,title:hasSelection?'Copy selection (Ctrl/Cmd+C)':'Select a cell first',onClick:doCopy},'📋 Copy'),
       React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:10.5,padding:'4px 8px'},disabled:!hasSelection,title:hasSelection?'Paste into selection (Ctrl/Cmd+V)':'Select a cell first',onClick:doPaste},'📄 Paste'),
@@ -532,7 +536,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.09.30.28';
+const APP_VERSION='2026.09.30.29';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);

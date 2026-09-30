@@ -7,7 +7,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   const dseCellRange=useExcelCellRange(dseWrapRef);
   // Build 7-day window ending today
   const today=new Date();
-  const toISO=(d)=>d.toISOString().slice(0,10);
+  const toISO=(d)=>localIsoOf(d);
   const toLabel=(d)=>{const ds=d.toDateString().split(' ');return ds[2]+'-'+ds[1]+'-'+d.getFullYear().toString().slice(2);};
 
   const buildDays=(anchor,count)=>{
@@ -764,7 +764,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     setInvModal({ri,iso});
   };
   const INV_FORM_BLANK={vendorId:'',newVendorName:'',newVendorCat:'Purchase of Cosmetic',newVendorAddress:'',newVendorGst:'',newVendorTerms:'30 days',newVendorContact:'',newVendorPhone:'',newVendorId:'',newVendorStatus:'Active',newVendorTdsApplicable:false,newVendorTdsSection:'',newVendorTdsRate:'',
-    docNature:'Tax Invoice',invoiceNo:'',invoiceDate:new Date().toISOString().slice(0,10),bookingDate:new Date().toISOString().slice(0,10),taxable:'',igst:'',cgst:'',sgst:'',roundOff:'',dueDate:'',desc:'',attachment:null,amountPaid:'',paymentDate:''};
+    docNature:'Tax Invoice',invoiceNo:'',invoiceDate:localTodayIso(),bookingDate:localTodayIso(),taxable:'',igst:'',cgst:'',sgst:'',roundOff:'',dueDate:'',desc:'',attachment:null,amountPaid:'',paymentDate:''};
   const [showInvoiceForm,setShowInvoiceForm]=useState(null); // {mode:'create'|'edit',ri,iso,category,invoiceId,paymentId,entryId} | null
   const [invForm,setInvForm]=useState(INV_FORM_BLANK);
   const ic2=(k)=>(e)=>setInvForm(f=>({...f,[k]:e.target.value}));
@@ -791,7 +791,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     const category=EXPENSE_ROWS[ri]?.name;
     setInvForm({...INV_FORM_BLANK,newVendorCat:category||INV_FORM_BLANK.newVendorCat,
       vendorId:inv.vendorId||'',docNature:inv.docNature||'Tax Invoice',invoiceNo:inv.invoiceNo||'',
-      invoiceDate:isoOfDmy(inv.invoiceDate)||new Date().toISOString().slice(0,10),
+      invoiceDate:isoOfDmy(inv.invoiceDate)||localTodayIso(),
       bookingDate:isoOfDmy(inv.bookingDate)||iso,dueDate:isoOfDmy(inv.dueDate),
       taxable:inv.taxable||'',igst:inv.igst||'',cgst:inv.cgst||'',sgst:inv.sgst||'',roundOff:inv.roundOff||'',
       desc:inv.desc||'',attachment:inv.attachment||null,
@@ -826,7 +826,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     const category=EXPENSE_ROWS[ri]?.name;
     setInvForm({...INV_FORM_BLANK,newVendorCat:category||INV_FORM_BLANK.newVendorCat,
       vendorId:inv.vendorId||'',docNature:inv.docNature||'Tax Invoice',invoiceNo:inv.invoiceNo||'',
-      invoiceDate:isoOfDmy(inv.invoiceDate)||new Date().toISOString().slice(0,10),
+      invoiceDate:isoOfDmy(inv.invoiceDate)||localTodayIso(),
       bookingDate:isoOfDmy(inv.bookingDate)||iso,dueDate:isoOfDmy(inv.dueDate),
       taxable:inv.taxable||'',igst:inv.igst||'',cgst:inv.cgst||'',sgst:inv.sgst||'',roundOff:inv.roundOff||'',
       desc:inv.desc||'',attachment:inv.attachment||null,

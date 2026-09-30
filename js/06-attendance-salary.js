@@ -17,7 +17,7 @@ function DailyIncentiveCore({period,salon}={}){
   const [syncTick,setSyncTick]=useState(0);
   const EMPLOYEES=getEmployeesForMonth(selYear,selMonth,salon?.id);
   const syncEmployees=()=>{setSyncTick(t=>t+1);success('Synced '+getEmployeesForMonth(selYear,selMonth,salon?.id).length+' employees from Attendance for '+MONTHS[selMonth]+' '+selYear);};
-  const BLANK={date:new Date().toISOString().slice(0,10),empId:'',service:'',target:'0',achieved:'',rate:'100',mode:'Cash'};
+  const BLANK={date:localTodayIso(),empId:'',service:'',target:'0',achieved:'',rate:'100',mode:'Cash'};
   const diEntriesKey=()=>outletKey('salonos_daily_incentive_entries',salon?.id);
   const [entries,setEntries]=useState(()=>{
     try{const raw=JSON.parse(cachedLocalGet(diEntriesKey())||'[]');if(Array.isArray(raw))return raw;}catch(e){}
@@ -124,7 +124,7 @@ function DailyIncentiveCore({period,salon}={}){
     if(!groups.length){diError('Nothing to add — the selected entries have no incentive amount.');return;}
     const salonIdLocal=salon?.id;
     const freshRows=loadBankStatementRows(salonIdLocal);
-    const todayDmy=fmtDate(new Date().toISOString().slice(0,10));
+    const todayDmy=fmtDate(localTodayIso());
     const nowYear=new Date().getFullYear(),nowMonth=new Date().getMonth();
     const nextRows=[...freshRows];
     groups.forEach((group,gi)=>{

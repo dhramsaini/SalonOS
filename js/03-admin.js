@@ -578,7 +578,7 @@ function SalonMonthLockPanel({salon,onClose}){
 }
 
 function MasterSheet({onSelect,salons,setSalons,user}){
-  const BLANK={id:'',name:'',city:'',state:'',pin:'',gst:'',pan:'',type:'Owned',manager:'',phone:'',email:'',status:'Active',est:new Date().toISOString().slice(0,10),typeHistory:[],
+  const BLANK={id:'',name:'',city:'',state:'',pin:'',gst:'',pan:'',type:'Owned',manager:'',phone:'',email:'',status:'Active',est:localTodayIso(),typeHistory:[],
     // Brand Logo — stored as a base64 data URL (localStorage, same as everything else here), used
     // on printed Tax Invoices, the Billing Register export, and anywhere else the salon's own
     // branding should appear instead of the generic SalonOS wordmark.
@@ -756,11 +756,11 @@ function MasterSheet({onSelect,salons,setSalons,user}){
       const failed=[];
       const toAdd=[];
       const fmtDate=(v)=>{
-        if(!v)return new Date().toISOString().slice(0,10);
+        if(!v)return localTodayIso();
         if(v instanceof Date)return v.toISOString().slice(0,10);
         const m=String(v).match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
         if(m)return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
-        return new Date().toISOString().slice(0,10);
+        return localTodayIso();
       };
       json.forEach((row,idx)=>{
         const rowNum=idx+2;
@@ -1211,7 +1211,7 @@ function MasterSheet({onSelect,salons,setSalons,user}){
               React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
                 React.createElement('span',{style:{fontSize:12.5,fontWeight:600,color:'var(--text)'}},'Approval needed for bills above ₹'),
                 React.createElement('input',{type:'number',min:0,className:'form-control',style:{width:130,padding:'4px 8px'},value:form.invoiceApprovalLimit||'',placeholder:'No limit',
-                  onChange:e=>{const v=e.target.value;setForm(f=>({...f,invoiceApprovalLimit:v,invoiceApprovalFrom:Number(v)>0?(Number(f.invoiceApprovalLimit)>0&&f.invoiceApprovalFrom?f.invoiceApprovalFrom:new Date().toISOString().slice(0,10)):''}));}})),
+                  onChange:e=>{const v=e.target.value;setForm(f=>({...f,invoiceApprovalLimit:v,invoiceApprovalFrom:Number(v)>0?(Number(f.invoiceApprovalLimit)>0&&f.invoiceApprovalFrom?f.invoiceApprovalFrom:localTodayIso()):''}));}})),
               React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',lineHeight:1.5,marginTop:2}},'A vendor bill above this amount (dated from '+(form.invoiceApprovalFrom?form.invoiceApprovalFrom.split('-').reverse().join('/'):'the day you set it')+') can’t be paid — in Vendors, from the bank statement, in a payment file or as cash in Daily Sales & Exp — until a Super Admin clicks Approve on it. PIs and automatic recurring invoices are exempt. Empty = no approval step.'))),
         ),
 
@@ -2311,7 +2311,7 @@ function UserManagement(){
             ),
             editId&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:4}},'Current passwords can\'t be viewed (stored encrypted). Set a new one here and share it with the user.')),
           CLOUD_SYNC_ENABLED&&form.role!=='Super Admin'&&React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-13u'},'Access until (optional)'),
-            React.createElement('input',{id:'f-13u',type:'date',className:'form-control',value:form.accessUntil||'',min:new Date().toISOString().slice(0,10),onChange:fc('accessUntil')}),
+            React.createElement('input',{id:'f-13u',type:'date',className:'form-control',value:form.accessUntil||'',min:localTodayIso(),onChange:fc('accessUntil')}),
             React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:4}},'For a temporary user (auditor, trainee, relief manager): after this date the login stops working — the account turns Inactive just after midnight. Leave empty for no end date.')),
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-13'},'Status'),React.createElement('select',{id:'f-13',className:'form-control',value:form.status,onChange:fc('status')},['Active','Inactive'].map(s=>React.createElement('option',{key:s},s))))
         ),

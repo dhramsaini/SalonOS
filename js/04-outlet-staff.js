@@ -556,7 +556,7 @@ function MasterSalarySheet({salon}={}){
   const exportToExcel=async(data)=>{
     const cols=['Emp ID','Billing Software ID','Full Name',"Father's Name",'Mobile','Email','Address','Designation','Department','Date of Joining','Date of Left','Weekly Off','Basic','HRA','Conveyance','Special Allowance','Gross CTC','PF','ESIC','PAN Card No','Aadhaar No','Bank Name','Account Number','IFSC Code','Account Holder Name','Status'];
     const rows=data.map(e=>[e.id,e.billingId||'',e.name,e.fatherName||'',e.mobile||'',e.email||'',e.address||'',e.desig,e.dept||'',e.doj||'',e.dol||'',e.weeklyOff||'Sunday',e.basic||0,e.hra||0,e.conv||0,e.special||0,e.gross||0,e.pf?'Yes':'No',e.esic?'Yes':'No',e.pan||'',e.aadhar||'',e.bankName||'',e.accountNo||'',e.ifsc||'',e.accountHolder||'',e.status]);
-    const filename=`SalonOS_Master_Salary_Sheet_${new Date().toISOString().slice(0,10)}.xlsx`;
+    const filename=`SalonOS_Master_Salary_Sheet_${localTodayIso()}.xlsx`;
     try{
       const blob=await exportReportExcelBlob('Master Salary Sheet',[cols,...rows]);
       const url=URL.createObjectURL(blob);

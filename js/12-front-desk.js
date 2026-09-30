@@ -2,7 +2,7 @@
 
 function BillingSheet({salon}){
   const {toast}=useToast();
-  const todayStr=new Date().toISOString().slice(0,10);
+  const todayStr=localTodayIso();
 
   // deterministic per-outlet seed so each outlet shows its OWN bills
   const seedInvoices=()=>{
@@ -466,7 +466,7 @@ const fdRate=s=>{const x=BILL_SERVICES.find(v=>v.name===s);return x?x.rate:600};
 const AP_CLASS={'Booked':'ap-booked','Confirmed':'ap-confirmed','In chair':'ap-chair','Done':'ap-done','No-show':'ap-noshow','Cancelled':'ap-cancel'};
 const AP_COLOR={'Booked':'var(--blue)','Confirmed':'var(--teal)','In chair':'var(--orange)','Done':'var(--green)','No-show':'var(--red)','Cancelled':'var(--text3)'};
 const fdRand=(a,b)=>{let x=Math.sin(a*127.1+b*311.7)*43758.5453;return x-Math.floor(x)};
-const fdDateStr=d=>d.toISOString().slice(0,10);
+const fdDateStr=d=>localIsoOf(d);
 const fdAddDays=(s,n)=>{const d=new Date(s+'T00:00:00');d.setDate(d.getDate()+n);return fdDateStr(d)};
 const fdPretty=s=>new Date(s+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
 const fdPhone=(sid,i)=>'9'+String(Math.floor(fdRand(sid*7+i,3)*899999999)+100000000).slice(0,9);

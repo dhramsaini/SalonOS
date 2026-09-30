@@ -53,7 +53,7 @@ function RecurringExpensesSheet({salon}={}){
   const ensureInvoiceForRecurring=(invoicesList,rec,vendorId)=>{
     if(!vendorId)return{invoices:invoicesList,created:false,updated:false};
     const linkNo='REC-'+rec.id;
-    const invoiceDateIso=rec.startDate||rec.rentStartDate||new Date().toISOString().slice(0,10);
+    const invoiceDateIso=rec.startDate||rec.rentStartDate||localTodayIso();
     const invoiceDate=isoToDMY2(invoiceDateIso)||new Date().toLocaleDateString('en-GB').replace(/\//g,'/');
     const amount=rec.gstApplicable?(Number(rec.amount)||0)+(Number(rec.gstAmount)||0):(Number(rec.amount)||0);
     // TDS — deducted at source, so it's never actually paid to the vendor in cash. Recorded here
@@ -95,7 +95,7 @@ function RecurringExpensesSheet({salon}={}){
     const last=(!isVariableRecurring(it)||it.billFor==='current')?bm:bm-1;return{from:ymOf(last-N+1),to:ymOf(last)};
   };
   const openEnterBill=(it)=>{
-    const today=new Date().toISOString().slice(0,10);const p=defaultBillPeriod(it,today);
+    const today=localTodayIso();const p=defaultBillPeriod(it,today);
     setBillForm({billNo:'',billDate:today,periodFrom:p.from,periodTo:p.to,amount:'',gst:'',attachment:null,periodTouched:false});
     setBillItem(it);
   };
@@ -124,7 +124,7 @@ function RecurringExpensesSheet({salon}={}){
       recurringId:it.id,periodFrom:f.periodFrom,periodTo:f.periodTo,
       payments:tdsAmt>0?[{id:'TDS-'+id,paidAmount:tdsAmt,paidDate:f.billDate,mode:'TDS',ref:'',note:'TDS deducted at source ('+(it.tdsSection||'—')+' @ '+(Number(it.tdsRate)||0)+'%)'}]:[]};
     setVendorInvoices(prev=>[...prev,inv]);
-    setItems(prev=>prev.map(x=>x.id===it.id?{...x,amountUpdatedOn:new Date().toISOString().slice(0,10)}:x));
+    setItems(prev=>prev.map(x=>x.id===it.id?{...x,amountUpdatedOn:localTodayIso()}:x));
     toast('Bill '+inv.invoiceNo+' saved — ₹'+inv.amount.toLocaleString('en-IN')+' for '+periodText+(months>1?' (₹'+Math.round(inv.amount/months).toLocaleString('en-IN')+' per month on the P&L)':'')+'. It is also in Vendor Sheet for payment.','success');
     setBillItem(null);
   };
@@ -161,7 +161,7 @@ function RecurringExpensesSheet({salon}={}){
     // (Electricity, Telephone & Internet) rather than staying flat like Rent, so the app can
     // remind rather than silently re-use a stale figure. Stamped to today whenever Amount is
     // edited; see needsAmountUpdate() below.
-    amountUpdatedOn:new Date().toISOString().slice(0,10)};
+    amountUpdatedOn:localTodayIso()};
   const [showModal,setShowModal]=useState(false);
   const [editId,setEditId]=useState(null);
   const [form,setForm]=useState(BLANK);
@@ -448,7 +448,7 @@ function RecurringExpensesSheet({salon}={}){
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-112'},'Payee / Vendor *'),React.createElement('input',{id:'f-112',className:'form-control',value:form.payee,onChange:fc('payee'),placeholder:'Who this is paid to'}))
         ),
         React.createElement('div',{className:'form-row cols3'},
-          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-113'},gstInputAllowedAsOf(salon,new Date().toISOString().slice(0,10))?'Taxable Amount (₹) *':'Amount Total (₹) *'),React.createElement('input',{id:'f-113',type:'number',className:'form-control',value:form.amount,onChange:e=>setForm(f=>({...f,amount:e.target.value,amountUpdatedOn:new Date().toISOString().slice(0,10)})),placeholder:'0'})),
+          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-113'},gstInputAllowedAsOf(salon,localTodayIso())?'Taxable Amount (₹) *':'Amount Total (₹) *'),React.createElement('input',{id:'f-113',type:'number',className:'form-control',value:form.amount,onChange:e=>setForm(f=>({...f,amount:e.target.value,amountUpdatedOn:localTodayIso()})),placeholder:'0'})),
           React.createElement('div',{className:'form-group'},
             React.createElement('label',null,'Frequency'),
             React.createElement('select',{className:'form-control',value:form.frequency,onChange:fc('frequency')},RECURRING_FREQUENCIES.map(f=>React.createElement('option',{key:f,value:f},f)))
@@ -486,7 +486,7 @@ function RecurringExpensesSheet({salon}={}){
               'No GST or TDS on electricity — supply of electrical energy is exempt from GST (Notification 2/2017-Central Tax (Rate)), and there\'s no TDS provision on electricity payments. The Taxable Amount above flows into the P&L as-is.')
           :React.createElement(React.Fragment,null,
               (()=>{
-                const itcAllowed=gstInputAllowedAsOf(salon,new Date().toISOString().slice(0,10));
+                const itcAllowed=gstInputAllowedAsOf(salon,localTodayIso());
                 const amtLabel=itcAllowed?'Taxable Amount':'Amount Total';
                 return React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'12px 14px',marginBottom:14}},
                     !itcAllowed&&React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',lineHeight:1.5,marginBottom:10}},
@@ -1221,7 +1221,7 @@ function StaffReportSheet({period,salon}={}){
   const [subTab,setSubTab]=useState('report');
   const [attachments,setAttachments]=useState([]);
   const addAttachments=(files)=>{
-    const items=Array.from(files).map(f=>({name:f.name,size:f.size,type:f.type||'file',date:new Date().toISOString().slice(0,10)}));
+    const items=Array.from(files).map(f=>({name:f.name,size:f.size,type:f.type||'file',date:localTodayIso()}));
     setAttachments(prev=>[...prev,...items]);
   };
   const TEMPLATE_COLS=['EmpId','Emp_Name','Employee Designation','Salary','Target','ServiceSale','MemberShipSale','ProductSale','PackageSale','ComplementarySale','TotalSale','Invoice Count','Service Count','ComplementaryService Count','Total Customer','Membership Customer','Walk-in Customer','API (by invoice)','APC (by customer)','Target achieved','Target achieved in (%)','Existing Customer','New Customer'];

@@ -21,9 +21,9 @@ function AdvanceSheet({period,salon}={}){
   const syncEmployees=()=>{setSyncTick(t=>t+1);success('Synced '+getEmployeesForMonth(attYear,attMonth,salon?.id).length+' employees from Attendance');};
   const ASM_LIST=EMPLOYEES.filter(e=>e.desig==='Assist Manager');
   const nextMonthFirstYM=()=>{const d=new Date();d.setMonth(d.getMonth()+1,1);return d.toISOString().slice(0,7);};
-  const BLANK={id:'',emp:'',date:new Date().toISOString().slice(0,10),amount:'',reason:'',approvedBy:'',repayment:'',mode:'Bank Transfer',bankRef:'',note:'',deductFrom:'Salary',deductionStart:nextMonthFirstYM(),schedule:[]};
-  const nextMonthFirst=()=>{const d=new Date();d.setMonth(d.getMonth()+1,1);return d.toISOString().slice(0,10);};
-  const REQUEST_BLANK={emp:'',date:new Date().toISOString().slice(0,10),amount:'',repayment:'',reason:'',deductionStart:nextMonthFirst(),deductFrom:'Salary'};
+  const BLANK={id:'',emp:'',date:localTodayIso(),amount:'',reason:'',approvedBy:'',repayment:'',mode:'Bank Transfer',bankRef:'',note:'',deductFrom:'Salary',deductionStart:nextMonthFirstYM(),schedule:[]};
+  const nextMonthFirst=()=>{const d=new Date();d.setMonth(d.getMonth()+1,1);return localIsoOf(d);};
+  const REQUEST_BLANK={emp:'',date:localTodayIso(),amount:'',repayment:'',reason:'',deductionStart:nextMonthFirst(),deductFrom:'Salary'};
   const advSalonId=salon?.id;
   const advKey=()=>outletKey('salonos_advances',advSalonId);
   const SEED_ADVANCE_FINGERPRINTS=new Set([
@@ -636,7 +636,7 @@ function PenaltySheet({period,salon}={}){
   };
   const EMPLOYEES=getEmployeesForMonth(attYear,attMonth,salon?.id);
   const syncEmployees=()=>{setSyncTick(t=>t+1);success('Synced '+getEmployeesForMonth(attYear,attMonth,salon?.id).length+' employees from Attendance');};
-  const BLANK={id:'',emp:'',date:new Date().toISOString().slice(0,10),type:'Late arrival',otherType:'',amount:'',approvedBy:'',recoveryMode:'Salary',month:new Date().toLocaleString('en-IN',{month:'long',year:'numeric'}),remarks:''};
+  const BLANK={id:'',emp:'',date:localTodayIso(),type:'Late arrival',otherType:'',amount:'',approvedBy:'',recoveryMode:'Salary',month:new Date().toLocaleString('en-IN',{month:'long',year:'numeric'}),remarks:''};
   const PENALTY_TYPES=['Late arrival','Absent without notice','Uniform violation','Misconduct','Damage to property','Mobile phone misuse','Customer complaint','Other'];
   const RECOVERY_MODES=['Bank','Salary','Incentives'];
   const penSalonId=salon?.id;
@@ -818,7 +818,7 @@ const TDS_ACT_CUTOVER_ISO='2026-04-01'; // Income-tax Act, 2025 came into force 
 // deducted on (defaults to today, i.e. "currently applicable", same convention as
 // gstInputAllowedAsOf uses for the GST Input Credit cutoff elsewhere in this file).
 function tdsSectionsAsOf(dateIso){
-  const d=dateIso||new Date().toISOString().slice(0,10);
+  const d=dateIso||localTodayIso();
   return d>=TDS_ACT_CUTOVER_ISO?TDS_SECTIONS_NEW:TDS_SECTIONS_OLD;
 }
 // Backward-compat alias — a few older call sites reference TDS_SECTIONS directly; keep it
@@ -840,7 +840,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
     bankName:'',accountNo:'',ifsc:'',accountHolder:'',email:''};
   const BLANK_INV={vendorId:'',invoiceNo:'',invoiceDate:'',amount:'',dueDate:'',desc:'',attachment:null,docNature:'Tax Invoice',bookingDate:'',igst:'',cgst:'',sgst:'',roundOff:'',freight:'',linkedPI:'',category:'',assetLines:[],
     newVendorName:'',newVendorGst:'',newVendorPhone:'',newVendorTerms:'30 days'}; // new* = "+ Add New Vendor" from the invoice form
-  const BLANK_PAY={invoiceId:null,editingPaymentId:null,paidAmount:'',paidDate:new Date().toISOString().slice(0,10),mode:'NEFT',ref:'',note:'',fromDailySales:false};
+  const BLANK_PAY={invoiceId:null,editingPaymentId:null,paidAmount:'',paidDate:localTodayIso(),mode:'NEFT',ref:'',note:'',fromDailySales:false};
 
   const [vendors,setVendors]=useState(()=>loadVendors(salonId));
   useEffect(()=>{saveVendors(vendors,salonId);},[vendors,salonId]);
@@ -914,7 +914,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
     setPayForm(f=>({...f,paidAmount:String(row.debit||bal),paidDate:toISODate(row.transactionDate),mode:'Bank Transfer',ref:row.refNo||''}));
     setMatchedBankRowId(row.id);
   };
-  const toISODate=(dmy)=>{const m=String(dmy||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);return m?m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'):new Date().toISOString().slice(0,10);};
+  const toISODate=(dmy)=>{const m=String(dmy||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);return m?m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'):localTodayIso();};
   const [viewInv,setViewInv]=useState(null);
   // Actively asks "is this Tax Invoice against a pending PI?" whenever the selected vendor has
   // one open — rather than leaving it as an easy-to-miss optional dropdown.
@@ -1144,7 +1144,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
   const toggleBulkSelect=(id)=>setBulkSelectedIds(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;});
   const bulkMarkPaidInFull=()=>{
     const ids=bulkSelectedIds;
-    const today=new Date().toISOString().slice(0,10);
+    const today=localTodayIso();
     const eligible=invoices.filter(inv=>ids.has(inv.id)&&!isPI(inv)&&getBalance(inv)>0);
     if(!eligible.length){toastError('Nothing to mark paid — every selected row is either a Performa Invoice or already cleared.');return;}
     setInvoices(prev=>prev.map(inv=>{
@@ -1259,7 +1259,8 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
 
   const getPaid=(inv)=>inv.payments.reduce((s,p)=>s+Number(p.paidAmount),0);
   const getBalance=(inv)=>Number(inv.amount)-getPaid(inv);
-  const isOverdue=(inv)=>getBalance(inv)>0&&new Date(inv.dueDate)<new Date();
+  // Due dates are stored as dd/mm/yyyy or yyyy-mm-dd — new Date('07/10/2026') would read July 10.
+  const isOverdue=(inv)=>{if(!(getBalance(inv)>0))return false;const p=parseInvoiceDateFlexible(inv.dueDate);return !!p&&new Date(p.y,p.m-1,p.d)<new Date(new Date().toDateString());};
   const getVendorName=(id)=>{const v=vendors.find(x=>x.id===id);return v?v.name:id;};
   // Performa Invoice tracking: a PI is a pre-invoice reference, not money actually owed — the
   // real payable is the Tax Invoice/Invoice later booked against it. So a PI is "open" until
@@ -1851,7 +1852,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
           setVendors(prev=>[...prev,{id:vid,name:d.vendorName||'Unnamed supplier',address:'',gst:d.gst||'',
             cat:d.category||'Purchase of Cosmetic',contact:'',phone:d.phone||'',email:d.email||'',terms:'30 days',status:'Active'}]);
         }
-        const due=d.dueDate||(d.invoiceDate?new Date(new Date(d.invoiceDate).getTime()+30*864e5).toISOString().slice(0,10):'');
+        const due=d.dueDate||(()=>{const p=parseInvoiceDateFlexible(d.invoiceDate);return p?localIsoOf(new Date(p.y,p.m-1,p.d+30)):'';})();
         const matchedVendor=vendors.find(v=>v.id===vid);
         // Taxable value goes into the form (it was only put in the description before, so the form's
         // total came out as GST only), and the bill itself is attached — not just its file name.
@@ -2289,7 +2290,7 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
   const paymentTypeFor=(amt)=>paymentMode==='Auto'?(Number(amt)>=RTGS_THRESHOLD?'RTGS':'NEFT'):paymentMode;
   const [debitAccount,setDebitAccount]=useState(salon?.bankAccountNo||'');
   useEffect(()=>{setDebitAccount(salon?.bankAccountNo||'');},[salonId]);
-  const [valueDate,setValueDate]=useState(new Date().toISOString().slice(0,10));
+  const [valueDate,setValueDate]=useState(localTodayIso());
   // ── Custom layout (automation phase 3) — for a bank whose exact bulk-upload format isn't one
   // of the above: pick the columns, their order and header names, separator and payment-type
   // codes, once per outlet (kv salonos_bank_payment_layout_outlet_<id>). ──

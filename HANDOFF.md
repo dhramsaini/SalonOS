@@ -337,6 +337,15 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   header; Excel has no real watermark); P&L's own Excel exports stamped; payslips say DRAFT until Salary Working locked.
   **Smart App Control** blocks downloaded .bat files: tally-connector/install.ps1 + Settings box with a one-line
   PowerShell command (iex WebClient.DownloadString …/install.ps1) — same install, no downloaded file. Tested on this PC.
+· (v2026.09.30.28) Tally connector found automatically (tallyFindConnector probes localhost:9123–9126), token field only
+  when a connector answers 401, re-check every 15 s until Tally answers.
+· (v2026.09.30.29) **Glitch sweep**: localTodayIso()/localIsoOf() (js/01) replace 40× new Date().toISOString().slice(0,10)
+  (UTC = yesterday before 05:30 IST) and local-midnight→UTC conversions (registers month start/end were a day early,
+  front-desk add-days, daily-sales 7-day window, bank date presets, advance nextMonthFirst). Vendors isOverdue read
+  dd/mm due dates as mm/dd (new Date('07/10/2026') = 10 Jul) → parseInvoiceDateFlexible; AI-read bill due date same.
+  CDN scripts get crossorigin (index.html + loadScript) so client_errors shows real messages instead of "Script error.".
+  Bank Statement toolbar wraps on phones (was 65 px wider than a 375 px screen). local-test/smoke.html renders all 31
+  screens with sample data (?phone=1 for 375 px) and reports crashes / console errors / sideways overflow.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

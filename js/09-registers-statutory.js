@@ -74,7 +74,7 @@ function TallyExportSheet({salon,onNavTab}={}){
   const bankRows=useMemo(()=>loadBankStatementRows(salonId).filter(r=>r.debit||r.credit),[salonId,refreshTick]);
   const categories=useMemo(()=>Array.from(new Set(invoices.map(inv=>inv.category).filter(Boolean))).sort(),[invoices]);
   const gstTypesUsed=useMemo(()=>({igst:invoices.some(inv=>Number(inv.igst)>0),cgst:invoices.some(inv=>Number(inv.cgst)>0),sgst:invoices.some(inv=>Number(inv.sgst)>0)}),[invoices]);
-  const gstInputBlocked=!gstInputAllowedAsOf(salon,new Date().toISOString().slice(0,10));
+  const gstInputBlocked=!gstInputAllowedAsOf(salon,localTodayIso());
 
   const [map,setMap]=useState(()=>loadTallyLedgerMap(salonId));
   useEffect(()=>{setMap(loadTallyLedgerMap(salonId));},[salonId,refreshTick]);
@@ -1335,7 +1335,7 @@ function fundPositionAsOf(salonId,asOfIso,monthsBack){
 // a future date is picked up automatically by fundPositionAsOf's own invIso<=asOfIso check, so
 // re-projecting them here would double count. ──
 function fundPositionExpectedOutgo(salonId,asOfIso){
-  const todayIso=new Date().toISOString().slice(0,10);
+  const todayIso=localTodayIso();
   if(!(asOfIso>todayIso))return null; // nothing to project for today or a past date
   const todayD=new Date(todayIso+'T00:00:00');
   const asOfD=new Date(asOfIso+'T00:00:00');
@@ -1370,8 +1370,8 @@ function fundPositionExpectedOutgo(salonId,asOfIso){
   months.forEach(m=>{
     const swActual=swWorkingsFor(salonId,m.year,m.month).filter(e=>e.net>0);
     if(!swActual.length&&proxy){salary+=proxy.salary;incentive+=proxy.incentive;pf+=proxy.pf;esic+=proxy.esic;pt+=proxy.pt;}
-    const monthStartIso=new Date(m.year,m.month,1).toISOString().slice(0,10);
-    const monthEndIso=new Date(m.year,m.month+1,0).toISOString().slice(0,10);
+    const monthStartIso=localIsoOf(new Date(m.year,m.month,1));
+    const monthEndIso=localIsoOf(new Date(m.year,m.month+1,0));
     recurringActive.forEach(it=>{
       const amt=recurringExpenseMonthlyAmt(it,m.year,m.month,salonId);
       if(!amt)return;
@@ -1395,7 +1395,7 @@ function fundPositionExpectedOutgo(salonId,asOfIso){
 }
 function FundPositionReport({salon}={}){
   const salonId=salon?.id;
-  const [asOf,setAsOf]=useState(()=>new Date().toISOString().slice(0,10));
+  const [asOf,setAsOf]=useState(()=>localTodayIso());
   const [othersOpen,setOthersOpen]=useState(false);
   const [expectedOpen,setExpectedOpen]=useState(false);
   const [recBreakupOpen,setRecBreakupOpen]=useState(false);

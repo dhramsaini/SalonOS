@@ -15,7 +15,7 @@ function DueDateSheet({salon,onNavTab}={}){
   const [editItem,setEditItem]=useState(null);
   const [form,setForm]=useState(BLANK);
   const [showPayModal,setShowPayModal]=useState(null);
-  const [payForm,setPayForm]=useState({paidAmount:'',paidDate:new Date().toISOString().slice(0,10),ref:''});
+  const [payForm,setPayForm]=useState({paidAmount:'',paidDate:localTodayIso(),ref:''});
   // ── Match a payment against a Bank Statement debit transaction — same "🔗 Match from Bank
   // Statement" pattern Vendor Sheet uses, so marking something paid here can pull the real
   // amount/date/reference off what actually left the account instead of typing it in from
@@ -84,7 +84,7 @@ function DueDateSheet({salon,onNavTab}={}){
   const [paidTick,setPaidTick]=useState(0); // bump to force a re-render after an auto item's paid-override changes
   const fc=(k)=>(e)=>setForm(f=>({...f,[k]:e.target.value}));
   const nextId=()=>Math.max(0,...dueDates.map(d=>d.id))+1;
-  const openAdd=()=>{setForm({...BLANK,due:new Date().toISOString().slice(0,10)});setEditItem(null);setShowModal(true);};
+  const openAdd=()=>{setForm({...BLANK,due:localTodayIso()});setEditItem(null);setShowModal(true);};
   const openEdit=(d)=>{setForm({...d,amount:String(d.amount||'')});setEditItem(d);setShowModal(true);};
   const save=()=>{
     if(!form.type||!form.due){alert('Type and Due Date are required.');return;}
@@ -101,7 +101,7 @@ function DueDateSheet({salon,onNavTab}={}){
   const allItems=[...autoItems,...dueDates];
   const markPaid=(d)=>{
     setShowPayModal(d);
-    setPayForm({paidAmount:String(d.amount||''),paidDate:new Date().toISOString().slice(0,10),ref:''});
+    setPayForm({paidAmount:String(d.amount||''),paidDate:localTodayIso(),ref:''});
     setMatchedBankRowId(null);
     // Default: every employee not already Paid is pre-checked; already-Paid ones stay checked too
     // (informational — unchecking one would revert them to Not Paid on Confirm).
@@ -3866,7 +3866,7 @@ function BankStatement({salon,onNavTab}={}){
   const [addDIForm,setAddDIForm]=useState({date:'',amounts:{}}); // amounts: {category: '150', ...}
   const openAddDIEntry=(employeeId,employeeName,year,month)=>{
     const defaultDate=empPayRow?toISO(empPayRow.row.transactionDate):'';
-    setAddDIForm({date:defaultDate||new Date().toISOString().slice(0,10),amounts:Object.fromEntries(DAILY_INCENTIVE_CATEGORIES.map(c=>[c,'']))});
+    setAddDIForm({date:defaultDate||localTodayIso(),amounts:Object.fromEntries(DAILY_INCENTIVE_CATEGORIES.map(c=>[c,'']))});
     setAddDIRow({employeeId,employeeName,year,month});
   };
   const saveAddDIEntry=()=>{
@@ -4479,7 +4479,7 @@ function BankStatement({salon,onNavTab}={}){
       React.createElement('div',{className:'card'},
         React.createElement('div',{className:'section-header',style:{marginBottom:12}},
           React.createElement('div',{className:'card-title',style:{marginBottom:0}},'Imported Statement & Cradlee Mapping'),
-          React.createElement('div',{style:{display:'flex',gap:12,alignItems:'center'}},
+          React.createElement('div',{style:{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap',maxWidth:'100%'}},
             onNavTab&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Jump to Due Dates',onClick:()=>onNavTab('due-dates')},'📅 Due Dates'),
             cellRange.Toolbar(),
             React.createElement('div',{className:'search-bar',style:{maxWidth:320}},React.createElement('span',null,React.createElement(IconSearch,{size:13})),React.createElement('input',{value:search,onChange:e=>setSearch(e.target.value),placeholder:'Search transaction…'}))
@@ -4820,7 +4820,7 @@ function BankStatement({salon,onNavTab}={}){
       // practical for a running bank statement. ──
       if(col.type==='date'){
         const todayD=new Date();
-        const iso=(d)=>d.toISOString().slice(0,10);
+        const iso=(d)=>localIsoOf(d);
         const daysAgo=(n)=>{const d=new Date();d.setDate(d.getDate()-n);return iso(d);};
         const startOfWeek=()=>{const d=new Date();const day=d.getDay();d.setDate(d.getDate()-(day===0?6:day-1));return iso(d);};
         const startOfMonth=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01';};

@@ -1294,7 +1294,7 @@ async function tallyConnectorCall(cfg,path,xml){
 }
 async function tallyConnectorStatus(cfg){return JSON.parse(await tallyConnectorCall(cfg,'/status'));}
 // Finds the connector on this computer without anyone typing its address: the saved address first,
-// then the usual ones (localhost / 127.0.0.1, ports 9123–9126). Returns {url,status} or throws the
+// then localhost ports 9123–9126. Returns {url,status} or throws the
 // first address's error (e.g. notRunning, needsToken).
 async function tallyFindConnector(cfg){
   const saved=String(cfg.url||TALLY_CONNECTOR_DEFAULT).replace(/\/+$/,'');
@@ -1302,7 +1302,7 @@ async function tallyFindConnector(cfg){
   catch(first){
     if(!first.notRunning)throw first;
     const tries=[];
-    for(const host of ['localhost','127.0.0.1'])for(let port=9123;port<=9126;port++){const u='http://'+host+':'+port;if(u!==saved)tries.push(u);}
+    for(let port=9123;port<=9126;port++){const u='http://localhost:'+port;if(u!==saved)tries.push(u);} // the connector only listens on localhost
     const probe=async u=>{
       const ctl=typeof AbortController!=='undefined'?new AbortController():null;
       const t=setTimeout(()=>ctl&&ctl.abort(),2500);
@@ -3204,7 +3204,7 @@ async function tallySyncVouchers(salonId,cfg,opts){
   const vendors=loadVendors(salonId);
   const vName=id=>{const v=vendors.find(x=>x.id===id);return(map.vendors&&map.vendors[id])||(v?v.name:id);};
   const cName=cat=>(map.categories&&map.categories[cat])||cat;
-  const gstBlocked=!gstInputAllowedAsOf(salon,new Date().toISOString().slice(0,10));
+  const gstBlocked=!gstInputAllowedAsOf(salon,localTodayIso());
   const pend=tallyAutoSyncPending(salonId,o.from||'0000');
   const inTo=d=>!o.to||tallyIsoOf(d)<=o.to;
   let invs=pend.invs.filter(i=>inTo(i.bookingDate||i.invoiceDate));
