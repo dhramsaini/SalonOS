@@ -1739,6 +1739,19 @@ function isVariableRecurring(it){return !!it&&it.amountType==='Variable';}
 // and the bill only replaces the estimate, instead of the whole bill landing in one month on top of it.
 function isSpreadRecurring(it){return isVariableRecurring(it)||(RECURRING_PERIOD_MONTHS[it&&it.frequency]||1)>1;}
 function monthIndexOfIso(iso){const m=/^(\d{4})-(\d{2})/.exec(iso||'');return m?Number(m[1])*12+Number(m[2])-1:null;}
+// A bill's own period (YYYY-MM from / to) → {first,last,months} when it covers 2–24 months, else null.
+function billSplitMonths(periodFrom,periodTo){
+  const a=monthIndexOfIso(periodFrom),b=monthIndexOfIso(periodTo);
+  if(a==null||b==null||b<a||b-a>23)return null;
+  return{first:a,last:b,months:b-a+1};
+}
+// "₹4,300 ÷ 2 = ₹2,150 in each month: Aug 2026 ₹2,150 · Sep 2026 ₹2,150" (the last month takes the paisa rounding).
+function billSplitText(total,sp){
+  if(!sp||sp.months<2||!(total>0))return'';
+  const per=Math.round(total/sp.months*100)/100,last=Math.round((total-per*(sp.months-1))*100)/100;
+  const parts=[];for(let i=0;i<sp.months;i++)parts.push(monthLabelOfIndex(sp.first+i)+' '+rupee(i===sp.months-1?last:per));
+  return rupee(total)+' ÷ '+sp.months+' = '+rupee(per)+' in each month: '+parts.join(' · ');
+}
 function monthLabelOfIndex(i){return['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][((i%12)+12)%12]+' '+Math.floor(i/12);}
 function variableRecurringBills(it,salonId){
   const payee=String(it.payee||'').trim().toLowerCase();

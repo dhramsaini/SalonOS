@@ -94,6 +94,7 @@ function RecurringExpensesSheet({salon}={}){
     // Fixed non-monthly items (rent billed every 2/3/6/12 months): the bill's period ends in its own month.
     const last=(!isVariableRecurring(it)||it.billFor==='current')?bm:bm-1;return{from:ymOf(last-N+1),to:ymOf(last)};
   };
+  const [billReading,setBillReading]=useState(false);
   const openEnterBill=(it)=>{
     const today=localTodayIso();const p=defaultBillPeriod(it,today);
     setBillForm({billNo:'',billDate:today,periodFrom:p.from,periodTo:p.to,amount:'',gst:'',attachment:null,periodTouched:false});
@@ -463,6 +464,11 @@ function RecurringExpensesSheet({salon}={}){
             [['Fixed','Fixed — same every period'],['Variable','Variable — actual bill each period']].map(([v,l])=>React.createElement('label',{key:v,style:{display:'flex',alignItems:'center',gap:6,fontSize:12.5,cursor:'pointer'}},
               React.createElement('input',{type:'radio',name:'reAmountType',checked:(form.amountType||'Fixed')===v,onChange:()=>setForm(f=>({...f,amountType:v}))}),l))
           ),
+          // Utility bills that cover two months: say plainly how they will be split.
+          (/electric|water|gas|telephone|internet/i.test(String(form.expenseName||''))||(RECURRING_PERIOD_MONTHS[form.frequency]||1)>1)&&React.createElement('div',{className:'help-note',style:{marginTop:10}},
+            (RECURRING_PERIOD_MONTHS[form.frequency]||1)>1
+              ?'Each '+form.frequency+' bill is split equally over the months it covers'+(Number(form.amount)>0?' — e.g. '+billSplitText(Number(form.amount),{first:monthIndexOfIso(localTodayIso())-(RECURRING_PERIOD_MONTHS[form.frequency]||1)+1,last:monthIndexOfIso(localTodayIso()),months:RECURRING_PERIOD_MONTHS[form.frequency]||1}):'')+'. Enter each bill with “➕ Enter bill” → “📄 Read bill” reads the months from the bill.'
+              :'Electricity billed every 2 months? Set Frequency to Bi-Monthly and Amount to Variable — each bill’s net payable is then split equally between its two months (“📄 Read bill” reads the period from the bill).'),
           form.amountType==='Variable'&&React.createElement('div',{style:{marginTop:10}},
             React.createElement('div',{style:{display:'flex',gap:16,flexWrap:'wrap',alignItems:'center',marginBottom:6}},
               React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},'Each bill is for:'),
@@ -781,6 +787,28 @@ function RecurringExpensesSheet({salon}={}){
       React.createElement('div',{className:'modal',style:{width:560,maxWidth:'96vw'},onClick:e=>e.stopPropagation()},
         React.createElement('div',{className:'modal-title'},'Enter bill — '+displayName(billItem)),
         React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:14,lineHeight:1.6}},billItem.payee+' · '+billItem.frequency+' · saved as this payee’s invoice in Vendor Sheet (for payment) and spread over the months it covers on the P&L.'),
+        React.createElement('div',{style:{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',background:'var(--bg3)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12}},
+          React.createElement('input',{type:'file',accept:'image/*,.pdf',id:'re-bill-read',style:{display:'none'},onChange:async e=>{
+            const fl=e.target.files[0];e.target.value='';if(!fl)return;
+            readFileAsAttachment(fl,rec=>setBillForm(f=>({...f,attachment:rec})),()=>{});
+            setBillReading(true);
+            try{
+              const R=await aiReadBill(fl,vendors);
+              if(!R){toast('AI isn’t set up (or the file type isn’t supported) — the bill is attached; enter the details below.','info');}
+              else{
+                const gst=(Number(R.igst)||0)+(Number(R.cgst)||0)+(Number(R.sgst)||0);
+                const elec=billItem.expenseName==='Electricity Expenses';
+                const total=Number(R.amount)||0;
+                setBillForm(f=>({...f,billNo:R.invoiceNo||f.billNo,billDate:R.invoiceDate||f.billDate,
+                  amount:total?String(elec?total:Math.round((total-gst)*100)/100):f.amount,gst:elec?'':(gst?String(gst):f.gst),
+                  ...(R.periodFrom&&R.periodTo?{periodFrom:R.periodFrom,periodTo:R.periodTo,periodTouched:true}:{})}));
+                toast('Bill read'+(R.periodFrom&&R.periodTo?' — covers '+R.periodFrom+' to '+R.periodTo:'')+'. Check the figures before saving.','success');
+              }
+            }catch(err){toast('Could not read the bill: '+err.message,'error');}
+            setBillReading(false);
+          }}),
+          React.createElement('label',{htmlFor:'re-bill-read',className:'btn btn-primary btn-sm',style:{cursor:'pointer'}},billReading?'Reading…':'📄 Read bill (photo / PDF)'),
+          React.createElement('span',{style:{fontSize:11.5,color:'var(--text2)'}},'Fills the bill no., date, net payable and the months it covers — a bill for 2 months is split equally.')),
         React.createElement('div',{className:'form-row cols2'},
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Bill / Invoice No. *'),
             React.createElement('input',{className:'form-control',autoFocus:true,value:billForm.billNo,onChange:e=>setBillForm(f=>({...f,billNo:e.target.value})),placeholder:'e.g. EB-2026-0915'})),
@@ -805,7 +833,7 @@ function RecurringExpensesSheet({salon}={}){
           const months=(mi!=null&&mj!=null&&mj>=mi)?mj-mi+1:0;
           const tds=billItem.tdsApplicable?Math.round((Number(billForm.amount)||0)*(Number(billItem.tdsRate)||0)/100):0;
           return amt>0&&months>0&&React.createElement('div',{style:{fontSize:12,background:'rgba(47,95,224,0.08)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,lineHeight:1.7}},
-            'P&L: ₹'+Math.round(amt/months).toLocaleString('en-IN')+' in each of '+months+' month'+(months===1?'':'s')+' ('+monthLabelOfIndex(mi)+(months>1?' – '+monthLabelOfIndex(mj):'')+')',
+            months>1?'P&L: '+billSplitText(amt,{first:mi,last:mj,months}):'P&L: '+rupee(amt)+' in '+monthLabelOfIndex(mi),
             tds>0&&React.createElement('div',null,'TDS payable ₹'+tds.toLocaleString('en-IN')+' · Payable to '+billItem.payee+' ₹'+(amt-tds).toLocaleString('en-IN')));
         })(),
         React.createElement('div',{className:'form-group'},

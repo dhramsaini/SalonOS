@@ -838,7 +838,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
   const salonId=salon?.id;
   const BLANK_V={id:'',name:'',address:'',gst:'',cat:'Purchase of Cosmetic',contact:'',phone:'',terms:'30 days',status:'Active',tdsApplicable:false,tdsSection:'',tdsRate:'',
     bankName:'',accountNo:'',ifsc:'',accountHolder:'',email:''};
-  const BLANK_INV={vendorId:'',invoiceNo:'',invoiceDate:'',amount:'',dueDate:'',desc:'',attachment:null,docNature:'Tax Invoice',bookingDate:'',igst:'',cgst:'',sgst:'',roundOff:'',freight:'',linkedPI:'',category:'',assetLines:[],
+  const BLANK_INV={periodFrom:'',periodTo:'',vendorId:'',invoiceNo:'',invoiceDate:'',amount:'',dueDate:'',desc:'',attachment:null,docNature:'Tax Invoice',bookingDate:'',igst:'',cgst:'',sgst:'',roundOff:'',freight:'',linkedPI:'',category:'',assetLines:[],
     newVendorName:'',newVendorGst:'',newVendorPhone:'',newVendorTerms:'30 days'}; // new* = "+ Add New Vendor" from the invoice form
   const BLANK_PAY={invoiceId:null,editingPaymentId:null,paidAmount:'',paidDate:localTodayIso(),mode:'NEFT',ref:'',note:'',fromDailySales:false};
 
@@ -1865,6 +1865,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
           attachment:null,
           docNature:d.docNature||'Tax Invoice',bookingDate:d.bookingDate||d.invoiceDate||'',
           igst:d.igst||'',cgst:d.cgst||'',sgst:d.sgst||'',freight:d.freight||'',roundOff:d.roundOff||'',linkedPI:'',assetLines:[],
+          periodFrom:d.periodFrom||'',periodTo:d.periodTo||'', // bill period read from the bill — a bill for several months is split over them
           category:d.category||(addVendor?'Purchase of Cosmetic':(matchedVendor?matchedVendor.cat:''))});
         if(d._attachment)setInvForm(f=>({...f,attachment:d._attachment})); // already in cloud storage (WhatsApp bill)
         else if(d._file)readFileAsAttachment(d._file,rec=>setInvForm(f=>({...f,attachment:rec})),err=>toastError(err==='size'?'The bill is too large to attach (max 4MB) — attach a smaller copy.':'Could not attach the bill — please attach it again.'));
@@ -1987,6 +1988,21 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
             React.createElement('input',{className:'form-control',value:((Number(invForm.taxable)||0)+(Number(invForm.igst)||0)+(Number(invForm.cgst)||0)+(Number(invForm.sgst)||0)+(Number(invForm.freight)||0)+(Number(invForm.roundOff)||0)).toLocaleString('en-IN'),disabled:true,style:{opacity:0.85,fontWeight:700,color:'var(--accent)'}}))
         ),
         React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:-6,marginBottom:14}},'Auto-calculated: Taxable Value + IGST + CGST + SGST + Freight + Round Off'),
+        invForm.docNature!=='Performa Invoice'&&(()=>{
+          const tot=(Number(invForm.taxable)||0)+(Number(invForm.igst)||0)+(Number(invForm.cgst)||0)+(Number(invForm.sgst)||0)+(Number(invForm.freight)||0)+(Number(invForm.roundOff)||0);
+          const sp=billSplitMonths(invForm.periodFrom,invForm.periodTo);
+          const on=!!(invForm.periodFrom||invForm.periodTo);
+          const two=()=>{const p=parseInvoiceDateFlexible(invForm.invoiceDate);if(!p)return;const cur=p.y*12+p.m-1;const ym=i=>Math.floor(i/12)+'-'+String(i%12+1).padStart(2,'0');setInvForm(f=>({...f,periodFrom:ym(cur-1),periodTo:ym(cur)}));};
+          return React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'10px 12px',marginBottom:14}},
+            React.createElement('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:12.5,fontWeight:600,cursor:'pointer'}},
+              React.createElement('input',{type:'checkbox',checked:on,onChange:e=>{if(e.target.checked)two();else setInvForm(f=>({...f,periodFrom:'',periodTo:''}));}}),
+              'Bill covers more than one month (e.g. a 2-month electricity bill) — split it equally in the P&L'),
+            on&&React.createElement('div',{style:{display:'flex',gap:10,flexWrap:'wrap',alignItems:'flex-end',marginTop:8}},
+              React.createElement('div',{className:'form-group',style:{marginBottom:0}},React.createElement('label',null,'From month'),React.createElement('input',{type:'month',className:'form-control',value:invForm.periodFrom,onChange:ic('periodFrom')})),
+              React.createElement('div',{className:'form-group',style:{marginBottom:0}},React.createElement('label',null,'To month'),React.createElement('input',{type:'month',className:'form-control',value:invForm.periodTo,onChange:ic('periodTo')}))),
+            on&&React.createElement('div',{style:{fontSize:12,marginTop:8,color:sp?'var(--text)':'var(--orange)',lineHeight:1.6}},
+              sp?(sp.months>1?(tot>0?'P&L: '+billSplitText(tot,sp):'P&L: the bill total will be split equally over '+sp.months+' months ('+monthLabelOfIndex(sp.first)+' – '+monthLabelOfIndex(sp.last)+').'):'One month — the whole bill goes in '+monthLabelOfIndex(sp.first)+'.'):'Choose the From and To months printed on the bill (To can’t be before From).'));
+        })(),
         React.createElement('div',{className:'form-row cols2'},
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-96'},'Due Date'),React.createElement('input',{id:'f-96',type:'date',className:'form-control',value:invForm.dueDate,onChange:ic('dueDate')}))
         ),

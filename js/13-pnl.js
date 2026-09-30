@@ -2742,6 +2742,16 @@ async function aiReadBill(file,vendors){
 }
 // The ai function's read_bill answer → the fields InvoiceIntake reviews (also used for bills that
 // arrived on WhatsApp, which the server has already read).
+function billMonthsFromDates(start,end){
+  const re=/^(\d{4})-(\d{2})-(\d{2})$/;const a=re.exec(start||''),b=re.exec(end||'');
+  if(!a||!b)return null;
+  const s=new Date(+a[1],+a[2]-1,+a[3]),e=new Date(+b[1],+b[2]-1,+b[3]);
+  const days=Math.round((e-s)/864e5)+1;if(!(days>=20&&days<=400))return null;
+  const n=Math.max(1,Math.round(days/30.44));
+  const m=new Date(e.getFullYear(),e.getMonth(),e.getDate()-15),last=m.getFullYear()*12+m.getMonth(),first=last-n+1;
+  const ym=i=>Math.floor(i/12)+'-'+String(i%12+1).padStart(2,'0');
+  return{from:ym(first),to:ym(last),months:n};
+}
 function aiBillToIntake(data,vendors){
   const R={conf:{},raw:'Read by AI ('+(data.provider?data.provider+' · ':'')+(data.model||'')+').'+(data.notes?'\nNotes from the AI: '+data.notes:'')+'\n\n'+JSON.stringify(data,null,2)};
   const put=(k,v)=>{if(v!==''&&v!=null&&!(typeof v==='number'&&v===0)){R[k]=v;R.conf[k]='ai';}};
@@ -2751,6 +2761,10 @@ function aiBillToIntake(data,vendors){
   ['taxable','igst','cgst','sgst','freight','roundOff'].forEach(k=>put(k,Number(data[k])||0));
   put('amount',Number(data.total)||0);put('desc',data.description);
   if(/^\d{4}-\d{2}$/.test(data.periodFrom||''))R.periodFrom=data.periodFrom;if(/^\d{4}-\d{2}$/.test(data.periodTo||''))R.periodTo=data.periodTo;
+  // A printed billing period (e.g. 12/07/2026 – 11/09/2026) decides the months: as many as the days
+  // make up (62 days → 2), ending in the month where the period mostly falls (end date − 15 days).
+  const pm=billMonthsFromDates(data.periodStartDate,data.periodEndDate);
+  if(pm){R.periodFrom=pm.from;R.periodTo=pm.to;R.periodDates=data.periodStartDate+' – '+data.periodEndDate;}
   R.docNature=data.docNature||'Tax Invoice';
   if(R.gst&&typeof gstValid==='function'&&gstValid(R.gst))R.conf.gst='high';
   R.aiCategory=data.category||'';R.aiNotes=data.notes||'';

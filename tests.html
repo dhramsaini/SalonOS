@@ -297,6 +297,21 @@
         eq('Statement header account number is read',bankAccountNoFromHeader([['HDFC BANK Ltd'],['Account No :','50200012345678'],['Statement From','01/09/2026']]),'50200012345678');
       }catch(err){results.push({name:'Bank ledger',ok:false,got:String(err&&err.message||err),want:'no error'});}
       try{
+        // A 2-month electricity bill entered in Vendor Sheet with its period is split equally in the P&L.
+        saveVendors([{id:'V1',name:'BSES',cat:'Electricity Expenses'}],907);
+        saveVendorInvoices([{id:'E1',vendorId:'V1',invoiceNo:'EB-9',invoiceDate:'15/09/2026',category:'Electricity Expenses',amount:4301,periodFrom:'2026-07',periodTo:'2026-08',payments:[]},
+          {id:'E2',vendorId:'V1',invoiceNo:'EB-8',invoiceDate:'10/09/2026',category:'Electricity Expenses',amount:1000,payments:[]}],907);
+        const m=mo=>Math.round(vendorInvoiceCategorySumFor(907,2026,mo,'Electricity Expenses')*100)/100;
+        eq('Bill for 2 months: half in each month it covers, a normal bill stays in its own month',[m(6),m(7),m(8),m(9)],[2150.5,2150.5,1000,0]);
+        eq('Split text',billSplitText(4300,billSplitMonths('2026-08','2026-09')),'₹4,300 ÷ 2 = ₹2,150 in each month: Aug 2026 ₹2,150 · Sep 2026 ₹2,150');
+      }catch(err){results.push({name:'Bill split',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
+        const f=(a,b)=>{const r=billMonthsFromDates(a,b);return r?r.from+'..'+r.to+'/'+r.months:null;};
+        eq('Electricity period dates to months (2-month cycles mid-month, 1 month, whole months)',
+          [f('2026-07-12','2026-09-11'),f('2026-07-20','2026-09-19'),f('2026-07-01','2026-08-31'),f('2026-08-05','2026-09-04'),f('2026-09-01','2026-09-03')],
+          ['2026-07..2026-08/2','2026-08..2026-09/2','2026-07..2026-08/2','2026-08..2026-08/1',null]);
+      }catch(err){results.push({name:'Bill months',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
         const mod={};new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});

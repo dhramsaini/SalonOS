@@ -292,6 +292,8 @@ const BILL_SCHEMA = {
     dueDate: { type: "string", description: "YYYY-MM-DD, or empty" },
     periodFrom: { type: "string", description: "For utility/rent bills: first month billed, YYYY-MM, or empty" },
     periodTo: { type: "string", description: "For utility/rent bills: last month billed, YYYY-MM, or empty" },
+    periodStartDate: { type: "string", description: "Utility bills (electricity, water, phone): billing / reading period START date exactly as printed, YYYY-MM-DD, or empty" },
+    periodEndDate: { type: "string", description: "Utility bills: billing / reading period END date exactly as printed, YYYY-MM-DD, or empty" },
     taxable: { type: "number", description: "Total taxable value (before GST); 0 if not shown" },
     igst: { type: "number" },
     cgst: { type: "number" },
@@ -304,7 +306,7 @@ const BILL_SCHEMA = {
     notes: { type: "string", description: "Anything unclear or unreadable on the bill; empty if all clear" },
   },
   required: ["supplierName", "supplierGstin", "supplierPhone", "supplierEmail", "docNature", "invoiceNo", "invoiceDate", "dueDate",
-    "periodFrom", "periodTo", "taxable", "igst", "cgst", "sgst", "freight", "roundOff", "total", "category", "description", "notes"],
+    "periodFrom", "periodTo", "periodStartDate", "periodEndDate", "taxable", "igst", "cgst", "sgst", "freight", "roundOff", "total", "category", "description", "notes"],
   additionalProperties: false,
 };
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];

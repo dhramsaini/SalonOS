@@ -989,6 +989,14 @@ function vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName,exclude
     const vendor=vendorsList.find(v=>v.id===inv.vendorId);
     const effectiveCat=inv.category||(vendor?vendor.cat:'');
     if(effectiveCat!==categoryName)return;
+    const sp=typeof billSplitMonths==='function'?billSplitMonths(inv.periodFrom,inv.periodTo):null;
+    if(sp&&sp.months>1){
+      // A bill for several months (e.g. a 2-month electricity bill) — an equal share in each month it covers.
+      const t=year*12+month;if(t<sp.first||t>sp.last)return;
+      out.push({vendorName:vendor?vendor.name:'(vendor deleted)',invoiceDate:inv.invoiceDate,
+        invoiceNo:(inv.invoiceNo||'—')+' ('+(t-sp.first+1)+' of '+sp.months+' months)',docNature:inv.docNature,amount:Math.round(amount/sp.months*100)/100});
+      return;
+    }
     const iso=toISO(inv.invoiceDate);
     if(!iso)return;
     const d=new Date(iso+'T00:00:00');

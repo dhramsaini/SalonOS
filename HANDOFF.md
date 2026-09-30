@@ -383,6 +383,13 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   - phones: tabs 40 px, small buttons 36 px, inputs 40 px (not inside tables).
   - numbers: ~350 toLocaleString() → 'en-IN' (Indian grouping on any browser); rupee(n) helper "-₹1,32,837" replaces
     192 '₹'+x.toLocaleString() spots (was "₹-132,837").
+· (v2026.09.30.37) **Bills covering several months split equally** (e.g. 2-month electricity): Vendor Sheet bill form
+  has "Bill covers more than one month" (periodFrom/periodTo on the invoice; AI fills it) with the split shown
+  (billSplitText); P&L (vendorInvoiceCategoryBreakupFor) spreads such bills equally over their months. Recurring
+  "Enter bill" has 📄 Read bill (aiReadBill → no., date, net payable, months; attaches the file). AI read_bill also
+  returns periodStartDate/periodEndDate; billMonthsFromDates turns 12 Jul–11 Sep into Jul+Aug (months = days/30.44,
+  ending in the month of end−15 days). Add Recurring Expense shows a split hint for utilities / non-monthly items.
+  ai function REDEPLOYED. Tests 90.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.
