@@ -18,17 +18,20 @@
     Cloud  - run this on the cloud / remote desktop where Tally runs, and open SalonOS there too;
              or keep Tally's port reachable over your VPN and use -TallyHost with its address.
   Options: -TallyPort 9000  -Port 9123  -Token <secret>  (SalonOS must then send the same token)
+           -Background  (used by Install-SalonOS-Tally-Connector.bat: runs hidden at Windows start-up;
+                         quietly exits if a connector is already running)
 #>
 param(
   [string]$TallyHost = '127.0.0.1',
   [int]$TallyPort = 9000,
   [int]$Port = 9123,
   [string]$Token = '',
+  [switch]$Background,
   [string[]]$AllowOrigin = @('https://digitalca.co.in','https://www.digitalca.co.in','http://localhost:8765','http://127.0.0.1:8765')
 )
 
 $ErrorActionPreference = 'Stop'
-$version = '1.0'
+$version = '1.1'
 $tallyUrl = "http://$($TallyHost):$TallyPort"
 $prefix = "http://localhost:$Port/"   # 'localhost' needs no administrator rights on Windows
 
@@ -73,6 +76,7 @@ function Invoke-Tally([string]$xml) {
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add($prefix)
 try { $listener.Start() } catch {
+  if ($Background) { exit 0 }   # already running (e.g. started by hand) - nothing to do
   Write-Line "Could not start on port $Port - is the connector already running in another window? ($($_.Exception.Message))" 'Red'
   Read-Host 'Press Enter to close'; exit 1
 }
@@ -103,7 +107,7 @@ while ($listener.IsListening) {
     if ($req.HttpMethod -eq 'GET' -and ($path -eq '' -or $path -eq '/status')) {
       $tallyOk = $false; $err = ''
       try { $null = Invoke-Tally '<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>SalonOSPing</ID></HEADER><BODY><DESC><TDL><TDLMESSAGE><COLLECTION NAME="SalonOSPing" ISINITIALIZE="Yes"><TYPE>Company</TYPE><FETCH>NAME</FETCH></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>'; $tallyOk = $true } catch { $err = $_.Exception.Message }
-      Send-Reply $ctx 200 (ConvertTo-JsonText @{ ok = $true; connector = $version; tally = $tallyUrl; tallyReachable = $tallyOk; error = $err })
+      Send-Reply $ctx 200 (ConvertTo-JsonText @{ ok = $true; connector = $version; tally = $tallyUrl; tallyReachable = $tallyOk; error = $err; background = [bool]$Background })
       continue
     }
     if ($req.HttpMethod -eq 'POST' -and $path -eq '/tally') {

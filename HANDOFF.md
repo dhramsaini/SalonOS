@@ -310,6 +310,13 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   mapped supplier names; `tallyBankCounterparty` (linked bill → Nature → name match → Suspense) + TALLY_NATURE_LEDGERS
   (Cash Deposit = Contra); `tallyExtraLedgers` feeds Masters XML/sync (Round Off, bank-type ledgers, Suspense).
   Tests 80. Local visual check: local-test/tally-preview.html (sample data + pretend Tally, git-excluded).
+· (v2026.09.30.23) **Tally connector installs once and starts with Windows, on any computer**: tally-connector/
+  Install-SalonOS-Tally-Connector.bat (per user, no admin; asks for the Tally PC's IP or Enter = this PC; downloads the latest
+  connector from digitalca.co.in — falls back to the copy beside it — into %LOCALAPPDATA%\SalonOS\TallyConnector, stops any
+  running copy, adds a Startup-folder shortcut running it hidden with -Background, starts it and checks /status) and
+  Uninstall-SalonOS-Tally-Connector.bat. Connector 1.1: `-Background` switch (quiet exit if the port is taken), /status
+  reports `background`. Settings tab: "Install connector" primary button, installed state shown; old .bat under "Run without
+  installing". Tested on this PC: install, simulated start-up via the shortcut, uninstall, reinstall. (preview: ?real=1)
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.
