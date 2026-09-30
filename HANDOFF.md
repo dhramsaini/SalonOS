@@ -283,6 +283,12 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   `recurringExpenseMonthlyAmt` (amount ÷ N). `recurringExpenseMonthlySumFor` and the annexure raw total skip them, and their
   bills are in `used`, so a bill is never counted whole in one month on top of the estimate. "➕ Enter bill" and the P&L
   annexure detail cover them too. Tests: 74.
+· (v2026.09.30.18) Chrome/Edge never let a site open the whole Downloads folder ("contains system files"): the folder
+  auto-import (Bank Statement, Collection Reco) now asks for a folder INSIDE Downloads (Bank Statements / Cradlee Exports)
+  with steps on the card; Bank Statement "📄 Choose file" uses showOpenFilePicker({startIn:'downloads'}).
+· (v2026.09.30.19) 9th video guide `bank-statement` (add account → period → open bank site → download → Choose file →
+  result → tags/Auto-Link → optional folder), guides/bank-statement_en|hi.mp4; "🎬 Video: import from start" button in the
+  Bank Statement cards' guide buttons.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

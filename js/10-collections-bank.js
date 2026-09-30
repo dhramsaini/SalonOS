@@ -2779,6 +2779,7 @@ function BankStatement({salon,onNavTab}={}){
   const [acctForm,setAcctForm]=useState(null); // null, or the account being added/edited
   const [guideLang,setGuideLang]=useState(null); // 'en' | 'hi' while the walkthrough is open
   const guideButtons=React.createElement('span',{style:{display:'inline-flex',gap:6,flexWrap:'wrap'}},
+    React.createElement(GuideVideoButton,{id:'bank-statement',label:'🎬 Video: import from start'}),
     React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 10px'},onClick:()=>setGuideLang('en')},'▶ Watch how it works'),
     React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 10px'},onClick:()=>setGuideLang('hi')},'▶ हिंदी में देखें'));
   const [waitSince,setWaitSince]=useState(0);
