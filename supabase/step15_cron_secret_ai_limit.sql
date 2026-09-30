@@ -16,30 +16,44 @@ insert into public.app_secrets (name, value, meta)
 values ('cron_secret', replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),'{"use":"x-salonos-cron header for pg_cron → edge functions"}'::jsonb)
 on conflict (name) do nothing;
 
+-- Re-create only the jobs that exist now (the report jobs are absent until email reports are set up;
+-- run step4 and then this file again when they are).
 create extension if not exists pg_net;
-select cron.unschedule(jobid) from cron.job
- where jobname in ('salonos-automation', 'salonos-report-daily', 'salonos-report-monthly');
-
--- Nightly checks, 21:00 IST.
-select cron.schedule('salonos-automation', '30 15 * * *', $$
-  select net.http_post(url := 'https://cuvcxxjbcmctsajhctju.supabase.co/functions/v1/automation',
-                       body := '{"kind":"nightly"}'::jsonb,
-                       headers := jsonb_build_object('Content-Type', 'application/json',
-                         'x-salonos-cron', (select value from public.app_secrets where name = 'cron_secret')))
-$$);
--- Reports: nightly 22:00 IST, monthly on the 1st at 09:00 IST.
-select cron.schedule('salonos-report-daily', '30 16 * * *', $$
-  select net.http_post(url := 'https://cuvcxxjbcmctsajhctju.supabase.co/functions/v1/salonos-reports',
-                       body := '{"kind":"daily"}'::jsonb,
-                       headers := jsonb_build_object('Content-Type', 'application/json',
-                         'x-salonos-cron', (select value from public.app_secrets where name = 'cron_secret')))
-$$);
-select cron.schedule('salonos-report-monthly', '30 3 1 * *', $$
-  select net.http_post(url := 'https://cuvcxxjbcmctsajhctju.supabase.co/functions/v1/salonos-reports',
-                       body := '{"kind":"monthly"}'::jsonb,
-                       headers := jsonb_build_object('Content-Type', 'application/json',
-                         'x-salonos-cron', (select value from public.app_secrets where name = 'cron_secret')))
-$$);
+do $do$
+declare
+  had_auto boolean := exists (select 1 from cron.job where jobname = 'salonos-automation');
+  had_daily boolean := exists (select 1 from cron.job where jobname = 'salonos-report-daily');
+  had_monthly boolean := exists (select 1 from cron.job where jobname = 'salonos-report-monthly');
+begin
+  perform cron.unschedule(jobid) from cron.job
+   where jobname in ('salonos-automation', 'salonos-report-daily', 'salonos-report-monthly');
+  -- Nightly checks, 21:00 IST.
+  if had_auto then
+    perform cron.schedule('salonos-automation', '30 15 * * *', $job$
+      select net.http_post(url := 'https://cuvcxxjbcmctsajhctju.supabase.co/functions/v1/automation',
+                           body := '{"kind":"nightly"}'::jsonb,
+                           headers := jsonb_build_object('Content-Type', 'application/json',
+                             'x-salonos-cron', (select value from public.app_secrets where name = 'cron_secret')))
+    $job$);
+  end if;
+  -- Reports: nightly 22:00 IST, monthly on the 1st at 09:00 IST.
+  if had_daily then
+    perform cron.schedule('salonos-report-daily', '30 16 * * *', $job$
+      select net.http_post(url := 'https://cuvcxxjbcmctsajhctju.supabase.co/functions/v1/salonos-reports',
+                           body := '{"kind":"daily"}'::jsonb,
+                           headers := jsonb_build_object('Content-Type', 'application/json',
+                             'x-salonos-cron', (select value from public.app_secrets where name = 'cron_secret')))
+    $job$);
+  end if;
+  if had_monthly then
+    perform cron.schedule('salonos-report-monthly', '30 3 1 * *', $job$
+      select net.http_post(url := 'https://cuvcxxjbcmctsajhctju.supabase.co/functions/v1/salonos-reports',
+                           body := '{"kind":"monthly"}'::jsonb,
+                           headers := jsonb_build_object('Content-Type', 'application/json',
+                             'x-salonos-cron', (select value from public.app_secrets where name = 'cron_secret')))
+    $job$);
+  end if;
+end $do$;
 
 -- ── 2. Daily AI limit ─────────────────────────────────────────────────────
 create table if not exists public.ai_usage (
@@ -65,5 +79,5 @@ end $$;
 revoke all on function public.salonos_ai_bump(uuid) from public, anon, authenticated;
 
 select 'STEP15 ok, secret=' || (select count(*) from public.app_secrets where name = 'cron_secret')
-       || ', jobs=' || (select count(*) from cron.job where jobname in ('salonos-automation', 'salonos-report-daily', 'salonos-report-monthly'))
+       || ', jobs with secret=' || (select count(*) from cron.job where jobname in ('salonos-automation', 'salonos-report-daily', 'salonos-report-monthly') and command like '%x-salonos-cron%')
        || ', ai_usage rls=' || (select relrowsecurity::text from pg_class where oid = 'public.ai_usage'::regclass) as result;
