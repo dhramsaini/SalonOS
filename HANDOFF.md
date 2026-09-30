@@ -295,6 +295,11 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   {from,to,append}) keeps only that period, always appends with the existing duplicate check; heading row found by
   `findCradleeHeaderRow` (Center Name + InvoiceDate in the first 30 rows, any sheet); only dated rows (2000–2099) kept.
   Tested on two real Cradlee exports. 10th video guide `cradlee` (guides/cradlee_en|hi.mp4), button on the card.
+· (v2026.09.30.21) **Staff Work Report the same way** (StaffReportSheet, js/11): card "Get the Staff Work Report from Cradlee"
+  — month, "🔗 Open Cradlee" (watch the connected folder 20 min), "📄 Choose file" (opens in Downloads). One report per month:
+  a new export replaces that month's rows (latest wins). parseCSVText now uses parseCSVToRows (quoted commas) and finds the
+  EmpId/Emp_Name heading in the first 30 rows; Total lines dropped. Folder card fixed to "a folder inside Downloads".
+  Tested on two real exports (17 then 14 rows, replaced). 11th video guide `staff-report`.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

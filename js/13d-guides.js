@@ -135,6 +135,28 @@ const STAFF_GUIDES=[
      en:{t:'7. Optional: import by itself',s:'Want it automatic? Connect a folder inside Downloads named Cradlee Exports and save the report there — after you press Open Cradlee, SalonOS imports the new export by itself.'},
      hi:{t:'7. वैकल्पिक: अपने-आप इम्पोर्ट',s:'अपने-आप चाहिए? Downloads के अंदर Cradlee Exports नाम का फ़ोल्डर जोड़ें और रिपोर्ट वहीं सेव करें — Open Cradlee दबाने के बाद SalonOS नई रिपोर्ट अपने-आप इम्पोर्ट कर लेगा।'}}]},
 
+  {id:'staff-report',icon:'👥',who:{en:'Accounts · Salon Manager',hi:'अकाउंट्स · सैलून मैनेजर'},
+   title:{en:'Importing the Staff Work Report from Cradlee',hi:'Cradlee से स्टाफ़ वर्क रिपोर्ट इम्पोर्ट करना'},
+   scenes:[
+    {icon:'👥',mock:[[['Your outlet']],[['Staff Work Report',1]],[['Month'],['August 2026',1]]],
+     en:{t:'1. Open Staff Work Report and choose the month',s:'Open your outlet and the Staff Work Report tab. In the card Get the Staff Work Report from Cradlee, choose the month.'},
+     hi:{t:'1. Staff Work Report खोलें और महीना चुनें',s:'अपना आउटलेट खोलें और Staff Work Report टैब चुनें। Get the Staff Work Report from Cradlee वाले कार्ड में महीना चुनें।'}},
+    {icon:'🔐',mock:[[['🔗 Open Cradlee',1]],[['🔒 app.cradleesoft.com'],['Login']]],
+     en:{t:'2. Open Cradlee and log in there',s:'Press Open Cradlee. Cradlee opens in a new tab — log in there as usual. Your Cradlee password is only ever typed on Cradlee’s own site.'},
+     hi:{t:'2. Cradlee खोलें और वहीं लॉगिन करें',s:'Open Cradlee दबाएँ। Cradlee नए टैब में खुलेगा — वहीं हमेशा की तरह लॉगिन करें। आपका Cradlee पासवर्ड सिर्फ़ Cradlee की अपनी साइट पर लिखा जाता है।'}},
+    {icon:'⬇️',mock:[[['Reports'],['Staff Work Report',1]],[['01/08/2026 – 31/08/2026']],[['Export Excel',1]]],
+     en:{t:'3. Export the Staff Work Report',s:'In Cradlee open Reports, then Staff Work Report, choose the same month and export it as Excel or CSV. It is saved in your Downloads folder.'},
+     hi:{t:'3. Staff Work Report एक्सपोर्ट करें',s:'Cradlee में Reports, फिर Staff Work Report खोलें, वही महीना चुनें और Excel या CSV में एक्सपोर्ट करें। फ़ाइल आपके Downloads फ़ोल्डर में सेव होती है।'}},
+    {icon:'📄',mock:[[['📄 Choose file',1]],[['Downloads'],['Staff Work Report.csv',1]],[['Open',1]]],
+     en:{t:'4. Back in SalonOS: Choose file',s:'Come back to SalonOS and press Choose file. It opens straight in Downloads — pick the report you just exported and press Open.'},
+     hi:{t:'4. SalonOS में वापस: Choose file',s:'SalonOS पर वापस आएँ और Choose file दबाएँ। यह सीधे Downloads में खुलता है — अभी एक्सपोर्ट की हुई रिपोर्ट चुनें और Open दबाएँ।'}},
+    {icon:'✅',mock:[[['Loaded 12 staff records for August 2026',1]],[['replaces the earlier import for this month']]],
+     en:{t:'5. Check the staff rows',s:'Each staff member’s sales, targets and customers appear for that month. A new export for the same month replaces the earlier one, so a month-so-far report can be imported again and again. These figures feed Incentive Working.'},
+     hi:{t:'5. स्टाफ़ की एंट्री जाँचें',s:'हर स्टाफ़ की उस महीने की सेल, टारगेट और ग्राहक दिखते हैं। उसी महीने की नई रिपोर्ट पुरानी की जगह ले लेती है, इसलिए महीने की अब तक की रिपोर्ट बार-बार इम्पोर्ट की जा सकती है। ये आँकड़े Incentive Working में जाते हैं।'}},
+    {icon:'⚡',mock:[[['📂 Connect a folder inside Downloads',1]],[['Downloads › New folder › Cradlee Exports']]],
+     en:{t:'6. Optional: import by itself',s:'Want it automatic? Connect a folder inside Downloads named Cradlee Exports and save the report there — after you press Open Cradlee, SalonOS imports the new export by itself.'},
+     hi:{t:'6. वैकल्पिक: अपने-आप इम्पोर्ट',s:'अपने-आप चाहिए? Downloads के अंदर Cradlee Exports नाम का फ़ोल्डर जोड़ें और रिपोर्ट वहीं सेव करें — Open Cradlee दबाने के बाद SalonOS नई रिपोर्ट अपने-आप इम्पोर्ट कर लेगा।'}}]},
+
   {id:'whatsapp',icon:'💬',who:{en:'All staff',hi:'सारा स्टाफ़'},
    title:{en:'Sending bills on WhatsApp',hi:'WhatsApp पर बिल भेजना'},
    scenes:[

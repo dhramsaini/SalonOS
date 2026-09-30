@@ -1317,15 +1317,20 @@ function StaffReportSheet({period,salon}={}){
     const blob=new Blob(['\uFEFF'+csv],{type:'text/csv'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='StaffWorkReport_Template.csv';a.click();URL.revokeObjectURL(url);
   };
 
+  // A real CSV reader (a name or designation with a comma in it no longer shifts every column), and the
+  // heading row is wherever EmpId / Emp_Name appear in the first 30 rows (an export may start with a
+  // title or date-range block). Summary lines without an employee are left out.
   const parseCSVText=(text)=>{
-    const lines=(text||'').trim().split(/\r?\n/).filter(l=>l.trim());
-    if(lines.length<2){setParseMsg('No data rows found.');return 0;}
-    const hdr=lines[0].split(',').map(h=>h.replace(/"/g,'').trim());
-    const parsed=lines.slice(1).map(line=>{
-      const v=line.split(',').map(c=>c.replace(/"/g,'').trim());
-      const obj={};hdr.forEach((h,i)=>obj[h]=v[i]||'');
+    const raw=parseCSVToRows(String(text||'').replace(/^\uFEFF/,''));
+    const norm=v=>String(v==null?'':v).toLowerCase().replace(/[^a-z]/g,'');
+    let hi=raw.slice(0,30).findIndex(r=>(r||[]).map(norm).some(x=>x==='empid'||x==='empname'));
+    if(hi<0)hi=0;
+    if(raw.length-hi<2){setParseMsg('No data rows found.');return 0;}
+    const hdr=(raw[hi]||[]).map(h=>String(h||'').replace(/^\uFEFF/,'').trim());
+    const parsed=raw.slice(hi+1).map(v=>{
+      const obj={};hdr.forEach((h,i)=>{if(h)obj[h]=v[i]!=null?String(v[i]).trim():'';});
       return obj;
-    }).filter(r=>r['EmpId']||r['Emp_Name']);
+    }).filter(r=>(r['EmpId']||r['Emp_Name'])&&!/^(total|grand total)$/i.test(String(r['Emp_Name']||r['EmpId']).trim()));
     setReports(parsed);setSelected(new Set());
     return parsed.length;
   };
@@ -1412,7 +1417,7 @@ function StaffReportSheet({period,salon}={}){
       lastAutoRef.current=tag;
       safeLocalSet(outletKey('salonos_staffreport_last_auto',salonId),tag);
       setParseMsg('Loaded '+n+' staff records.');
-      setAutoStatus('Auto-imported "'+best.file.name+'" from your Downloads folder.');
+      setAutoStatus('Auto-imported "'+best.file.name+'" from your connected folder.');
       setDirNeedsPermission(false);
     }catch(err){
       setAutoStatus('Auto-import check failed: '+err.message);
@@ -1434,7 +1439,7 @@ function StaffReportSheet({period,salon}={}){
   const disconnectDownloads=async()=>{
     try{await fsIdbDelete(outletKey('staffReportDir',salonId));}catch(e){}
     setDirHandle(null);setDirNeedsPermission(false);
-    setAutoStatus('Disconnected from Downloads folder.');
+    setAutoStatus('Disconnected from the folder.');
   };
 
   const checkNow=async()=>{
@@ -1449,6 +1454,76 @@ function StaffReportSheet({period,salon}={}){
       await scanAndAutoImport(dirHandle);
     }catch(err){setAutoStatus('Check failed: '+err.message);}
   };
+
+  // ── "Get the Staff Work Report from Cradlee" — same flow as Collection Summary and Bank Statement:
+  // choose the month, "Open Cradlee" (then the connected folder is watched every 3 s for 20 minutes and
+  // the new export is imported by itself), or "📄 Choose file" (opens in Downloads). The report is one
+  // per month, so a new export for a month replaces that month's earlier import (latest wins). ──
+  const CRADLEE_LOGIN_URL='https://app.cradleesoft.com/app/login';
+  const [sWait,setSWait]=useState(0);
+  const [sWatch,setSWatch]=useState('');
+  const [sStatus,setSStatus]=useState({text:'',bad:false});
+  const monthLabel=(()=>{const m=/^(\d{4})-(\d{2})$/.exec(selMonth||'');return m?['January','February','March','April','May','June','July','August','September','October','November','December'][+m[2]-1]+' '+m[1]:selMonth;})();
+  const importStaffFile=async(f)=>{
+    if(!f)return;
+    setSWait(0);setSWatch('');
+    try{
+      const had=reports.length;
+      const n=await loadWorkbookFile(f);
+      const msg=n?'Loaded '+n+' staff record'+(n===1?'':'s')+' for '+monthLabel+' from "'+f.name+'"'+(had?' — replaces the '+had+' imported earlier for this month.':'.'):'No staff rows found in "'+f.name+'" — check it is the Staff Work Report (EmpId / Emp_Name columns).';
+      setParseMsg(msg);setSStatus({text:msg,bad:!n});
+    }catch(e){setSStatus({text:'Import failed: '+(e.message||e),bad:true});}
+  };
+  const openCradleeStaff=async()=>{
+    window.open(CRADLEE_LOGIN_URL,'_blank','noopener,noreferrer'); // first, while the click still allows pop-ups
+    setSWait(Date.now()-3000);
+    if(dirHandle){try{let perm=await dirHandle.queryPermission({mode:'read'});if(perm!=='granted')perm=await dirHandle.requestPermission({mode:'read'});setDirNeedsPermission(perm!=='granted');}catch(e){}}
+    setSStatus({text:'Cradlee opened in a new tab. Log in, open Reports → Staff Work Report, choose '+monthLabel+' and export it as Excel or CSV. '+(dirHandle?'Save it in your connected folder and this page imports it by itself.':'Then come back and press 📄 Choose file (it opens in Downloads).'),bad:false});
+  };
+  const sFileRef=useRef(null);
+  const chooseStaffFile=async()=>{
+    if(typeof window.showOpenFilePicker==='function'){
+      try{
+        const [h]=await window.showOpenFilePicker({id:'staff-report-file',startIn:'downloads',multiple:false,
+          types:[{description:'Cradlee Staff Work Report',accept:{'application/vnd.ms-excel':['.xls'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx'],'text/csv':['.csv']}}]});
+        if(h)await importStaffFile(await h.getFile());
+        return;
+      }catch(err){if(err&&err.name==='AbortError')return;}
+    }
+    sFileRef.current&&sFileRef.current.click();
+  };
+  useEffect(()=>{
+    if(!sWait||!dirHandle)return;
+    let stop=false,busy=false,known=null;
+    const tick=async()=>{
+      if(stop||busy)return;
+      if(Date.now()-sWait>20*60*1000){setSWait(0);setSWatch('');setSStatus({text:'Stopped waiting for the Cradlee export (20 minutes). Click "Open Cradlee" again when ready, or use "Choose file".',bad:true});return;}
+      busy=true;
+      try{
+        if(await dirHandle.queryPermission({mode:'read'})!=='granted'){setDirNeedsPermission(true);setSWatch('Folder access needs to be allowed again — click "🔓 Allow folder access".');return;}
+        const names=new Set();for await(const e of dirHandle.values()){if(e.kind==='file')names.add(e.name);}
+        if(!known){known=names;setSWatch('Watching folder "'+dirHandle.name+'" for the new Staff Work Report…');return;}
+        const fresh=[];
+        for(const n of names){
+          if(known.has(n)||!/\.(xlsx|xls|csv)$/i.test(n))continue;
+          try{const f=await (await dirHandle.getFileHandle(n)).getFile();if(f.size>0)fresh.push(f);}catch(e){}
+        }
+        if(fresh.length&&!stop){
+          stop=true;
+          const file=fresh.sort((a,b)=>b.lastModified-a.lastModified)[0];
+          await importStaffFile(file);
+          lastAutoRef.current=file.name+'|'+file.lastModified;
+          safeLocalSet(outletKey('salonos_staffreport_last_auto',salonId),lastAutoRef.current);
+          return;
+        }
+        setSWatch('Watching folder "'+dirHandle.name+'" — no new export yet (checked '+new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+'). If it was saved somewhere else, use "Choose file".');
+      }catch(e){setSWatch('');setSStatus({text:'Could not read the connected folder: '+e.message,bad:true});}
+      finally{busy=false;}
+    };
+    const t=setInterval(tick,3000);tick();
+    return()=>{stop=true;clearInterval(t);};
+    // eslint-disable-next-line
+  },[sWait,dirHandle]);
 
   const numCols=['Salary','Target','ServiceSale','MemberShipSale','ProductSale','PackageSale','TotalSale','Invoice Count','Total Customer','New Customer','Existing Customer'];
   const pctCols=['Target achieved in (%)'];
@@ -1469,7 +1544,7 @@ function StaffReportSheet({period,salon}={}){
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('input',{type:'month',className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(e.target.value)}),
-        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>window.open('https://app.cradleesoft.com/app/login','_blank','noopener,noreferrer')},'🔗 Open Cradlee eSoft Login'),
+        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openCradleeStaff},'🔗 Open Cradlee eSoft Login'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:downloadTemplate},'⬇ Download Template'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'}},'⬇ Export'),
         selected.size>0&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,.15)',border:'1px solid rgba(255,107,107,.4)',color:'var(--red)',fontWeight:600},onClick:deleteSelected},'🗑 Delete Selected ('+selected.size+')'),
@@ -1479,15 +1554,24 @@ function StaffReportSheet({period,salon}={}){
 
     subTab==='report'&&React.createElement('div',{className:'card',style:{marginBottom:16,background:'rgba(74,158,255,0.06)',border:'1px solid rgba(74,158,255,0.25)'}},
       React.createElement('div',{style:{display:'flex',gap:12,alignItems:'flex-start'}},
-        React.createElement('div',{style:{fontSize:20}},'💡'),
-        React.createElement('div',null,
-          React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)',marginBottom:4}},'How to bring in your Cradlee Staff Work Report'),
-          React.createElement('div',{style:{fontSize:12,color:'var(--text2)',lineHeight:1.8}},
-            '1. Click \u201cOpen Cradlee eSoft Login\u201d above and sign in to your account.',React.createElement('br'),
-            '2. In Cradlee, go to Reports → Staff Work Report and export it as CSV or Excel.',React.createElement('br'),
-            '3. Come back here and drop the exported file in the upload box below, or connect your Downloads folder once so it\u2019s picked up automatically.'
-          ),
-          React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:8}},'Note: a direct, one-click pull from Cradlee isn\u2019t possible \u2014 their platform doesn\u2019t offer a public API/export link that a browser-based app can call on your behalf, so the export-then-upload step above is needed.')
+        React.createElement('div',{style:{fontSize:20}},'📥'),
+        React.createElement('div',{style:{flex:1,minWidth:260}},
+          React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:4}},
+            React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)'}},'Get the Staff Work Report from Cradlee'),
+            React.createElement(GuideVideoButton,{id:'staff-report',label:'🎬 Video: import from Cradlee'})),
+          React.createElement('div',{style:{fontSize:12,color:'var(--text2)',lineHeight:1.7,marginBottom:8}},
+            'Choose the month, click "Open Cradlee", log in there and export Reports → Staff Work Report for that month (Excel or CSV). '+(dirHandle?'SalonOS picks the export up from your connected folder by itself':'Then press 📄 Choose file — it opens in Downloads')+'. A new export for a month replaces that month’s earlier import, so a “month so far” report can be brought in as often as you like. Your Cradlee login is only ever typed on Cradlee’s own site.'),
+          React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+            React.createElement('label',{style:{fontSize:12,color:'var(--text2)'}},'Month'),
+            React.createElement('input',{type:'month',className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(e.target.value)}),
+            React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openCradleeStaff},'🔗 Open Cradlee'),
+            React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Pick the exported report yourself — opens in Downloads',onClick:chooseStaffFile},'📄 Choose file'),
+            React.createElement('input',{ref:sFileRef,type:'file',accept:'.xlsx,.xls,.csv',style:{display:'none'},onChange:e=>{const f=e.target.files&&e.target.files[0];e.target.value='';importStaffFile(f);}}),
+            sWait>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setSWait(0);setSWatch('');setSStatus({text:'Stopped waiting.',bad:false});}},'Stop waiting')),
+          sWait>0&&dirHandle&&React.createElement('div',{style:{fontSize:12,color:'var(--accent2)',marginTop:8,lineHeight:1.6}},'⏳ '+(sWatch||'Watching your connected folder…'),
+            dirNeedsPermission&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:8,fontSize:11,padding:'2px 8px'},onClick:async()=>{try{const p=await dirHandle.requestPermission({mode:'read'});setDirNeedsPermission(p!=='granted');}catch(e){}}},'🔓 Allow folder access')),
+          sStatus.text&&React.createElement('div',{style:{marginTop:8,fontSize:12,color:sStatus.bad?'var(--red)':'var(--green)',lineHeight:1.6}},sStatus.text),
+          React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:8}},'Cradlee has no public link for a website to pull reports from, so you export the report yourself — SalonOS does everything after that.')
         )
       )
     ),
@@ -1496,17 +1580,17 @@ function StaffReportSheet({period,salon}={}){
       React.createElement('div',{style:{display:'flex',gap:12,alignItems:'flex-start',flexWrap:'wrap'}},
         React.createElement('div',{style:{fontSize:20}},'⚡'),
         React.createElement('div',{style:{flex:1,minWidth:260}},
-          React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)',marginBottom:4}},'Auto-Import from your Downloads folder'),
+          React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)',marginBottom:4}},'Auto-Import from a folder inside Downloads'),
           !fsSupported?React.createElement('div',{style:{fontSize:12,color:'var(--text2)',lineHeight:1.7}},
             'This browser doesn\u2019t support folder watching (works in Chrome/Edge desktop only). Please use the upload box below instead.'
           ):React.createElement(React.Fragment,null,
             React.createElement('div',{style:{fontSize:12,color:'var(--text2)',lineHeight:1.7,marginBottom:8}},
               !dirHandle
-                ?'Connect your Downloads folder once. From then on, every time a Cradlee Staff Work Report export lands there, this page can pick it up automatically \u2014 no manual browsing.'
+                ?'Chrome and Edge don’t let websites open the whole Downloads folder (“contains system files”). Click Connect, then in Downloads click New folder, name it Cradlee Exports, open it and click Select folder — once. Save Cradlee exports there, and from then on this page picks them up automatically — no manual browsing.'
                 :'Connected. Click "Check Now" any time after exporting from Cradlee, or just reopen this tab \u2014 it checks automatically on load.'
             ),
             React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
-              !dirHandle?React.createElement('button',{className:'btn btn-primary btn-sm',onClick:connectDownloads},'📂 Connect Downloads Folder'):
+              !dirHandle?React.createElement('button',{className:'btn btn-primary btn-sm',onClick:connectDownloads},'📂 Connect a folder inside Downloads'):
               React.createElement(React.Fragment,null,
                 React.createElement('button',{className:'btn btn-primary btn-sm',disabled:autoBusy,onClick:checkNow},autoBusy?'Checking…':(dirNeedsPermission?'🔓 Reconnect & Check':'🔄 Check Now')),
                 React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:disconnectDownloads},'Disconnect')
