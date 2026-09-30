@@ -289,6 +289,12 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
 · (v2026.09.30.19) 9th video guide `bank-statement` (add account → period → open bank site → download → Choose file →
   result → tags/Auto-Link → optional folder), guides/bank-statement_en|hi.mp4; "🎬 Video: import from start" button in the
   Bank Statement cards' guide buttons.
+· (v2026.09.30.20) **Cradlee import like the bank's** (CollectionReco, js/10): card "Get the Collection Report from Cradlee" —
+  period (quick picks / From-To), "🔗 Open Cradlee" (opens app.cradleesoft.com login, then watches the connected folder every 3 s
+  for 20 min for a new .xlsx/.xls/.csv and imports it), "📄 Choose file" (showOpenFilePicker startIn downloads). loadWorkbook(file,
+  {from,to,append}) keeps only that period, always appends with the existing duplicate check; heading row found by
+  `findCradleeHeaderRow` (Center Name + InvoiceDate in the first 30 rows, any sheet); only dated rows (2000–2099) kept.
+  Tested on two real Cradlee exports. 10th video guide `cradlee` (guides/cradlee_en|hi.mp4), button on the card.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

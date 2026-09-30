@@ -415,6 +415,13 @@ async function fsIdbDelete(key){
   });
 }
 
+// Row index of the Cradlee report's heading row (the one with Center Name and InvoiceDate) in the first
+// 30 rows of a sheet read as arrays, or -1.
+function findCradleeHeaderRow(raw){
+  const n=v=>String(v==null?'':v).toLowerCase().replace(/[^a-z]/g,'');
+  for(let i=0;i<Math.min(30,(raw||[]).length);i++){const cells=(raw[i]||[]).map(n);if(cells.includes('centername')&&cells.includes('invoicedate'))return i;}
+  return -1;
+}
 function CollectionReco({salon,onNavTab}={}){
   const salonId=salon?.id;
   const csWrapRef=useRef(null);
@@ -779,6 +786,93 @@ function CollectionReco({salon,onNavTab}={}){
     }catch(err){setAutoStatus('Check failed: '+err.message);}
   };
 
+  // ── "Get the Collection Report from Cradlee" — same flow as Bank Statement: pick the period, open
+  // Cradlee, export the Collection Report; the new file is imported by itself from the connected folder
+  // (checked every 3 s for 20 minutes), or with "📄 Choose file" (opens in Downloads). Only that period
+  // is kept and rows already imported are skipped. ──
+  const CRADLEE_LOGIN_URL='https://app.cradleesoft.com/app/login';
+  const cIso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const cToday=new Date();
+  const [cFrom,setCFrom]=useState(()=>cIso(new Date(cToday.getFullYear(),cToday.getMonth(),1)));
+  const [cTo,setCTo]=useState(()=>cIso(cToday));
+  const [cWait,setCWait]=useState(0);
+  const [cWatch,setCWatch]=useState('');
+  const [cStatus,setCStatus]=useState({text:'',bad:false});
+  const loadWorkbookRef=useRef(null);
+  const cPendingRef=useRef(false);
+  const cQuick=[
+    ['Yesterday',()=>{const d=new Date(cToday);d.setDate(d.getDate()-1);setCFrom(cIso(d));setCTo(cIso(d));}],
+    ['Last 7 days',()=>{const d=new Date(cToday);d.setDate(d.getDate()-6);setCFrom(cIso(d));setCTo(cIso(cToday));}],
+    ['This month',()=>{setCFrom(cIso(new Date(cToday.getFullYear(),cToday.getMonth(),1)));setCTo(cIso(cToday));}],
+    ['Last month',()=>{setCFrom(cIso(new Date(cToday.getFullYear(),cToday.getMonth()-1,1)));setCTo(cIso(new Date(cToday.getFullYear(),cToday.getMonth(),0)));}],
+    ['This FY',()=>{const y=cToday.getMonth()>=3?cToday.getFullYear():cToday.getFullYear()-1;setCFrom(cIso(new Date(y,3,1)));setCTo(cIso(cToday));}],
+  ];
+  const cRange=()=>cFrom.split('-').reverse().join('/')+' to '+cTo.split('-').reverse().join('/');
+  const openCradlee=async()=>{
+    if(cFrom>cTo){setCStatus({text:'From date must be on or before To date.',bad:true});return;}
+    window.open(CRADLEE_LOGIN_URL,'_blank','noopener,noreferrer'); // first, while the click still allows pop-ups
+    setCWait(Date.now()-3000);
+    if(dirHandle){try{let perm=await dirHandle.queryPermission({mode:'read'});if(perm!=='granted')perm=await dirHandle.requestPermission({mode:'read'});setDirNeedsPermission(perm!=='granted');}catch(e){}}
+    setCStatus({text:'Cradlee opened in a new tab. Log in, open Reports → Collection Report, choose '+cRange()+' and export it as Excel or CSV. '+(dirHandle?'Save it in your connected folder and this page imports it by itself.':'Then come back and press 📄 Choose file (it opens in Downloads).'),bad:false});
+  };
+  const importCradleeFile=async(f)=>{
+    if(!f)return;
+    setCWait(0);setCWatch('');
+    setCStatus({text:'Importing "'+f.name+'"…',bad:false});
+    cPendingRef.current=true;
+    await loadWorkbookRef.current(f,{from:cFrom,to:cTo,append:true});
+  };
+  const cFileRef=useRef(null);
+  const chooseCradleeFile=async()=>{
+    if(typeof window.showOpenFilePicker==='function'){
+      try{
+        const [h]=await window.showOpenFilePicker({id:'cradlee-report-file',startIn:'downloads',multiple:false,
+          types:[{description:'Cradlee Collection Report',accept:{'application/vnd.ms-excel':['.xls'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx'],'text/csv':['.csv']}}]});
+        if(h)await importCradleeFile(await h.getFile());
+        return;
+      }catch(err){if(err&&err.name==='AbortError')return;}
+    }
+    cFileRef.current&&cFileRef.current.click();
+  };
+  useEffect(()=>{
+    if(!cPendingRef.current||!message)return;
+    cPendingRef.current=false;
+    setCStatus({text:message,bad:/failed|no day rows|no new rows/i.test(message)});
+    // eslint-disable-next-line
+  },[message]);
+  useEffect(()=>{
+    if(!cWait||!dirHandle)return;
+    let stop=false,busy=false,known=null;
+    const tick=async()=>{
+      if(stop||busy)return;
+      if(Date.now()-cWait>20*60*1000){setCWait(0);setCWatch('');setCStatus({text:'Stopped waiting for the Cradlee export (20 minutes). Click "Open Cradlee" again when ready, or use "Choose file".',bad:true});return;}
+      busy=true;
+      try{
+        if(await dirHandle.queryPermission({mode:'read'})!=='granted'){setDirNeedsPermission(true);setCWatch('Folder access needs to be allowed again — click "🔓 Allow folder access".');return;}
+        const names=new Set();for await(const e of dirHandle.values()){if(e.kind==='file')names.add(e.name);}
+        if(!known){known=names;setCWatch('Watching folder "'+dirHandle.name+'" for the new Cradlee export…');return;}
+        const fresh=[];
+        for(const n of names){
+          if(known.has(n)||!/\.(xlsx|xls|csv)$/i.test(n))continue;
+          try{const f=await (await dirHandle.getFileHandle(n)).getFile();if(f.size>0)fresh.push(f);}catch(e){}
+        }
+        if(fresh.length&&!stop){
+          stop=true;
+          const file=fresh.sort((a,b)=>b.lastModified-a.lastModified)[0];
+          await importCradleeFile(file);
+          lastAutoRef.current=file.name+'|'+file.lastModified;
+          safeLocalSet(outletKey('salonos_cradlee_last_auto',salonId),lastAutoRef.current);
+          return;
+        }
+        setCWatch('Watching folder "'+dirHandle.name+'" — no new export yet (checked '+new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+'). If it was saved somewhere else, use "Choose file".');
+      }catch(e){setCWatch('');setCStatus({text:'Could not read the connected folder: '+e.message,bad:true});}
+      finally{busy=false;}
+    };
+    const t=setInterval(tick,3000);tick();
+    return()=>{stop=true;clearInterval(t);};
+    // eslint-disable-next-line
+  },[cWait,dirHandle]);
+
   const clean=(v)=>{
     if(v===undefined||v===null||v==='')return 0;
     const n=Number(String(v).replace(/[₹,\s]/g,''));
@@ -843,38 +937,55 @@ function CollectionReco({salon,onNavTab}={}){
     return{id:Date.now()+idx,centerName:String(center||'').trim(),invoiceDate:normalizeDate(date,swap),cash,card,upi,wallet,district,luzo,online,total,calculatedTotal,isValid:hasSuppliedTotal?suppliedTotal===calculatedTotal:true};
   };
 
-  const loadWorkbook=async(file)=>{
+  // opts (from the "Get the Collection Report from Cradlee" card): {from,to} ISO dates to keep only that
+  // period, append:true to always add (duplicates skipped) instead of following the Replace/Append toggle.
+  const loadWorkbook=async(file,opts)=>{
     setMessage('');setFileName(file.name);
     try{
-      let json;
+      let raw;
       if(isCSVFile(file)){
         // Parse CSV ourselves — keeps every date cell as exact original text.
-        const text=await file.text();
-        const raw=parseCSVToRows(text);
-        if(!raw.length)throw new Error('The selected file has no data rows.');
-        const headerRow=raw[0].map(h=>String(h||'').trim());
-        json=raw.slice(1)
-          .map(r=>{const obj={};headerRow.forEach((h,ci)=>{if(h)obj[h]=r[ci]!==undefined?r[ci]:'';});return obj;})
-          .filter(o=>Object.values(o).some(v=>String(v).trim()!==''));
+        raw=parseCSVToRows(await file.text());
       }else{
         if(!window.XLSX)throw new Error('Excel reader could not load. Please check your internet connection and reopen the file.');
         const buf=await file.arrayBuffer();
         const wb=XLSX.read(buf,{type:'array',cellDates:true});
-        const ws=wb.Sheets[wb.SheetNames[0]];
-        json=XLSX.utils.sheet_to_json(ws,{defval:'',raw:true});
+        // The sheet that has the Center Name + InvoiceDate headings (a report may have a cover sheet).
+        const sheets=wb.SheetNames.map(n=>XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:'',raw:true}));
+        raw=sheets.find(r=>findCradleeHeaderRow(r)>=0)||sheets[0]||[];
       }
+      if(!raw.length)throw new Error('The selected file has no data rows.');
+      // Cradlee's own export can start with a title / centre / date-range block — the heading row is
+      // wherever Center Name and InvoiceDate appear (first 30 rows), not necessarily row 1.
+      const hi=Math.max(0,findCradleeHeaderRow(raw));
+      const headerRow=(raw[hi]||[]).map(h=>String(h||'').trim());
+      const json=raw.slice(hi+1)
+        .map(r=>{const obj={};headerRow.forEach((h,ci)=>{if(h)obj[h]=r[ci]!==undefined?r[ci]:'';});return obj;})
+        .filter(o=>Object.values(o).some(v=>String(v).trim()!==''));
       if(!json.length)throw new Error('The selected file has no data rows.');
       const headers=Object.keys(json[0]);
       const missing=MANDATORY.filter(h=>!headers.some(x=>String(x).trim().toLowerCase()===h.toLowerCase()));
       if(missing.length)throw new Error('Missing required columns: '+missing.join(', '));
       const missingOptional=REQUIRED.filter(h=>!MANDATORY.includes(h)&&!headers.some(x=>String(x).trim().toLowerCase()===h.toLowerCase()));
       const dateSwap=inferDateSwap(json,['InvoiceDate','Invoice Date','invoice date']);
-      const imported=json.map((r,i)=>mapRow(r,i,dateSwap)).filter(r=>r.centerName||r.invoiceDate||r.total);
-      const note=missingOptional.length?' · '+missingOptional.join(', ')+' column'+(missingOptional.length===1?' wasn\u2019t':'s weren\u2019t')+' in this file, treated as ₹0.':'';
+      let imported=json.map((r,i)=>mapRow(r,i,dateSwap)).filter(r=>r.centerName||r.invoiceDate||r.total);
+      // Only real day rows: a proper date (year 2000–2099). Grand-total / summary lines are left out.
+      const before=imported.length;
+      imported=imported.filter(r=>{const m=/^\d{2}\/\d{2}\/(\d{4})$/.exec(r.invoiceDate||'');return !!m&&+m[1]>=2000&&+m[1]<=2099;});
+      const skippedLines=before-imported.length;
+      let periodNote='';
+      if(opts&&opts.from&&opts.to){
+        const iso=d=>{const m=String(d||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);return m?m[3]+'-'+m[2]+'-'+m[1]:'';};
+        const n0=imported.length;
+        imported=imported.filter(r=>{const d=iso(r.invoiceDate);return d>=opts.from&&d<=opts.to;});
+        if(n0!==imported.length)periodNote=' · '+(n0-imported.length)+' row'+(n0-imported.length===1?'':'s')+' outside '+opts.from.split('-').reverse().join('/')+'–'+opts.to.split('-').reverse().join('/')+' left out';
+      }
+      if(!imported.length)throw new Error('No day rows'+(opts&&opts.from?' for '+opts.from.split('-').reverse().join('/')+'–'+opts.to.split('-').reverse().join('/'):'')+' in this file — check the report’s dates and that it has Center Name and InvoiceDate columns.');
+      const note=(skippedLines?' · '+skippedLines+' total/summary line'+(skippedLines===1?'':'s')+' ignored':'')+periodNote+(missingOptional.length?' · '+missingOptional.join(', ')+' column'+(missingOptional.length===1?' wasn\u2019t':'s weren\u2019t')+' in this file, treated as ₹0.':'');
       // Append mode: add only rows that don't already match one on every field (same center,
       // date, and every amount column) — guards against a Cradlee export that re-covers an
       // overlapping date range, the normal case when pulling "month so far" reports repeatedly.
-      if(importMode==='append'&&rows.length){
+      if((importMode==='append'||(opts&&opts.append))&&rows.length){
         const dedupeKey=(r)=>[r.centerName,r.invoiceDate,r.cash,r.card,r.upi,r.wallet,r.district,r.luzo,r.online,r.total].join('|');
         const existingKeys=new Set(rows.map(dedupeKey));
         const freshOnes=imported.filter(r=>!existingKeys.has(dedupeKey(r)));
@@ -894,6 +1005,7 @@ function CollectionReco({salon,onNavTab}={}){
     }catch(err){setMessage('Import failed: '+err.message);}
   };
 
+  loadWorkbookRef.current=loadWorkbook;
   const onFile=(e)=>{const f=e.target.files&&e.target.files[0];if(f)loadWorkbook(f);e.target.value='';};
   const onDrop=(e)=>{e.preventDefault();setDragging(false);const f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f)loadWorkbook(f);};
   const downloadTemplate=()=>{
@@ -1051,7 +1163,7 @@ function CollectionReco({salon,onNavTab}={}){
         React.createElement('div',{className:'page-sub'},'Import the Cradlee Collection Report in the prescribed format')
       ),
       React.createElement('div',{className:'quick-actions'},
-        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>window.open('https://app.cradleesoft.com/app/login','_blank','noopener,noreferrer')},'🔗 Open Cradlee eSoft Login'),
+        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openCradlee},'🔗 Open Cradlee eSoft Login'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:downloadTemplate},'⬇ Download Template'),
         rows.length>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:exportData},'⬇ Export Imported Data'),
         selected.size>0&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,.15)',border:'1px solid rgba(255,107,107,.4)',color:'var(--red)',fontWeight:600},onClick:deleteSelected},'🗑 Delete Selected ('+selected.size+')'),
@@ -1061,15 +1173,27 @@ function CollectionReco({salon,onNavTab}={}){
 
     React.createElement('div',{className:'card',style:{marginBottom:16,background:'rgba(74,158,255,0.06)',border:'1px solid rgba(74,158,255,0.25)'}},
       React.createElement('div',{style:{display:'flex',gap:12,alignItems:'flex-start'}},
-        React.createElement('div',{style:{fontSize:20}},'💡'),
-        React.createElement('div',null,
-          React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)',marginBottom:4}},'How to bring in your Cradlee Collection Report'),
-          React.createElement('div',{style:{fontSize:12,color:'var(--text2)',lineHeight:1.8}},
-            '1. Click "Open Cradlee eSoft Login" above and sign in to your account.',React.createElement('br'),
-            '2. In Cradlee, go to Reports → Collection Report and export it as Excel or CSV.',React.createElement('br'),
-            '3. Come back here and drop the exported file in the upload zone below — it will be auto-matched to the required format.'
-          ),
-          React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:8}},'Note: a direct, one-click pull from Cradlee isn\u2019t possible \u2014 their platform doesn\u2019t offer a public API/export link that a browser-based app can call on your behalf, so the export-then-upload step above is needed.')
+        React.createElement('div',{style:{fontSize:20}},'📥'),
+        React.createElement('div',{style:{flex:1,minWidth:260}},
+          React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:4}},
+            React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)'}},'Get the Collection Report from Cradlee'),
+            React.createElement(GuideVideoButton,{id:'cradlee',label:'🎬 Video: import from Cradlee'})),
+          React.createElement('div',{style:{fontSize:12,color:'var(--text2)',lineHeight:1.7,marginBottom:8}},
+            'Pick the period, click "Open Cradlee", log in there and export Reports → Collection Report for the same dates (Excel or CSV). '+(dirHandle?'SalonOS picks the export up from your connected folder by itself':'Then press 📄 Choose file — it opens in Downloads')+' — only that period is kept, and rows already imported are skipped. Your Cradlee login is only ever typed on Cradlee’s own site.'),
+          React.createElement('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}},cQuick.map(([t,fn])=>React.createElement('button',{key:t,className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 9px'},onClick:fn},t))),
+          React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+            React.createElement('label',{style:{fontSize:12,color:'var(--text2)'}},'From'),
+            React.createElement('input',{type:'date',className:'form-control',style:{width:'auto'},value:cFrom,max:cTo,onChange:e=>setCFrom(e.target.value)}),
+            React.createElement('label',{style:{fontSize:12,color:'var(--text2)'}},'To'),
+            React.createElement('input',{type:'date',className:'form-control',style:{width:'auto'},value:cTo,min:cFrom,max:cIso(cToday),onChange:e=>setCTo(e.target.value)}),
+            React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openCradlee},'🔗 Open Cradlee'),
+            React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Pick the exported report yourself — opens in Downloads (same period filter and duplicate check)',onClick:chooseCradleeFile},'📄 Choose file'),
+            React.createElement('input',{ref:cFileRef,type:'file',accept:'.xlsx,.xls,.csv',style:{display:'none'},onChange:e=>{const f=e.target.files&&e.target.files[0];e.target.value='';importCradleeFile(f);}}),
+            cWait>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setCWait(0);setCWatch('');setCStatus({text:'Stopped waiting.',bad:false});}},'Stop waiting')),
+          cWait>0&&dirHandle&&React.createElement('div',{style:{fontSize:12,color:'var(--accent2)',marginTop:8,lineHeight:1.6}},'⏳ '+(cWatch||'Watching your connected folder…'),
+            dirNeedsPermission&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:8,fontSize:11,padding:'2px 8px'},onClick:async()=>{try{const p=await dirHandle.requestPermission({mode:'read'});setDirNeedsPermission(p!=='granted');}catch(e){}}},'🔓 Allow folder access')),
+          cStatus.text&&React.createElement('div',{style:{marginTop:8,fontSize:12,color:cStatus.bad?'var(--red)':'var(--green)',lineHeight:1.6}},cStatus.text),
+          React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:8}},'Cradlee has no public link for a website to pull reports from, so you export the report yourself — SalonOS does everything after that.')
         )
       )
     ),
