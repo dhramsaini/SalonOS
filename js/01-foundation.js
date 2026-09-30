@@ -532,7 +532,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.09.30.23';
+const APP_VERSION='2026.09.30.24';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
@@ -632,7 +632,13 @@ function notifyCloudSessionLost(){try{window.dispatchEvent(new Event('salonos-se
 function notifyCloudDataChanged(keys){
   try{window.dispatchEvent(new CustomEvent('salonos-cloud-data',{detail:{keys}}));}catch(e){}
 }
+// Settings that belong to this browser only — never sent to or taken from the cloud. The
+// in-browser auto-backup is a copy of everything this login can see (a Super Admin's includes
+// every outlet and the salonos_secret_* settings), and keys without an outlet number are readable
+// by every signed-in user, so it must stay on this device. The theme is each person's own choice.
+const DEVICE_ONLY_KEYS=new Set(['salonos_autobackup_snapshot','salonos_autobackup_enabled','salonos_theme']);
 function applyCloudValue(key,value){
+  if(DEVICE_ONLY_KEYS.has(key))return;
   try{localStorage.setItem(key,value);}catch(e){}
   _lsReadCache[key]=value;
 }
@@ -777,6 +783,7 @@ async function externalizeAttachments(key){
 }
 // Pushes this browser's current value for one key, merged with whatever is in the cloud now.
 async function cloudPushKey(key){
+  if(DEVICE_ONLY_KEYS.has(key))return;
   const{supa,session}=await _cloudSession();
   if(!session){notifyCloudSessionLost();throw new Error('Not signed in');}
   for(let attempt=0;attempt<6;attempt++){
@@ -826,7 +833,7 @@ async function cloudPushKey(key){
 function queueCloudPush(key,value,delay){
   // Nothing written before the initial pull finishes is a real edit — it's a screen saving back the
   // stale cached copy it just loaded — so it must never be pushed or marked pending.
-  if(!CLOUD_SYNC_ENABLED||key===CLOUD_PENDING_KEY||!_cloudSyncReady)return;
+  if(!CLOUD_SYNC_ENABLED||key===CLOUD_PENDING_KEY||DEVICE_ONLY_KEYS.has(key)||!_cloudSyncReady)return;
   markCloudPending(key,true);
   _cloudDirty.add(key);
   refreshCloudStatus();
@@ -920,11 +927,24 @@ function migrateInlineAttachments(){
 // Removes documents nothing points to any more (employee deleted, attachment replaced). A file is
 // kept while current data OR any kept backup still references it, so restores keep working, and
 // for 7 days after upload regardless. Runs at most once a day, from a Super Admin's browser.
+// Every kv_store row the caller may read. The API returns at most 1000 rows per request, so a plain
+// select quietly stops at 1000 — read in pages (ordered by key) until a short page comes back.
+async function kvSelectAll(supa,cols,notNull){
+  const out=[];
+  for(let from=0;;from+=1000){
+    let q=supa.from('kv_store').select(cols);
+    if(notNull)q=q.not('value','is',null);
+    const{data,error}=await q.order('key').range(from,from+999);
+    if(error)return{data:null,error};
+    out.push(...(data||[]));
+    if(!data||data.length<1000)return{data:out,error:null};
+  }
+}
 async function cleanupUnusedFiles(){
   const supa=await getSupabaseClient();
   const refs=new Set();
   const add=s=>{(String(s||'').match(/sbfile:[^"\\]+/g)||[]).forEach(r=>refs.add(r.slice(SBFILE_PREFIX.length)));};
-  const{data:kv,error:e1}=await supa.from('kv_store').select('value').not('value','is',null);
+  const{data:kv,error:e1}=await kvSelectAll(supa,'key,value',true);
   if(e1)throw e1;
   kv.forEach(r=>add(r.value));
   const{data:bk,error:e2}=await supa.from('kv_backups').select('data');
@@ -987,7 +1007,7 @@ function retryDirtyCloudKeys(){
 // while someone is typing or has a form open). cloudCheckForUpdates just looks (cheap: key +
 // updated_at only) and announces; cloudApplyUpdates downloads and writes, then the caller remounts.
 async function _cloudChangedKeys(supa){
-  const{data:stamps,error}=await supa.from('kv_store').select('key,updated_at');
+  const{data:stamps,error}=await kvSelectAll(supa,'key,updated_at');
   if(error)throw error;
   // Keys with unsaved edits here are skipped — their push re-reads and merges the server copy.
   return(stamps||[]).filter(r=>_cloudUpdatedAt[r.key]!==r.updated_at&&!_cloudDirty.has(r.key)&&!_cloudPushTimers[r.key]).map(r=>r.key);
@@ -1125,11 +1145,11 @@ async function cloudPullAndHydrate(){
       try{await cloudPushKey(key);}catch(e){stillPending.push(key);}
     }
     try{localStorage.setItem(CLOUD_PENDING_KEY,JSON.stringify(stillPending));}catch(e){}
-    const{data,error}=await supa.from('kv_store').select('key,value,updated_at');
+    const{data,error}=await kvSelectAll(supa,'key,value,updated_at');
     if(error)throw error;
     await sheetsFromTables(supa,data||[]);
     (data||[]).forEach(row=>{
-      if(stillPending.includes(row.key))return;
+      if(stillPending.includes(row.key)||DEVICE_ONLY_KEYS.has(row.key))return;
       if(row.value==null){ // deleted in the cloud — drop this browser's leftover copy too
         if(localStorage.getItem(row.key)!=null)cachedLocalRemove(row.key);
         _cloudUpdatedAt[row.key]=row.updated_at;

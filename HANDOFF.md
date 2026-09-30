@@ -317,6 +317,18 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   Uninstall-SalonOS-Tally-Connector.bat. Connector 1.1: `-Background` switch (quiet exit if the port is taken), /status
   reports `background`. Settings tab: "Install connector" primary button, installed state shown; old .bat under "Run without
   installing". Tested on this PC: install, simulated start-up via the shortcut, uninstall, reinstall. (preview: ?real=1)
+· (v2026.09.30.24) **Automation / code review fixes**:
+  - SECURITY: in-browser auto-backup snapshot (all data the login sees, incl. salonos_secret_*) was pushed to kv_store as a
+    global key — readable by every signed-in user. DEVICE_ONLY_KEYS (js/01: salonos_autobackup_snapshot, _enabled, theme)
+    are never pushed/pulled. supabase/step18_device_only_keys.sql deletes existing rows + restrictive policy (RUN IT).
+  - kv_store reads capped at 1000 rows by the API: kvSelectAll (js/01) pages the initial pull, update check and
+    cleanupUnusedFiles (a truncated list there would delete files still in use); automation + salonos-reports loadKv page
+    too (REDEPLOY both functions).
+  - automation month-end checklist read bank rows' `date` (field is transactionDate) → always said "bank statement not
+    imported". Fixed + test.
+  - tallySyncVouchers: records each accepted voucher immediately (a stop half-way re-sent them → duplicates in Tally); an
+    empty ledger list (no company open) now stops with a clear error, so the evening sync retries instead of failing all.
+  Tests 83. Scanner for undefined function calls: scratchpad undef_scan.py (no real hits).
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

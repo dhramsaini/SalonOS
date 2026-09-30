@@ -3171,6 +3171,8 @@ async function tallySyncVouchers(salonId,cfg,opts){
   if(!invs.length&&!rows.length)return out;
   // 1 · Ledgers the vouchers need.
   const ledgers=parseTallyLedgersDetailed(await tallySend(c,buildTallyLedgerListRequestXml(c.company)));
+  // Every Tally company has ledgers (Cash, Profit & Loss A/c) — none means no company is open.
+  if(!ledgers.length)throw new Error(c.company?'Tally answered, but the company “'+c.company+'” is not open — open it in Tally.':'Tally answered, but no company is open — open your company in Tally.');
   const have=new Set(ledgers.map(l=>String(l.name).toLowerCase()));
   const cats=Array.from(new Set(invs.map(i=>i.category).filter(Boolean)));
   const gst={igst:invs.some(i=>Number(i.igst)>0),cgst:invs.some(i=>Number(i.cgst)>0),sgst:invs.some(i=>Number(i.sgst)>0)};
@@ -3185,18 +3187,19 @@ async function tallySyncVouchers(salonId,cfg,opts){
     const r=parseTallyImportResult(await tallySend(c,xml));
     out.ledgersCreated=r.created||0;
   }
-  // 2 · Vouchers, one at a time.
+  // 2 · Vouchers, one at a time; each accepted one is recorded straight away (a stop half-way —
+  // connector closed, page shut — must never lead to it being sent again as a duplicate).
   const pushed=loadTallyPushed(salonId);
   const ok=r=>!r.errors&&!r.exceptions&&(r.created||r.altered);
   for(const inv of invs){
     const r=parseTallyImportResult(await tallySend(c,buildTallyPurchaseVouchersXml([inv],vName,cName,gstBlocked)));
-    if(ok(r)){pushed.inv[inv.id]={at:out.at,sig:tallyInvSig(inv)};out.sent++;}
+    if(ok(r)){pushed.inv[inv.id]={at:out.at,sig:tallyInvSig(inv)};out.sent++;saveTallyPushed(salonId,pushed);}
     else out.failed.push('Invoice '+(inv.invoiceNo||inv.id)+': '+(r.lineErrors[0]||tallyResultText(r)));
     if(o.onProgress)o.onProgress(out.sent+out.failed.length,invs.length+rows.length);
   }
   for(const row of rows){
     const r=parseTallyImportResult(await tallySend(c,buildTallyBankVouchersXml([row],map.bankLedger,vendors,{vendorLedgerNameFor:vName,map})));
-    if(ok(r)){pushed.bank[row.id]={at:out.at,sig:tallyBankSig(row)};out.sent++;}
+    if(ok(r)){pushed.bank[row.id]={at:out.at,sig:tallyBankSig(row)};out.sent++;saveTallyPushed(salonId,pushed);}
     else out.failed.push('Bank '+row.transactionDate+' '+String(row.description||'').slice(0,30)+': '+(r.lineErrors[0]||tallyResultText(r)));
     if(o.onProgress)o.onProgress(out.sent+out.failed.length,invs.length+rows.length);
   }

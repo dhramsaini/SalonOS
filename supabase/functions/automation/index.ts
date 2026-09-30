@@ -234,7 +234,7 @@ export function computeAlerts(kv: KV, settings: typeof DEFAULTS, today: number) 
       const notApproved = emps.filter((e) => (sw[`${e.id}_${py}_${pm}`] || {}).status !== "Approved");
       if (emps.length && notApproved.length) items.push(`salary not approved for ${notApproved.length} of ${emps.length} staff`);
       const bank = get("salonos_bank_statement_rows", []) as any[];
-      const bankIn = bank.some((r) => { const dn = parseDay(r && r.date); return dn != null && dn >= dayOf(py, pm, 1) && dn <= dayOf(py, pm, pdays); });
+      const bankIn = bank.some((r) => { const dn = parseDay(r && (r.transactionDate ?? r.date)); return dn != null && dn >= dayOf(py, pm, 1) && dn <= dayOf(py, pm, pdays); });
       if (!bankIn) items.push("bank statement not imported");
       if (items.length) out.push({ akey: `month_end:${sid}:${mCode(prevMonth)}`, outlet_id: sid, kind: "month_end", severity: D >= lockDay - 3 ? "urgent" : "warn",
         title: `${name}: ${mLabel(prevMonth)} month-end checklist — ${items.length} pending`,
@@ -329,10 +329,16 @@ export function loginWatchAlerts(events: { user_id: string; email: string; at: s
 }
 
 async function loadKv(): Promise<KV> {
-  const { data, error } = await admin.from("kv_store").select("key,value").not("value", "is", null);
-  if (error) throw error;
+  // In pages: the API returns at most 1000 rows per request.
+  const data: { key: string; value: string }[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data: page, error } = await admin.from("kv_store").select("key,value").not("value", "is", null).order("key").range(from, from + 999);
+    if (error) throw error;
+    data.push(...(page ?? []));
+    if (!page || page.length < 1000) break;
+  }
   const m: KV = new Map();
-  for (const r of data ?? []) { try { m.set(r.key, JSON.parse(r.value)); } catch { /* not JSON */ } }
+  for (const r of data) { try { m.set(r.key, JSON.parse(r.value)); } catch { /* not JSON */ } }
   return m;
 }
 

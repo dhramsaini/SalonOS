@@ -192,6 +192,9 @@
         eq('Automation: alert wording and severity',[by('attendance:901:2026-10-05').body,by('due:901:I3').severity,by('due:901:I3').title,by('recurring_bill:901:R2:2026-08').title,by('sales:901:2026-10-04').title],
           ['Ravi','urgent','Test Outlet A: Loreal bill A-3 overdue by 5 days','Test Outlet A: Electricity bill for Aug 2026 – Sep 2026 not entered','Test Outlet A: sales for 4 Oct not entered']);
         eq('Automation: month-end checklist items',by('month_end:901:2026-09').body.split(String.fromCharCode(10)).map(s=>s.split(' (')[0]),['• 30 days without sales','• attendance incomplete for 3 staff','• salary not approved for 3 of 3 staff','• bank statement not imported']);
+        kv.set('salonos_bank_statement_rows_outlet_901',[{id:1,transactionDate:'15/09/2026',description:'X',debit:10}]);
+        eq('Automation: a September bank statement (transactionDate) counts as imported',/bank statement/.test((mod.computeAlerts(kv,mod.DEFAULTS,day(2026,10,5)).alerts.find(x=>x.akey==='month_end:901:2026-09')||{}).body||''),false);
+        kv.delete('salonos_bank_statement_rows_outlet_901');
         const r2=mod.computeAlerts(kv,Object.assign({},mod.DEFAULTS,{autoLock:true,autoLockDay:4}),day(2026,10,5));
         eq('Automation: auto month lock only past the lock day, checklist stops then',[r2.locks,r2.alerts.some(a=>a.kind==='month_end')],[[{sid:901,month:2026*12+8}],false]);
       }catch(err){results.push({name:'Automation checks',ok:false,got:String(err&&err.message||err),want:'no error'});}
@@ -260,6 +263,22 @@
         const mx=buildTallyMastersXml([],[],{},'HDFC Bank',nm,c=>c,false,[{name:'Round Off',parent:'Indirect Expenses'}]);
         eq('Tally: masters XML includes the extra ledgers',mx.indexOf('<LEDGER NAME="Round Off"')!==-1&&mx.indexOf('<PARENT>Indirect Expenses</PARENT>')!==-1,true);
       }catch(err){results.push({name:'Tally ledgers',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
+        // Tally sync stopping half-way: vouchers Tally already took are remembered (no duplicates later).
+        saveTallyLedgerMap({bankLedger:'HDFC Bank'},905);
+        saveBankStatementRows([1,2,3].map(i=>({id:50+i,transactionDate:'0'+i+'/10/2026',description:'MISC '+i,debit:100*i,credit:0})),905);
+        let vcalls=0;
+        window.tallySend=async(cfg,xml)=>{
+          if(xml.indexOf('List of Ledgers')!==-1)return '<ENVELOPE><LEDGER NAME="HDFC Bank"><PARENT>Bank Accounts</PARENT></LEDGER></ENVELOPE>';
+          if(/<VOUCHER/.test(xml)){vcalls++;if(vcalls===2)throw new Error('connector closed');}
+          return '<RESPONSE><CREATED>1</CREATED><ERRORS>0</ERRORS></RESPONSE>';
+        };
+        let err='';try{await tallySyncVouchers(905,{url:'x'},{from:'2026-10-01'});}catch(e){err=e.message;}
+        eq('Tally sync: a voucher accepted before the connector stopped is not sent again',[err,Object.keys(loadTallyPushed(905).bank)],['connector closed',['51']]);
+        window.tallySend=async()=>'<ENVELOPE></ENVELOPE>';
+        let err2='';try{await tallySyncVouchers(905,{url:'x',company:'Mysha'},{from:'2026-10-01'});}catch(e){err2=e.message;}
+        eq('Tally sync: no company open in Tally stops with a clear message',/not open/.test(err2),true);
+      }catch(err){results.push({name:'Tally sync stop',ok:false,got:String(err&&err.message||err),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
