@@ -1508,6 +1508,41 @@ const TALLY_NATURE_LEDGERS={
   'Rent':['Rent','Indirect Expenses'],
   'Tax Payment':['Tax Payments','Duties & Taxes'],
 };
+// The bank and account number of the last imported bank statement (read from the statement's own
+// header lines) — {bank, accountNo, file, at}. Used to pick this outlet's bank ledger in Tally.
+function loadBankStatementInfo(salonId){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_bank_statement_info',salonId))||'null');return v&&typeof v==='object'?v:null;}catch(e){return null;}}
+function saveBankStatementInfo(salonId,info){safeLocalSet(outletKey('salonos_bank_statement_info',salonId),JSON.stringify({...info,at:new Date().toISOString()}));}
+// Account number written in a statement's header lines ("Account No : 50200012345678", "A/C NO. XXXX5678").
+function bankAccountNoFromHeader(rows){
+  const text=(rows||[]).slice(0,40).map(r=>(Array.isArray(r)?r:[r]).map(c=>String(c==null?'':c)).join(' ')).join('\n');
+  const m=text.match(/(?:a\/?c|account)\s*(?:no\.?|number|num)?\s*[:.\-]?\s*([0-9xX*]{6,20})/i);
+  return m?m[1]:'';
+}
+// Tally bank ledgers (under Bank Accounts / Bank OD / OCC) ranked for this outlet, from the outlet's
+// bank details (Master Sheet) and the last imported statement: account number's last 4 digits in
+// the ledger name weigh most, then the bank's name (HDFC, SBI, ICICI…). {name, parent, score, why}.
+function tallyBankLedgerSuggestions(salonId,ledgers,statementBank){
+  const o=outletSettings(salonId)||{},info=loadBankStatementInfo(salonId)||{};
+  const accts=[o.bankAccountNo,info.accountNo].map(a=>String(a||'').replace(/[^0-9]/g,'')).filter(a=>a.length>=4);
+  const names=[o.bankName,info.bank,statementBank].filter(Boolean).map(String);
+  const STOP=new Set(['bank','of','the','ltd','limited','india','co','and','corporation','cooperative','co-operative','small','finance']);
+  const ALIAS={'state bank of india':['sbi','state bank'],'bank of baroda':['bob','baroda'],'punjab national bank':['pnb','punjab national'],'bank of india':['boi'],'union bank of india':['union bank','ubi'],'indian overseas bank':['iob'],'central bank of india':['cbi','central bank'],'kotak mahindra bank':['kotak'],'au small finance bank':['au bank','au sfb'],'idfc first bank':['idfc'],'axis bank':['axis'],'yes bank':['yes bank'],'indusind bank':['indusind'],'icici bank':['icici'],'hdfc bank':['hdfc'],'canara bank':['canara'],'federal bank':['federal'],'rbl bank':['rbl']};
+  const norm=x=>String(x||'').toLowerCase().replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+  const keys=new Set();
+  names.forEach(n=>{const nn=norm(n);if(!nn)return;(ALIAS[nn]||[]).forEach(k=>keys.add(k));
+    nn.split(' ').filter(w=>w.length>1&&!STOP.has(w)).forEach(w=>keys.add(w));
+    const acr=nn.split(' ').filter(w=>w&&w!=='of'&&w!=='the').map(w=>w[0]).join('');if(acr.length>=2&&acr.length<=4)keys.add(acr);});
+  const bankLedgers=(ledgers||[]).filter(l=>/bank|o\.?d\b|occ|cash credit|\bcc\b/i.test(String(l.parent||''))&&!/cash-in-hand/i.test(String(l.parent||'')));
+  return bankLedgers.map(l=>{
+    const n=norm(l.name),digits=String(l.name).replace(/[^0-9]/g,'');
+    let score=0;const why=[];
+    if(accts.some(a=>digits.length>=4&&(digits.includes(a.slice(-4))))){score+=0.6;why.push('account no. ends '+accts.find(a=>digits.includes(a.slice(-4))).slice(-4));}
+    const k=[...keys].find(k=>(' '+n+' ').includes(' '+k+' '));
+    if(k){score+=0.35;why.push('bank name “'+k.toUpperCase()+'”');}
+    if(bankLedgers.length===1){score+=0.3;why.push('the only bank ledger in Tally');}
+    return{name:l.name,parent:l.parent,score:Math.min(1,score),why:why.join(' · ')};
+  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
+}
 function tallyNatureLedgerName(map,nature){return(map&&map.natures&&map.natures[nature])||(TALLY_NATURE_LEDGERS[nature]||[])[0]||'';}
 function tallyBankCounterparty(r,vendors,vendorLedgerNameFor,map){
   const vName=vendorLedgerNameFor||(id=>{const v=vendors.find(x=>x.id===id);return v?v.name:id;});

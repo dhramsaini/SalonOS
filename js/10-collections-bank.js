@@ -3323,6 +3323,8 @@ function BankStatement({salon,onNavTab}={}){
       if(!sheet||!sheet.rowCount)throw new Error('The selected file has no data.');
       const headerRowIdx=findHeaderRowIndex(sheet.raw);
       const headerRow=(sheet.raw[headerRowIdx]||[]).map(h=>String(h||'').trim());
+      // Remember which bank / account this statement is from (Tally Integration picks the bank ledger from it).
+      try{const acNo=bankAccountNoFromHeader(sheet.raw.slice(0,Math.max(headerRowIdx,0)));if(acNo||bank)saveBankStatementInfo(salonId,{bank:bank&&bank!=='Generic'?bank:'',accountNo:acNo,file:file.name});}catch(e){}
       let json=sheet.raw.slice(headerRowIdx+1)
         .map(r=>{const obj={};headerRow.forEach((h,ci)=>{if(h)obj[h]=r[ci]!==undefined?r[ci]:'';});return obj;})
         .filter(o=>Object.values(o).some(v=>String(v).trim()!==''));

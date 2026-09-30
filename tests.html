@@ -289,6 +289,14 @@
         eq('Local today is this computer’s date',localTodayIso(),localIsoOf(new Date()));
       }catch(err){results.push({name:'Excel dates',ok:false,got:String(err&&err.message||err),want:'no error'});}
       try{
+        // Bank ledger picked from the imported statement: account-number ending beats bank name alone.
+        saveBankStatementInfo(906,{bank:'HDFC',accountNo:'50200012345678'});
+        const L=[{name:'HDFC Bank - 5678',parent:'Bank Accounts'},{name:'HDFC Bank OD',parent:'Bank OD A/c'},{name:'ICICI Bank',parent:'Bank Accounts'},{name:'Cash',parent:'Cash-in-Hand'},{name:'Rent',parent:'Indirect Expenses'}];
+        const sg=tallyBankLedgerSuggestions(906,L);
+        eq('Tally bank ledger: account no. + bank name ranks first, non-bank ledgers ignored',[sg[0].name,sg[0].score>=0.9,sg.some(x=>x.name==='Cash'||x.name==='Rent')],['HDFC Bank - 5678',true,false]);
+        eq('Statement header account number is read',bankAccountNoFromHeader([['HDFC BANK Ltd'],['Account No :','50200012345678'],['Statement From','01/09/2026']]),'50200012345678');
+      }catch(err){results.push({name:'Bank ledger',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
         const mod={};new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});

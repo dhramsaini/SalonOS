@@ -60,6 +60,9 @@ function TallyAutoSyncCard({salonId,conn,updateConn,companies,tallyOk,onDone}){
 //   Settings — connector, company, evening auto-sync, set-up guide.
 // Voucher content comes from the shared builders (js/02-shared.js), so files and live sync match. ──
 // Install with no downloaded file — Windows Smart App Control blocks .bat files from the internet.
+// Python connector (tally-connector/salonos_tally_connector.py) — installs itself; works where Smart App Control blocks .bat/.ps1.
+const TALLY_PY_INSTALL_CMD="python -c \"import urllib.request as u;exec(u.urlopen('https://digitalca.co.in/tally-connector/salonos_tally_connector.py').read())\"";
+const TALLY_PY_UNINSTALL_CMD='python "%LOCALAPPDATA%\\SalonOS\\TallyConnector\\salonos_tally_connector.py" --uninstall';
 const TALLY_INSTALL_CMD="iex ((New-Object Net.WebClient).DownloadString('https://digitalca.co.in/tally-connector/install.ps1'))";
 function TallyExportSheet({salon,onNavTab}={}){
   const h=React.createElement;
@@ -137,6 +140,19 @@ function TallyExportSheet({salon,onNavTab}={}){
   useEffect(()=>{setLedgerCache(loadTallyLedgerCache(salonId));},[salonId,refreshTick]);
   const tallyNames=ledgerCache?new Set(ledgerCache.ledgers.map(l=>String(l.name).toLowerCase())):null;
   const missingInTally=tallyNames?allLedgerRows().filter(r=>!tallyNames.has(String(r.name).toLowerCase())):null;
+  // Bank ledger picked automatically from the outlet's bank details and the imported bank statement.
+  const bankSuggestions=ledgerCache?tallyBankLedgerSuggestions(salonId,ledgerCache.ledgers):[];
+  const bankAutoRef=useRef('');
+  useEffect(()=>{
+    if(map.bankLedger||!ledgerCache||bankAutoRef.current===String(salonId))return;
+    const [top,second]=bankSuggestions;
+    if(top&&top.score>=0.6&&(!second||second.score<=top.score-0.2)){
+      bankAutoRef.current=String(salonId);
+      updateMap({...map,bankLedger:top.name});
+      info('Bank ledger set automatically to “'+top.name+'” ('+top.why+'). Change it on the Ledgers tab if that’s not right.');
+    }
+    // eslint-disable-next-line
+  },[ledgerCache,map.bankLedger,salonId]);
 
   // ── Connector ──
   const [conn,setConn]=useState(()=>loadTallyConnectorCfg());
@@ -154,7 +170,7 @@ function TallyExportSheet({salon,onNavTab}={}){
       const st=found.status;
       let companies=[];
       if(st.tallyReachable){try{companies=parseTallyCompanies(await tallyConnectorCall(c,'/tally',buildTallyCompanyListXml()));}catch(e){}}
-      setConnState({checking:false,ok:true,tally:!!st.tallyReachable,companies,background:!!st.background,version:st.connector||'',
+      setConnState({checking:false,ok:true,tally:!!st.tallyReachable,companies,background:!!st.background,version:st.connector||'',runtime:st.runtime||'powershell',
         msg:st.tallyReachable?('Connected to Tally at '+st.tally+(companies.length?' — '+companies.length+' compan'+(companies.length===1?'y':'ies')+' open':'')):('The connector is running, but Tally is not answering at '+st.tally+' — open Tally and your company; SalonOS keeps checking every 15 seconds.')});
       if(st.tallyReachable&&companies.length===1&&!c.company)updateConn({company:companies[0]});
       return !!st.tallyReachable;
@@ -305,7 +321,11 @@ function TallyExportSheet({salon,onNavTab}={}){
       h('div',{className:'card'},
         h('div',{className:'card-title'},'Readiness'),
         check(live?true:false,live?'Connected to Tally':'Tally not connected',live?(conn.company?'Company: '+conn.company:'Using the company open in Tally'):'Install the SalonOS Tally Connector once on this computer (Settings tab) and open Tally — or use the file downloads below.',!live&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setTab('settings')},connState.ok?'Help':'Install')),
-        check(!!map.bankLedger,map.bankLedger?'Bank ledger: '+map.bankLedger:'Bank ledger not set','The Tally ledger for this outlet’s bank account.',!map.bankLedger&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setTab('ledgers')},'Set')),
+        check(!!map.bankLedger,map.bankLedger?'Bank ledger: '+map.bankLedger:'Bank ledger not set',
+          !map.bankLedger&&bankSuggestions.length?'Found in Tally from your bank details / bank statement — pick the right one:':'The Tally ledger for this outlet’s bank account.',
+          !map.bankLedger&&h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}},
+            bankSuggestions.slice(0,3).map(x=>h('button',{key:x.name,className:'btn btn-primary btn-sm',title:x.why,onClick:()=>{updateMap({...map,bankLedger:x.name});success('Bank ledger set to “'+x.name+'”.');}},'Use “'+x.name+'”')),
+            h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setTab('ledgers')},bankSuggestions.length?'Other…':'Set'))),
         check(missingInTally?missingInTally.length===0:null,missingInTally?(missingInTally.length?missingInTally.length+' ledger(s) missing in Tally':'All ledgers exist in Tally'):'Ledgers not checked against Tally yet',missingInTally&&missingInTally.length?missingInTally.slice(0,4).map(r=>r.name).join(', ')+(missingInTally.length>4?'…':'')+' — map them to similar ledgers Tally already has, or create them.':(missingInTally?null:'Read Tally’s ledger list to check.'),
           live&&(missingInTally&&missingInTally.length?h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}},h('button',{className:'btn btn-primary btn-sm',onClick:()=>{setLMissingOnly(true);setTab('ledgers');}},'🔗 Map to Tally ledgers'),h('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:()=>askCreate()},'Preview & create')):!missingInTally&&h('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:()=>fetchLedgersFromTally(false)},'Check'))),
         check(suspenseList.length===0,suspenseList.length?suspenseList.length+' bank line(s) will go to Suspense':'Every bank line has a ledger',suspenseList.length?'No supplier and no type on Bank Statement — set their Nature there, or reclassify in Tally.':null,
@@ -486,41 +506,43 @@ function TallyExportSheet({salon,onNavTab}={}){
           h('option',{value:''},'(the one currently open in Tally)'),connState.companies.map(c=>h('option',{key:c,value:c},c))),
         h('span',{style:{fontSize:11.5,color:'var(--text3)'}},'Nothing is sent to Tally until you click a Sync / Create / Send button.')),
       connState.ok&&h('div',{style:{fontSize:12,color:connState.background?'var(--green)':'var(--orange)',marginBottom:10}},
-        connState.background?'✓ Installed on this computer — starts by itself with Windows (connector '+connState.version+').'
+        connState.background?'✓ Installed on this computer — starts by itself with Windows ('+(connState.runtime==='python'?'Python connector ':'connector ')+connState.version+').'
           :'The connector is running in a window that was started by hand. Install it below so it starts by itself with Windows.'),
       connState.ok&&!live&&h('ol',{style:{fontSize:12.5,color:'var(--text2)',lineHeight:1.8,paddingLeft:18,margin:'0 0 10px'}},
         h('li',null,'Open ',h('b',null,'TallyPrime'),' and open your company (Tally may take a minute to start).'),
         h('li',null,'SalonOS checks again every 15 seconds and connects by itself — or click ⟳ Check connection.'),
         h('li',null,'Still not connecting? In Tally: F1 Help → Settings → Connectivity → Client/Server configuration → TallyPrime acts as “Both”, Enable ODBC “Yes”, Port 9000.')),
-      !live&&!connState.ok&&h('ol',{style:{fontSize:12.5,color:'var(--text2)',lineHeight:1.8,paddingLeft:18,margin:'0 0 10px'}},
-        h('li',null,'In Tally (one time): F1 Help → Settings → Connectivity → Client/Server configuration → TallyPrime acts as “Both”, Enable ODBC “Yes”, Port 9000 (Tally.ERP 9: F12 → Advanced Configuration).'),
-        h('li',null,h('b',null,'Install the connector on this computer (one time): '),'click “Install connector” below and open the downloaded file. If Windows says “Windows protected your PC”, click More info → Run anyway. Press Enter when it asks where Tally is (or type the IP of the Tally PC / server).'),
-        h('li',null,'Open Tally with your company, then click ⟳ Check connection. From now on the connector starts by itself whenever this computer starts — nothing to keep open.'),
-        h('li',null,'Tally on a cloud / remote desktop: install and use SalonOS inside that desktop.')),
+      !live&&!connState.ok&&h('div',{style:{fontSize:12.5,color:'var(--text2)',lineHeight:1.8}},
+        h('div',{style:{fontWeight:700,color:'var(--text)',marginBottom:2}},'Install the connector on this computer (one time):'),
+        h('ol',{style:{paddingLeft:18,margin:'0 0 10px'}},
+          h('li',null,'In Tally (one time): F1 Help → Settings → Connectivity → Client/Server configuration → TallyPrime acts as “Both”, Enable ODBC “Yes”, Port 9000 (Tally.ERP 9: F12 → Advanced Configuration).'),
+          h('li',null,'Install ',h('b',null,'Python'),' if this computer doesn’t have it: ',
+            h('a',{href:'https://www.python.org/downloads/windows/',target:'_blank',rel:'noopener noreferrer'},'python.org → Download Python ↗'),
+            ' — on the first installer screen tick ',h('b',null,'“Add python.exe to PATH”'),', then Install Now.'),
+          h('li',null,'Click ',h('b',null,'⬇ Download connector'),' below and open the downloaded ',h('b',null,'salonos_tally_connector.py'),' (double-click). Press ',h('b',null,'Enter'),' when it asks where Tally is (or type the Tally PC’s IP address).'),
+          h('li',null,'When it says ',h('b',null,'“Installed”'),', open Tally with your company — SalonOS connects by itself. From now on it starts with Windows; nothing to keep open.'),
+          h('li',null,'Tally on a cloud / remote desktop: install and use SalonOS inside that desktop.'))),
       h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
-        h('a',{className:'btn btn-sm '+(connState.background?'btn-ghost':'btn-primary'),href:'tally-connector/Install-SalonOS-Tally-Connector.bat',download:'Install-SalonOS-Tally-Connector.bat'},connState.background?'⬇ Re-install / update connector':'⬇ Install connector (starts with Windows)'),
-        h('a',{className:'btn btn-ghost btn-sm',href:'tally-connector/Uninstall-SalonOS-Tally-Connector.bat',download:'Uninstall-SalonOS-Tally-Connector.bat'},'Uninstall'),
-        h('details',{style:{fontSize:11.5,color:'var(--text3)'}},
-          h('summary',{style:{cursor:'pointer'}},'Run without installing'),
-          h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',marginTop:6}},
-            h('a',{className:'btn btn-ghost btn-sm',href:'tally-connector/Start-SalonOS-Tally-Connector.bat',download:'Start-SalonOS-Tally-Connector.bat'},'⬇ Start-SalonOS-Tally-Connector.bat'),
-            h('a',{className:'btn btn-ghost btn-sm',href:'tally-connector/SalonOS-Tally-Connector.ps1',download:'SalonOS-Tally-Connector.ps1'},'⬇ SalonOS-Tally-Connector.ps1')),
-          h('div',{style:{marginTop:4}},'Download both into one folder and double-click the .bat; keep its window open.')),
-        h('a',{className:'btn btn-ghost btn-sm',href:'https://www.python.org/downloads/windows/',target:'_blank',rel:'noopener noreferrer',
-          title:'Only for other Tally tools that ask for Python — the SalonOS Tally Connector does not need it'},'🐍 Install Python ↗')),
+        h('a',{className:'btn btn-sm '+(connState.background?'btn-ghost':'btn-primary'),href:'tally-connector/salonos_tally_connector.py',download:'salonos_tally_connector.py'},connState.background?'⬇ Re-install / update connector':'⬇ Download connector (starts with Windows)'),
+        h('a',{className:'btn btn-ghost btn-sm',href:'https://www.python.org/downloads/windows/',target:'_blank',rel:'noopener noreferrer'},'🐍 Install Python ↗')),
       !connState.background&&h('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'10px 12px',marginTop:10,fontSize:12,color:'var(--text2)',lineHeight:1.6}},
-        h('div',{style:{fontWeight:700,color:'var(--text)',marginBottom:2}},'Windows says “Smart App Control blocked a file”?'),
-        h('div',null,'Install with a command instead — same install, starts by itself with Windows:'),
-        h('ol',{style:{margin:'6px 0 0',paddingLeft:20}},
-          h('li',null,'Click ',h('b',null,'📋 Copy'),' below to copy the install command.'),
-          h('li',null,'On this computer, click ',h('b',null,'Start'),', type ',h('b',null,'PowerShell'),' and press ',h('b',null,'Enter'),'.'),
-          h('li',null,'Paste the copied line (',h('b',null,'Ctrl+V'),' or right-click) and press ',h('b',null,'Enter'),'.'),
-          h('li',null,'When it asks where Tally is, press ',h('b',null,'Enter'),' (Tally on this computer), or type the Tally PC’s IP address and press Enter.'),
-          h('li',null,'When it says ',h('b',null,'“Installed”'),', open Tally with your company and click ',h('b',null,'⟳ Check connection'),' above.')),
-        h('div',{style:{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}},
-          h('code',{style:{flex:'1 1 320px',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,padding:'6px 8px',fontSize:11.5,wordBreak:'break-all',userSelect:'all'}},TALLY_INSTALL_CMD),
-          h('button',{className:'btn btn-primary btn-sm',onClick:()=>{try{navigator.clipboard.writeText(TALLY_INSTALL_CMD).then(()=>success('Copied — now open PowerShell and paste it'),()=>info('Select the line and copy it (Ctrl+C)'));}catch(e){info('Select the line and copy it (Ctrl+C)');}}},'📋 Copy'))),
-      h('div',{style:{fontSize:11,color:'var(--text3)',marginTop:6}},'Python is only for other Tally tools that ask for it — the SalonOS Tally Connector runs on Windows PowerShell and does not need it. When installing, tick “Add python.exe to PATH”.'),
+        h('div',{style:{fontWeight:700,color:'var(--text)',marginBottom:2}},'Double-click doesn’t open it?'),
+        h('ol',{style:{margin:'4px 0 0',paddingLeft:20}},
+          h('li',null,'Click ',h('b',null,'📋 Copy'),' below.'),
+          h('li',null,'Click ',h('b',null,'Start'),', type ',h('b',null,'cmd'),' and press ',h('b',null,'Enter'),'.'),
+          h('li',null,'Paste the line (',h('b',null,'right-click'),' or Ctrl+V) and press ',h('b',null,'Enter'),', then press Enter again when it asks where Tally is.')),
+        h('div',{style:{display:'flex',gap:8,alignItems:'center',marginTop:8,flexWrap:'wrap'}},(t=>h('code',{style:{flex:'1 1 320px',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,padding:'6px 8px',fontSize:11.5,wordBreak:'break-all',userSelect:'all'}},t))(TALLY_PY_INSTALL_CMD),((txt,msg)=>h('button',{className:'btn btn-primary btn-sm',onClick:()=>{try{navigator.clipboard.writeText(txt).then(()=>success(msg),()=>info('Select the line and copy it (Ctrl+C)'));}catch(e){info('Select the line and copy it (Ctrl+C)');}}},'📋 Copy'))(TALLY_PY_INSTALL_CMD,'Copied — now open Command Prompt and paste it'))),
+      connState.background&&connState.runtime==='python'&&h('details',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},
+        h('summary',{style:{cursor:'pointer'}},'Remove the connector from this computer'),
+        h('div',{style:{marginTop:6}},'In Command Prompt run:'),
+        h('div',{style:{display:'flex',gap:8,alignItems:'center',marginTop:4,flexWrap:'wrap'}},(t=>h('code',{style:{flex:'1 1 320px',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,padding:'6px 8px',fontSize:11.5,wordBreak:'break-all',userSelect:'all'}},t))(TALLY_PY_UNINSTALL_CMD),((txt,msg)=>h('button',{className:'btn btn-primary btn-sm',onClick:()=>{try{navigator.clipboard.writeText(txt).then(()=>success(msg),()=>info('Select the line and copy it (Ctrl+C)'));}catch(e){info('Select the line and copy it (Ctrl+C)');}}},'📋 Copy'))(TALLY_PY_UNINSTALL_CMD,'Copied'))),
+      h('details',{style:{fontSize:11.5,color:'var(--text3)',marginTop:10}},
+        h('summary',{style:{cursor:'pointer'}},'Other ways (older PowerShell connector — may be blocked by Smart App Control)'),
+        h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',marginTop:6}},
+          h('a',{className:'btn btn-ghost btn-sm',href:'tally-connector/Install-SalonOS-Tally-Connector.bat',download:'Install-SalonOS-Tally-Connector.bat'},'⬇ Install (PowerShell .bat)'),
+          h('a',{className:'btn btn-ghost btn-sm',href:'tally-connector/Uninstall-SalonOS-Tally-Connector.bat',download:'Uninstall-SalonOS-Tally-Connector.bat'},'Uninstall (PowerShell)')),
+        h('div',{style:{marginTop:6}},'Or paste in PowerShell:'),
+        h('div',{style:{display:'flex',gap:8,alignItems:'center',marginTop:4,flexWrap:'wrap'}},(t=>h('code',{style:{flex:'1 1 320px',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,padding:'6px 8px',fontSize:11.5,wordBreak:'break-all',userSelect:'all'}},t))(TALLY_INSTALL_CMD),((txt,msg)=>h('button',{className:'btn btn-primary btn-sm',onClick:()=>{try{navigator.clipboard.writeText(txt).then(()=>success(msg),()=>info('Select the line and copy it (Ctrl+C)'));}catch(e){info('Select the line and copy it (Ctrl+C)');}}},'📋 Copy'))(TALLY_INSTALL_CMD,'Copied — now open PowerShell and paste it'))),
       h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:10}},'Connector address: ',h('b',null,(conn.url||TALLY_CONNECTOR_DEFAULT).replace(/^https?:\/\//,'')),' — found automatically.',
         conn.token||connState.needsToken?' A token is set.':' No token needed.'),
       showConnSettings&&h('div',{className:'form-row cols2',style:{marginTop:12,marginBottom:0}},

@@ -362,6 +362,15 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   word overlap, pvt/ltd/co ignored, top 3 ≥45%, "Use" fills the mapping), "Only missing" filter, Readiness "🔗 Map
   to Tally ledgers". **Table scroll arrows** (js/14): table under the mouse wins, centred on the visible part, one
   column per click aligned after left-frozen columns (top-sticky header cells no longer counted as frozen).
+· (v2026.09.30.33) **Bank ledger set automatically**: statement import saves {bank, accountNo} from the header
+  (saveBankStatementInfo, bankAccountNoFromHeader); tallyBankLedgerSuggestions ranks Tally ledgers under Bank Accounts /
+  OD / OCC by account-number ending (0.6), bank name/alias (0.35), only-bank-ledger (0.3) using Master Sheet bank details
+  too; clear winner (≥0.6, 0.2 ahead) is set with a toast, otherwise "Use …" buttons in Readiness.
+  **Python connector** tally-connector/salonos_tally_connector.py (2.0, stdlib only): same /status + /tally API, CORS +
+  Private-Network, optional token, listens 127.0.0.1 + ::1:9123; double-click installs to %LOCALAPPDATA%\SalonOS  TallyConnector (config.json, connector.log, pid), HKCU Run key → pythonw --run (hidden), stops/removes the PowerShell
+  connector; --uninstall, --run --console. /status reports runtime:"python". Settings tab: Python is the main install
+  (Install Python link, Download connector, cmd one-liner TALLY_PY_INSTALL_CMD, remove command); PowerShell under "Other
+  ways". Tested on this PC: install (replaced PS), browser relay, restart via Run key. Tests 87.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.
