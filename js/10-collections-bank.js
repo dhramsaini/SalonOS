@@ -2503,6 +2503,44 @@ function BankFetchPanel({salonId,canEdit,onImport}){
   );
 }
 
+// Salary / Incentive auto-link core (see autoLinkSalaryPayments in BankStatement): settles what it
+// is sure of and returns {settledByRow: Map(row id -> linkedEmployeePay records), total}.
+function autoSettleSalaryRows(salonId,candidates){
+  const periodFromTransactionDate=dmy=>{const iso=toISO(dmy);const d=iso?new Date(iso+'T00:00:00'):null;return(d&&!isNaN(d))?{year:d.getFullYear(),month:d.getMonth()}:null;};
+  const norm=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,' ').replace(/\s+/g,' ').trim();
+  const emps=loadEmployees(salonId).filter(e=>e&&e.name&&e.status!=='Left'&&e.status!=='Inactive');
+  const used=new Set(); // employee|year|month|component already settled in this run
+  const settledByRow=new Map();
+  let total=0;
+  candidates.forEach(r=>{
+    const desc=' '+norm(r.description)+' ',digits=String(r.description||'').replace(/\D/g,'');
+    const hits=emps.filter(e=>{const n=norm(e.name);const acct=String(e.accountNo||'').replace(/\D/g,'');
+      return(n.length>=4&&desc.indexOf(' '+n+' ')!==-1)||(acct.length>=6&&digits.indexOf(acct)!==-1);});
+    if(hits.length!==1)return;
+    const e=hits[0];
+    const p=periodFromTransactionDate(r.transactionDate);if(!p)return;
+    const options=[];
+    [0,-1,-2].forEach(off=>{
+      const d=new Date(p.year,p.month+off,1),y=d.getFullYear(),m=d.getMonth();
+      if(((monthLockRecordFor(salonId,y,m))||{}).locked)return;
+      const sal=used.has(e.id+'|'+y+'|'+m+'|s')?0:employeeSalaryOutstandingFor(salonId,e.id,y,m);
+      const inc=used.has(e.id+'|'+y+'|'+m+'|i')?0:employeeIncentiveOutstandingFor(salonId,e.id,y,m);
+      if(sal>0&&Math.abs(sal-r.debit)<1)options.push({y,m,salary:sal,incentive:0});
+      if(inc>0&&Math.abs(inc-r.debit)<1)options.push({y,m,salary:0,incentive:inc});
+      if(sal>0&&inc>0&&Math.abs(sal+inc-r.debit)<1)options.push({y,m,salary:sal,incentive:inc});
+    });
+    if(options.length!==1)return;
+    const c=options[0];
+    const res=settleEmployeePayFor(salonId,e.id,c.y,c.m,{salaryAmt:c.salary,incentiveAmt:c.incentive,dailyIncentiveByCat:{}});
+    if(!res.salarySettled&&!res.incentiveSettled)return;
+    if(c.salary)used.add(e.id+'|'+c.y+'|'+c.m+'|s');
+    if(c.incentive)used.add(e.id+'|'+c.y+'|'+c.m+'|i');
+    total+=r.debit;
+    settledByRow.set(r.id,[{employeeId:e.id,employeeName:e.name,year:c.y,month:c.m,salary:c.salary,incentive:c.incentive,dailyIncentive:0,dailyIncentiveByCat:{},
+      salarySettled:res.salarySettled,incentiveSettled:res.incentiveSettled,dailyIncentiveSettled:{},auto:true}]);
+  });
+  return{settledByRow,total};
+}
 function BankStatement({salon,onNavTab}={}){
   const salonId=salon?.id;
   const bsWrapRef=useRef(null);
@@ -3180,11 +3218,13 @@ function BankStatement({salon,onNavTab}={}){
         const dupCount=imported.length-freshOnes.length;
         let nextId=rows.reduce((m,r)=>Math.max(m,Number(r.id)||0),0)+1;
         const withFreshIds=freshOnes.map(r=>({...r,id:nextId++}));
+        autoMatchPendingRef.current=new Set(withFreshIds.map(r=>r.id));
         setRows(prev=>[...prev,...withFreshIds]);
         setMessage((withFreshIds.length?'Appended '+withFreshIds.length+' new transaction'+(withFreshIds.length===1?'':'s'):'No new transactions found')+' from '+file.name+formatNote
           +(dupCount?' · '+dupCount+' row'+(dupCount===1?'':'s')+' already in the statement '+(dupCount===1?'was':'were')+' skipped as duplicate'+(dupCount===1?'':'s')+'.':'.')
           +(withFreshIds.filter(r=>r.nature).length?' · '+withFreshIds.filter(r=>r.nature).length+' auto-classified (Nature + Date as per Cradlee).':''));
       }else{
+        autoMatchPendingRef.current=new Set(imported.map(r=>r.id));
         setRows(imported);
         setMessage('Imported '+imported.length+' transaction'+(imported.length===1?'':'s')+' from '+file.name+formatNote+(autoClassified?' · '+autoClassified+' auto-classified (Nature + Date as per Cradlee).':'')+' Double-check a few rows below, then edit Nature and Date as per Cradlee as needed.');
       }
@@ -3208,7 +3248,7 @@ function BankStatement({salon,onNavTab}={}){
       fresh.push({...r,id:nextId++});
     });
     const classified=applyAutoClassification(fresh);
-    if(classified.length)setRows(prev=>[...prev,...classified]);
+    if(classified.length){autoMatchPendingRef.current=new Set(classified.map(r=>r.id));setRows(prev=>[...prev,...classified]);}
     return{added:classified.length,skipped:txns.length-classified.length};
   };
   const canEditBank=(()=>{
@@ -3930,10 +3970,13 @@ function BankStatement({salon,onNavTab}={}){
   // highlights, just applied automatically instead of requiring a click per row. Anything
   // ambiguous (no vendor match, no amount match, or more than one invoice tying) is left alone
   // for manual review via the individual 🔗 Link button, rather than guessing. ──
-  const autoLinkVendorPayments=()=>{
+  // opts.onlyIds: only these rows (the ones just imported); opts.quiet: no toasts, just the result.
+  // Returns {linkedIds:Set of bank row ids, count, total}.
+  const autoLinkVendorPayments=(opts)=>{
+    const o=opts||{};const none={linkedIds:new Set(),count:0,total:0};
     const freshInvoices=loadVendorInvoices(salonId);
-    const candidates=rows.filter(r=>r.debit>0&&!r.linkedInvoice);
-    if(!candidates.length){toastInfo('Nothing to link — every debit row is already linked (or there are no debit rows).');return;}
+    const candidates=rows.filter(r=>r.debit>0&&!r.linkedInvoice&&!(r.linkedEmployeePay&&r.linkedEmployeePay.length)&&(!o.onlyIds||o.onlyIds.has(r.id)));
+    if(!candidates.length){if(!o.quiet)toastInfo('Nothing to link — every debit row is already linked (or there are no debit rows).');return none;}
     // Tracked by inv.id (always unique), not invoiceKeyFor(inv) (vendorId+invoiceNo) — two open
     // invoices for the same vendor with a blank or duplicated Invoice No would otherwise collide
     // onto the same key and get cross-matched or double-counted.
@@ -3953,8 +3996,8 @@ function BankStatement({salon,onNavTab}={}){
       }
     });
     if(!rowToInvId.size){
-      toastInfo('No confident matches — every unlinked debit either has no vendor match or no single exact-amount open invoice. Use 🔗 Link on individual rows to review these by hand.');
-      return;
+      if(!o.quiet)toastInfo('No confident vendor matches — every unlinked debit either has no vendor match or no single exact-amount open invoice. Use 🔗 Link on individual rows to review these by hand.');
+      return none;
     }
     let linkedCount=0,linkedTotal=0;
     const rowToInvKey=new Map(); // row.id -> invoiceKeyFor(inv), for the display field on the bank row
@@ -3973,10 +4016,54 @@ function BankStatement({salon,onNavTab}={}){
       saveBankStatementRows(next,salonId);
       return next;
     });
-    toastSuccess('Auto-linked '+linkedCount+' payment'+(linkedCount===1?'':'s')+' totalling '+money(linkedTotal)+' to matching invoices.'+
+    if(!o.quiet)toastSuccess('Auto-linked '+linkedCount+' payment'+(linkedCount===1?'':'s')+' totalling '+money(linkedTotal)+' to matching invoices.'+
       (needsReviewCount?' '+needsReviewCount+' need manual review (vendor matched but amount didn\u2019t line up, or multiple invoices tie).':'')+
       (noVendorCount?' '+noVendorCount+' had no vendor match.':''));
+    return{linkedIds:new Set(rowToInvKey.keys()),count:linkedCount,total:linkedTotal};
   };
+  // \u2500\u2500 Salary / Incentive auto-link (automation phase 3). A debit is settled against an employee
+  // only when BOTH are certain: exactly one active employee's full name (or bank account number)
+  // appears in the narration, and the amount equals \u2014 to the rupee \u2014 that employee's outstanding
+  // Salary, Incentive, or Salary + Incentive for exactly one of the last three months (the month
+  // of the transaction and the two before). Anything else is left for Settle Pay by hand. Uses the
+  // same settleEmployeePayFor + linkedEmployeePay record as Settle Pay, so \ud83d\udd17 Unlink reverses it. \u2500\u2500
+  const autoLinkSalaryPayments=(opts)=>{
+    const o=opts||{};
+    const candidates=rows.filter(r=>r.debit>0&&!r.linkedInvoice&&!(r.linkedEmployeePay&&r.linkedEmployeePay.length)
+      &&(!o.onlyIds||o.onlyIds.has(r.id))&&!(o.skipIds&&o.skipIds.has(r.id)));
+    const{settledByRow,total}=autoSettleSalaryRows(salonId,candidates);
+    if(settledByRow.size)setRows(prev=>{
+      const next=prev.map(r=>settledByRow.has(r.id)?{...r,linkedEmployeePay:settledByRow.get(r.id),nature:r.nature||(settledByRow.get(r.id)[0].salary?'Salary':'Incentive')}:r);
+      saveBankStatementRows(next,salonId);
+      return next;
+    });
+    return{linkedIds:new Set(settledByRow.keys()),count:settledByRow.size,total};
+  };
+  // Both, in order (vendor first; a row linked there isn't looked at for salary). Returns a
+  // one-line summary, or '' if nothing matched.
+  const autoLinkAll=(opts)=>{
+    const o=opts||{};
+    const v=autoLinkVendorPayments({onlyIds:o.onlyIds,quiet:true});
+    const s=autoLinkSalaryPayments({onlyIds:o.onlyIds,skipIds:v.linkedIds});
+    const parts=[];
+    if(v.count)parts.push(v.count+' vendor payment'+(v.count===1?'':'s')+' ('+money(v.total)+')');
+    if(s.count)parts.push(s.count+' salary/incentive payment'+(s.count===1?'':'s')+' ('+money(s.total)+')');
+    return parts.length?'Auto-linked '+parts.join(' and ')+' \u2014 exact amount matches only; \ud83d\udd17 Unlink on a row undoes it.':'';
+  };
+  const autoLinkButton=()=>{
+    const msg=autoLinkAll();
+    if(msg)toastSuccess(msg);
+    else toastInfo('No confident matches \u2014 a payment is linked automatically only when the vendor or employee is recognised in the narration and the amount matches an open invoice / unpaid salary exactly. Use \ud83d\udd17 Link or Settle Pay on individual rows for the rest.');
+  };
+  // Run the auto-link on rows just imported, once they're in state.
+  const autoMatchPendingRef=useRef(null);
+  useEffect(()=>{
+    const ids=autoMatchPendingRef.current;
+    if(!ids||!rows.some(r=>ids.has(r.id)))return;
+    autoMatchPendingRef.current=null;
+    const msg=autoLinkAll({onlyIds:ids});
+    if(msg)setMessage(m=>(m?m+' \u00b7 ':'')+msg);
+  },[rows]);
 
   return React.createElement('div',{className:'fade-in'},
     React.createElement('div',{className:'section-header'},
@@ -3991,7 +4078,7 @@ function BankStatement({salon,onNavTab}={}){
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:downloadTemplate},'⬇ Download '+bank+' Template'),
         rows.length>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:e=>{exportData();if(window.flashButton)window.flashButton(e.currentTarget,'success');}},'⬇ Export Mapped Data'),
         rows.length>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Re-apply the classification rules to Nature and Date as per Cradlee for every row, overwriting what\'s there now',onClick:reclassifyExisting},'🪄 Re-classify Nature & Dates'),
-        rows.length>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Scan every unlinked debit and auto-link it to a Vendor Sheet invoice where the vendor and the exact amount both match — anything ambiguous is left for manual review',onClick:autoLinkVendorPayments},'🔗 Auto-Link Vendor Payments'),
+        rows.length>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Scan every unlinked debit: link it to a Vendor Sheet invoice, or settle an employee’s Salary / Incentive, when the vendor or employee is named in the narration AND the amount matches exactly — anything ambiguous is left for manual review. New imports are auto-linked the same way.',onClick:autoLinkButton},'🔗 Auto-Link Payments'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowRulesModal(true)},'ℹ️ How classification works'),
         selected.size>0&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,.15)',border:'1px solid rgba(255,107,107,.4)',color:'var(--red)',fontWeight:600},onClick:deleteSelected},'🗑 Delete Selected ('+selected.size+')'),
         rows.length>0&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,.1)',border:'1px solid rgba(255,107,107,.3)',color:'var(--red)'},onClick:clearData},'Clear Data')

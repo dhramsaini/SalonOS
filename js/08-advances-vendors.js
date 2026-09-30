@@ -2188,6 +2188,39 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
 // a guarantee every bank accepts it byte-for-byte. Always do one small test batch with your bank
 // the first time before a full run. Saved as CSV, not XLSX — that's what most bank portals
 // actually ask for. ──
+const BANK_LAYOUT_FIELDS={paymentType:'Payment Type',name:'Beneficiary Name',account:'Beneficiary Account Number',ifsc:'IFSC Code',
+  amount:'Amount',amount2:'Amount (2 decimals)',debit:'Debit Account Number',email:'Email',mobile:'Mobile',remarks:'Remarks',
+  dateDmy:'Value Date (DD/MM/YYYY)',dateIso:'Value Date (YYYY-MM-DD)',code:'Employee / Vendor Code',blank:'(Blank column)',fixed:'(Fixed text)'};
+const BANK_LAYOUT_DEFAULT_COLS=['paymentType','name','account','ifsc','amount','debit','email','mobile','remarks'];
+function BankLayoutEditor({layout,onChange}){
+  const h=React.createElement;
+  const cols=layout.cols;
+  const set=(i,patch)=>onChange({...layout,cols:cols.map((c,j)=>j===i?{...c,...patch}:c)});
+  const move=(i,d)=>{const j=i+d;if(j<0||j>=cols.length)return;const n=cols.slice();const t=n[i];n[i]=n[j];n[j]=t;onChange({...layout,cols:n});};
+  return h('div',{className:'card',style:{marginBottom:16}},
+    h('div',{className:'card-title'},'Your bank’s file layout'),
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:10,lineHeight:1.6}},'Set the columns exactly as your bank’s bulk-upload sample shows them — order, header names, separator. Saved for this outlet. Do one small test batch with the bank the first time.'),
+    cols.map((c,i)=>h('div',{key:i,style:{display:'flex',gap:6,alignItems:'center',marginBottom:6,flexWrap:'wrap'}},
+      h('span',{style:{width:22,fontSize:11,color:'var(--text3)'}},i+1),
+      h('select',{className:'form-control',style:{width:210},value:c.field,onChange:e=>set(i,{field:e.target.value,header:e.target.value==='fixed'?'':BANK_LAYOUT_FIELDS[e.target.value]})},
+        Object.keys(BANK_LAYOUT_FIELDS).map(f=>h('option',{key:f,value:f},BANK_LAYOUT_FIELDS[f]))),
+      h('input',{className:'form-control',style:{flex:1,minWidth:160},value:c.header,placeholder:c.field==='fixed'?'Text to put in every row':'Header name',onChange:e=>set(i,{header:e.target.value})}),
+      h('button',{className:'btn btn-ghost btn-sm',title:'Move up',onClick:()=>move(i,-1)},'↑'),
+      h('button',{className:'btn btn-ghost btn-sm',title:'Move down',onClick:()=>move(i,1)},'↓'),
+      h('button',{className:'btn btn-ghost btn-sm',title:'Remove',onClick:()=>onChange({...layout,cols:cols.filter((_,j)=>j!==i)})},'✕'))),
+    h('div',{style:{display:'flex',gap:14,alignItems:'center',flexWrap:'wrap',marginTop:8,fontSize:12.5,color:'var(--text2)'}},
+      h('button',{className:'btn btn-ghost btn-sm',onClick:()=>onChange({...layout,cols:[...cols,{field:'blank',header:''}]})},'+ Add column'),
+      h('label',{style:{display:'flex',gap:6,alignItems:'center'}},h('input',{type:'checkbox',checked:!!layout.headerRow,onChange:e=>onChange({...layout,headerRow:e.target.checked})}),'Header row'),
+      h('label',{style:{display:'flex',gap:6,alignItems:'center'}},h('input',{type:'checkbox',checked:!!layout.typeCodes,onChange:e=>onChange({...layout,typeCodes:e.target.checked})}),'Payment type as N / R / I'),
+      h('label',{style:{display:'flex',gap:6,alignItems:'center'}},'Separator',
+        h('select',{className:'form-control',style:{width:'auto'},value:layout.sep,onChange:e=>onChange({...layout,sep:e.target.value})},
+          [[',','Comma ,'],['|','Pipe |'],['~','Tilde ~'],['tab','Tab'],[';','Semicolon ;']].map(o=>h('option',{key:o[0],value:o[0]},o[1])))),
+      h('label',{style:{display:'flex',gap:6,alignItems:'center'}},'File',
+        h('select',{className:'form-control',style:{width:'auto'},value:layout.ext,onChange:e=>onChange({...layout,ext:e.target.value})},
+          ['csv','txt'].map(o=>h('option',{key:o,value:o},'.'+o)))),
+      h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(confirm('Reset the layout to the standard columns?'))onChange({cols:BANK_LAYOUT_DEFAULT_COLS.map(f=>({field:f,header:BANK_LAYOUT_FIELDS[f]})),headerRow:true,sep:',',typeCodes:false,ext:'csv'});}},'Reset'))
+  );
+}
 function BankPaymentSheet({period,salon,onNavTab}={}){
   const salonId=salon?.id;
   const {success,error:bpError}=useToast();
@@ -2214,14 +2247,16 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
   //    but it will likely need encrypting through SBI-provided tools first.
   //  • Axis Bank, Kotak Mahindra Bank, Other — no verified bank-specific structural difference
   //    found; these use the same common Bulk NEFT/RTGS format as before. ──
-  const [bankChoice,setBankChoice]=useState('Generic');
+  const [bankChoice,setBankChoiceRaw]=useState(()=>{try{return cachedLocalGet(outletKey('salonos_bank_payment_bank',salon?.id))||'Generic';}catch(e){return'Generic';}});
+  const setBankChoice=(b)=>{setBankChoiceRaw(b);safeLocalSet(outletKey('salonos_bank_payment_bank',salonId),b);};
   const BANK_NOTES={
     'HDFC Bank':'HDFC\u2019s ENet/CBX portal uses separate file structures for beneficiaries within HDFC Bank (no IFSC needed) vs at other banks (IFSC required). This screen generates both files separately below \u2014 upload each to the matching section in ENet.',
     'ICICI Bank':'ICICI\u2019s own published CIB bulk-upload spec is a FIXED-WIDTH positional file (exact character positions per field), not a simple CSV \u2014 the file below almost certainly won\u2019t upload as-is. Get the exact field-position layout from your RM or CIB admin before relying on this.',
     'State Bank of India':'SBI\u2019s CINB (Vyapaar/Vistaar) bulk upload typically requires the file to be ENCRYPTED (symmetric or PKI keys) before submission. The content below is correct, but it will likely need encrypting through SBI-provided tools first \u2014 check with your branch/RM.',
     'Axis Bank':'No verified Axis-specific structural difference from the common Bulk NEFT/RTGS format \u2014 same caveat as always: confirm column order with Axis before a full batch.',
     'Kotak Mahindra Bank':'No verified Kotak-specific structural difference from the common Bulk NEFT/RTGS format \u2014 same caveat as always: confirm column order with Kotak before a full batch.',
-    'Generic':'Uses the common Bulk NEFT/RTGS format most Indian banks\u2019 portals accept as a starting point. Column order and any extra header row your specific bank wants can vary \u2014 confirm before a full batch.'
+    'Generic':'Uses the common Bulk NEFT/RTGS format most Indian banks\u2019 portals accept as a starting point. Column order and any extra header row your specific bank wants can vary \u2014 confirm before a full batch.',
+    'Custom layout':'Your own column layout, set below to match your bank’s bulk-upload sample exactly (columns, order, header names, separator, N/R/I codes). Saved for this outlet.',
   };
   const [paymentMode,setPaymentMode]=useState('Auto');
   // RTGS is for ₹2,00,000 and above (no upper limit); NEFT has had no minimum or maximum since
@@ -2233,6 +2268,13 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
   const [debitAccount,setDebitAccount]=useState(salon?.bankAccountNo||'');
   useEffect(()=>{setDebitAccount(salon?.bankAccountNo||'');},[salonId]);
   const [valueDate,setValueDate]=useState(new Date().toISOString().slice(0,10));
+  // ── Custom layout (automation phase 3) — for a bank whose exact bulk-upload format isn't one
+  // of the above: pick the columns, their order and header names, separator and payment-type
+  // codes, once per outlet (kv salonos_bank_payment_layout_outlet_<id>). ──
+  const LAYOUT_KEY=outletKey('salonos_bank_payment_layout',salonId);
+  const [layout,setLayout]=useState(()=>{try{const v=JSON.parse(cachedLocalGet(LAYOUT_KEY)||'null');if(v&&Array.isArray(v.cols))return v;}catch(e){}
+    return{cols:BANK_LAYOUT_DEFAULT_COLS.map(f=>({field:f,header:BANK_LAYOUT_FIELDS[f]})),headerRow:true,sep:',',typeCodes:false,ext:'csv'};});
+  const saveLayout=(next)=>{setLayout(next);safeLocalSet(LAYOUT_KEY,JSON.stringify(next));};
 
   const [refreshTick,setRefreshTick]=useState(0);
   const doRefresh=()=>setRefreshTick(t=>t+1);
@@ -2307,6 +2349,35 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
       const rtgs=rows.length-neft;
       return 'Auto — '+neft+' NEFT, '+rtgs+' RTGS (₹'+RTGS_THRESHOLD.toLocaleString('en-IN')+'+)';
     };
+    if(bankChoice==='Custom layout'){
+      const sep=layout.sep==='tab'?'\t':layout.sep||',';
+      const q=v=>{const s=String(v==null?'':v);return(s.indexOf(sep)!==-1||/["\n]/.test(s))?'"'+s.replace(/"/g,'""')+'"':s;};
+      const dmy=valueDate?valueDate.split('-').reverse().join('/'):'';
+      const valueFor=(x,f)=>{
+        const bank=tab==='vendor'?x.vendor:x;const amt=Math.round(Number(amtFor(x))||0);const pt=paymentTypeFor(amt);
+        switch(f){
+          case'paymentType':return layout.typeCodes?(pt==='RTGS'?'R':pt==='IMPS'?'I':'N'):pt;
+          case'name':return bank.accountHolder||bank.name;
+          case'account':return bank.accountNo;
+          case'ifsc':return bank.ifsc;
+          case'amount':return amt;
+          case'amount2':return amt.toFixed(2);
+          case'debit':return debitAccount;
+          case'email':return bank.email||'';
+          case'mobile':return bank.phone||bank.mobile||'';
+          case'remarks':return remarksFor(x);
+          case'dateDmy':return dmy;
+          case'dateIso':return valueDate;
+          case'code':return tab==='vendor'?(x.vendor.id||''):(x.id||'');
+          default:return'';
+        }
+      };
+      const lines=chosen.map(x=>layout.cols.map(c=>c.field==='fixed'?q(c.header):q(valueFor(x,c.field))).join(sep));
+      if(layout.headerRow)lines.unshift(layout.cols.map(c=>c.field==='fixed'?'':q(c.header)).join(sep));
+      downloadTextFile((layout.ext==='csv'?'﻿':'')+lines.join('\r\n'),'BankPayment_'+label+'_'+outletTag+'_'+valueDate+'.'+(layout.ext||'csv'),layout.ext==='csv'?'text/csv;charset=utf-8':'text/plain;charset=utf-8');
+      success(chosen.length+' payment(s) exported in your custom layout ('+modeSummary(chosen)+', total ₹'+chosen.reduce((s,x)=>s+(Math.round(Number(amtFor(x))||0)),0).toLocaleString('en-IN')+').'+(missingBank?' '+missingBank+' payee(s) were skipped — missing bank details.':''));
+      return;
+    }
     if(bankChoice==='HDFC Bank'){
       const within=chosen.filter(x=>String((tab==='vendor'?x.vendor:x).ifsc||'').toUpperCase().startsWith('HDFC'));
       const other=chosen.filter(x=>!String((tab==='vendor'?x.vendor:x).ifsc||'').toUpperCase().startsWith('HDFC'));
@@ -2353,6 +2424,7 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
       React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:8}},paymentMode==='Auto'?'Auto mode: each payment gets NEFT below ₹2,00,000 and RTGS at ₹2,00,000 or above — decided per payee, not for the whole batch.':'RTGS is typically for ₹2 lakh+; NEFT has no minimum since 2019.')
     ),
 
+    bankChoice==='Custom layout'&&React.createElement(BankLayoutEditor,{layout,onChange:saveLayout}),
     React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
       tabDef.map(t=>React.createElement('button',{key:t.id,className:`tab-btn ${subTab===t.id?'active':''}`,onClick:()=>setSubTab(t.id)},t.label))
     ),

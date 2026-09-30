@@ -137,7 +137,29 @@ this update. Login failures still log to App errors ("Login: …").
   Client: AlertsBell (js/14) in the topbar, hides alerts already fixed on this device (alertFixedLocally, js/02);
   AutomationSettingsCard (js/03, kv salonos_secret_automation_settings). tests.html compiles the edge function with
   TypeScript (cdnjs) and runs computeAlerts on sample data (4 tests).
-3 Auto-match bank payments on import, recurring (Fixed) invoice auto-create on bill day, salary bank bulk file (needs bank
-  format), evening Tally sync (connector is local → run from the app when open).
+3 ✅ (v2026.09.30.4)
+  a) Bank auto-link on every import (file, PDF, watcher, AA): BankStatement `autoLinkAll({onlyIds})` via autoMatchPendingRef
+     effect after setRows. Vendor = existing exact-amount rule (autoLinkVendorPayments, now reusable/quiet). Salary =
+     global `autoSettleSalaryRows` (js/10): exactly one active employee named (full name, ≥4 chars) or account no. (≥6
+     digits) in the narration AND amount = outstanding Salary / Incentive / both for exactly one of txn month, −1, −2
+     (unlocked) → settleEmployeePayFor + linkedEmployeePay {auto:true}; 🔗 Unlink reverses. Button renamed "Auto-Link Payments".
+  b) Outlet switch `autoRecurringInvoices` (Master Sheet → outlet → Vendor Invoices). `autoCreateRecurringInvoices` (js/04):
+     Active + Fixed + MONTHLY only (non-monthly would double count vs the monthly accrual: vendorWinsOverRecurring puts the
+     whole bill in one month); this + last month; skips a month with ANY non-PI invoice from that vendor; id = invoiceNo =
+     REC-<item>-<YYYY-MM> (deterministic → concurrent creation merges by id); category = recurringVendorCategoryFor(type)
+     (NOT the vendor's cat — must land on the right P&L line); taxable with increments, GST scaled, TDS auto payment.
+     Run from App (after hydrate, hourly) for outlets the user can edit 'vendors' (userCanEditSheet, js/02).
+     Known limit (pre-existing): vendorWinsOverRecurring replaces the WHOLE recurring accrual of a type with that month's
+     invoices, so a non-monthly item of the same type as an auto-invoiced monthly one loses its accrual in those months.
+     Server `automation`: the fixed "recurring" alert is skipped when REC-<id>-<month> exists (its due alert covers it).
+  c) Bank Payment → Bank "Custom layout": BankLayoutEditor (columns/order/headers, separator, N/R/I, csv/txt), kv
+     salonos_bank_payment_layout_outlet_<id>; bank choice remembered (salonos_bank_payment_bank_outlet_<id>).
+  d) Evening Tally sync: per computer (localStorage sos_tally_connector.autoSync {outletId:{company,from}}, syncTime,
+     lastSync). App effect every 5 min after syncTime, once/day/outlet; `runTallyAutoSync` (js/02): only vouchers dated ≥ from,
+     not yet sent (kv salonos_tally_pushed_outlet_<id> {inv|bank: id→{at,sig}}); creates missing ledgers; one voucher per
+     request; rejects retried next run; edited-after-send items listed, never re-sent. UI: TallyAutoSyncCard (js/09).
+  Tests: 40 (recurring invoices 4, salary auto-match 2, Tally sync 3 with a stubbed tallySend).
 4 AI bank-row tagging, monthly P&L explanation, anomaly alerts, "Ask SalonOS".
 5 Approval rules, temporary-user expiry, weekly backup file, login watch.
+
+**Local testing note:** opening index.html on the local preview (localhost:8765) registers the service worker, which then answers every request (even tests.html?x=) with the cached app page. After checking the app locally, unregister it (navigator.serviceWorker.getRegistrations → unregister, clear caches) before running tests.html.

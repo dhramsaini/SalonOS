@@ -1,5 +1,51 @@
 
 
+// ── 🌙 Evening auto-sync card (automation phase 3) — switched on per computer (the connector only
+// runs on this PC). The app sends this outlet's new vouchers from the set time each evening while
+// SalonOS is open here (runTallyAutoSync in js/02-shared.js, scheduled in App). ──
+function TallyAutoSyncCard({salonId,conn,updateConn,companies,tallyOk,onDone}){
+  const h=React.createElement;
+  const {success,error:toastError}=useToast();
+  const auto=(conn.autoSync||{})[salonId]||null;
+  const last=(conn.lastSync||{})[salonId]||null;
+  const [busy,setBusy]=useState(false);
+  const todayIso=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+  const pending=auto?tallyAutoSyncPending(salonId,auto.from):null;
+  const setAuto=(next)=>{const all={...(conn.autoSync||{})};if(next)all[salonId]=next;else delete all[salonId];updateConn({autoSync:all});};
+  const runNow=async()=>{
+    setBusy(true);
+    try{
+      const res=await runTallyAutoSync(salonId,conn,auto);
+      updateConn({lastSync:{...(conn.lastSync||{}),[salonId]:{...res,day:todayIso()}}});
+      (res.failed.length?toastError:success)('Tally sync: '+res.sent+' voucher(s) sent'+(res.ledgersCreated?', '+res.ledgersCreated+' ledger(s) created':'')+(res.failed.length?', '+res.failed.length+' rejected (listed below)':'')+'.');
+      if(onDone)onDone();
+    }catch(e){toastError(e.message);}
+    setBusy(false);
+  };
+  return h('div',{className:'card',style:{marginBottom:16}},
+    h('div',{style:{fontWeight:600,fontSize:13,color:'var(--text)',marginBottom:6}},'🌙 Evening auto-sync (this computer)'),
+    h('label',{style:{display:'flex',alignItems:'flex-start',gap:8,fontSize:12.5,color:'var(--text2)',cursor:'pointer',lineHeight:1.5}},
+      h('input',{type:'checkbox',checked:!!auto,style:{marginTop:3},onChange:e=>setAuto(e.target.checked?{company:conn.company||'',from:todayIso()}:null)}),
+      h('span',null,'Every evening from ',
+        h('input',{type:'time',className:'form-control',style:{width:110,display:'inline-block',padding:'2px 6px'},value:conn.syncTime||'20:00',onChange:e=>updateConn({syncTime:e.target.value||'20:00'})}),
+        ', send this outlet’s new purchase invoices and bank transactions to Tally — while SalonOS is open on this computer with the connector running. Missing ledgers are created first; each voucher is sent once.')),
+    auto&&h('div',{style:{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',margin:'8px 0 0 22px',fontSize:12,color:'var(--text2)'}},
+      'Company:',
+      h('select',{className:'form-control',style:{width:'auto',minWidth:200},value:auto.company||'',onChange:e=>setAuto({...auto,company:e.target.value})},
+        h('option',{value:''},'(the one currently selected in Tally)'),
+        Array.from(new Set([...(companies||[]),auto.company].filter(Boolean))).map(c=>h('option',{key:c,value:c},c))),
+      'Vouchers dated from:',
+      h('input',{type:'date',className:'form-control',style:{width:'auto'},value:auto.from,onChange:e=>e.target.value&&setAuto({...auto,from:e.target.value})}),
+      h('button',{className:'btn btn-ghost btn-sm'+(busy?' btn-loading':''),disabled:busy||!tallyOk,title:tallyOk?'':'Connector / Tally not reachable',onClick:runNow},'Sync now')),
+    auto&&pending&&h('div',{style:{fontSize:11.5,color:'var(--text3)',margin:'8px 0 0 22px',lineHeight:1.6}},
+      'Waiting to send: '+pending.invs.length+' invoice(s), '+pending.rows.length+' bank transaction(s).',
+      pending.changed.length?h('div',{style:{color:'var(--orange)'}},'Changed after they were sent (not re-sent — correct them in Tally): '+pending.changed.slice(0,5).join(' · ')+(pending.changed.length>5?' …':'')):null),
+    last&&h('div',{style:{fontSize:11.5,color:last.error||last.failed&&last.failed.length?'var(--orange)':'var(--text3)',margin:'6px 0 0 22px',lineHeight:1.6}},
+      'Last run '+new Date(last.at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+': '
+        +(last.error?last.error:(last.sent+' sent'+(last.ledgersCreated?', '+last.ledgersCreated+' ledger(s) created':'')+(last.failed&&last.failed.length?', '+last.failed.length+' rejected':''))),
+      last.failed&&last.failed.length?h('div',null,last.failed.slice(0,5).map((f,i)=>h('div',{key:i},'• '+f))):null)
+  );
+}
 function TallyExportSheet({salon,onNavTab}={}){
   const salonId=salon?.id;
   const {success,error:tallyErr}=useToast();
@@ -245,6 +291,7 @@ function TallyExportSheet({salon,onNavTab}={}){
               React.createElement('button',{className:'btn btn-primary btn-sm',disabled:!!pushBusy,onClick:()=>createMissingInTally(false)},pushBusy?'Creating…':'➕ Create them in Tally'))
           :React.createElement('span',{style:{color:'var(--green)'}},'✓ every SalonOS ledger exists in Tally'))
     ),
+    React.createElement(TallyAutoSyncCard,{salonId,conn,updateConn,companies:connState.companies,tallyOk:connState.tally,onDone:doRefresh}),
 
     // ── Ledger name mapping ──
     React.createElement('div',{className:'card',style:{marginBottom:16}},

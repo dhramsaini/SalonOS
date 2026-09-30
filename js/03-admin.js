@@ -599,6 +599,9 @@ function MasterSheet({onSelect,salons,setSalons,user}){
     // actual invoice's month. attachmentRequired — Tax Invoice / Invoice / Performa Invoice can't be
     // saved without the document attached.
     piAsExpense:false,attachmentRequired:false,
+    // autoRecurringInvoices — each Monthly, Fixed recurring expense gets its invoice created in
+    // Vendor Sheet automatically on the 1st (autoCreateRecurringInvoices, js/04-outlet-staff.js).
+    autoRecurringInvoices:false,
     // Payment Due Dates — feeds the Due Date Tracker's auto-generated Salary Disbursement /
     // Incentive Payment items, same rolling-window pattern as PF/ESIC/PT, but on a day the outlet
     // itself sets rather than a fixed statutory one, since payroll cutoff varies salon to salon.
@@ -1185,7 +1188,12 @@ function MasterSheet({onSelect,salons,setSalons,user}){
             React.createElement('input',{type:'checkbox',checked:!!form.attachmentRequired,onChange:fcCheck('attachmentRequired'),style:{marginTop:3}}),
             React.createElement('span',null,
               React.createElement('span',{style:{fontSize:12.5,fontWeight:600,color:'var(--text)'}},'Attachment compulsory for invoices'),
-              React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',lineHeight:1.5,marginTop:2}},'A Tax Invoice, Invoice or Performa Invoice can’t be saved without attaching the document (in Vendor Sheet and in Daily Sales & Exp).')))
+              React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',lineHeight:1.5,marginTop:2}},'A Tax Invoice, Invoice or Performa Invoice can’t be saved without attaching the document (in Vendor Sheet and in Daily Sales & Exp).'))),
+          React.createElement('label',{style:{display:'flex',alignItems:'flex-start',gap:8,cursor:'pointer'}},
+            React.createElement('input',{type:'checkbox',checked:!!form.autoRecurringInvoices,onChange:fcCheck('autoRecurringInvoices'),style:{marginTop:3}}),
+            React.createElement('span',null,
+              React.createElement('span',{style:{fontSize:12.5,fontWeight:600,color:'var(--text)'}},'Create recurring invoices automatically'),
+              React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',lineHeight:1.5,marginTop:2}},'On the 1st of each month, every Active, Fixed-amount, Monthly recurring expense (Rent, Maintenance, Royalty…) gets its invoice in Vendor Sheet — dated the 1st, due on its due day, with any increment, GST and TDS applied — ready to be paid and auto-linked from the bank statement. Months already missed are caught up. Variable bills (electricity) and non-monthly items are still entered by hand.')))
         ),
 
         React.createElement('div',{className:'modal-actions'},

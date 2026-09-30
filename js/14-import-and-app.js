@@ -721,6 +721,59 @@ function App(){
     window.addEventListener('keydown',onKey);
     return ()=>window.removeEventListener('keydown',onKey);
   },[]);
+  // Automation phase 3: monthly invoices for Fixed recurring expenses, on outlets that switched it
+  // on — run once the data is loaded, then hourly, by anyone who can edit that outlet's Vendors.
+  useEffect(()=>{
+    if(!loggedIn||syncing||!user)return;
+    const run=()=>{
+      let total=0;const names=[];
+      salons.filter(s=>userCanSeeOutlet(user,s.id)&&userCanEditSheet(user,s.id,'vendors')).forEach(s=>{
+        try{const r=autoCreateRecurringInvoices(s.id);if(r.create.length){total+=r.create.length;names.push(String(s.name||'').split('—')[0].trim());}}catch(e){}
+      });
+      if(total){setDataVersion(v=>v+1);addToast('Created '+total+' recurring invoice'+(total===1?'':'s')+' for this month in Vendor Sheet ('+names.join(', ')+')','info',6000);}
+    };
+    const first=setTimeout(run,4000);
+    const t=setInterval(run,60*60*1000);
+    return()=>{clearTimeout(first);clearInterval(t);};
+  },[loggedIn,syncing,user&&user.id,salons]);
+  // Automation phase 3: evening Tally sync — only on a computer where it was switched on (Tally
+  // Export → 🌙 Evening auto-sync), from the set time onward, once a day per outlet. If the
+  // connector/Tally isn't answering it keeps trying every 5 minutes while the app is open.
+  useEffect(()=>{
+    if(!loggedIn||syncing||!user)return;
+    let busy=false;
+    const pad=n=>String(n).padStart(2,'0');
+    const tick=async()=>{
+      if(busy)return;
+      const cfg=loadTallyConnectorCfg();
+      const auto=cfg.autoSync||{};
+      const ids=Object.keys(auto);
+      if(!ids.length)return;
+      const now=new Date(),hm=pad(now.getHours())+':'+pad(now.getMinutes());
+      if(hm<(cfg.syncTime||'20:00'))return;
+      const today=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+      busy=true;
+      try{
+        for(const id of ids){
+          if(!userCanSeeOutlet(user,id)||!userCanEditSheet(user,id,'tally-export'))continue;
+          const last=(cfg.lastSync||{})[id];
+          if(last&&last.day===today)continue;
+          const name=String(outletSettings(id).name||'Outlet').split('—')[0].trim();
+          let res;
+          try{res={...(await runTallyAutoSync(id,cfg,auto[id])),day:today};}
+          catch(e){res={error:e.message,at:new Date().toISOString(),errorDay:today,sent:0,failed:[],changed:[]};}
+          const c2=loadTallyConnectorCfg();
+          const hadErrToday=((c2.lastSync||{})[id]||{}).errorDay===today;
+          c2.lastSync={...(c2.lastSync||{}),[id]:res};saveTallyConnectorCfg(c2);
+          if(res.error){if(!hadErrToday)addToast('Evening Tally sync ('+name+') is waiting: '+res.error,'warning',8000);}
+          else if(res.sent||res.failed.length)addToast('Tally sync ('+name+'): '+res.sent+' voucher'+(res.sent===1?'':'s')+' sent'+(res.ledgersCreated?', '+res.ledgersCreated+' ledger(s) created':'')+(res.failed.length?' · '+res.failed.length+' rejected — see Tally Export':''),res.failed.length?'warning':'success',8000);
+        }
+      }finally{busy=false;}
+    };
+    const first=setTimeout(tick,8000);
+    const t=setInterval(tick,5*60*1000);
+    return()=>{clearTimeout(first);clearInterval(t);};
+  },[loggedIn,syncing,user&&user.id]);
 
   if(CLOUD_SYNC_ENABLED&&isPasswordRecoveryLink())return React.createElement(ResetPasswordPage,null);
   if(!loggedIn)return React.createElement(LoginPage,{onLogin:handleLogin});

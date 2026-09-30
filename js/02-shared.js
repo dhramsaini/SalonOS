@@ -336,6 +336,18 @@ function userCanSeeOutlet(u,outletId){
   if(oa){const lvl=oa[String(outletId)];return !!lvl&&lvl!=='No Access';}
   return(u.outletIds||[]).map(String).includes(String(outletId));
 }
+// Can this user change this sheet on this outlet? Same rule as the database's write check
+// (salonos_key_access): outlet level must be View and Edit, never for Reviewer / Owner roles, and
+// the sheet itself not set below Edit in User Management.
+function userCanEditSheet(u,outletId,sheetId){
+  if(!u)return false;
+  if(u.role==='Super Admin')return true;
+  if(['Reviewer','Owner','Salon Owner'].includes(u.role))return false;
+  const oa=u.outletAccess&&Object.keys(u.outletAccess).length?u.outletAccess:null;
+  if(oa?oa[String(outletId)]!=='View and Edit':!(u.outletIds||[]).map(String).includes(String(outletId)))return false;
+  const sa=u.sheetAccessByOutlet&&u.sheetAccessByOutlet[outletId];
+  return !(sa&&sa[sheetId]&&sa[sheetId]!=='Edit');
+}
 // An outlet's current settings (Master Sheet saves update SALONS in place; the salon object a
 // screen was opened with can be an older copy).
 function outletSettings(salonId){return SALONS.find(s=>String(s.id)===String(salonId))||{};}
@@ -799,7 +811,7 @@ const SALON_SCOPED_KEY_BASES=[
   'salonos_incentive_actuals','salonos_inventory_items','salonos_penalties','salonos_recurring_expenses',
   'salonos_staffreport_last_auto','salonos_vendor_invoices','salonos_vendors',
   'salonos_master_employees','salonos_attendance','salonos_salary_working_meta','salonos_period_default',
-  'salonos_sw_cols','salonos_iw_cols','salonos_audit_log',
+  'salonos_sw_cols','salonos_iw_cols','salonos_audit_log','salonos_bank_payment_layout','salonos_bank_payment_bank','salonos_tally_pushed',
   // ── Added in a later review pass — these per-outlet stores existed already but were never
   // added here when they were introduced, so "Delete Outlet" was silently leaving all of this
   // behind (stale data that could bleed into a future outlet reusing the same numeric id). ──
@@ -2995,4 +3007,83 @@ function alertFixedLocally(a){
     }
   }catch(e){}
   return false;
+}
+
+// ── Evening Tally sync (automation phase 3). Runs in the app, on the computer that has the SalonOS
+// Tally Connector (Tally Export → 🌙 Evening auto-sync; switched on per computer in the connector
+// settings, localStorage sos_tally_connector: autoSync {outletId: {company, from}}, syncTime).
+// Sends only vouchers dated on/after `from` (the day it was switched on, so nothing already
+// imported by hand goes twice) that it hasn't sent before (kv salonos_tally_pushed_outlet_<id>,
+// shared). First creates any ledger those vouchers need that Tally doesn't have, then sends each
+// voucher on its own so Tally's answer can be recorded per voucher; a rejected one is retried next
+// evening and listed with Tally's reason. An item edited after it was sent is NOT re-sent (that
+// would duplicate it in Tally) — it's listed as "changed after sending" for a manual check. ──
+function loadTallyPushed(salonId){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_tally_pushed',salonId))||'null');if(v&&typeof v==='object')return{inv:v.inv||{},bank:v.bank||{}};}catch(e){}return{inv:{},bank:{}};}
+function saveTallyPushed(salonId,v){safeLocalSet(outletKey('salonos_tally_pushed',salonId),JSON.stringify(v));}
+function tallyItemSig(o){const s=JSON.stringify(o);let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return String(h);}
+function tallyInvSig(inv){return tallyItemSig([inv.vendorId,inv.invoiceNo,inv.invoiceDate,inv.bookingDate,inv.amount,inv.taxable,inv.igst,inv.cgst,inv.sgst,inv.roundOff,inv.category]);}
+function tallyBankSig(r){return tallyItemSig([r.transactionDate,r.description,r.debit,r.credit,r.refNo]);}
+function tallyIsoOf(d){const p=parseInvoiceDateFlexible(d);return p?p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0'):'';}
+// What would go in the next sync: {invs, rows, changed:[labels]}.
+function tallyAutoSyncPending(salonId,from){
+  const pushed=loadTallyPushed(salonId);
+  const changed=[];
+  const invs=loadVendorInvoices(salonId).filter(inv=>{
+    if(inv.docNature==='Performa Invoice')return false;
+    const iso=tallyIsoOf(inv.bookingDate||inv.invoiceDate);
+    if(!iso||iso<from)return false;
+    const p=pushed.inv[inv.id];
+    if(p){if(p.sig!==tallyInvSig(inv))changed.push('Invoice '+(inv.invoiceNo||inv.id));return false;}
+    return true;
+  });
+  const rows=loadBankStatementRows(salonId).filter(r=>{
+    if(!(r.debit||r.credit))return false;
+    const iso=tallyIsoOf(r.transactionDate);
+    if(!iso||iso<from)return false;
+    const p=pushed.bank[r.id];
+    if(p){if(p.sig!==tallyBankSig(r))changed.push('Bank '+r.transactionDate+' '+String(r.description||'').slice(0,30));return false;}
+    return true;
+  });
+  return{invs,rows,changed};
+}
+async function runTallyAutoSync(salonId,cfg,setting){
+  const salon=outletSettings(salonId);
+  const map=loadTallyLedgerMap(salonId);
+  if(!map.bankLedger)throw new Error('Enter the Bank ledger name on Tally Export first.');
+  const c={...cfg,company:(setting&&setting.company)||cfg.company||''};
+  const vendors=loadVendors(salonId);
+  const vName=id=>{const v=vendors.find(x=>x.id===id);return(map.vendors&&map.vendors[id])||(v?v.name:id);};
+  const cName=cat=>(map.categories&&map.categories[cat])||cat;
+  const gstBlocked=!gstInputAllowedAsOf(salon,new Date().toISOString().slice(0,10));
+  const{invs,rows,changed}=tallyAutoSyncPending(salonId,(setting&&setting.from)||'9999');
+  const out={sent:0,failed:[],ledgersCreated:0,changed,at:new Date().toISOString()};
+  if(!invs.length&&!rows.length)return out;
+  // 1 · Ledgers the vouchers need.
+  const ledgers=parseTallyLedgersDetailed(await tallySend(c,buildTallyLedgerListRequestXml(c.company)));
+  const have=new Set(ledgers.map(l=>String(l.name).toLowerCase()));
+  const cats=Array.from(new Set(invs.map(i=>i.category).filter(Boolean)));
+  const gst={igst:invs.some(i=>Number(i.igst)>0),cgst:invs.some(i=>Number(i.cgst)>0),sgst:invs.some(i=>Number(i.sgst)>0)};
+  const miss=tallyMastersPreviewRows(vendors,cats,gst,map.bankLedger,vName,cName,gstBlocked).filter(r=>!have.has(String(r.name).toLowerCase()));
+  if(miss.length){
+    const names=new Set(miss.map(r=>r.name));
+    const xml=buildTallyMastersXml(vendors.filter(v=>names.has(vName(v.id))),cats.filter(x=>names.has(cName(x))),
+      {igst:names.has('IGST Input'),cgst:names.has('CGST Input'),sgst:names.has('SGST Input')},names.has(map.bankLedger)?map.bankLedger:'',vName,cName,gstBlocked);
+    const r=parseTallyImportResult(await tallySend(c,xml));
+    out.ledgersCreated=r.created||0;
+  }
+  // 2 · Vouchers, one at a time.
+  const pushed=loadTallyPushed(salonId);
+  const ok=r=>!r.errors&&!r.exceptions&&(r.created||r.altered);
+  for(const inv of invs){
+    const r=parseTallyImportResult(await tallySend(c,buildTallyPurchaseVouchersXml([inv],vName,cName,gstBlocked)));
+    if(ok(r)){pushed.inv[inv.id]={at:out.at,sig:tallyInvSig(inv)};out.sent++;}
+    else out.failed.push('Invoice '+(inv.invoiceNo||inv.id)+': '+(r.lineErrors[0]||tallyResultText(r)));
+  }
+  for(const row of rows){
+    const r=parseTallyImportResult(await tallySend(c,buildTallyBankVouchersXml([row],map.bankLedger,vendors)));
+    if(ok(r)){pushed.bank[row.id]={at:out.at,sig:tallyBankSig(row)};out.sent++;}
+    else out.failed.push('Bank '+row.transactionDate+' '+String(row.description||'').slice(0,30)+': '+(r.lineErrors[0]||tallyResultText(r)));
+  }
+  saveTallyPushed(salonId,pushed);
+  return out;
 }

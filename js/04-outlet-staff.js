@@ -1794,6 +1794,71 @@ function variableRecurringSumFor(salonId,recurringTypeName,year,month){
   });
   return{amt,rows,used};
 }
+// ── Automatic monthly invoices for Fixed recurring expenses (automation phase 3; outlet switch
+// "Create recurring invoices automatically", Master Sheet → outlet → Vendor Invoices). For each
+// Active, Fixed, Monthly item: one invoice per month in Vendor Sheet, id = invoice no =
+// REC-<item id>-<YYYY-MM> (the same on every device, so two people opening the app on the 1st can
+// never create it twice — saves merge records by id). Dated the 1st, due on the item's due day,
+// amount = that month's taxable (increments applied) + forward-charge GST; TDS as an auto payment
+// line like the standing REC- invoice. Looks at this month and last month only, and skips a month
+// that already has any invoice from that vendor (booked by hand, or the standing REC- invoice), so
+// the P&L — where a Rent/Maintenance/… invoice replaces that month's accrual — never counts twice.
+// Monthly only: a quarterly bill would land whole in one month while the other months still accrue.
+function autoRecurringInvoicesDue(salonId,asOf){
+  if(!outletSettings(salonId).autoRecurringInvoices)return{create:[],needVendor:[]};
+  const now=asOf||new Date();
+  const vendors=loadVendors(salonId),invoices=loadVendorInvoices(salonId);
+  const have=new Set(invoices.map(i=>i.id));
+  const create=[],needVendor=[];
+  const pad=n=>String(n).padStart(2,'0');
+  loadRecurringExpenses(salonId).forEach(it=>{
+    if(it.status!=='Active'||isVariableRecurring(it)||(it.frequency||'Monthly')!=='Monthly')return;
+    const payee=String(it.payee||'').trim().toLowerCase();
+    const vendor=payee&&(vendors.find(v=>String(v.name||'').trim().toLowerCase()===payee)
+      ||vendors.find(v=>{const n=String(v.name||'').toLowerCase();return n&&(n.includes(payee)||payee.includes(n));}));
+    [-1,0].forEach(off=>{
+      const d=new Date(now.getFullYear(),now.getMonth()+off,1),y=d.getFullYear(),m=d.getMonth();
+      const code=y+'-'+pad(m+1),t=y*12+m;
+      const start=monthIndexOfIso(it.startDate),end=monthIndexOfIso(it.endDate);
+      if((start!=null&&t<start)||(end!=null&&t>end))return;
+      const id='REC-'+it.id+'-'+code;
+      if(have.has(id))return;
+      if(!vendor){if(off===0)needVendor.push(recurringExpenseNameOf(it)+' ('+(it.payee||'no payee')+')');return;}
+      const booked=invoices.some(inv=>inv.vendorId===vendor.id&&inv.docNature!=='Performa Invoice'&&monthIndexOfIso(toISO(inv.invoiceDate))===t);
+      if(booked)return;
+      const base=Number(it.amount)||0;
+      const taxable=Math.round(effectiveTaxableAmountFor(it,y,m)*100)/100;
+      const gst=it.expenseName==='Electricity Expenses'||!it.gstApplicable?0:Math.round((Number(it.gstAmount)||0)*(base>0?taxable/base:1)*100)/100;
+      const tds=it.tdsApplicable?Math.round(taxable*(Number(it.tdsRate)||0)/100):0;
+      const days=new Date(y,m+1,0).getDate();
+      const dmy=dd=>pad(dd)+'/'+pad(m+1)+'/'+y;
+      const invDate=dmy(1);
+      create.push({id,invoiceNo:id,recurringId:it.id,vendorId:vendor.id,docNature:'Tax Invoice',invoiceDate:invDate,bookingDate:invDate,
+        dueDate:dmy(Math.min(Math.max(1,Number(it.dueDay)||1),days)),taxable,igst:'',cgst:'',sgst:'',roundOff:'',freight:'',amount:Math.round((taxable+gst)*100)/100,
+        tdsAmt:tds,tdsSection:it.tdsApplicable?(it.tdsSection||''):'',tdsRate:it.tdsApplicable?(it.tdsRate||''):'',
+        category:recurringVendorCategoryFor(it.expenseName),desc:'Auto invoice: '+recurringExpenseNameOf(it)+' for '+MONTH_NAMES_SHORT_[m]+' '+y,attachment:null,linkedPI:'',assetLines:[],
+        payments:tds>0?[{id:'TDS-'+id,paidAmount:tds,paidDate:y+'-'+pad(m+1)+'-01',mode:'TDS',ref:'',note:'TDS deducted at source ('+(it.tdsSection||'—')+' @ '+(Number(it.tdsRate)||0)+'%) — remitted to the government, not paid to the vendor'}]:[],
+        autoCreated:true});
+    });
+  });
+  return{create,needVendor};
+}
+// Same mapping as the Recurring Expenses sheet uses for its payee vendor and standing REC- invoice.
+function recurringVendorCategoryFor(expenseName){
+  const same=['DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Rent','Royalty','Electricity Expenses','Telephone & Internet Expenses','Uniform Expenses'];
+  if(same.indexOf(expenseName)!==-1)return expenseName;
+  if(expenseName==='Maintenance Expenses'||expenseName==='Maintenance Bill')return'Maintenance Expenses';
+  if(expenseName==='Diesel Expenses')return'Utilities';
+  if(expenseName==='Marketing Expenses')return'Marketing';
+  return'Other';
+}
+const MONTH_NAMES_SHORT_=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+// Creates what autoRecurringInvoicesDue finds. Returns the invoices created.
+function autoCreateRecurringInvoices(salonId,asOf){
+  const due=autoRecurringInvoicesDue(salonId,asOf);
+  if(due.create.length)saveVendorInvoices([...loadVendorInvoices(salonId),...due.create],salonId);
+  return due;
+}
 function operatingExpensesFor(salonId,year,month){
   const lines=PL_OPEX_LINES.map(l=>{
     let amt=l.noDaily?0:(l.row?dailySalesRowSumFor(salonId,year,month,l.row):dailySalesGroupSumFor(salonId,year,month,l.group));

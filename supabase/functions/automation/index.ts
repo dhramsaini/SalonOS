@@ -162,6 +162,8 @@ export function computeAlerts(kv: KV, settings: typeof DEFAULTS, today: number) 
         } else {
           const dueDay = Math.min(Math.max(1, num(it.dueDay) || 1), daysIn(Y, M));
           if (start != null && ((thisMonth - start) % N + N) % N !== 0) continue; // not a due month
+          // The outlet's automatic monthly invoice exists → its own "due" alert covers this payment.
+          if (invoices.some((inv) => inv && inv.id === `REC-${it.id}-${mCode(thisMonth)}`)) continue;
           const due = dayOf(Y, M, dueDay);
           if (due - today > settings.dueDaysAhead) continue;
           const amt = it.gstApplicable ? num(it.amount) + num(it.gstAmount) : num(it.amount);

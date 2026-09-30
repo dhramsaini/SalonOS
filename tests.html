@@ -176,6 +176,54 @@
         const r2=mod.computeAlerts(kv,Object.assign({},mod.DEFAULTS,{autoLock:true,autoLockDay:4}),day(2026,10,5));
         eq('Automation: auto month lock only past the lock day, checklist stops then',[r2.locks,r2.alerts.some(a=>a.kind==='month_end')],[[{sid:901,month:2026*12+8}],false]);
       }catch(err){results.push({name:'Automation checks',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
+        // Automation phase 3a: monthly invoices for Fixed recurring expenses (2 Oct 2026).
+        const o=SALONS.find(s=>String(s.id)==='901');o.autoRecurringInvoices=true;
+        saveVendors([{id:'V1',name:'Landlord',cat:'Other'},{id:'V2',name:'Society',cat:'Maintenance Expenses'}],901);
+        saveVendorInvoices([{id:'VI-0001',vendorId:'V2',invoiceNo:'S-9',invoiceDate:'10/09/2026',amount:5000,docNature:'Tax Invoice',payments:[]}],901);
+        safeLocalSet(outletKey('salonos_recurring_expenses',901),JSON.stringify([
+          {id:'R1',expenseName:'Rent',payee:'Landlord',amount:50000,gstApplicable:true,gstAmount:9000,tdsApplicable:true,tdsRate:10,tdsSection:'194I',increments:[{date:'2026-09-15',pct:10}],frequency:'Monthly',dueDay:7,status:'Active',startDate:'2026-01-01',amountType:'Fixed'},
+          {id:'R2',expenseName:'Other',customName:'AMC',payee:'Landlord',amount:9000,frequency:'Quarterly',dueDay:5,status:'Active',amountType:'Fixed'},
+          {id:'R3',expenseName:'Electricity Expenses',payee:'Landlord',amount:6000,frequency:'Monthly',dueDay:10,status:'Active',amountType:'Variable'},
+          {id:'R4',expenseName:'Maintenance Bill',payee:'Society',amount:5000,frequency:'Monthly',dueDay:10,status:'Active',amountType:'Fixed'},
+          {id:'R5',expenseName:'Other',customName:'Parking',payee:'Nobody',amount:800,frequency:'Monthly',dueDay:1,status:'Active',amountType:'Fixed'}]));
+        const asOf=new Date(2026,9,2);
+        const r=autoCreateRecurringInvoices(901,asOf);
+        eq('Recurring invoices: which are created (monthly fixed only, not over a bill already booked)',[r.create.map(i=>i.id),r.needVendor],[['REC-R1-2026-09','REC-R1-2026-10','REC-R4-2026-10'],['Parking (Nobody)']]);
+        const oct=loadVendorInvoices(901).find(i=>i.id==='REC-R1-2026-10');
+        eq('Recurring invoices: increment, GST, TDS, dates, P&L category',[oct.taxable,oct.amount,oct.tdsAmt,oct.payments[0].paidAmount,oct.invoiceDate,oct.dueDate,oct.category],[55000,64900,5500,5500,'01/10/2026','07/10/2026','Rent']);
+        eq('Recurring invoices: running again creates nothing new',autoCreateRecurringInvoices(901,asOf).create.length,0);
+        eq('Recurring invoices: outlet switch off = nothing',(o.autoRecurringInvoices=false,autoRecurringInvoicesDue(901,new Date(2026,10,2)).create.length),0);
+      }catch(err){results.push({name:'Recurring invoices',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
+        // Automation phase 3b: salary auto-match from the bank statement.
+        const sal1=employeeSalaryOutstandingFor(901,'E1',2026,8),sal2=employeeSalaryOutstandingFor(901,'E2',2026,8);
+        const rows=[{id:1,transactionDate:'01/10/2026',description:'NEFT/SAL SEP/EMP E1/HDFC',debit:sal1},
+          {id:2,transactionDate:'01/10/2026',description:'NEFT EMP E2 SALARY',debit:sal2+500},
+          {id:3,transactionDate:'01/10/2026',description:'NEFT SOMEONE ELSE',debit:sal2}];
+        const res=autoSettleSalaryRows(901,rows);
+        const rec=res.settledByRow.get(1);
+        eq('Salary auto-match: exact amount + named employee only',[Array.from(res.settledByRow.keys()),rec&&rec[0].employeeId,rec&&rec[0].month,rec&&rec[0].salary>0,loadSWMeta(901)['E1_2026_8'].paymentStatus],[[1],'E1',8,true,'Paid']);
+        eq('Salary auto-match: an already-paid salary is not matched again',autoSettleSalaryRows(901,[rows[0]]).settledByRow.size,0);
+      }catch(err){results.push({name:'Salary auto-match',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
+        // Automation phase 3c: evening Tally sync against a pretend Tally.
+        saveTallyLedgerMap({bankLedger:'HDFC Bank'},901);
+        saveBankStatementRows([{id:11,transactionDate:'03/10/2026',description:'BANK CHARGES',debit:100,credit:0},{id:12,transactionDate:'20/09/2026',description:'OLD',debit:50,credit:0}],901);
+        const calls=[];
+        window.tallySend=async(cfg,xml)=>{
+          calls.push(xml);
+          if(xml.indexOf('List of Ledgers')!==-1)return '<ENVELOPE><LEDGER NAME="HDFC Bank"><PARENT>Bank Accounts</PARENT></LEDGER></ENVELOPE>';
+          if(/REC-R4-2026-10/.test(xml)&&/VOUCHER/.test(xml))return '<RESPONSE><CREATED>0</CREATED><ERRORS>1</ERRORS><LINEERROR>Ledger missing</LINEERROR></RESPONSE>';
+          return '<RESPONSE><CREATED>1</CREATED><ERRORS>0</ERRORS></RESPONSE>';
+        };
+        const s1=await runTallyAutoSync(901,{url:'x',company:''},{company:'Test Co',from:'2026-10-01'});
+        eq('Tally sync: sends only new vouchers from the start date, reports rejects',[s1.sent,s1.failed.length,/Ledger missing/.test(s1.failed[0]||'')],[2,1,true]);
+        const s2=await runTallyAutoSync(901,{url:'x',company:''},{company:'Test Co',from:'2026-10-01'});
+        eq('Tally sync: next run retries only the rejected one',[s2.sent,s2.failed.length],[0,1]);
+        const inv=loadVendorInvoices(901);saveVendorInvoices(inv.map(i=>i.id==='REC-R1-2026-10'?{...i,amount:1}:i),901);
+        eq('Tally sync: an invoice edited after sending is flagged, not re-sent',tallyAutoSyncPending(901,'2026-10-01').changed,['Invoice REC-R1-2026-10']);
+      }catch(err){results.push({name:'Tally sync',ok:false,got:String(err&&err.message||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
