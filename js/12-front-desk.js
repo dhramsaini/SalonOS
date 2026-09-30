@@ -991,10 +991,20 @@ function vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName,exclude
     if(effectiveCat!==categoryName)return;
     const sp=typeof billSplitMonths==='function'?billSplitMonths(inv.periodFrom,inv.periodTo):null;
     if(sp&&sp.months>1){
-      // A bill for several months (e.g. a 2-month electricity bill) — an equal share in each month it covers.
-      const t=year*12+month;if(t<sp.first||t>sp.last)return;
+      // A bill for several months (e.g. a 2-month electricity bill) — an equal share in each month it
+      // covers. A month that was closed before the bill was entered is left as it was; its share is
+      // booked in the latest month of the bill still open (or the bill's own month).
+      const t=year*12+month,share=Math.round(amount/sp.months*100)/100;
+      const closed=[];let lastOpen=null;
+      for(let c=sp.first;c<=sp.last;c++){if(monthClosedBeforeBill(salonId,c,inv))closed.push(c);else lastOpen=c;}
+      const bm=monthIndexOfIso(toISO(inv.invoiceDate));
+      const u=lastOpen!=null?lastOpen:Math.max(sp.last+1,bm!=null?bm:sp.last+1);
+      let amt=0,note='';
+      if(t>=sp.first&&t<=sp.last&&!closed.includes(t)){amt+=share;note=(t-sp.first+1)+' of '+sp.months+' months';}
+      if(t===u&&closed.length){amt+=share*closed.length;note=(note?note+' + ':'')+'share of closed '+closed.map(monthLabelOfIndex).join(', ');}
+      if(!amt)return;
       out.push({vendorName:vendor?vendor.name:'(vendor deleted)',invoiceDate:inv.invoiceDate,
-        invoiceNo:(inv.invoiceNo||'—')+' ('+(t-sp.first+1)+' of '+sp.months+' months)',docNature:inv.docNature,amount:Math.round(amount/sp.months*100)/100});
+        invoiceNo:(inv.invoiceNo||'—')+' ('+note+')',docNature:inv.docNature,amount:Math.round(amt*100)/100});
       return;
     }
     const iso=toISO(inv.invoiceDate);

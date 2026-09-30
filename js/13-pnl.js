@@ -1114,7 +1114,8 @@ function OutletPnLCore({salon,period}){
                       ?h('td',{style:{textAlign:'right',fontWeight:700}},'₹'+Math.round(vr.amt).toLocaleString('en-IN'),
                           h('div',{style:{fontSize:10,fontWeight:400,color:vr.actual?'var(--green)':'var(--orange)'}},vr.actual
                             ?'actual: '+vr.covering.map(b=>(b.inv.invoiceNo||'bill')+' ₹'+Math.round(b.amount).toLocaleString('en-IN')+' ÷ '+b.months+' month'+(b.months===1?'':'s')).join(', ')
-                            :'estimate — bill not entered yet'))
+                              +((vr.trueUps||[]).length?' · true-up for '+vr.trueUps.map(u=>monthLabelOfIndex(u.month)+' (share '+rupee(Math.round(u.share))+' − provision '+rupee(Math.round(u.provision))+' = '+rupee(Math.round(u.diff))+')').join(', '):'')
+                            :vr.provision?'provision (estimate) — month was closed before the bill; the difference is booked in the bill’s month':'estimate — bill not entered yet'))
                       :h('td',{style:{textAlign:'right',fontWeight:it.status==='Active'?700:400}},'₹'+Math.round(recurringExpenseMonthlyAmt(it)).toLocaleString('en-IN')),
                     h('td',null,h('span',{className:'badge '+(it.status==='Active'?'badge-green':it.status==='Expired'?'badge-red':'badge-gray')},it.status))
                   );

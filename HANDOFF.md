@@ -390,6 +390,14 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   returns periodStartDate/periodEndDate; billMonthsFromDates turns 12 Jul–11 Sep into Jul+Aug (months = days/30.44,
   ending in the month of end−15 days). Add Recurring Expense shows a split hint for utilities / non-monthly items.
   ai function REDEPLOYED. Tests 90.
+· (v2026.09.30.38) **Provision → true-up for bills that arrive after a month is closed** (js/04): a month is closed
+  when month-locked or P&L Final (monthClosedAtIdx = earliest lock.at / pnl final at). Bills now carry enteredAt
+  (Enter bill, Vendor Sheet). A covered month closed before the bill was entered keeps its provision
+  (variableRecurringEstimateAsOf = estimate from bills dated ≤ that month); the latest still-open month of the bill
+  (or the bill's month) gets share + Σ(share − provision) — shown on the P&L line as "true-up for Aug (share − provision
+  = …)". Old bills without enteredAt behave as before. Generic Vendor Sheet period bills: a closed month's share moves
+  to the latest open month. Advance bills (period in future months) spread into those months; Vendor Sheet quick
+  choices Previous+this / This+next / This+next 2. Tests 93.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

@@ -122,7 +122,7 @@ function RecurringExpensesSheet({salon}={}){
       taxable,igst:'',cgst:gst?gst/2:'',sgst:gst?gst/2:'',roundOff:'',amount:taxable+gst,
       tdsAmt,tdsSection:it.tdsApplicable?it.tdsSection:'',tdsRate:it.tdsApplicable?it.tdsRate:'',
       category:vendorCategoryForExpenseType(it.expenseName),desc:displayName(it)+' bill for '+periodText,attachment:f.attachment,linkedPI:'',
-      recurringId:it.id,periodFrom:f.periodFrom,periodTo:f.periodTo,
+      recurringId:it.id,periodFrom:f.periodFrom,periodTo:f.periodTo,enteredAt:new Date().toISOString(),
       payments:tdsAmt>0?[{id:'TDS-'+id,paidAmount:tdsAmt,paidDate:f.billDate,mode:'TDS',ref:'',note:'TDS deducted at source ('+(it.tdsSection||'—')+' @ '+(Number(it.tdsRate)||0)+'%)'}]:[]};
     setVendorInvoices(prev=>[...prev,inv]);
     setItems(prev=>prev.map(x=>x.id===it.id?{...x,amountUpdatedOn:localTodayIso()}:x));
@@ -808,7 +808,7 @@ function RecurringExpensesSheet({salon}={}){
             setBillReading(false);
           }}),
           React.createElement('label',{htmlFor:'re-bill-read',className:'btn btn-primary btn-sm',style:{cursor:'pointer'}},billReading?'Reading…':'📄 Read bill (photo / PDF)'),
-          React.createElement('span',{style:{fontSize:11.5,color:'var(--text2)'}},'Fills the bill no., date, net payable and the months it covers — a bill for 2 months is split equally.')),
+          React.createElement('span',{style:{fontSize:11.5,color:'var(--text2)'}},'Fills the bill no., date, net payable and the months it covers — a bill for 2 months is split equally, also for months still to come (advance bills).')),
         React.createElement('div',{className:'form-row cols2'},
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Bill / Invoice No. *'),
             React.createElement('input',{className:'form-control',autoFocus:true,value:billForm.billNo,onChange:e=>setBillForm(f=>({...f,billNo:e.target.value})),placeholder:'e.g. EB-2026-0915'})),

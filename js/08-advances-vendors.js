@@ -1068,7 +1068,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
       }
     }
     const {newVendorName,newVendorGst,newVendorPhone,newVendorTerms,...invFields}=invForm;
-    const savedInvoice={...invFields,vendorId,amount,invoiceDate:dmy(invForm.invoiceDate),bookingDate:dmy(invForm.bookingDate||invForm.invoiceDate),dueDate:dmy(invForm.dueDate)};
+    const savedInvoice={...invFields,enteredAt:invFields.enteredAt||new Date().toISOString(),vendorId,amount,invoiceDate:dmy(invForm.invoiceDate),bookingDate:dmy(invForm.bookingDate||invForm.invoiceDate),dueDate:dmy(invForm.dueDate)};
     setInvoices(prev=>{
       let next,targetIdx;
       if(editInvoiceId!==null){
@@ -1997,6 +1997,10 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
             React.createElement('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:12.5,fontWeight:600,cursor:'pointer'}},
               React.createElement('input',{type:'checkbox',checked:on,onChange:e=>{if(e.target.checked)two();else setInvForm(f=>({...f,periodFrom:'',periodTo:''}));}}),
               'Bill covers more than one month (e.g. a 2-month electricity bill) — split it equally in the P&L'),
+            on&&React.createElement('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginTop:8,fontSize:11.5,color:'var(--text2)'}},
+              'Quick:',
+              [['Previous + this month',-1,0],['This + next month (advance)',0,1],['This + next 2 months (advance)',0,2]].map(([l,a,b])=>React.createElement('button',{key:l,type:'button',className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'2px 9px'},
+                onClick:()=>{const p=parseInvoiceDateFlexible(invForm.invoiceDate);if(!p){alert('Enter the Invoice Date first.');return;}const cur=p.y*12+p.m-1;const ym=i=>Math.floor(i/12)+'-'+String(i%12+1).padStart(2,'0');setInvForm(f=>({...f,periodFrom:ym(cur+a),periodTo:ym(cur+b)}));}},l))),
             on&&React.createElement('div',{style:{display:'flex',gap:10,flexWrap:'wrap',alignItems:'flex-end',marginTop:8}},
               React.createElement('div',{className:'form-group',style:{marginBottom:0}},React.createElement('label',null,'From month'),React.createElement('input',{type:'month',className:'form-control',value:invForm.periodFrom,onChange:ic('periodFrom')})),
               React.createElement('div',{className:'form-group',style:{marginBottom:0}},React.createElement('label',null,'To month'),React.createElement('input',{type:'month',className:'form-control',value:invForm.periodTo,onChange:ic('periodTo')}))),

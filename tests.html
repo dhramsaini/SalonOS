@@ -312,6 +312,25 @@
           ['2026-07..2026-08/2','2026-08..2026-09/2','2026-07..2026-08/2','2026-08..2026-08/1',null]);
       }catch(err){results.push({name:'Bill months',ok:false,got:String(err&&err.message||err),want:'no error'});}
       try{
+        // Provision → true-up: August closed (locked 1 Sep) before the Aug–Sep bill was entered on 15 Sep.
+        saveVendors([{id:'V1',name:'BSES',cat:'Electricity Expenses'},{id:'V2',name:'Landlord Advance',cat:'Rent'}],908);
+        safeLocalSet(outletKey('salonos_recurring_expenses',908),JSON.stringify([{id:'R1',expenseName:'Electricity Expenses',payee:'BSES',amount:4000,frequency:'Bi-Monthly',dueDay:10,status:'Active',startDate:'2026-01-01',amountType:'Variable',billFor:'previous'}]));
+        const bill={id:'B1',vendorId:'V1',invoiceNo:'EB-1',invoiceDate:'15/09/2026',amount:5000,recurringId:'R1',periodFrom:'2026-08',periodTo:'2026-09',category:'Electricity Expenses',payments:[]};
+        saveMonthLocks({'2026-08':{locked:true,source:'manual',at:'2026-09-01T00:00:00.000Z'}},908);
+        const it=loadRecurringExpenses(908)[0];
+        const v=mo=>Math.round(variableRecurringMonthAmt(it,908,2026,mo).amt);
+        saveVendorInvoices([{...bill,enteredAt:'2026-09-15T10:00:00.000Z'}],908);
+        eq('Closed August keeps its provision; September gets its half + the true-up',[v(7),v(8),v(7)+v(8)],[2000,3000,5000]);
+        saveVendorInvoices([{...bill,enteredAt:'2026-08-20T10:00:00.000Z'}],908);
+        eq('Bill entered before August was closed: each month gets its half',[v(7),v(8)],[2500,2500]);
+        // Advance bill (Sep–Nov, dated Sep) and a bill whose first month was closed before it was entered.
+        saveMonthLocks({'2026-08':{locked:true,source:'manual',at:'2026-09-01T00:00:00.000Z'}},908);
+        saveVendorInvoices([{id:'A1',vendorId:'V2',invoiceNo:'ADV-1',invoiceDate:'10/09/2026',amount:3000,periodFrom:'2026-09',periodTo:'2026-11',category:'Rent',enteredAt:'2026-09-10T10:00:00.000Z',payments:[]},
+          {id:'A2',vendorId:'V2',invoiceNo:'LATE-1',invoiceDate:'12/09/2026',amount:800,periodFrom:'2026-08',periodTo:'2026-09',category:'Rent',enteredAt:'2026-09-12T10:00:00.000Z',payments:[]}],908);
+        const r=mo=>Math.round(vendorInvoiceCategorySumFor(908,2026,mo,'Rent'));
+        eq('Advance bill spread into future months; closed month’s share moves to the open month',[r(7),r(8),r(9),r(10)],[0,1800,1000,1000]);
+      }catch(err){results.push({name:'Provision true-up',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
         const mod={};new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});

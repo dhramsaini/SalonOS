@@ -1776,14 +1776,60 @@ function variableRecurringEstimatePerMonth(it,bills){
   if(recent.length)return recent.reduce((s,b)=>s+b.amount/b.months,0)/recent.length;
   return recurringExpenseMonthlyAmt(it); // no bill yet: the item's own amount spread over its period
 }
+// ── Closed months and bills that arrive later (provision → true-up) ──
+// A month is "closed" once it is locked (month lock) or its P&L is marked Final. A bill entered AFTER
+// a month it covers was closed must not change that month: the month keeps the estimate it was closed
+// with (the provision), and the difference — that month's share of the bill minus its provision — is
+// booked in the latest month of the bill that is still open (usually the bill's own month), e.g. an
+// Aug–Sep electricity bill entered in September after August was closed: August keeps its estimate,
+// September = its own half + (August's half − August's estimate). Months still open simply take their
+// share. Bills saved before this rule (no enteredAt) keep the old behaviour (every month takes its share).
+function monthClosedAtIdx(salonId,t){
+  const y=Math.floor(t/12),m=((t%12)+12)%12;
+  const lock=monthLockRecordFor(salonId,y,m);
+  const times=[];
+  if(lock&&lock.locked&&lock.at)times.push(lock.at);
+  try{const c=calToFYMI(y,m);const f=loadPnlFinal(salonId)[c.fy+'|'+c.mi];if(f&&f.final&&f.at)times.push(f.at);}catch(e){}
+  return times.sort()[0]||null;
+}
+function monthClosedBeforeBill(salonId,t,inv){
+  if(!inv||!inv.enteredAt)return false;
+  const at=monthClosedAtIdx(salonId,t);
+  return !!at&&at<inv.enteredAt;
+}
+// The estimate a month carried with the bills known by then (bills dated in or before that month).
+function variableRecurringEstimateAsOf(it,bills,t,salonId){
+  if(!isVariableRecurring(it))return recurringExpenseMonthlyAmt(it,Math.floor(t/12),t%12,salonId);
+  const known=bills.filter(b=>{const bm=monthIndexOfIso(toISO(b.inv.invoiceDate));return bm==null||bm<=t;});
+  return variableRecurringEstimatePerMonth(it,known);
+}
 function variableRecurringMonthAmt(it,salonId,year,month){
   const t=year*12+month;
   const bills=variableRecurringBills(it,salonId);
-  const covering=bills.filter(b=>t>=b.first&&t<=b.last);
-  if(covering.length)return{amt:covering.reduce((s,b)=>s+b.amount/b.months,0),actual:true,bills,covering};
-  const start=monthIndexOfIso(it.startDate),end=monthIndexOfIso(it.endDate);
-  if((start!=null&&t<start)||(end!=null&&t>end))return{amt:0,actual:false,bills,covering:[]}; // outside the item's active window
-  return{amt:isVariableRecurring(it)?variableRecurringEstimatePerMonth(it,bills):recurringExpenseMonthlyAmt(it,year,month,salonId),actual:false,bills,covering:[]};
+  const est=c=>variableRecurringEstimateAsOf(it,bills,c,salonId);
+  let amt=0,coveredAny=false,provision=false;const covering=[],trueUps=[];
+  bills.forEach(b=>{
+    if(t<b.first||t>b.last)return;
+    coveredAny=true;
+    if(monthClosedBeforeBill(salonId,t,b.inv)){amt+=est(t);provision=true;} // closed before the bill: keeps its provision
+    else{amt+=b.amount/b.months;covering.push(b);}
+  });
+  if(!coveredAny){
+    const start=monthIndexOfIso(it.startDate),end=monthIndexOfIso(it.endDate);
+    if(!((start!=null&&t<start)||(end!=null&&t>end)))amt+=isVariableRecurring(it)?est(t):recurringExpenseMonthlyAmt(it,year,month,salonId);
+  }
+  // True-up: this month is where a bill's differences for already-closed months are booked.
+  bills.forEach(b=>{
+    const closed=[];let lastOpen=null;
+    for(let c=b.first;c<=b.last;c++){if(monthClosedBeforeBill(salonId,c,b.inv))closed.push(c);else lastOpen=c;}
+    if(!closed.length)return;
+    const bm=monthIndexOfIso(toISO(b.inv.invoiceDate));
+    const u=lastOpen!=null?lastOpen:Math.max(b.last+1,bm!=null?bm:b.last+1);
+    if(t!==u)return;
+    closed.forEach(c=>{const share=b.amount/b.months,pv=est(c),diff=share-pv;amt+=diff;trueUps.push({month:c,share,provision:pv,diff,bill:b});});
+    if(!covering.includes(b))covering.push(b);
+  });
+  return{amt,actual:covering.length>0,bills,covering,trueUps,provision};
 }
 // The latest billing period that has ended with no bill entered yet — {first,last} or null.
 function variableRecurringMissingPeriod(it,salonId,asOf){
@@ -1810,7 +1856,7 @@ function variableRecurringSumFor(salonId,recurringTypeName,year,month){
     const r=variableRecurringMonthAmt(it,salonId,year,month);
     r.bills.forEach(b=>used.add(b.inv.id));
     allInvoices.forEach(inv=>{if(inv.invoiceNo==='REC-'+it.id)used.add(inv.id);}); // a standing invoice from when it was Fixed
-    amt+=r.amt;rows.push({it,amt:r.amt,actual:r.actual,covering:r.covering});
+    amt+=r.amt;rows.push({it,amt:r.amt,actual:r.actual,covering:r.covering,trueUps:r.trueUps,provision:r.provision});
   });
   return{amt,rows,used};
 }
