@@ -168,7 +168,7 @@
           {id:'R3',expenseName:'Other',customName:'AMC',payee:'X',amount:9000,frequency:'Quarterly',dueDay:5,status:'Active',startDate:'2026-02-01',amountType:'Fixed'}]);
         const r1=mod.computeAlerts(kv,mod.DEFAULTS,day(2026,10,5));
         const keys=r1.alerts.map(a=>a.akey).sort();
-        eq('Automation: which alerts the nightly check raises',keys,['attendance:901:2026-10-05','due:901:I1','due:901:I3','month_end:901:2026-09','recurring:901:R1:2026-10','recurring_bill:901:R2:2026-08','sales:901:2026-10-04']);
+        eq('Automation: which alerts the nightly check raises',keys,['attendance:901:2026-10-05','backup:2026-10-05','due:901:I1','due:901:I3','month_end:901:2026-09','recurring:901:R1:2026-10','recurring_bill:901:R2:2026-08','sales:901:2026-10-04']);
         const by=k=>r1.alerts.find(a=>a.akey===k)||{};
         eq('Automation: alert wording and severity',[by('attendance:901:2026-10-05').body,by('due:901:I3').severity,by('due:901:I3').title,by('recurring_bill:901:R2:2026-08').title,by('sales:901:2026-10-04').title],
           ['Ravi','urgent','Test Outlet A: Loreal bill A-3 overdue by 5 days','Test Outlet A: Electricity bill for Aug 2026 – Sep 2026 not entered','Test Outlet A: sales for 4 Oct not entered']);
@@ -224,6 +224,46 @@
         const inv=loadVendorInvoices(901);saveVendorInvoices(inv.map(i=>i.id==='REC-R1-2026-10'?{...i,amount:1}:i),901);
         eq('Tally sync: an invoice edited after sending is flagged, not re-sent',tallyAutoSyncPending(901,'2026-10-01').changed,['Invoice REC-R1-2026-10']);
       }catch(err){results.push({name:'Tally sync',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
+        // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
+        const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
+        const mod={};new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});
+        const now=Date.parse('2026-10-05T15:30:00Z');
+        const ev=[{user_id:'u1',email:'a@x.in',at:'2026-09-25T05:00:00Z',ip:'49.36.10.1'},{user_id:'u1',email:'a@x.in',at:'2026-10-05T04:00:00Z',ip:'49.36.99.9'},
+          {user_id:'u1',email:'a@x.in',at:'2026-10-05T06:00:00Z',ip:'103.21.5.5'},{user_id:'u1',email:'a@x.in',at:'2026-10-04T21:00:00Z',ip:'49.36.10.1'},
+          {user_id:'u2',email:'b@x.in',at:'2026-10-05T06:00:00Z',ip:'1.2.3.4'}];
+        eq('Login watch: new network and late-night sign-ins only',mod.loginWatchAlerts(ev,now).map(a=>a.akey).sort(),['login:new:u1:103.21','login:night:u1:2026-10-05']);
+        const o=SALONS.find(s=>String(s.id)==='901');o.invoiceApprovalLimit=10000;o.invoiceApprovalFrom='2026-10-01';
+        const cases=[{id:'a',amount:15000,invoiceDate:'02/10/2026'},{id:'b',amount:15000,invoiceDate:'02/10/2026',approval:{status:'Approved'}},{id:'c',amount:15000,invoiceDate:'15/09/2026'},
+          {id:'d',amount:15000,invoiceDate:'02/10/2026',docNature:'Performa Invoice'},{id:'e',amount:9000,invoiceDate:'02/10/2026'},{id:'f',amount:15000,invoiceDate:'02/10/2026',autoCreated:true}];
+        const want=[true,false,false,false,false,false];
+        eq('Approval rule: app',cases.map(c=>invoiceNeedsApproval(c,901)),want);
+        eq('Approval rule: server gives the same answers',cases.map(c=>mod.invoiceNeedsApproval(c,o)),want);
+        o.invoiceApprovalLimit='';
+        const asOf=new Date('2026-09-30T10:00:00Z');
+        eq('Temporary users: access ends after the set day',[accessEnded({access_until:'2026-09-29'},asOf),accessEnded({access_until:'2026-09-30'},asOf),accessEnded({access_until:'2026-09-01',role:'Super Admin'},asOf),accessEnded({},asOf)],[true,false,false,false]);
+        const kv=new Map();
+        kv.set('salonos_salons',[{id:5,name:'Mysha',status:'Active'}]);
+        const s={};[7,14,21,28].forEach(k=>{const d=new Date(Date.UTC(2026,9,4-k));s[d.toISOString().slice(0,10)]={0:10000};});s['2026-10-04']={0:1000};s['2026-10-03']={0:9000};
+        kv.set('salonos_daily_sales_collection_data_outlet_5',s);
+        const e={};for(let k=2;k<32;k++){const d=new Date(Date.UTC(2026,9,4-k));e[d.toISOString().slice(0,10)]={0:500};}e['2026-10-04']={0:9000};
+        kv.set('salonos_daily_sales_data_outlet_5',e);
+        kv.set('salonos_vendor_invoices_outlet_5',[{id:'X1',vendorId:'V1',invoiceNo:'B-7',invoiceDate:'01/10/2026',amount:4000,payments:[]},{id:'X2',vendorId:'V1',invoiceNo:'b-7 ',invoiceDate:'03/10/2026',amount:4100,payments:[]},
+          {id:'X3',vendorId:'V2',invoiceNo:'Q1',invoiceDate:'01/10/2026',amount:700,payments:[]},{id:'X4',vendorId:'V2',invoiceNo:'Q2',invoiceDate:'20/10/2026',amount:700,payments:[]}]);
+        kv.set('salonos_secret_backup_downloaded',{at:'2026-10-05T04:00:00Z'});
+        const only={...mod.DEFAULTS,salesCheck:false,attendanceCheck:false,dueReminders:false,recurringReminders:false,monthEndChecklist:false};
+        const r=mod.computeAlerts(kv,only,Math.floor(Date.UTC(2026,9,5)/864e5));
+        eq('Unusual activity: low sales day, expense spike, duplicate bill number (and backup already downloaded this week)',r.alerts.map(a=>a.akey).sort(),['anomaly:5:dup:X1+X2','anomaly:5:expense:2026-10-04','anomaly:5:sales:2026-10-04']);
+        kv.set('salonos_secret_backup_downloaded',{at:'2026-10-02T04:00:00Z'});
+        eq('Backup reminder: a download before this Monday doesn\u2019t count',mod.computeAlerts(kv,only,Math.floor(Date.UTC(2026,9,5)/864e5)).alerts.some(a=>a.akey==='backup:2026-10-05'),true);
+      }catch(err){results.push({name:'Phase 4-5 rules',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
+        // Ask SalonOS: the data summary is built only from sheets the person can see.
+        const full=askContextFor({role:'Super Admin'},901,new Date(2026,9,5));
+        const limited=askContextFor({role:'Salon Manager',outletAccess:{'901':'View and Edit'},sheetAccessByOutlet:{'901':{'master-salary':'No Access','salary-working':'No Access','bank-statement':'No Access'}}},901,new Date(2026,9,5));
+        const none=askContextFor({role:'Salon Manager',outletAccess:{'902':'View and Edit'}},901,new Date(2026,9,5));
+        eq('Ask SalonOS: data summary respects sheet access',[/P&L BY MONTH/.test(full),full.indexOf('STAFF (name')!==-1,/UNPAID VENDOR BILLS/.test(full),limited.indexOf('STAFF (name')!==-1,/SALARY WORKING/.test(limited),/BANK STATEMENT/.test(limited),/P&L BY MONTH/.test(limited),/P&L BY MONTH|STAFF/.test(none)],[true,true,true,false,false,false,true,false]);
+      }catch(err){results.push({name:'Ask SalonOS context',ok:false,got:String(err&&err.message||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

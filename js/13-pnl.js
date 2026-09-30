@@ -1470,6 +1470,105 @@ function PnLCompareSheet({salon,period}={}){
   );
 }
 
+// ── 🤖 "Explain this month" (automation phase 4) — sends this month's and last month's P&L lines
+// (figures only, from plBuild — the same numbers as the statement below) to the AI and shows a
+// plain-language summary. Needs the AI key (Master Settings → AI Assistant). ──
+function pnlLinesForAi(sid,fy,mi,pfy,pmi){
+  const a=plBuild(sid,fy,mi),b=plBuild(sid,pfy,pmi);
+  const out=[];
+  a.sections.forEach((S,si)=>{
+    const B=b.sections[si]||{lines:[]};
+    const names=Array.from(new Set([...(S.lines||[]).map(l=>l.name),...(B.lines||[]).map(l=>l.name)]));
+    names.forEach(n=>{const x=(S.lines||[]).find(l=>l.name===n),y=(B.lines||[]).find(l=>l.name===n);
+      const amt=x?x.amt:0,prev=y?y.amt:0;if(amt||prev)out.push({section:S.sec,name:n,amt,prev});});
+    out.push({section:S.sec,name:'Total '+S.sec,amt:S.tot||0,prev:B.tot||0});
+  });
+  [['Total Revenue','revenue'],['Gross Profit','gross'],['EBITDA','ebitda'],['Net Profit (PBT)','pbt']].forEach(([n,k])=>out.push({section:'Totals',name:n,amt:a[k]||0,prev:b[k]||0}));
+  return out;
+}
+function AiExplainPnlCard({salon,period}){
+  const h=React.createElement;
+  const [busy,setBusy]=useState(false);
+  const [res,setRes]=useState(null);
+  const [err,setErr]=useState('');
+  const cal=periodToCalendar(period);
+  useEffect(()=>{setRes(null);setErr('');},[salon&&salon.id,cal&&cal.year,cal&&cal.month]);
+  if(!cal||!CLOUD_SYNC_ENABLED)return null;
+  const MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const prev=new Date(cal.year,cal.month-1,1);
+  const run=async()=>{
+    setBusy(true);setErr('');
+    try{
+      const A=calToFYMI(cal.year,cal.month),B=calToFYMI(prev.getFullYear(),prev.getMonth());
+      const lines=pnlLinesForAi(salon.id,A.fy,A.mi,B.fy,B.mi);
+      setRes(await aiCall('explain_pnl',{outlet:String(salon.name||'').split('—')[0].trim(),month:MN[cal.month]+' '+cal.year,prevMonth:MN[prev.getMonth()]+' '+prev.getFullYear(),lines}));
+    }catch(e){setErr(e.message);}
+    setBusy(false);
+  };
+  return h('div',{className:'card',style:{marginBottom:16,border:'1px solid rgba(47,95,224,0.25)'}},
+    h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}},
+      h('div',{style:{fontWeight:600,fontSize:13}},'🤖 What happened this month?'),
+      h('button',{className:'btn btn-ghost btn-sm'+(busy?' btn-loading':''),disabled:busy,onClick:run},busy?'Reading the P&L…':res?'Explain again':'Explain '+MN[cal.month]+' vs '+MN[prev.getMonth()])),
+    err&&h('div',{style:{fontSize:12,color:'var(--orange)',marginTop:8}},err),
+    res&&h('div',{style:{marginTop:10,fontSize:13,lineHeight:1.65,color:'var(--text)'}},
+      h('div',{style:{fontWeight:600,marginBottom:6}},res.headline),
+      h('ul',{style:{margin:'0 0 6px 18px',padding:0}},(res.points||[]).map((p,i)=>h('li',{key:i},p))),
+      (res.watch||[]).length>0&&h('div',{style:{marginTop:6}},h('b',null,'Worth checking: '),h('ul',{style:{margin:'4px 0 0 18px',padding:0}},res.watch.map((p,i)=>h('li',{key:i},p)))),
+      h('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:6}},'Written by AI from the figures on this page — the figures themselves are the source of truth.'))
+  );
+}
+// ── "Ask SalonOS" data (automation phase 4) — a compact text summary of one outlet, built only from
+// the sheets this user may view there (userCanViewSheet), for the AI to answer questions from. ──
+function askContextFor(user,salonId,asOf){
+  const now=asOf||new Date();
+  const MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const can=s=>userCanViewSheet(user,salonId,s);
+  const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const J=k=>{try{return JSON.parse(cachedLocalGet(outletKey(k,salonId))||'null');}catch(e){return null;}};
+  const parts=['Outlet: '+(outletSettings(salonId).name||salonId)+'. Today: '+iso(now)+'. Amounts in ₹.'];
+  const months=[0,1,2,3,4,5].map(k=>new Date(now.getFullYear(),now.getMonth()-k,1));
+  if(can('outlet-pnl')){
+    const rows=[];
+    months.forEach(d=>{try{const p=calToFYMI(d.getFullYear(),d.getMonth());const b=plBuild(salonId,p.fy,p.mi);
+      rows.push(MN[d.getMonth()]+' '+d.getFullYear()+': revenue '+Math.round(b.revenue||0)+', direct cost '+Math.round(b.direct||0)+', gross profit '+Math.round(b.gross||0)
+        +', '+b.sections.filter(S=>S.sec!=='Revenue').map(S=>S.sec+' '+Math.round(S.tot||0)).join(', ')+', EBITDA '+Math.round(b.ebitda||0)+', net profit '+Math.round(b.pbt||0)
+        +' | lines: '+b.sections.flatMap(S=>(S.lines||[]).filter(l=>l.amt).map(l=>l.name+' '+Math.round(l.amt))).join('; '));}catch(e){}});
+    parts.push('P&L BY MONTH (latest first):\n'+rows.join('\n'));
+  }
+  if(can('daily-sales')){
+    const s=J('salonos_daily_sales_collection_data')||{};
+    const days=Object.keys(s).filter(k=>k>=iso(months[2])).sort();
+    parts.push('DAILY SALES (date: cash/card/upi/luzo/outstanding sale):\n'+days.map(k=>{const r=s[k]||{};return k+': '+[0,1,2,3,4].map(i=>Number(r[i])||0).join('/');}).join('\n'));
+    const e=J('salonos_daily_sales_data')||{};
+    const ed=Object.keys(e).filter(k=>k>=iso(months[1])).sort();
+    parts.push('DAILY EXPENSES TOTAL BY DATE:\n'+ed.map(k=>k+': '+Object.values(e[k]||{}).reduce((t,v)=>t+(Number(v)||0),0)).join(', '));
+  }
+  const emps=loadEmployees(salonId)||[];
+  if(can('master-salary'))parts.push('STAFF (name, designation, status, gross monthly, joined):\n'+emps.map(x=>[x.name,x.desig,x.status,x.gross,x.doj].join(', ')).join('\n'));
+  if(can('attendance')){
+    const att=J('salonos_attendance')||{};
+    const lines=[];
+    [months[0],months[1]].forEach(d=>emps.filter(x=>x.status==='Active').forEach(x=>{const r=att[x.id+'_'+d.getFullYear()+'_'+d.getMonth()];if(!r||!r.days)return;
+      const c=v=>r.days.filter(y=>y===v).length;lines.push(MN[d.getMonth()]+' '+x.name+': present '+c('present')+', absent '+c('absent')+', half '+c('half')+', off '+(c('off')+c('holiday')));}));
+    parts.push('ATTENDANCE:\n'+lines.join('\n'));
+  }
+  if(can('salary-working')){
+    const lines=[];
+    [months[1],months[2]].forEach(d=>{try{swWorkingsFor(salonId,d.getFullYear(),d.getMonth()).forEach(w=>lines.push(MN[d.getMonth()]+' '+(w.name||(emps.find(x=>x.id===w.id)||{}).name||w.id)+': net salary '+Math.round(w.net||0)));}catch(e){}});
+    parts.push('SALARY WORKING (net payable):\n'+lines.join('\n'));
+  }
+  if(can('vendors')){
+    const vs=loadVendors(salonId);const vn=id=>(vs.find(v=>v.id===id)||{}).name||id;
+    const open=loadVendorInvoices(salonId).filter(i=>i.docNature!=='Performa Invoice').map(i=>({i,bal:Number(i.amount)-(i.payments||[]).reduce((t,p)=>t+(Number(p.paidAmount)||0),0)})).filter(x=>x.bal>0.5);
+    parts.push('UNPAID VENDOR BILLS (vendor, invoice no, date, due, balance):\n'+open.slice(0,150).map(x=>[vn(x.i.vendorId),x.i.invoiceNo,x.i.invoiceDate,x.i.dueDate||'-',Math.round(x.bal)].join(', ')).join('\n'));
+    const recent=loadVendorInvoices(salonId).filter(i=>{const d=toISO(i.invoiceDate);return d&&d>=iso(months[2]);});
+    parts.push('VENDOR BILLS LAST 3 MONTHS (vendor, category, date, amount):\n'+recent.slice(0,300).map(i=>[vn(i.vendorId),i.category||'',i.invoiceDate,i.amount].join(', ')).join('\n'));
+  }
+  if(can('recurring-expenses'))parts.push('RECURRING EXPENSES (name, payee, amount, frequency, due day, status):\n'+loadRecurringExpenses(salonId).map(i=>[recurringExpenseNameOf(i),i.payee,i.amount,i.frequency,i.dueDay,i.status].join(', ')).join('\n'));
+  if(can('advance'))parts.push('ADVANCES (employee, amount, date, status):\n'+loadAdvances(salonId).slice(-100).map(a=>[a.emp,a.amount,a.date,a.status].join(', ')).join('\n'));
+  if(can('bank-statement'))parts.push('BANK STATEMENT, LAST 150 ROWS (date, narration, debit, credit, nature):\n'+loadBankStatementRows(salonId).slice(-150).map(r=>[r.transactionDate,String(r.description||'').slice(0,60),r.debit||'',r.credit||'',r.nature||''].join(', ')).join('\n'));
+  return parts.join('\n\n').slice(0,110000);
+}
 function OutletPnLSheet({salon,period}={}){
   const [subTab,setSubTab]=useState('pnl');
   const tabBar=React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
@@ -1481,7 +1580,7 @@ function OutletPnLSheet({salon,period}={}){
   const curFyMi=cal?calToFYMI(cal.year,cal.month):{fy:(period&&period.fy)||'2025-26',mi:(period&&typeof period.mi==='number')?period.mi:3};
   return React.createElement('div',{className:'fade-in'},
     tabBar,
-    React.createElement('div',{style:{display:subTab==='pnl'?'block':'none'}},React.createElement(OutletPnLCore,{salon,period})),
+    React.createElement('div',{style:{display:subTab==='pnl'?'block':'none'}},React.createElement(AiExplainPnlCard,{salon,period}),React.createElement(OutletPnLCore,{salon,period})),
     subTab==='variance'&&React.createElement('div',null,
       React.createElement('div',{className:'section-header'},
         React.createElement('div',null,
@@ -2566,6 +2665,17 @@ const CONF_BADGE={high:['badge-green','Verified'],medium:['badge-amber','Likely'
 // Assistant). Returns the same shape parseInvoice gives, or null when AI isn't set up — callers
 // then fall back to reading the bill in the browser. Throws on a real AI error.
 const AI_BILL_CATEGORIES=['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Fixed Assets','Other'];
+// Any other AI action (automation phase 4: tag_bank, explain_pnl, ask). Resolves with the answer;
+// throws a readable error, or one with .notConfigured when no AI key has been saved yet.
+async function aiCall(action,payload){
+  if(!CLOUD_SYNC_ENABLED){const e=new Error('AI needs the cloud version of SalonOS.');e.notConfigured=true;throw e;}
+  const supa=await getSupabaseClient();
+  const{data,error}=await supa.functions.invoke('ai',{body:{...payload,action}});
+  if(error){let msg=error.message||'AI request failed';try{const b=error.context&&await error.context.json();if(b&&b.error)msg=b.error;}catch(e){}throw new Error(msg);}
+  if(!data||data.notConfigured){const e=new Error((data&&data.error)||'AI isn’t set up yet — a Super Admin can add the key in Master Settings → AI Assistant.');e.notConfigured=true;throw e;}
+  if(data.error)throw new Error(data.error);
+  return data;
+}
 async function aiReadBill(file,vendors){
   if(!CLOUD_SYNC_ENABLED)return null;
   const ext=(file.name.split('.').pop()||'').toLowerCase();

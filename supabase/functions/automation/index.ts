@@ -10,6 +10,11 @@
 //   month_end       last month's checklist — days without sales, unmarked attendance, salary not
 //                   approved, bank statement not imported (closes itself when everything is done)
 //   month_lock      last month was locked automatically (only if the Super Admin turned that on)
+//   approval        vendor bills above the outlet's approval limit waiting for a Super Admin
+//   backup          weekly backup file not downloaded yet this week (Super Admin)
+//   login           new sign-in network, late-night sign-in (Super Admin); temporary access ended
+//   anomaly         unusual activity: a sales day far below that weekday's usual, a day's expenses 3x the
+//                   30-day average, a vendor bill that looks entered twice
 //
 // Settings: Master Settings → Automation (kv salonos_secret_automation_settings, Super Admin only).
 // Optional digest of new alerts by email / WhatsApp to the "Automatic reports" recipients, using the
@@ -39,7 +44,8 @@ const json = (body: unknown, status = 200) =>
 
 export const DEFAULTS = {
   enabled: true, salesCheck: true, attendanceCheck: true, dueReminders: true, dueDaysAhead: 3,
-  recurringReminders: true, monthEndChecklist: true, autoLock: false, autoLockDay: 10, digest: false,
+  recurringReminders: true, monthEndChecklist: true, autoLock: false, autoLockDay: 10, digest: false, anomalyChecks: true,
+  loginWatch: true, backupReminder: true,
 };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -173,6 +179,42 @@ export function computeAlerts(kv: KV, settings: typeof DEFAULTS, today: number) 
         }
       }
     }
+    // 4b · Unusual activity (rules, no AI needed).
+    if (settings.anomalyChecks && inUse) {
+      const dayTotal = (dn: number) => { const r = sales[isoOfDay(dn)] || {}; return [0, 1, 2, 3, 4].reduce((t, i) => t + num(r[i]), 0); };
+      const y = today - 1;
+      // Sales far below the usual for that weekday (median of the same weekday over the 4 weeks before).
+      if (hasSales(y)) {
+        const same = [7, 14, 21, 28].map((k) => y - k).filter(hasSales).map(dayTotal).sort((a, b) => a - b);
+        const med = same.length >= 3 ? same[Math.floor(same.length / 2)] : 0;
+        if (med > 0 && dayTotal(y) < med * 0.5) out.push({ akey: `anomaly:${sid}:sales:${isoOfDay(y)}`, outlet_id: sid, kind: "anomaly", severity: "warn",
+          title: `${name}: sales on ${nice(y)} were unusually low`, body: `${inr(dayTotal(y))} against a usual ${inr(med)} for that weekday — check the entry is complete.`, tab: "daily-sales", due_date: isoOfDay(y), auto: false });
+      }
+      // A day's expenses far above normal.
+      const exps = get("salonos_daily_sales_data", {});
+      const expOn = (dn: number) => Object.values(exps[isoOfDay(dn)] || {}).reduce((t: number, v) => t + num(v), 0);
+      const past = [...Array(30).keys()].map((k) => expOn(y - 1 - k));
+      const avg = past.reduce((t, v) => t + v, 0) / 30;
+      if (expOn(y) > 5000 && avg > 0 && expOn(y) > avg * 3) out.push({ akey: `anomaly:${sid}:expense:${isoOfDay(y)}`, outlet_id: sid, kind: "anomaly", severity: "warn",
+        title: `${name}: expenses on ${nice(y)} were unusually high`, body: `${inr(expOn(y))} against a daily average of ${inr(avg)} over the last 30 days.`, tab: "daily-sales", due_date: isoOfDay(y), auto: false });
+      // A vendor bill that looks entered twice: same vendor + same invoice no., or same vendor + same amount within 3 days.
+      const recentBills = invoices.filter((i) => i && i.docNature !== "Performa Invoice" && !String(i.invoiceNo || "").startsWith("REC-"))
+        .map((i) => ({ i, d: parseDay(i.invoiceDate) })).filter((x) => x.d != null && today - (x.d as number) <= 60);
+      const seen = new Set<string>();
+      for (let a = 0; a < recentBills.length; a++) for (let b = a + 1; b < recentBills.length; b++) {
+        const A = recentBills[a], B = recentBills[b];
+        if (A.i.vendorId !== B.i.vendorId) continue;
+        const sameNo = String(A.i.invoiceNo || "").trim() && String(A.i.invoiceNo).trim().toLowerCase() === String(B.i.invoiceNo || "").trim().toLowerCase();
+        const sameAmt = num(A.i.amount) > 0 && Math.abs(num(A.i.amount) - num(B.i.amount)) < 1 && Math.abs((A.d as number) - (B.d as number)) <= 3;
+        if (!sameNo && !sameAmt) continue;
+        const k = [A.i.id, B.i.id].sort().join("+");
+        if (seen.has(k)) continue; seen.add(k);
+        out.push({ akey: `anomaly:${sid}:dup:${k}`, outlet_id: sid, kind: "anomaly", severity: "warn",
+          title: `${name}: possible duplicate bill from ${vName(A.i.vendorId)}`,
+          body: `${A.i.invoiceNo || "(no number)"} dated ${A.i.invoiceDate} (${inr(num(A.i.amount))}) and ${B.i.invoiceNo || "(no number)"} dated ${B.i.invoiceDate} (${inr(num(B.i.amount))}) — ${sameNo ? "same invoice number" : "same amount within 3 days"}. Mark done if both are genuine.`,
+          tab: "vendors", due_date: null, auto: true });
+      }
+    }
     // 5 · Last month's checklist (first days of the month, until the lock day).
     const lockDay = Math.min(28, Math.max(2, num(settings.autoLockDay) || 10));
     const lockMap = get("salonos_month_locks", {});
@@ -197,8 +239,66 @@ export function computeAlerts(kv: KV, settings: typeof DEFAULTS, today: number) 
     }
     // 6 · Auto month lock.
     if (settings.autoLock && D >= lockDay && !prevLocked && inUse) locks.push({ sid, month: prevMonth });
+    // 7 · Vendor bills above the outlet's approval limit, not approved yet (same rule as
+    // invoiceNeedsApproval in the app).
+    const pending = invoices.filter((i) => invoiceNeedsApproval(i, o));
+    if (pending.length) out.push({ akey: `approval:${sid}:${pending.map((i) => i.id).sort().join(",").slice(0, 150)}`, outlet_id: sid, kind: "approval", severity: "warn",
+      title: `${name}: ${pending.length} vendor bill${pending.length === 1 ? "" : "s"} waiting for approval`,
+      body: pending.slice(0, 6).map((i) => `• ${vName(i.vendorId)} ${i.invoiceNo || ""} — ${inr(num(i.amount))}`).join("\n") + (pending.length > 6 ? `\n… and ${pending.length - 6} more` : "") +
+        "\nA Super Admin approves them in Vendors; they can't be paid until then.", tab: "vendors", due_date: null, auto: true });
+  }
+  // 8 · Weekly backup file: remind the Super Admins until this week's copy is downloaded.
+  if (settings.backupReminder) {
+    const dl = kv.get("salonos_secret_backup_downloaded");
+    const last = dl && dl.at ? Math.floor((Date.parse(dl.at) + 5.5 * 3600e3) / 864e5) : null;
+    const monday = today - (((today + 4) % 7) + 6) % 7;
+    if (last == null || last < monday) out.push({ akey: `backup:${isoOfDay(monday)}`, outlet_id: null, kind: "backup", severity: last == null || today - last > 13 ? "urgent" : "info",
+      title: "Weekly backup file: download this week’s copy",
+      body: (last == null ? "No backup file has been downloaded yet." : `Last downloaded ${nice(last)}.`) +
+        " Keep it on your computer or Google Drive — a copy outside SalonOS, in case the cloud account itself is ever lost.", tab: null, due_date: null, auto: true });
   }
   return { alerts: out, locks };
+}
+// A vendor bill needs approval when the outlet has an approval limit, the bill is above it, it's
+// dated on/after the day the limit was set, isn't approved yet, and isn't a PI or an automatic
+// recurring invoice (those were already approved as recurring expenses).
+// deno-lint-ignore no-explicit-any
+export function invoiceNeedsApproval(inv: any, outlet: any) {
+  const lim = num(outlet && outlet.invoiceApprovalLimit);
+  if (!inv || lim <= 0 || inv.docNature === "Performa Invoice" || inv.autoCreated) return false;
+  if (num(inv.amount) <= lim || (inv.approval && inv.approval.status === "Approved")) return false;
+  const from = parseDay(outlet.invoiceApprovalFrom), d = parseDay(inv.bookingDate || inv.invoiceDate);
+  return from == null || d == null || d >= from;
+}
+// ── Login watch: sign-ins from a network (first two parts of the IP) the person hasn't used in the
+// previous 60 days, and sign-ins between midnight and 6 AM IST. Pure; events from salonos_login_events.
+export function loginWatchAlerts(events: { user_id: string; email: string; at: string; ip: string | null }[], nowMs: number) {
+  const out: Alert[] = [];
+  const net = (ip: string | null) => !ip ? "" : ip.includes(":") ? ip.split(":").slice(0, 3).join(":") : ip.split(".").slice(0, 2).join(".");
+  const cut = nowMs - 25 * 3600e3;
+  const users = new Map<string, { older: Set<string>; recent: typeof events }>();
+  for (const e of events) {
+    const u = users.get(e.user_id) ?? { older: new Set<string>(), recent: [] as typeof events };
+    if (Date.parse(e.at) < cut) { if (net(e.ip)) u.older.add(net(e.ip)); } else u.recent.push(e);
+    users.set(e.user_id, u);
+  }
+  const ist = (t: string) => new Date(Date.parse(t) + 5.5 * 3600e3);
+  const when = (t: string) => { const d = ist(t); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; };
+  for (const [uid, u] of users) {
+    const flagged = new Set<string>();
+    for (const e of u.recent) {
+      const n = net(e.ip);
+      if (n && u.older.size && !u.older.has(n) && !flagged.has(n)) {
+        flagged.add(n);
+        out.push({ akey: `login:new:${uid}:${n}`, outlet_id: null, kind: "login", severity: "info", title: `New sign-in network for ${e.email || "a user"}`,
+          body: `Signed in ${when(e.at)} from ${e.ip} — not used in the last 60 days. If this wasn't them, set a new password for them in User Management.`, tab: null, due_date: null, auto: false });
+      }
+      const h = ist(e.at).getUTCHours();
+      if (h < 6) out.push({ akey: `login:night:${uid}:${isoOfDay(Math.floor(Date.parse(e.at) / 864e5 + 5.5 / 24))}`, outlet_id: null, kind: "login", severity: "info",
+        title: `Late-night sign-in: ${e.email || "a user"}`, body: `Signed in ${when(e.at)} IST${e.ip ? " from " + e.ip : ""}.`, tab: null, due_date: null, auto: false });
+    }
+  }
+  return out;
 }
 
 async function loadKv(): Promise<KV> {
@@ -276,6 +376,10 @@ async function run(manual: boolean) {
   if (!settings.enabled && !manual) return { skipped: "automation is turned off" };
   const today = Math.floor((Date.now() + 5.5 * 3600e3) / 864e5); // IST calendar day
   const { alerts, locks } = computeAlerts(kv, settings, today);
+  if (settings.loginWatch) {
+    const { data: ev, error: evErr } = await admin.rpc("salonos_login_events", { since: new Date(Date.now() - 61 * 864e5).toISOString() });
+    if (!evErr && Array.isArray(ev)) alerts.push(...loginWatchAlerts(ev, Date.now()));
+  }
 
   const lockedNow: string[] = [];
   for (const l of locks) {

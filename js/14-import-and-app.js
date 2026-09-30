@@ -311,8 +311,54 @@ function AlertsBell({user,salons,onOpen}){
               h('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)'}},String(a.title||'').replace(/^[^:]+:\s*/,'')),
               a.body&&h('div',{style:{fontSize:12,color:'var(--text2)',whiteSpace:'pre-line',marginTop:2}},a.body),
               h('div',{style:{display:'flex',gap:6,marginTop:6}},
+                a.kind==='backup'&&h('button',{className:'btn btn-ghost btn-sm',onClick:async()=>{try{await downloadCloudBackupFile(null);success('Backup file saved — keep it outside SalonOS.');setAlerts(list=>(list||[]).filter(x=>x.id!==a.id));}catch(e){toastError('Download failed: '+(e.message||'network error'));}}},'⬇ Download backup file'),
                 a.tab&&a.outlet_id!=null&&salonOf(a.outlet_id)&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setOpen(false);onOpen(salonOf(a.outlet_id),a.tab);}},'Open'),
                 h('button',{className:'btn btn-ghost btn-sm',onClick:()=>done(a)},'Mark done')))))))))
+  );
+}
+// ── 💬 Ask SalonOS (automation phase 4) — a question about one outlet, answered by the AI from a
+// summary of the sheets this person can see there (askContextFor, js/13-pnl.js). ──
+function AskSalonOS({user,salons,currentSalonId}){
+  const h=React.createElement;
+  const [open,setOpen]=useState(false);
+  const [sid,setSid]=useState(null);
+  const [q,setQ]=useState('');
+  const [busy,setBusy]=useState(false);
+  const [log,setLog]=useState([]); // [{q,answer,basis,error}]
+  const outletId=sid!=null?sid:(currentSalonId!=null?currentSalonId:(salons[0]&&salons[0].id));
+  const ask=async()=>{
+    const question=q.trim();if(!question||busy||outletId==null)return;
+    setBusy(true);
+    try{
+      const res=await aiCall('ask',{question,outlet:String((salons.find(s=>String(s.id)===String(outletId))||{}).name||''),context:askContextFor(user,outletId)});
+      setLog(l=>[...l,{q:question,answer:res.answer,basis:res.basis}]);setQ('');
+    }catch(e){setLog(l=>[...l,{q:question,error:e.message}]);}
+    setBusy(false);
+  };
+  const examples=['What were total sales last month vs the month before?','Which vendor bills are overdue?','पिछले महीने कौन सा खर्च सबसे ज़्यादा बढ़ा?'];
+  return h(React.Fragment,null,
+    h('button',{className:'topbar-icon-btn',title:'Ask SalonOS a question about an outlet',onClick:()=>setOpen(o=>!o)},h('span',{style:{fontSize:15,lineHeight:1}},'💬'),h('span',{className:'lbl-full'},'Ask')),
+    open&&h(React.Fragment,null,
+      h('div',{style:{position:'fixed',inset:0,zIndex:998},onClick:()=>setOpen(false)}),
+      h('div',{role:'dialog','aria-label':'Ask SalonOS',style:{position:'fixed',top:56,right:12,width:'min(460px, calc(100vw - 24px))',maxHeight:'calc(100vh - 80px)',display:'flex',flexDirection:'column',zIndex:999,
+        background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,boxShadow:'0 12px 32px rgba(0,0,0,.18)'}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:8,padding:'12px 14px',borderBottom:'1px solid var(--border)'}},
+          h('div',{style:{fontWeight:700,fontSize:14}},'💬 Ask SalonOS'),
+          h('select',{className:'form-control',style:{width:'auto',marginLeft:'auto',fontSize:12,padding:'4px 8px'},value:outletId==null?'':outletId,onChange:e=>setSid(e.target.value)},
+            salons.map(s=>h('option',{key:s.id,value:s.id},String(s.name||'').split('—')[0].trim()))),
+          h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setOpen(false),'aria-label':'Close'},'✕')),
+        h('div',{style:{flex:1,overflowY:'auto',padding:'10px 14px',fontSize:13,lineHeight:1.6}},
+          !log.length&&h('div',{style:{color:'var(--text3)',fontSize:12.5}},'Ask in English or Hindi about sales, expenses, staff, attendance, vendor bills or the bank statement of this outlet. Try:',
+            examples.map((x,i)=>h('div',{key:i},h('button',{className:'btn btn-ghost btn-sm',style:{marginTop:6,textAlign:'left',whiteSpace:'normal'},onClick:()=>setQ(x)},x)))),
+          log.map((m,i)=>h('div',{key:i,style:{marginBottom:12}},
+            h('div',{style:{fontWeight:600,color:'var(--accent)'}},m.q),
+            m.error?h('div',{style:{color:'var(--orange)'}},m.error)
+              :h(React.Fragment,null,h('div',{style:{whiteSpace:'pre-line',color:'var(--text)'}},m.answer),m.basis&&h('div',{style:{fontSize:11,color:'var(--text3)',marginTop:2}},'Based on: '+m.basis))))),
+        h('div',{style:{display:'flex',gap:8,padding:'10px 14px',borderTop:'1px solid var(--border)'}},
+          h('input',{className:'form-control',value:q,placeholder:'Type your question…',onChange:e=>setQ(e.target.value),onKeyDown:e=>{if(e.key==='Enter')ask();},autoFocus:true}),
+          h('button',{className:'btn btn-primary btn-sm'+(busy?' btn-loading':''),disabled:busy||!q.trim(),onClick:ask},busy?'Thinking…':'Ask')),
+        h('div',{style:{fontSize:10.5,color:'var(--text3)',padding:'0 14px 10px'}},'Only this outlet’s data you can see is sent to the AI, for this answer only. Check important figures on the sheet itself.'))
+    )
   );
 }
 function App(){
@@ -625,6 +671,7 @@ function App(){
         const{data:p,error}=await supa.from('profiles').select('*').eq('id',user.id).maybeSingle();
         if(error||stopped||!p)return; // can't see the row this time (network, token refresh) — never sign out on that
         if(p.status==='Inactive'){logout();addToast('This account has been deactivated. Contact your Super Admin.','warning',9000);return;}
+        if(accessEnded(p)){logout();addToast('Your access to SalonOS has ended. Contact your Super Admin.','warning',9000);return;}
         const cur=currentSessionUser()||user;
         const next={...cur,...userFromProfile(p,cur.email,{isDemo:cur.isDemo,demoDaysLeft:cur.demoDaysLeft})};
         if(FIELDS.every(f=>JSON.stringify(next[f])===JSON.stringify(cur[f])))return;
@@ -995,6 +1042,7 @@ function App(){
           React.createElement('span',{className:'topbar-title'},activePage==='salon'&&selectedSalon?selectedSalon.name:'SalonOS')
         ),
         React.createElement('div',{className:'topbar-right'},
+          CLOUD_SYNC_ENABLED&&user&&accessibleSalons.length>0&&React.createElement(AskSalonOS,{user,salons:accessibleSalons,currentSalonId:activePage==='salon'&&selectedSalon?selectedSalon.id:null}),
           CLOUD_SYNC_ENABLED&&user&&React.createElement(AlertsBell,{user,salons:accessibleSalons,onOpen:openFromAlert}),
           React.createElement('button',{className:'topbar-icon-btn hide-phone',title:'Reload the app',
             onClick:()=>window.location.reload()},React.createElement(IconRefresh,null),React.createElement('span',null,'Refresh')),

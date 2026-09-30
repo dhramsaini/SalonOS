@@ -109,6 +109,7 @@ function LoginPage({onLogin}){
         await supa.auth.signOut({scope:'local'});return;
       }
       if(profile.status==='Inactive'){setErr('This account has been deactivated. Contact your Super Admin.');await supa.auth.signOut({scope:'local'});return;}
+      if(accessEnded(profile)){setErr('Your access to SalonOS ended on '+profile.access_until+'. Contact your Super Admin.');await supa.auth.signOut({scope:'local'});return;}
       // Two-step login: accounts with an authenticator app set up must also enter its 6-digit code.
       // (The database only grants Super Admin powers to such an account after this step.)
       const{data:aal}=await supa.auth.mfa.getAuthenticatorAssuranceLevel();
@@ -602,6 +603,9 @@ function MasterSheet({onSelect,salons,setSalons,user}){
     // autoRecurringInvoices — each Monthly, Fixed recurring expense gets its invoice created in
     // Vendor Sheet automatically on the 1st (autoCreateRecurringInvoices, js/04-outlet-staff.js).
     autoRecurringInvoices:false,
+    // invoiceApprovalLimit — bills above this (₹) need a Super Admin's approval before payment,
+    // counted from invoiceApprovalFrom (set to the day the limit is first entered).
+    invoiceApprovalLimit:'',invoiceApprovalFrom:'',
     // Payment Due Dates — feeds the Due Date Tracker's auto-generated Salary Disbursement /
     // Incentive Payment items, same rolling-window pattern as PF/ESIC/PT, but on a day the outlet
     // itself sets rather than a fixed statutory one, since payroll cutoff varies salon to salon.
@@ -1193,7 +1197,15 @@ function MasterSheet({onSelect,salons,setSalons,user}){
             React.createElement('input',{type:'checkbox',checked:!!form.autoRecurringInvoices,onChange:fcCheck('autoRecurringInvoices'),style:{marginTop:3}}),
             React.createElement('span',null,
               React.createElement('span',{style:{fontSize:12.5,fontWeight:600,color:'var(--text)'}},'Create recurring invoices automatically'),
-              React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',lineHeight:1.5,marginTop:2}},'On the 1st of each month, every Active, Fixed-amount, Monthly recurring expense (Rent, Maintenance, Royalty…) gets its invoice in Vendor Sheet — dated the 1st, due on its due day, with any increment, GST and TDS applied — ready to be paid and auto-linked from the bank statement. Months already missed are caught up. Variable bills (electricity) and non-monthly items are still entered by hand.')))
+              React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',lineHeight:1.5,marginTop:2}},'On the 1st of each month, every Active, Fixed-amount, Monthly recurring expense (Rent, Maintenance, Royalty…) gets its invoice in Vendor Sheet — dated the 1st, due on its due day, with any increment, GST and TDS applied — ready to be paid and auto-linked from the bank statement. Months already missed are caught up. Variable bills (electricity) and non-monthly items are still entered by hand.'))),
+          React.createElement('div',{style:{display:'flex',alignItems:'flex-start',gap:8}},
+            React.createElement('span',{style:{fontSize:16,lineHeight:1}},'✅'),
+            React.createElement('div',{style:{flex:1}},
+              React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
+                React.createElement('span',{style:{fontSize:12.5,fontWeight:600,color:'var(--text)'}},'Approval needed for bills above ₹'),
+                React.createElement('input',{type:'number',min:0,className:'form-control',style:{width:130,padding:'4px 8px'},value:form.invoiceApprovalLimit||'',placeholder:'No limit',
+                  onChange:e=>{const v=e.target.value;setForm(f=>({...f,invoiceApprovalLimit:v,invoiceApprovalFrom:Number(v)>0?(Number(f.invoiceApprovalLimit)>0&&f.invoiceApprovalFrom?f.invoiceApprovalFrom:new Date().toISOString().slice(0,10)):''}));}})),
+              React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',lineHeight:1.5,marginTop:2}},'A vendor bill above this amount (dated from '+(form.invoiceApprovalFrom?form.invoiceApprovalFrom.split('-').reverse().join('/'):'the day you set it')+') can’t be paid — in Vendors, from the bank statement, in a payment file or as cash in Daily Sales & Exp — until a Super Admin clicks Approve on it. PIs and automatic recurring invoices are exempt. Empty = no approval step.'))),
         ),
 
         React.createElement('div',{className:'modal-actions'},
@@ -1289,7 +1301,7 @@ function CloudBackupsCard(){
   const [restoreOutlet,setRestoreOutlet]=useState('all');
   const [confirmText,setConfirmText]=useState('');
   const salonsList=loadSalonsFromStorage();
-  const KIND={auto:'Nightly',manual:'Manual','pre-restore':'Before restore',archive:'Archive of old app data (kept permanently, not restorable here)'};
+  const KIND={auto:'Nightly',manual:'Manual',uploaded:'Uploaded from a backup file','pre-restore':'Before restore',archive:'Archive of old app data (kept permanently, not restorable here)'};
   const load=useCallback(async()=>{
     try{
       const supa=await getSupabaseClient();
@@ -1323,11 +1335,33 @@ function CloudBackupsCard(){
     setBusy(false);
   };
   const fmt=(ts)=>new Date(ts).toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'numeric',minute:'2-digit'});
+  const [lastDl,setLastDl]=useState(()=>{try{return JSON.parse(cachedLocalGet('salonos_secret_backup_downloaded')||'null');}catch(e){return null;}});
+  const downloadFile=async(id)=>{
+    setBusy(true);
+    try{const b=await downloadCloudBackupFile(id);setLastDl({at:new Date().toISOString(),takenAt:b.taken_at});success('Backup file saved — keep it somewhere outside SalonOS (your computer, a pen drive or Google Drive).');window.dispatchEvent(new Event('salonos-alerts-refresh'));}
+    catch(e){toastError('Download failed: '+(e.message||'network error'));}
+    setBusy(false);
+  };
+  const uploadRef=useRef(null);
+  const uploadFile=async(e)=>{
+    const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;
+    setBusy(true);
+    try{await uploadCloudBackupFile(f);success('Backup file uploaded — it’s in the list as "Uploaded from a backup file"; use Restore… on it if you need to.');await load();}
+    catch(err){toastError('Upload failed: '+(err.message||'network error'));}
+    setBusy(false);
+  };
   return React.createElement('div',{className:'card',style:{marginBottom:16}},
     React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:8}},
       React.createElement('div',{className:'card-title',style:{marginBottom:0}},'☁️ Cloud Backups'),
-      React.createElement('button',{className:'btn btn-primary btn-sm'+(busy?' btn-loading':''),disabled:busy,onClick:backupNow},'Back up now')
+      React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,onClick:()=>downloadFile(null)},'⬇ Download latest as file'),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,onClick:()=>uploadRef.current&&uploadRef.current.click()},'⬆ Upload backup file'),
+        React.createElement('input',{ref:uploadRef,type:'file',accept:'.json,application/json',style:{display:'none'},onChange:uploadFile}),
+        React.createElement('button',{className:'btn btn-primary btn-sm'+(busy?' btn-loading':''),disabled:busy,onClick:backupNow},'Back up now'))
     ),
+    React.createElement('div',{style:{fontSize:12,color:lastDl?'var(--text3)':'var(--orange)',marginBottom:6}},
+      lastDl?'Backup file last downloaded '+fmt(lastDl.at)+(lastDl.takenAt?' (backup of '+fmt(lastDl.takenAt)+')':'')+'. A weekly copy outside SalonOS protects you even if the cloud account itself is lost.'
+        :'No backup file downloaded yet — download one every week and keep it outside SalonOS.'),
     React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:12,lineHeight:1.6}},
       'Every outlet\'s data is backed up automatically every night at 2:00 AM and kept for 30 days (manual backups: 90 days). Restoring saves a "Before restore" backup first, so any restore can be undone.'),
     rows===null?React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},'Loading…')
@@ -1337,6 +1371,7 @@ function CloudBackupsCard(){
         React.createElement('div',{style:{flex:1,minWidth:0}},
           React.createElement('div',{style:{color:'var(--text)'}},fmt(r.taken_at)),
           React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},(KIND[r.kind]||r.kind)+' · '+r.rows_count+' records')),
+        r.kind==='archive'?null:React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,title:'Save this backup as a file on this computer',onClick:()=>downloadFile(r.id)},'⬇ File'),
         r.kind==='archive'?null:React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,onClick:()=>{setRestoreFor(r);setRestoreOutlet('all');setConfirmText('');}},'Restore…')))),
     restoreFor&&React.createElement('div',{className:'modal-overlay',onClick:()=>!busy&&setRestoreFor(null)},
       React.createElement('div',{className:'modal',style:{width:460},onClick:e=>e.stopPropagation()},
@@ -1613,12 +1648,15 @@ function AutomationSettingsCard(){
           React.createElement('input',{type:'number',min:0,max:30,className:'form-control',style:small,value:s.dueDaysAhead,onChange:e=>set('dueDaysAhead',e.target.value)}),'days ahead',
           React.createElement('span',{style:{display:'block',fontSize:11.5,color:'var(--text3)'}},'Unpaid vendor bills with a due date (closes once paid). The same days-ahead applies to fixed recurring items below. Overdue ones turn red.'))),
       box('recurringReminders','Recurring expenses','Fixed items on their due day; variable bills (electricity, water…) once their period is over and no bill is entered.'),
+      box('anomalyChecks','Unusual activity','A sales day far below that weekday’s usual, a day’s expenses 3× the 30-day average, a vendor bill that looks entered twice.'),
       box('monthEndChecklist','Month-end checklist','From the 1st: last month\'s days without sales, unmarked attendance, salary not approved, bank statement not imported.'),
       React.createElement('label',{style:row},
         React.createElement('input',{type:'checkbox',checked:!!s.autoLock,onChange:e=>set('autoLock',e.target.checked),style:{marginTop:3}}),
         React.createElement('span',null,'Lock last month automatically on day',
           React.createElement('input',{type:'number',min:2,max:28,className:'form-control',style:small,value:s.autoLockDay,onChange:e=>set('autoLockDay',e.target.value)}),'of the new month',
           React.createElement('span',{style:{display:'block',fontSize:11.5,color:'var(--text3)'}},'Attendance, Salary and Incentive Working for that month become read-only (unlock from Master Sheet → 🔒 Months). The checklist runs until this day.'))),
+      box('loginWatch','Login watch (Super Admin)','A sign-in from a network the person hasn’t used in 60 days, and sign-ins between midnight and 6 AM.'),
+      box('backupReminder','Weekly backup file reminder (Super Admin)','Until this week’s backup file is downloaded (Master Settings → Cloud Backups, or the 🔔 button).'),
       box('digest','Also send new alerts by email / WhatsApp','To the recipients under Automatic reports — needs the same email / WhatsApp setup.')),
     React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',marginTop:6}},
       React.createElement('button',{className:'btn btn-primary btn-sm',onClick:save},'Save'),
@@ -1900,7 +1938,7 @@ function UserManagement(){
       // supabase_schema.sql) — fall back to "every granted outlet is full Edit, no sheet-level
       // restriction" only for a profile saved before these columns existed.
       outletAccess:(p.outlet_access&&Object.keys(p.outlet_access).length)?p.outlet_access:Object.fromEntries((p.outlet_ids||[]).map(oid=>[oid,'View and Edit'])),
-      sheetAccessByOutlet:p.sheet_access_by_outlet||{},status:p.status
+      sheetAccessByOutlet:p.sheet_access_by_outlet||{},status:p.status,accessUntil:p.access_until||''
     })));
   },[]);
   useEffect(()=>{refreshCloudUsers();},[refreshCloudUsers]);
@@ -1984,7 +2022,7 @@ function UserManagement(){
       const ids=outletIdsFromAccess(outletAccess);
       sheetAccessByOutlet=Object.fromEntries(ids.map(id=>[id,{...legacyFlat}]));
     }
-    setForm({name:u.name,email:u.email,password:'',role:u.role,access:u.access,status:u.status,sheetAccessByOutlet,outletAccess});
+    setForm({name:u.name,email:u.email,password:'',role:u.role,access:u.access,status:u.status,sheetAccessByOutlet,outletAccess,accessUntil:u.accessUntil||''});
     setEditId(u.id);setShowFormPass(false);setShowModal(true);
   };
   const save=async()=>{
@@ -2006,7 +2044,8 @@ function UserManagement(){
           const{error}=await supa.from('profiles').update({
             name:form.name.trim(),role:form.role.trim()||'Data Entry User',access:form.access,
             outlet_ids:outletIdsFromAccess(form.outletAccess),status:form.status,
-            outlet_access:form.outletAccess,sheet_access_by_outlet:form.sheetAccessByOutlet
+            outlet_access:form.outletAccess,sheet_access_by_outlet:form.sheetAccessByOutlet,
+            ...(form.role==='Super Admin'?{access_until:null}:{access_until:form.accessUntil||null})
           }).eq('id',editId);
           if(error){toast(error.message||'Could not update user','error');setCloudBusy(false);return;}
           if(form.password){
@@ -2027,6 +2066,10 @@ function UserManagement(){
           }});
           const fnErr=error||(data&&data.error);
           if(fnErr){toast((fnErr.message||fnErr)||'Could not create user','error');setCloudBusy(false);return;}
+          if(form.accessUntil&&form.role!=='Super Admin'){
+            const{error:auErr}=await supa.from('profiles').update({access_until:form.accessUntil}).eq('email',form.email.trim().toLowerCase());
+            if(auErr)toast('User added, but the "Access until" date was not saved: '+auErr.message+' — open the user and set it again.','error',9000);
+          }
           toast('User added — they can log in now with the email and password just set','success');
         }
         await refreshCloudUsers();
@@ -2155,7 +2198,7 @@ function UserManagement(){
                 const outletCount=Object.keys(byOutlet).length;
                 return React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},(editCount?editCount+' Edit':'')+(editCount&&viewCount?' · ':'')+(viewCount?viewCount+' View':'')+' (across '+outletCount+' outlet'+(outletCount===1?'':'s')+')');
               })()),
-              React.createElement('td',null,React.createElement('span',{className:`badge ${u.status==='Active'?'badge-green':'badge-gray'}`,style:{cursor:'pointer'},onClick:()=>toggleStatus(u),title:'Click to toggle'},u.status)),
+              React.createElement('td',null,React.createElement('span',{className:`badge ${u.status==='Active'?'badge-green':'badge-gray'}`,style:{cursor:'pointer'},onClick:()=>toggleStatus(u),title:'Click to toggle'},u.status),u.accessUntil&&React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:3}},'until '+String(u.accessUntil).split('-').reverse().join('/'))),
               React.createElement('td',null,u.lastLogin?new Date(u.lastLogin).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):React.createElement('span',{style:{color:'var(--text3)'}},'Never')),
               React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:6}},
                 React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>openEdit(u)},'Edit'),
@@ -2186,6 +2229,9 @@ function UserManagement(){
               React.createElement('button',{type:'button',title:showFormPass?'Hide password':'Show password','aria-label':showFormPass?'Hide password':'Show password',onClick:()=>setShowFormPass(s=>!s),style:{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:14}},showFormPass?'🙈':'👁')
             ),
             editId&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:4}},'Current passwords can\'t be viewed (stored encrypted). Set a new one here and share it with the user.')),
+          CLOUD_SYNC_ENABLED&&form.role!=='Super Admin'&&React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-13u'},'Access until (optional)'),
+            React.createElement('input',{id:'f-13u',type:'date',className:'form-control',value:form.accessUntil||'',min:new Date().toISOString().slice(0,10),onChange:fc('accessUntil')}),
+            React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:4}},'For a temporary user (auditor, trainee, relief manager): after this date the login stops working — the account turns Inactive just after midnight. Leave empty for no end date.')),
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-13'},'Status'),React.createElement('select',{id:'f-13',className:'form-control',value:form.status,onChange:fc('status')},['Active','Inactive'].map(s=>React.createElement('option',{key:s},s))))
         ),
         React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'18px 0 10px',paddingTop:14,borderTop:'1px solid var(--border)'}},'Outlet Access'),

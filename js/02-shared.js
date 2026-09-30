@@ -348,6 +348,32 @@ function userCanEditSheet(u,outletId,sheetId){
   const sa=u.sheetAccessByOutlet&&u.sheetAccessByOutlet[outletId];
   return !(sa&&sa[sheetId]&&sa[sheetId]!=='Edit');
 }
+// Approval rule (automation phase 5; outlet setting invoiceApprovalLimit, Master Sheet → outlet →
+// Vendor Invoices). A bill above the limit, dated on/after the day the limit was set
+// (invoiceApprovalFrom), can't be paid until a Super Admin approves it. PIs and automatic recurring
+// invoices are exempt. The server's nightly check uses the same rule (supabase/functions/automation).
+function invoiceNeedsApproval(inv,salonId){
+  const o=outletSettings(salonId);
+  const lim=Number(o.invoiceApprovalLimit)||0;
+  if(!inv||lim<=0||inv.docNature==='Performa Invoice'||inv.autoCreated)return false;
+  if((Number(inv.amount)||0)<=lim||(inv.approval&&inv.approval.status==='Approved'))return false;
+  const from=o.invoiceApprovalFrom||'';const d=toISO(inv.bookingDate||inv.invoiceDate);
+  return !from||!d||d>=from;
+}
+// Temporary users (automation phase 5): profiles.access_until = last day they may use SalonOS
+// (IST calendar date). The database turns them Inactive just after midnight; this covers the gap.
+function accessEnded(profile,asOf){
+  if(!profile||!profile.access_until||profile.role==='Super Admin')return false;
+  const d=new Date((asOf||new Date()).getTime()+5.5*3600e3).toISOString().slice(0,10);
+  return String(profile.access_until).slice(0,10)<d;
+}
+// Can this user see this sheet on this outlet (same rule as the sheet tabs: anything but No Access)?
+function userCanViewSheet(u,outletId,sheetId){
+  if(!u||!userCanSeeOutlet(u,outletId))return false;
+  if(u.role==='Super Admin')return true;
+  const sa=(u.sheetAccessByOutlet&&u.sheetAccessByOutlet[outletId])||u.sheetAccess||null;
+  return !sa||(sa[sheetId]||'View Only')!=='No Access';
+}
 // An outlet's current settings (Master Sheet saves update SALONS in place; the salon object a
 // screen was opened with can be an older copy).
 function outletSettings(salonId){return SALONS.find(s=>String(s.id)===String(salonId))||{};}
@@ -1068,7 +1094,7 @@ function invoiceKeyFor(inv){return inv.vendorId+'|'+inv.invoiceNo;}
 // invoice was found for that category (shouldn't normally happen — the row would still be locked).
 function recordCashPaymentAgainstInvoiceFor(salonId,category,amount,date){
   const invoices=loadVendorInvoices(salonId);
-  const match=invoices.find(inv=>inv.docNature!=='Performa Invoice'&&(inv.category||'')===category&&(Number(inv.amount)-(inv.payments||[]).reduce((s,p)=>s+Number(p.paidAmount||0),0))>0);
+  const match=invoices.find(inv=>inv.docNature!=='Performa Invoice'&&!invoiceNeedsApproval(inv,salonId)&&(inv.category||'')===category&&(Number(inv.amount)-(inv.payments||[]).reduce((s,p)=>s+Number(p.paidAmount||0),0))>0);
   if(!match)return null;
   const entry={id:nextPrefixedId(match.payments||[],'PMT-',3),paidAmount:Number(amount)||0,paidDate:date,mode:'Cash',ref:'',note:'Auto-recorded from Daily Sales & Exp'};
   saveVendorInvoices(invoices.map(inv=>inv.id===match.id?{...inv,payments:[...(inv.payments||[]),entry]}:inv),salonId);
@@ -2965,7 +2991,7 @@ function isPasswordRecoveryLink(){
 // (alertFixedLocally) — the next run closes it for good. ──
 const AUTOMATION_SETTINGS_KEY='salonos_secret_automation_settings';
 const AUTOMATION_DEFAULTS={enabled:true,salesCheck:true,attendanceCheck:true,dueReminders:true,dueDaysAhead:3,
-  recurringReminders:true,monthEndChecklist:true,autoLock:false,autoLockDay:10,digest:false};
+  recurringReminders:true,monthEndChecklist:true,autoLock:false,autoLockDay:10,digest:false,anomalyChecks:true,loginWatch:true,backupReminder:true};
 async function loadOpenAlerts(){
   const supa=await getSupabaseClient();
   const{data,error}=await supa.from('alerts').select('id,akey,outlet_id,kind,severity,title,body,tab,due_date,auto,created_at')
@@ -2996,6 +3022,17 @@ function alertFixedLocally(a){
       const inv=loadVendorInvoices(sid).find(x=>x.id===p[2]);
       if(!inv)return false;
       return Number(inv.amount)-(inv.payments||[]).reduce((s,x)=>s+(Number(x.paidAmount)||0),0)<=0.5;
+    }
+    if(a.kind==='backup'){
+      const dl=JSON.parse(cachedLocalGet('salonos_secret_backup_downloaded')||'null');
+      if(!dl||!dl.at)return false;
+      const d=new Date(new Date(dl.at).getTime()+5.5*3600e3).toISOString().slice(0,10);
+      return d>=p[1]; // downloaded on/after this week's Monday
+    }
+    if(a.kind==='approval'){
+      const ids=String(p.slice(2).join(':')).split(',');
+      const inv=loadVendorInvoices(sid);
+      return !ids.some(id=>{const i=inv.find(x=>x.id===id);return i&&invoiceNeedsApproval(i,sid);});
     }
     if(a.kind==='recurring_bill'&&typeof variableRecurringMissingPeriod==='function'){
       const it=loadRecurringExpenses(sid).find(x=>x.id===p[2]);
@@ -3086,4 +3123,32 @@ async function runTallyAutoSync(salonId,cfg,setting){
   }
   saveTallyPushed(salonId,pushed);
   return out;
+}
+
+// ── Weekly backup file (automation phase 5) — a copy of a cloud backup on the Super Admin's own
+// computer. Records the download (salonos_secret_backup_downloaded) so the weekly reminder in 🔔
+// closes. The file can be uploaded back (salonos_import_backup) and restored like any backup. ──
+async function downloadCloudBackupFile(backupId){
+  const supa=await getSupabaseClient();
+  let q=supa.from('kv_backups').select('id,taken_at,kind,rows_count,data');
+  q=backupId?q.eq('id',backupId):q.neq('kind','archive').order('taken_at',{ascending:false}).limit(1);
+  const{data,error}=await q;
+  if(error)throw error;
+  const b=data&&data[0];
+  if(!b)throw new Error('No backup found yet — click "Back up now" first.');
+  const file={salonos_backup:1,taken_at:b.taken_at,kind:b.kind,rows:b.data};
+  downloadTextFile(JSON.stringify(file),'SalonOS-backup-'+String(b.taken_at).slice(0,10)+'.json','application/json');
+  const u=currentSessionUser();
+  safeLocalSet('salonos_secret_backup_downloaded',JSON.stringify({at:new Date().toISOString(),by:(u&&u.name)||'',backupId:b.id,takenAt:b.taken_at}));
+  return b;
+}
+async function uploadCloudBackupFile(file){
+  let parsed;
+  try{parsed=JSON.parse(await file.text());}catch(e){throw new Error('This isn’t a SalonOS backup file.');}
+  const rows=parsed&&parsed.salonos_backup===1&&Array.isArray(parsed.rows)?parsed.rows:null;
+  if(!rows)throw new Error('This isn’t a SalonOS backup file.');
+  const supa=await getSupabaseClient();
+  const{data,error}=await supa.rpc('salonos_import_backup',{p_data:rows});
+  if(error)throw error;
+  return data;
 }

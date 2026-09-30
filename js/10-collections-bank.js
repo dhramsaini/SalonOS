@@ -3925,6 +3925,7 @@ function BankStatement({salon,onNavTab}={}){
     // selectable and never get linked or amount-mixed together.
     const allocations=Array.from(linkSelected).map(id=>({id,amount:Number(linkAllocations[id])||0})).filter(a=>a.amount>0);
     if(!allocations.length){faError('Enter an amount for at least one selected invoice.');return;}
+    {const blocked=loadVendorInvoices(salonId).filter(inv=>allocations.some(a=>a.id===inv.id)&&invoiceNeedsApproval(inv,salonId));if(blocked.length){faError('Not approved yet: '+blocked.map(i=>i.invoiceNo||i.id).join(', ')+' — a Super Admin has to approve '+(blocked.length===1?'this bill':'these bills')+' in Vendors before payment.');return;}}
     const linkId='bank-'+linkRow.id;
     const freshInvoices=loadVendorInvoices(salonId);
     const linkedNos=[];
@@ -3986,7 +3987,7 @@ function BankStatement({salon,onNavTab}={}){
     candidates.forEach(r=>{
       const vendor=findVendorMatch(r.description,vendors);
       if(!vendor){noVendorCount++;return;}
-      const openInv=freshInvoices.filter(inv=>inv.vendorId===vendor.id&&invBalance(inv)>0&&!usedInvoiceIds.has(inv.id));
+      const openInv=freshInvoices.filter(inv=>inv.vendorId===vendor.id&&invBalance(inv)>0&&!usedInvoiceIds.has(inv.id)&&!invoiceNeedsApproval(inv,salonId));
       const amountMatches=openInv.filter(inv=>Math.abs(invBalance(inv)-r.debit)<1);
       if(amountMatches.length===1){
         usedInvoiceIds.add(amountMatches[0].id);
@@ -4055,6 +4056,33 @@ function BankStatement({salon,onNavTab}={}){
     if(msg)toastSuccess(msg);
     else toastInfo('No confident matches \u2014 a payment is linked automatically only when the vendor or employee is recognised in the narration and the amount matches an open invoice / unpaid salary exactly. Use \ud83d\udd17 Link or Settle Pay on individual rows for the rest.');
   };
+  // ── 🤖 AI tagging (automation phase 4) — rows the rules above left without a Nature get one
+  // suggested by Claude (only high/medium confidence is applied; low is left blank). Marked aiTagged
+  // so they show as AI suggestions; the Nature dropdown still changes them as usual. ──
+  const [aiBusy,setAiBusy]=useState(false);
+  const aiTagRows=async()=>{
+    const todo=rows.filter(r=>!r.nature&&!r.linkedInvoice&&!(r.linkedEmployeePay&&r.linkedEmployeePay.length)&&(r.debit||r.credit));
+    if(!todo.length){toastInfo('Every row already has a Nature.');return;}
+    setAiBusy(true);
+    try{
+      const vendorsList=loadVendors(salonId);
+      const byId=new Map();
+      for(let s=0;s<todo.length;s+=150){
+        const batch=todo.slice(s,s+150);
+        const res=await aiCall('tag_bank',{rows:batch.map(r=>({i:r.id,d:r.description,dr:r.debit,cr:r.credit})),natures:natures.filter(Boolean),
+          vendors:vendorsList.map(v=>v.name).filter(Boolean),employees:employees.map(e=>e.name).filter(Boolean)});
+        (res.items||[]).forEach(x=>{if(x.nature&&x.confidence!=='low')byId.set(x.i,x);});
+      }
+      if(byId.size)setRows(prev=>{
+        const next=prev.map(r=>{const x=byId.get(r.id);if(!x||r.nature)return r;
+          return{...r,nature:x.nature,aiTagged:true,...(x.nature==='Vendor Payment'&&x.vendor?{vendorOverride:x.vendor}:{})};});
+        saveBankStatementRows(next,salonId);return next;
+      });
+      toastSuccess('AI tagged '+byId.size+' of '+todo.length+' row'+(todo.length===1?'':'s')+' (🤖 marks them — check and change any that look wrong).'+(todo.length-byId.size?' '+(todo.length-byId.size)+' left for you — the AI wasn’t sure.':''));
+      if(byId.size){const msg=autoLinkAll({onlyIds:new Set(byId.keys())});if(msg)toastInfo(msg);}
+    }catch(e){(e.notConfigured?toastInfo:faError)(e.message);}
+    setAiBusy(false);
+  };
   // Run the auto-link on rows just imported, once they're in state.
   const autoMatchPendingRef=useRef(null);
   useEffect(()=>{
@@ -4079,6 +4107,7 @@ function BankStatement({salon,onNavTab}={}){
         rows.length>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:e=>{exportData();if(window.flashButton)window.flashButton(e.currentTarget,'success');}},'⬇ Export Mapped Data'),
         rows.length>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Re-apply the classification rules to Nature and Date as per Cradlee for every row, overwriting what\'s there now',onClick:reclassifyExisting},'🪄 Re-classify Nature & Dates'),
         rows.length>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Scan every unlinked debit: link it to a Vendor Sheet invoice, or settle an employee’s Salary / Incentive, when the vendor or employee is named in the narration AND the amount matches exactly — anything ambiguous is left for manual review. New imports are auto-linked the same way.',onClick:autoLinkButton},'🔗 Auto-Link Payments'),
+        rows.length>0&&React.createElement('button',{className:'btn btn-ghost btn-sm'+(aiBusy?' btn-loading':''),disabled:aiBusy,title:'Ask the AI to suggest a Nature for every row that has none yet (needs the AI key in Master Settings). Only confident suggestions are applied; they show a 🤖 mark.',onClick:aiTagRows},aiBusy?'AI tagging…':'🤖 AI: tag untagged rows'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowRulesModal(true)},'ℹ️ How classification works'),
         selected.size>0&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,.15)',border:'1px solid rgba(255,107,107,.4)',color:'var(--red)',fontWeight:600},onClick:deleteSelected},'🗑 Delete Selected ('+selected.size+')'),
         rows.length>0&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,.1)',border:'1px solid rgba(255,107,107,.3)',color:'var(--red)'},onClick:clearData},'Clear Data')
@@ -4377,7 +4406,7 @@ function BankStatement({salon,onNavTab}={}){
                 )
               );
             })(),
-            React.createElement('td',{'data-xr':ri,'data-xc':8,style:{minWidth:165,background:cellRange.isSelected(ri,8)?'rgba(47,95,224,0.12)':undefined}},React.createElement('select',{className:'form-control',value:r.nature,onChange:e=>update(r.id,'nature',e.target.value),style:{padding:'6px 8px',fontSize:11}},natures.map(n=>React.createElement('option',{key:n,value:n},n||'Select Nature')))),
+            React.createElement('td',{'data-xr':ri,'data-xc':8,style:{minWidth:165,background:cellRange.isSelected(ri,8)?'rgba(47,95,224,0.12)':undefined}},React.createElement('div',{style:{display:'flex',alignItems:'center',gap:4}},r.aiTagged&&React.createElement('span',{title:'Suggested by AI — change it if it’s wrong',style:{fontSize:12}},'🤖'),React.createElement('select',{className:'form-control',value:r.nature,onChange:e=>{update(r.id,'nature',e.target.value);if(r.aiTagged)update(r.id,'aiTagged',false);},style:{padding:'6px 8px',fontSize:11}},natures.map(n=>React.createElement('option',{key:n,value:n},n||'Select Nature'))))),
             React.createElement('td',{'data-xr':ri,'data-xc':9,style:{minWidth:150,background:cellRange.isSelected(ri,9)?'rgba(47,95,224,0.12)':undefined}},React.createElement('input',{type:'date',className:'form-control',value:toISO(r.cradleeDate),onChange:e=>update(r.id,'cradleeDate',e.target.value?fmtDate(e.target.value):''),style:{padding:'6px 8px',fontSize:11}})),
             (()=>{
               // "O/S Invoices" — reads the vendor OR employee resolved from the column above.

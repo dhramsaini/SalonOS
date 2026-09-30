@@ -159,7 +159,26 @@ this update. Login failures still log to App errors ("Login: …").
      not yet sent (kv salonos_tally_pushed_outlet_<id> {inv|bank: id→{at,sig}}); creates missing ledgers; one voucher per
      request; rejects retried next run; edited-after-send items listed, never re-sent. UI: TallyAutoSyncCard (js/09).
   Tests: 40 (recurring invoices 4, salary auto-match 2, Tally sync 3 with a stubbed tallySend).
-4 AI bank-row tagging, monthly P&L explanation, anomaly alerts, "Ask SalonOS".
-5 Approval rules, temporary-user expiry, weekly backup file, login watch.
+4 ✅ (v2026.09.30.5) Edge function `ai` gains tag_bank / explain_pnl / ask (shared callClaude: json_schema output,
+  effort low|medium, refusal fallback). Client `aiCall(action,payload)` (js/13). Bank Statement "🤖 AI: tag untagged rows"
+  (only rows without Nature; high/medium confidence applied, row.aiTagged → 🤖 mark; then autoLinkAll on them).
+  P&L tab: AiExplainPnlCard (pnlLinesForAi = plBuild this vs last month). Topbar "💬 Ask" (AskSalonOS, js/14) sends
+  askContextFor(user,outlet) (js/13) — a text summary built ONLY from sheets userCanViewSheet allows (tested).
+  Anomaly alerts are rules in the `automation` function (no key needed): sales day < 50% of the median of the same
+  weekday over 4 weeks; day's expenses > 3× 30-day average and > ₹5,000; duplicate vendor bill (same vendor + same
+  invoice no., or same amount within 3 days, last 60 days). Setting anomalyChecks.
+5 ✅ (v2026.09.30.5) supabase/step13_access_security.sql:
+  • profiles.access_until + salonos_expire_users() (pg_cron 18:35 UTC = 00:05 IST → Inactive + Super Admin alert);
+    User Management "Access until" (not for Super Admin); accessEnded() checked at login and in the 30-s access refresh.
+  • salonos_login_events(since) from auth.audit_log_entries (service role only) → loginWatchAlerts (new /16 network
+    vs previous 60 days; sign-ins 00:00–06:00 IST), Super Admin-only alerts. Setting loginWatch.
+  • Weekly backup file: Cloud Backups "⬇ Download latest as file" / per-row "⬇ File" (downloadCloudBackupFile, records
+    salonos_secret_backup_downloaded) and "⬆ Upload backup file" → salonos_import_backup (kind 'uploaded', restorable).
+    `automation` raises backup:<Monday> until downloaded this week (bell has a Download button). Setting backupReminder.
+  • Approval rule: outlet invoiceApprovalLimit (+ invoiceApprovalFrom, set when first entered). invoiceNeedsApproval
+    (js/02; identical copy exported by the automation function, tested for parity). Blocked while pending: Vendor Sheet
+    savePay + Pay buttons ("Needs approval" + Super Admin "Approve"), bank auto-link + manual link, Bank Payment vendor
+    file, Daily Sales cash auto-payment. Changing an approved bill's amount drops the approval. Alert kind 'approval'.
+  Tests: 47.
 
 **Local testing note:** opening index.html on the local preview (localhost:8765) registers the service worker, which then answers every request (even tests.html?x=) with the cached app page. After checking the app locally, unregister it (navigator.serviceWorker.getRegistrations → unregister, clear caches) before running tests.html.

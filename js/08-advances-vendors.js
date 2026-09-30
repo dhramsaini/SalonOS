@@ -1069,7 +1069,8 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
     setInvoices(prev=>{
       let next,targetIdx;
       if(editInvoiceId!==null){
-        next=prev.map(inv=>inv.id===editInvoiceId?{...savedInvoice,id:inv.id,payments:inv.payments}:inv);
+        // An approval only covers the amount that was approved — changing the amount needs a new one.
+        next=prev.map(inv=>inv.id===editInvoiceId?{...savedInvoice,id:inv.id,payments:inv.payments,approval:(inv.approval&&Math.abs((Number(inv.amount)||0)-amount)<0.5)?inv.approval:undefined}:inv);
         targetIdx=next.findIndex(inv=>inv.id===editInvoiceId);
       }else{
         next=[...prev,{...savedInvoice,id:nextPrefixedId(prev,'VI-',4),payments:[]}];
@@ -1182,8 +1183,20 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
     });
   };
 
+  // ── Approval rule (automation phase 5): a bill above the outlet's approval limit can't be paid
+  // until a Super Admin approves it (invoiceNeedsApproval, js/02-shared.js). ──
+  const isApprover=(currentSessionUser()||{}).role==='Super Admin';
+  const approveInvoice=(id)=>{
+    const u=currentSessionUser()||{};
+    setInvoices(prev=>prev.map(inv=>inv.id===id?{...inv,approval:{status:'Approved',by:u.name||u.email||'',at:new Date().toISOString()}}:inv));
+    toastSuccess('Bill approved — it can be paid now.');
+  };
+  const approvalCell=(inv)=>React.createElement(React.Fragment,null,
+    React.createElement('span',{className:'badge badge-amber',title:'Above this outlet’s approval limit of ₹'+Number(outletSettings(salonId).invoiceApprovalLimit||0).toLocaleString('en-IN')},'Needs approval'),
+    isApprover&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(47,95,224,0.12)',border:'1px solid rgba(47,95,224,0.35)',color:'var(--accent)',padding:'4px 8px',borderRadius:'var(--r)',cursor:'pointer',fontSize:11,fontWeight:500},onClick:()=>approveInvoice(inv.id)},'Approve'));
   const savePay=()=>{
     if(vendBlockIfLocked(payForm.paidDate))return;
+    {const tgt=invoices.find(i=>i.id===payForm.invoiceId);if(payForm.editingPaymentId===null&&tgt&&invoiceNeedsApproval(tgt,salonId)){toastError('This bill is above the approval limit and isn’t approved yet — a Super Admin has to approve it before it can be paid.');return;}}
     if(!payForm.paidAmount||!payForm.paidDate){alert('Paid amount and date are required');return;}
     const linkId=matchedBankRowId!=null?'bank-'+matchedBankRowId:undefined;
     const entry={paidAmount:Number(payForm.paidAmount),paidDate:payForm.paidDate,mode:payForm.mode,ref:payForm.ref,note:payForm.note,...(linkId?{linkId}:{})};
@@ -1525,7 +1538,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
                   React.createElement('td',null,
                     React.createElement('div',{style:{display:'flex',gap:4}},
                       React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setViewInv({inv,id:inv.id});setShowViewModal(true);}},'View'),
-                      !pi&&!cleared&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(76,175,125,0.15)',border:'1px solid rgba(76,175,125,0.4)',color:'var(--green)',padding:'4px 8px',borderRadius:'var(--r)',cursor:'pointer',fontSize:11,fontWeight:500},onClick:()=>{setPayForm({...BLANK_PAY,invoiceId:inv.id,paidAmount:balance});setMatchedBankRowId(null);setShowPayModal(true);}},'Pay'),
+                      !pi&&!cleared&&(invoiceNeedsApproval(inv,salonId)?approvalCell(inv):React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(76,175,125,0.15)',border:'1px solid rgba(76,175,125,0.4)',color:'var(--green)',padding:'4px 8px',borderRadius:'var(--r)',cursor:'pointer',fontSize:11,fontWeight:500},onClick:()=>{setPayForm({...BLANK_PAY,invoiceId:inv.id,paidAmount:balance});setMatchedBankRowId(null);setShowPayModal(true);}},'Pay')),
                       React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>editInvoice(inv.id)},'Edit'),
                       React.createElement('button',{'aria-label':'Delete',className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>deleteInvoice(inv.id)},React.createElement(IconTrash,{size:14}))
                     )
@@ -1596,7 +1609,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
                     React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:overdue?'var(--red)':'var(--orange)'}},'₹'+balance.toLocaleString())),
                     React.createElement('td',null,React.createElement('span',{className:'badge '+(overdue?'badge-red':'badge-amber')},overdue?'Overdue':'Pending')),
                     React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:4}},
-                      React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(76,175,125,0.15)',border:'1px solid rgba(76,175,125,0.4)',color:'var(--green)',padding:'4px 8px',borderRadius:'var(--r)',cursor:'pointer',fontSize:11,fontWeight:500},onClick:()=>{setPayForm({...BLANK_PAY,invoiceId:inv.id,paidAmount:balance});setMatchedBankRowId(null);setShowPayModal(true);}},'Pay'),
+                      (invoiceNeedsApproval(inv,salonId)?approvalCell(inv):React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(76,175,125,0.15)',border:'1px solid rgba(76,175,125,0.4)',color:'var(--green)',padding:'4px 8px',borderRadius:'var(--r)',cursor:'pointer',fontSize:11,fontWeight:500},onClick:()=>{setPayForm({...BLANK_PAY,invoiceId:inv.id,paidAmount:balance});setMatchedBankRowId(null);setShowPayModal(true);}},'Pay')),
                       React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>editInvoice(inv.id)},'Edit')
                     ))
                   );
@@ -2284,7 +2297,7 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
   const vendors=useMemo(()=>loadVendors(salonId),[salonId,refreshTick]);
   const invoices=useMemo(()=>loadVendorInvoices(salonId).filter(inv=>inv.docNature!=='Performa Invoice'),[salonId,refreshTick]);
   const paidOfInv=(inv)=>(inv.payments||[]).reduce((s,p)=>s+(Number(p.paidAmount)||0),0);
-  const vendorRows=useMemo(()=>invoices.map(inv=>{
+  const vendorRows=useMemo(()=>invoices.filter(inv=>!invoiceNeedsApproval(inv,salonId)).map(inv=>{ // bills awaiting approval can't go in a payment file
     const bal=Math.round((Number(inv.amount)||0)-paidOfInv(inv));
     const v=vendors.find(x=>x.id===inv.vendorId);
     return{invId:inv.id||inv.invoiceNo,invoiceNo:inv.invoiceNo,balance:bal,vendor:v,desc:inv.desc||inv.category||''};
