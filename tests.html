@@ -395,6 +395,20 @@
         eq('WhatsApp bill → invoice form fields (vendor matched by name)',[d.vendorId,d.matchBy,d.invoiceNo,d.amount,d.taxable,d.aiCategory],['V1','name','B-9',1180,1000,'Housekeeping']);
       }catch(err){results.push({name:'Bill to invoice form',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       try{
+        // Bi-Monthly Fixed rent ₹20,000 (no GST); the real bill of ₹22,000 dated 5 Sep 2026 covers Aug + Sep.
+        safeLocalSet('salonos_recurring_expenses_outlet_902',JSON.stringify([{id:'RE1',expenseName:'Rent',payee:'Landlord',amount:20000,frequency:'Bi-Monthly',amountType:'Fixed',status:'Active',gstApplicable:false,gstReverseChargeApplicable:false,startDate:'2026-01-01'}]));
+        safeLocalSet('salonos_vendors_outlet_902',JSON.stringify([{id:'V1',name:'Test Vendor'},{id:'V2',name:'Landlord',cat:'Rent'}]));
+        const inv=JSON.parse(cachedLocalGet('salonos_vendor_invoices_outlet_902')||'[]');
+        safeLocalSet('salonos_vendor_invoices_outlet_902',JSON.stringify(inv.concat([{id:'I6',vendorId:'V2',invoiceNo:'RENT-9',invoiceDate:'05/09/2026',amount:22000,category:'Rent',payments:[]}])));
+        const m=(y,mo)=>{const r=variableRecurringSumFor(902,'Rent',y,mo);return Math.round(r.amt)+(r.rows[0]&&r.rows[0].actual?' actual':' estimate');};
+        const sep=variableRecurringSumFor(902,'Rent',2026,8);
+        eq('Recurring: Bi-Monthly bill split over its 2 months, estimate in months without a bill',[m(2026,6),m(2026,7),m(2026,8),m(2026,9)],['10000 estimate','11000 actual','11000 actual','10000 estimate']);
+        eq('Recurring: the split bill is not also counted whole, nor the estimate on top',[recurringExpenseMonthlySumFor(902,'Rent',2026,8),sep.used.has('I6')],[0,true]);
+        const q={id:'RE2',expenseName:'Rent',payee:'Landlord',amount:30000,frequency:'Quarterly',amountType:'Fixed',status:'Active',gstApplicable:false,startDate:'2026-01-01'};
+        const b=variableRecurringBills(q,902).find(x=>x.inv.id==='I6');
+        eq('Recurring: a Quarterly bill covers the 3 months ending in its own month',[monthLabelOfIndex(b.first),monthLabelOfIndex(b.last),b.months],['Jul 2026','Sep 2026',3]);
+      }catch(err){results.push({name:'Recurring split',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
         const em=tsMod(window.__EM_TS);
         eq('Email: From address format checked',['SalonOS Reports <reports@digitalca.co.in>','reports@digitalca.co.in','<reports@digitalca.co.in>','SalonOS Reports','a@b'].map(em.validFrom),[true,true,false,false,false]);
       }catch(err){results.push({name:'Email',ok:false,got:String(err&&err.stack||err),want:'no error'});}

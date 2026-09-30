@@ -1089,9 +1089,9 @@ function OutletPnLCore({salon,period}){
               h('table',null,
                 h('thead',null,h('tr',null,['Payee / Vendor','Frequency','Amount','Monthly Equiv.','Status'].map(hh=>h('th',{key:hh},hh)))),
                 h('tbody',null,detail.recurring.map(it=>{
-                  const vr=isVariableRecurring(it)?(detail.variableRows||[]).find(r=>r.it.id===it.id):null;
+                  const vr=isSpreadRecurring(it)?(detail.variableRows||[]).find(r=>r.it.id===it.id):null;
                   return h('tr',{key:it.id,style:it.status!=='Active'?{opacity:0.5}:undefined},
-                    h('td',null,it.payee,isVariableRecurring(it)&&h('div',{style:{fontSize:10,color:'var(--text3)'}},'Variable bill')),
+                    h('td',null,it.payee,isSpreadRecurring(it)&&h('div',{style:{fontSize:10,color:'var(--text3)'}},isVariableRecurring(it)?'Variable bill':'Bill split over its months')),
                     h('td',null,it.frequency),
                     h('td',{style:{textAlign:'right'}},'₹'+Number(it.amount).toLocaleString('en-IN')),
                     vr

@@ -270,6 +270,19 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   `GuideVideoButton {id}` "🎬 How-to" sits on Daily Sales, Attendance, Salary Working, Vendors, Owner Insights and the login card.
   service-worker.js never caches .mp4/.webm. To re-make videos after changing a guide: open the app locally, run
   `recordGuideVideo(STAFF_GUIDES[i], 'hi'|'en')` for each, save as guides/<id>_<lang>.mp4, and bump GUIDE_VIDEO_REV.
+· (v2026.09.30.17) **Bank statement import fix** (js/10 BankStatement): `findHeaderRowIndex` scans 80 rows (HDFC .xls has
+  20 lines of account details — the header is row 21, past the old 20-row limit, so the file was misread: address/footer lines
+  and date-only rows were saved and later imports matched them as "duplicates"); a header wins only with short keyword cells,
+  bonus when dates follow. Every import keeps only `isTxnRow` rows (date dd/mm/yyyy, year 2000–2099 — the statement-summary
+  balance read as year 3597 — and money in or out) and reports how many other lines were ignored. On opening Bank Statement,
+  saved rows failing `isTxnRow` are removed once with a message. Tested on three real HDFC exports (889 / 683 rows, 0 junk).
+  Live outlet 5 had 128 junk + 100 date-only Sep rows; Sep transactions need re-importing once this version is open.
+  **Recurring split for Fixed non-monthly items**: `isSpreadRecurring` = Variable OR frequency > Monthly. Those go through
+  the bill-spread path (`variableRecurringSumFor` / `variableRecurringMonthAmt`): each payee bill (not REC-) covers its own
+  periodFrom/To, else the N months ending in the bill's month (Fixed) — Variable keeps billFor; months without a bill carry
+  `recurringExpenseMonthlyAmt` (amount ÷ N). `recurringExpenseMonthlySumFor` and the annexure raw total skip them, and their
+  bills are in `used`, so a bill is never counted whole in one month on top of the estimate. "➕ Enter bill" and the P&L
+  annexure detail cover them too. Tests: 74.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

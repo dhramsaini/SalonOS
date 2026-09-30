@@ -2625,6 +2625,17 @@ function BankStatement({salon,onNavTab}={}){
   const [showRulesModal,setShowRulesModal]=useState(false);
   const fileRef=useRef(null);
   useEffect(()=>{safeLocalSet(outletKey('salonos_bank_statement_rows',salonId),JSON.stringify(rows));},[rows,salonId]);
+  // Self-heal: earlier builds misread some banks' exports (HDFC's .xls header sits on row 21) and saved
+  // the account holder's address, "****" lines, date-only rows with no amounts, the statement-summary
+  // line and the bank's footer notes as rows. Anything that isn't a transaction (isTxnRow) is removed
+  // once, and the screen says so — those rows had nothing in them to link or classify.
+  useEffect(()=>{
+    const n=rows.filter(r=>!isTxnRow(r)).length;
+    if(!n)return;
+    setRows(prev=>prev.filter(isTxnRow));
+    setMessage('Cleaned up '+n+' line'+(n===1?'':'s')+' an earlier import had saved by mistake (bank address, date-only rows without amounts, totals and footer notes) — they were not transactions. Import the statement again now to bring in anything that was missed.');
+    // eslint-disable-next-line
+  },[salonId]);
 
   // ---- Auto-import from a watched Downloads folder (Chrome/Edge only) ----
   const fsSupported=typeof window!=='undefined'&&typeof window.showDirectoryPicker==='function';
@@ -2992,9 +3003,12 @@ function BankStatement({salon,onNavTab}={}){
   // every column match. Scan the first ~20 rows and pick whichever one actually looks like
   // a header (several cells, multiple recognisable column-name keywords).
   const HEADER_ROW_KEYWORDS=['date','narration','description','particular','remark','detail','debit','credit','withdrawal','deposit','balance','amount','cheque','chq','reference','ref no','txn','transaction','instrument'];
+  // Scans the first 80 rows (HDFC's .xls, for one, has 20 lines of account details before the header —
+  // a 20-row limit missed it and the whole file was misread). A header cell is short text; a row whose
+  // following rows start with dates gets a bonus, so an address or "Statement period" line never wins.
   const findHeaderRowIndex=(rawRows)=>{
     let bestIdx=0,bestScore=-1;
-    const scanLimit=Math.min(rawRows.length,20);
+    const scanLimit=Math.min(rawRows.length,80);
     for(let i=0;i<scanLimit;i++){
       const row=rawRows[i]||[];
       const nonEmpty=row.filter(c=>String(c||'').trim()!=='');
@@ -3002,12 +3016,20 @@ function BankStatement({salon,onNavTab}={}){
       let score=0;
       nonEmpty.forEach(c=>{
         const s=String(c).toLowerCase();
-        if(HEADER_ROW_KEYWORDS.some(k=>s.includes(k)))score++;
+        if(s.length<=40&&HEADER_ROW_KEYWORDS.some(k=>s.includes(k)))score++;
       });
+      if(score<2)continue;
+      const next=rawRows.slice(i+1,i+6).filter(r=>(r||[]).some(c=>String(c||'').trim()!==''&&!/^\*+$/.test(String(c).trim())));
+      if(next.some(r=>(r||[]).slice(0,3).some(c=>looksLikeDateVal(c))))score+=3;
       if(score>bestScore){bestScore=score;bestIdx=i;}
     }
     return bestScore>=2?bestIdx:0; // need at least 2 keyword hits to trust it; otherwise assume row 1
   };
+  // A real transaction line: a proper date and money in or out. Everything else in a bank's export —
+  // "****" separator lines, the account holder's address, opening-balance and summary lines, the
+  // bank's footer notes — is left out.
+  // (Year 2000–2099: the statement-summary line's big balance figure otherwise reads as a date in year 3597.)
+  const isTxnRow=(r)=>{const m=/^\d{1,2}\/\d{1,2}\/(\d{4})$/.exec(String(r.transactionDate||'').trim());return !!m&&+m[1]>=2000&&+m[1]<=2099&&(Number(r.debit)>0||Number(r.credit)>0);};
   // Similarly, pick whichever sheet actually looks like the transaction table if the workbook
   // has multiple tabs (e.g. a "Summary" cover sheet before the real statement).
   const pickBestSheet=(wb)=>{
@@ -3188,6 +3210,9 @@ function BankStatement({salon,onNavTab}={}){
           usedAutoDetect=true;
         }
       }
+      const beforeClean=imported.length;
+      imported=imported.filter(isTxnRow);
+      const skippedLines=beforeClean-imported.length;
       if(!imported.length)throw new Error('Couldn\u2019t find any recognisable transaction data in this file \u2014 please check it has date, description and amount columns.');
       let note='',periodNote='';
       if(opts&&opts.from&&opts.to){
@@ -3203,7 +3228,8 @@ function BankStatement({salon,onNavTab}={}){
       }
       imported=applyAutoClassification(imported);
       const autoClassified=imported.filter(r=>r.nature).length;
-      const formatNote=(usedAutoDetect?' using automatic column detection.':' using the '+bank+' format.')+note+periodNote;
+      const formatNote=(usedAutoDetect?' using automatic column detection.':' using the '+bank+' format.')+note+periodNote
+        +(skippedLines>0?' · '+skippedLines+' non-transaction line'+(skippedLines===1?'':'s')+' (headings, address, totals, bank notes) ignored':'');
       // Append mode: add only to what's already there, skipping rows that look like the same
       // transaction already imported (same date, description, debit, credit and closing balance
       // — a bank statement export re-covering an overlapping date range is the normal case this

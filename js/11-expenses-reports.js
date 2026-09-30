@@ -91,7 +91,8 @@ function RecurringExpensesSheet({salon}={}){
   const defaultBillPeriod=(it,billDateIso)=>{
     const N=RECURRING_PERIOD_MONTHS[it.frequency]||1;const bm=monthIndexOfIso(billDateIso);
     if(bm==null)return{from:'',to:''};
-    const last=it.billFor==='current'?bm:bm-1;return{from:ymOf(last-N+1),to:ymOf(last)};
+    // Fixed non-monthly items (rent billed every 2/3/6/12 months): the bill's period ends in its own month.
+    const last=(!isVariableRecurring(it)||it.billFor==='current')?bm:bm-1;return{from:ymOf(last-N+1),to:ymOf(last)};
   };
   const openEnterBill=(it)=>{
     const today=new Date().toISOString().slice(0,10);const p=defaultBillPeriod(it,today);
@@ -397,12 +398,12 @@ function RecurringExpensesSheet({salon}={}){
                 React.createElement('td',{'data-xr':ri,'data-xc':2,style:{background:sel(2)}},React.createElement('span',{className:'badge badge-blue'},it.frequency)),
                 React.createElement('td',{'data-xr':ri,'data-xc':3,style:{background:sel(3)}},
                   React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},'₹'+Number(it.amount).toLocaleString('en-IN')),
-                  isVariableRecurring(it)
+                  isSpreadRecurring(it)
                     ?(()=>{
                         const bills=variableRecurringBills(it,salonId);const last=bills[bills.length-1];
                         const miss=variableRecurringMissingPeriod(it,salonId);
                         return React.createElement('div',{style:{fontSize:10,marginTop:2,lineHeight:1.5}},
-                          React.createElement('span',{className:'badge badge-purple',style:{fontSize:9,padding:'1px 6px'}},'Variable'),
+                          React.createElement('span',{className:'badge badge-purple',style:{fontSize:9,padding:'1px 6px'}},isVariableRecurring(it)?'Variable':'Bill split over '+(RECURRING_PERIOD_MONTHS[it.frequency]||1)+' months'),
                           last&&React.createElement('div',{style:{color:'var(--text3)'}},'Last bill ₹'+Math.round(last.amount).toLocaleString('en-IN')+' ('+monthLabelOfIndex(last.first)+(last.months>1?'–'+monthLabelOfIndex(last.last):'')+')'),
                           miss&&React.createElement('div',{style:{color:'var(--orange)',fontWeight:600}},'⚠ '+monthLabelOfIndex(miss.first)+(miss.last>miss.first?'–'+monthLabelOfIndex(miss.last):'')+' bill not entered'));
                       })()
@@ -419,7 +420,7 @@ function RecurringExpensesSheet({salon}={}){
                 React.createElement('td',null,React.createElement('div',{style:{fontSize:11}},it.startDate||'—'),it.endDate?React.createElement('div',{style:{fontSize:10,color:'var(--text3)'}},'to '+it.endDate):null),
                 React.createElement('td',{'data-xr':ri,'data-xc':5,style:{background:sel(5)}},React.createElement('span',{className:'badge '+(it.status==='Active'?'badge-green':it.status==='Expired'?'badge-red':'badge-gray')},it.status)),
                 React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:4}},
-                  isVariableRecurring(it)&&React.createElement('button',{className:'btn btn-primary btn-sm',title:'Record this period’s actual bill',onClick:()=>openEnterBill(it)},'➕ Enter bill'),
+                  isSpreadRecurring(it)&&React.createElement('button',{className:'btn btn-primary btn-sm',title:'Record this period’s actual bill — the P&L spreads it over the months it covers',onClick:()=>openEnterBill(it)},'➕ Enter bill'),
                   React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>openEdit(it)},'Edit'),
                   React.createElement('button',{'aria-label':'Delete',className:'btn btn-sm',style:{background:'rgba(255,107,107,0.1)',border:'1px solid rgba(255,107,107,0.3)',color:'var(--red)',padding:'4px 8px',borderRadius:'var(--r)',cursor:'pointer',fontSize:11},onClick:()=>setShowDelete(it)},React.createElement(IconTrash,{size:14}))
                 ))
