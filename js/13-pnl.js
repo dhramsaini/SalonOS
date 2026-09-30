@@ -934,7 +934,7 @@ function OutletPnLCore({salon,period}){
           h('div',{className:'progress',style:{marginTop:12}},
             h('div',{className:'progress-fill',style:{width:Math.min(100,cur.revenue/breakEven*100)+'%',
               background:cur.revenue>=breakEven?'var(--green)':'var(--red)'}})),
-          h('div',{className:'help-tip',style:{marginTop:10}},cur.revenue>=breakEven
+          h('div',{className:'help-note',style:{marginTop:10}},cur.revenue>=breakEven
             ?'Covered fixed costs with '+money(cur.revenue-breakEven)+' of revenue to spare.'
             :'Short of break-even by '+money(breakEven-cur.revenue)+'. Fixed cost is the lever, not discounting.')),
 
@@ -959,7 +959,7 @@ function OutletPnLCore({salon,period}){
                 background:i===mi?'var(--accent)':t.pbt>0?'rgba(76,175,125,.55)':'rgba(255,107,107,.55)'}})))),
           h('div',{style:{display:'flex',gap:3,fontSize:9,color:'var(--text3)'}},
             trend.map((t,i)=>h('div',{key:t.m,style:{flex:1,textAlign:'center',color:i===mi?'var(--accent)':null}},t.m))),
-          h('div',{className:'help-tip',style:{marginTop:10}},'Click a bar to open that month. Green bars are profitable months.')))),
+          h('div',{className:'help-note',style:{marginTop:10}},'Click a bar to open that month. Green bars are profitable months.')))),
 
     // ── PROFIT DISTRIBUTION — splits this month's Profit Before Tax across the outlet's Firm
     // Details (Master Sheet → Edit Salon → Firm Details): 100% to the Proprietor for a sole
@@ -1109,7 +1109,7 @@ function OutletPnLCore({salon,period}){
                   return h('tr',{key:it.id,style:it.status!=='Active'?{opacity:0.5}:undefined},
                     h('td',null,it.payee,isSpreadRecurring(it)&&h('div',{style:{fontSize:10,color:'var(--text3)'}},isVariableRecurring(it)?'Variable bill':'Bill split over its months')),
                     h('td',null,it.frequency),
-                    h('td',{style:{textAlign:'right'}},'₹'+Number(it.amount).toLocaleString('en-IN')),
+                    h('td',{style:{textAlign:'right'}},rupee(Number(it.amount))),
                     vr
                       ?h('td',{style:{textAlign:'right',fontWeight:700}},'₹'+Math.round(vr.amt).toLocaleString('en-IN'),
                           h('div',{style:{fontSize:10,fontWeight:400,color:vr.actual?'var(--green)':'var(--orange)'}},vr.actual

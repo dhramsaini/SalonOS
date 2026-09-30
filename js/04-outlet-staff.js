@@ -74,7 +74,7 @@ function OutletDashboard({salon,period,onNavTab}){
     return React.createElement('div',{style:{marginBottom:10}},
       React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}},
         React.createElement('span',{style:{color:'var(--text2)'}},(label)),
-        React.createElement('span',{style:{color:'var(--text)',fontWeight:600}},'₹'+a.toLocaleString())
+        React.createElement('span',{style:{color:'var(--text)',fontWeight:600}},rupee(a))
       ),
       React.createElement('div',{style:{display:'flex',gap:3,alignItems:'center'}},
         React.createElement('div',{style:{flex:1,height:8,background:'var(--bg3)',borderRadius:4,overflow:'hidden'}},
@@ -105,8 +105,8 @@ function OutletDashboard({salon,period,onNavTab}){
     const displayPct=isExpense?pctDiff*-1:pctDiff;
     return React.createElement('div',{className:'stat-row'},
       React.createElement('span',{style:{fontSize:12,color:'var(--text2)',flex:1}},label),
-      React.createElement('span',{style:{fontSize:12,textAlign:'right',minWidth:90}},'₹'+a.toLocaleString()),
-      React.createElement('span',{style:{fontSize:12,textAlign:'right',minWidth:90}},'₹'+b.toLocaleString()),
+      React.createElement('span',{style:{fontSize:12,textAlign:'right',minWidth:90}},rupee(a)),
+      React.createElement('span',{style:{fontSize:12,textAlign:'right',minWidth:90}},rupee(b)),
       React.createElement('span',{style:{fontSize:12,textAlign:'right',minWidth:70,fontWeight:600,color:isNewFromZero?arrowColor(isExpense?-1:1):arrowColor(displayPct)}},isNewFromZero?'New':arrow(pctDiff))
     );
   };
@@ -142,15 +142,15 @@ function OutletDashboard({salon,period,onNavTab}){
     view==='monthly'&&React.createElement('div',null,
       // KPI metrics
       React.createElement('div',{className:'grid4',style:{marginBottom:16}},
-        React.createElement(MetCard,{label:'Total Revenue',val:'₹'+cur.totalRev.toLocaleString(),color:'green',change:pct(cur.totalRev,prev.totalRev)}),
-        React.createElement(MetCard,{label:'Net Profit',val:'₹'+cur.netProfit.toLocaleString(),color:cur.netProfit>0?'teal':'red',change:pct(cur.netProfit,prev.netProfit)}),
-        React.createElement(MetCard,{label:'Total Expenses',val:'₹'+cur.totalExp.toLocaleString(),color:'amber',change:pct(cur.totalExp,prev.totalExp)}),
+        React.createElement(MetCard,{label:'Total Revenue',val:rupee(cur.totalRev),color:'green',change:pct(cur.totalRev,prev.totalRev)}),
+        React.createElement(MetCard,{label:'Net Profit',val:rupee(cur.netProfit),color:cur.netProfit>0?'teal':'red',change:pct(cur.netProfit,prev.netProfit)}),
+        React.createElement(MetCard,{label:'Total Expenses',val:rupee(cur.totalExp),color:'amber',change:pct(cur.totalExp,prev.totalExp)}),
         React.createElement(MetCard,{label:'Gross Margin',val:cur.gm+'%',color:cur.gm>=20?'blue':'red',sub:MONTH_FULL[selMonth]+' '+selYear})
       ),
       React.createElement('div',{className:'grid4',style:{marginBottom:16}},
-        React.createElement(MetCard,{label:'Cash Collection',val:'₹'+cur.cash.toLocaleString(),color:'blue',change:pct(cur.cash,prev.cash)}),
-        React.createElement(MetCard,{label:'Card Collection',val:'₹'+cur.card.toLocaleString(),color:'purple',change:pct(cur.card,prev.card)}),
-        React.createElement(MetCard,{label:'UPI Collection',val:'₹'+cur.upi.toLocaleString(),color:'teal',change:pct(cur.upi,prev.upi)}),
+        React.createElement(MetCard,{label:'Cash Collection',val:rupee(cur.cash),color:'blue',change:pct(cur.cash,prev.cash)}),
+        React.createElement(MetCard,{label:'Card Collection',val:rupee(cur.card),color:'purple',change:pct(cur.card,prev.card)}),
+        React.createElement(MetCard,{label:'UPI Collection',val:rupee(cur.upi),color:'teal',change:pct(cur.upi,prev.upi)}),
         React.createElement(MetCard,{label:'Staff',val:cur.staff,sub:'Attendance: '+cur.attPct+'%',color:'blue'})
       ),
 
@@ -165,7 +165,7 @@ function OutletDashboard({salon,period,onNavTab}){
           }),
           React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--text3)',marginTop:8}},
             React.createElement('span',null,'12-month range'),
-            React.createElement('span',null,'Max: ₹'+Math.max(...ytd12.map(d=>d.totalRev)).toLocaleString())
+            React.createElement('span',null,'Max: ₹'+Math.max(...ytd12.map(d=>d.totalRev)).toLocaleString('en-IN'))
           )
         ),
         // Collection mix — animated donut
@@ -192,7 +192,7 @@ function OutletDashboard({salon,period,onNavTab}){
           React.createElement(SectionBar,{label:'Other Income',a:cur.otherInc,colorA:'var(--teal)'}),
           React.createElement('div',{style:{borderTop:'2px solid var(--accent)',paddingTop:8,marginTop:8,display:'flex',justifyContent:'space-between'}},
             React.createElement('span',{style:{fontWeight:700,color:'var(--text)'}},'Total Revenue'),
-            React.createElement('span',{style:{fontWeight:700,fontSize:15,color:'var(--green)'}},'₹'+cur.totalRev.toLocaleString())
+            React.createElement('span',{style:{fontWeight:700,fontSize:15,color:'var(--green)'}},rupee(cur.totalRev))
           )
         ),
         React.createElement('div',{className:'card'},
@@ -206,7 +206,7 @@ function OutletDashboard({salon,period,onNavTab}){
           React.createElement(SectionBar,{label:'R&M + Misc',a:cur.rMaint+cur.misc,colorA:'var(--text3)'}),
           React.createElement('div',{style:{borderTop:'2px solid var(--red)',paddingTop:8,marginTop:8,display:'flex',justifyContent:'space-between'}},
             React.createElement('span',{style:{fontWeight:700,color:'var(--text)'}},'Total Expenses'),
-            React.createElement('span',{style:{fontWeight:700,fontSize:15,color:'var(--red)'}},'₹'+cur.totalExp.toLocaleString())
+            React.createElement('span',{style:{fontWeight:700,fontSize:15,color:'var(--red)'}},rupee(cur.totalExp))
           )
         )
       )
@@ -238,12 +238,12 @@ function OutletDashboard({salon,period,onNavTab}){
           React.createElement('div',{style:{display:'flex',gap:12,alignItems:'flex-end',marginTop:4}},
             React.createElement('div',null,
               React.createElement('div',{style:{fontSize:10,color:'var(--blue)',marginBottom:2}},MONTHS[cmpMonthA]),
-              React.createElement('div',{style:{fontSize:17,fontWeight:700,color:'var(--text)'}},(m.suffix?m.a:('₹'+m.a.toLocaleString()))+(m.suffix||''))
+              React.createElement('div',{style:{fontSize:17,fontWeight:700,color:'var(--text)'}},(m.suffix?m.a:(rupee(m.a)))+(m.suffix||''))
             ),
             React.createElement('div',{style:{fontSize:14,color:'var(--text3)'}},'→'),
             React.createElement('div',null,
               React.createElement('div',{style:{fontSize:10,color:'var(--green)',marginBottom:2}},MONTHS[cmpMonthB]),
-              React.createElement('div',{style:{fontSize:17,fontWeight:700,color:'var(--text)'}},(m.suffix?m.b:('₹'+m.b.toLocaleString()))+(m.suffix||''))
+              React.createElement('div',{style:{fontSize:17,fontWeight:700,color:'var(--text)'}},(m.suffix?m.b:(rupee(m.b)))+(m.suffix||''))
             ),
             React.createElement('div',{style:{fontSize:11,fontWeight:700,color:arrowColor(pct(m.a,m.b)*-1)}},arrow(pct(m.b,m.a)))
           )
@@ -265,8 +265,8 @@ function OutletDashboard({salon,period,onNavTab}){
           React.createElement(CmpRow,{label:'Other Income',a:cmpA.otherInc,b:cmpB.otherInc}),
           React.createElement('div',{className:'stat-row',style:{fontWeight:700}},
             React.createElement('span',{style:{fontSize:13,color:'var(--text)',flex:1}},'Total Revenue'),
-            React.createElement('span',{style:{color:'var(--green)',minWidth:110,textAlign:'right'}},'₹'+cmpA.totalRev.toLocaleString()),
-            React.createElement('span',{style:{color:'var(--green)',minWidth:110,textAlign:'right'}},'₹'+cmpB.totalRev.toLocaleString()),
+            React.createElement('span',{style:{color:'var(--green)',minWidth:110,textAlign:'right'}},rupee(cmpA.totalRev)),
+            React.createElement('span',{style:{color:'var(--green)',minWidth:110,textAlign:'right'}},rupee(cmpB.totalRev)),
             React.createElement('span',{style:{minWidth:70,textAlign:'right',color:arrowColor(pct(cmpB.totalRev,cmpA.totalRev))}},arrow(pct(cmpB.totalRev,cmpA.totalRev)))
           )
         ),
@@ -281,15 +281,15 @@ function OutletDashboard({salon,period,onNavTab}){
           React.createElement(CmpRow,{label:'Repair & Misc',a:cmpA.rMaint+cmpA.misc,b:cmpB.rMaint+cmpB.misc,isExpense:true}),
           React.createElement('div',{className:'stat-row',style:{fontWeight:700}},
             React.createElement('span',{style:{fontSize:13,color:'var(--text)',flex:1}},'Total Expenses'),
-            React.createElement('span',{style:{color:'var(--red)',minWidth:110,textAlign:'right'}},'₹'+cmpA.totalExp.toLocaleString()),
-            React.createElement('span',{style:{color:'var(--red)',minWidth:110,textAlign:'right'}},'₹'+cmpB.totalExp.toLocaleString()),
+            React.createElement('span',{style:{color:'var(--red)',minWidth:110,textAlign:'right'}},rupee(cmpA.totalExp)),
+            React.createElement('span',{style:{color:'var(--red)',minWidth:110,textAlign:'right'}},rupee(cmpB.totalExp)),
             React.createElement('span',{style:{minWidth:70,textAlign:'right',color:arrowColor(pct(cmpB.totalExp,cmpA.totalExp)*-1)}},arrow(pct(cmpB.totalExp,cmpA.totalExp)))
           )
         ),
         React.createElement('div',{className:'stat-row',style:{fontWeight:700}},
           React.createElement('span',{style:{fontSize:14,color:'var(--text)',flex:1}},'Net Profit / Loss'),
-          React.createElement('span',{style:{fontWeight:800,fontSize:14,color:cmpA.netProfit>=0?'var(--green)':'var(--red)',minWidth:110,textAlign:'right'}},'₹'+cmpA.netProfit.toLocaleString()),
-          React.createElement('span',{style:{fontWeight:800,fontSize:14,color:cmpB.netProfit>=0?'var(--green)':'var(--red)',minWidth:110,textAlign:'right'}},'₹'+cmpB.netProfit.toLocaleString()),
+          React.createElement('span',{style:{fontWeight:800,fontSize:14,color:cmpA.netProfit>=0?'var(--green)':'var(--red)',minWidth:110,textAlign:'right'}},rupee(cmpA.netProfit)),
+          React.createElement('span',{style:{fontWeight:800,fontSize:14,color:cmpB.netProfit>=0?'var(--green)':'var(--red)',minWidth:110,textAlign:'right'}},rupee(cmpB.netProfit)),
           React.createElement('span',{style:{minWidth:70,textAlign:'right',fontWeight:800,color:arrowColor(pct(cmpB.netProfit,cmpA.netProfit))}},arrow(pct(cmpB.netProfit,cmpA.netProfit)))
         )
       )
@@ -298,9 +298,9 @@ function OutletDashboard({salon,period,onNavTab}){
     // ══ P&L STATEMENT ══
     view==='pl'&&React.createElement('div',null,
       React.createElement('div',{className:'grid4',style:{marginBottom:16}},
-        React.createElement(MetCard,{label:'Total Revenue',val:'₹'+cur.totalRev.toLocaleString(),color:'green'}),
-        React.createElement(MetCard,{label:'Total Expenses',val:'₹'+cur.totalExp.toLocaleString(),color:'red'}),
-        React.createElement(MetCard,{label:'Net Profit',val:'₹'+Math.abs(cur.netProfit).toLocaleString(),color:cur.netProfit>=0?'teal':'red',sub:cur.netProfit>=0?'Profit':'Loss'}),
+        React.createElement(MetCard,{label:'Total Revenue',val:rupee(cur.totalRev),color:'green'}),
+        React.createElement(MetCard,{label:'Total Expenses',val:rupee(cur.totalExp),color:'red'}),
+        React.createElement(MetCard,{label:'Net Profit',val:'₹'+Math.abs(cur.netProfit).toLocaleString('en-IN'),color:cur.netProfit>=0?'teal':'red',sub:cur.netProfit>=0?'Profit':'Loss'}),
         React.createElement(MetCard,{label:'Gross Margin',val:cur.gm+'%',color:cur.gm>=20?'blue':'amber'})
       ),
       React.createElement('div',{className:'grid2'},
@@ -310,14 +310,14 @@ function OutletDashboard({salon,period,onNavTab}){
             React.createElement('div',{key:k,className:'stat-row'},
               React.createElement('span',{style:{fontSize:13,color:'var(--text2)'}},k),
               React.createElement('div',{style:{textAlign:'right'}},
-                React.createElement('div',{style:{fontSize:13,fontWeight:500,color:'var(--green)'}},'₹'+v.toLocaleString()),
+                React.createElement('div',{style:{fontSize:13,fontWeight:500,color:'var(--green)'}},rupee(v)),
                 React.createElement('div',{style:{fontSize:10,color:'var(--text3)'}},cur.totalRev>0?(v/cur.totalRev*100).toFixed(1)+'%':'0%')
               )
             )
           ),
           React.createElement('div',{style:{display:'flex',justifyContent:'space-between',paddingTop:10,marginTop:4,borderTop:'2px solid rgba(76,175,125,0.4)',fontWeight:700}},
             React.createElement('span',{style:{fontSize:14}},'Total Revenue'),
-            React.createElement('span',{style:{fontSize:16,color:'var(--green)'}},'₹'+cur.totalRev.toLocaleString())
+            React.createElement('span',{style:{fontSize:16,color:'var(--green)'}},rupee(cur.totalRev))
           )
         ),
         React.createElement('div',{className:'card',style:{borderLeft:'3px solid var(--red)'}},
@@ -326,14 +326,14 @@ function OutletDashboard({salon,period,onNavTab}){
             React.createElement('div',{key:k,className:'stat-row'},
               React.createElement('span',{style:{fontSize:13,color:'var(--text2)'}},k),
               React.createElement('div',{style:{textAlign:'right'}},
-                React.createElement('div',{style:{fontSize:13,fontWeight:500,color:'var(--red)'}},'₹'+v.toLocaleString()),
+                React.createElement('div',{style:{fontSize:13,fontWeight:500,color:'var(--red)'}},rupee(v)),
                 React.createElement('div',{style:{fontSize:10,color:'var(--text3)'}},cur.totalRev>0?(v/cur.totalRev*100).toFixed(1)+'%':'0%')
               )
             )
           ),
           React.createElement('div',{style:{display:'flex',justifyContent:'space-between',paddingTop:10,marginTop:4,borderTop:'2px solid rgba(255,107,107,0.4)',fontWeight:700}},
             React.createElement('span',{style:{fontSize:14}},'Total Expenses'),
-            React.createElement('span',{style:{fontSize:16,color:'var(--red)'}},'₹'+cur.totalExp.toLocaleString())
+            React.createElement('span',{style:{fontSize:16,color:'var(--red)'}},rupee(cur.totalExp))
           )
         )
       ),
@@ -341,7 +341,7 @@ function OutletDashboard({salon,period,onNavTab}){
         React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
           React.createElement('span',{style:{fontWeight:700,fontSize:17,color:'var(--text)'}},'NET PROFIT / LOSS — '+MONTH_FULL[selMonth]+' '+selYear),
           React.createElement('div',{style:{textAlign:'right'}},
-            React.createElement('div',{style:{fontWeight:800,fontSize:26,color:cur.netProfit>=0?'var(--green)':'var(--red)'}},(cur.netProfit>=0?'+':'')+'₹'+cur.netProfit.toLocaleString()),
+            React.createElement('div',{style:{fontWeight:800,fontSize:26,color:cur.netProfit>=0?'var(--green)':'var(--red)'}},(cur.netProfit>=0?'+':'')+rupee(cur.netProfit)),
             React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginTop:2}},'Gross Margin: '+cur.gm+'%')
           )
         )
@@ -374,15 +374,15 @@ function OutletDashboard({salon,period,onNavTab}){
           [1,3,6,12,18,24,36].map(n=>React.createElement('button',{key:n,className:`btn btn-sm ${rangeMonths===n?'btn-primary':'btn-ghost'}`,onClick:()=>setRangeMonths(n)},n===1?'1 Month':n+' Months'))
         ),
         React.createElement('div',{className:'grid4',style:{marginBottom:16}},
-          React.createElement(MetCard,{label:'Total Revenue ('+rangeMonths+' mo)',val:'₹'+totRev.toLocaleString(),color:'green'}),
-          React.createElement(MetCard,{label:'Total Expenses ('+rangeMonths+' mo)',val:'₹'+totExp.toLocaleString(),color:'amber'}),
-          React.createElement(MetCard,{label:'Net Profit ('+rangeMonths+' mo)',val:'₹'+totNet.toLocaleString(),color:totNet>=0?'teal':'red'}),
-          React.createElement(MetCard,{label:'Avg Net Margin',val:avgGm+'%',color:avgGm>=20?'blue':'red',sub:'Avg revenue ₹'+Math.round(totRev/rangeMonths).toLocaleString()+'/mo'})
+          React.createElement(MetCard,{label:'Total Revenue ('+rangeMonths+' mo)',val:rupee(totRev),color:'green'}),
+          React.createElement(MetCard,{label:'Total Expenses ('+rangeMonths+' mo)',val:rupee(totExp),color:'amber'}),
+          React.createElement(MetCard,{label:'Net Profit ('+rangeMonths+' mo)',val:rupee(totNet),color:totNet>=0?'teal':'red'}),
+          React.createElement(MetCard,{label:'Avg Net Margin',val:avgGm+'%',color:avgGm>=20?'blue':'red',sub:'Avg revenue ₹'+Math.round(totRev/rangeMonths).toLocaleString('en-IN')+'/mo'})
         ),
         React.createElement('div',{className:'card',style:{marginBottom:16}},
           React.createElement('div',{className:'card-title'},'Revenue Trend — Last '+rangeMonths+' Month'+(rangeMonths>1?'s':'')),
           React.createElement('div',{style:{display:'flex',alignItems:'flex-end',gap:2,height:130,paddingBottom:20,position:'relative'}},
-            list.map((x,i)=>React.createElement('div',{key:i,title:MONTH_FULL[x.m]+' '+x.y+': ₹'+x.d.totalRev.toLocaleString(),style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',height:'100%'}},
+            list.map((x,i)=>React.createElement('div',{key:i,title:MONTH_FULL[x.m]+' '+x.y+': ₹'+x.d.totalRev.toLocaleString('en-IN'),style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',height:'100%'}},
               React.createElement('div',{style:{width:'100%',height:Math.max(3,Math.round((x.d.totalRev/maxRev)*105))+'px',background:i===list.length-1?'linear-gradient(to top,var(--accent),var(--accent2))':'linear-gradient(to top,var(--blue),rgba(74,158,255,0.4))',borderRadius:'2px 2px 0 0',transition:'height 0.4s'}}),
               rangeMonths<=18&&React.createElement('div',{style:{position:'absolute',bottom:2,fontSize:8,color:'var(--text3)',left:i*(100/list.length)+'%',width:(100/list.length)+'%',textAlign:'center',overflow:'hidden'}},MONTHS[x.m])
             ))
@@ -397,23 +397,23 @@ function OutletDashboard({salon,period,onNavTab}){
               React.createElement('tbody',null,
                 list.map((x,i)=>React.createElement('tr',{key:i},
                   React.createElement('td',null,React.createElement('span',{style:{fontWeight:500,color:'var(--text)',whiteSpace:'nowrap'}},MONTH_FULL[x.m]+' '+x.y)),
-                  React.createElement('td',null,'₹'+x.d.totalRev.toLocaleString()),
-                  React.createElement('td',null,'₹'+x.d.totalExp.toLocaleString()),
-                  React.createElement('td',null,React.createElement('span',{style:{color:x.d.netProfit>=0?'var(--green)':'var(--red)',fontWeight:600}},'₹'+x.d.netProfit.toLocaleString())),
+                  React.createElement('td',null,rupee(x.d.totalRev)),
+                  React.createElement('td',null,rupee(x.d.totalExp)),
+                  React.createElement('td',null,React.createElement('span',{style:{color:x.d.netProfit>=0?'var(--green)':'var(--red)',fontWeight:600}},rupee(x.d.netProfit))),
                   React.createElement('td',null,x.d.gm+'%'),
-                  React.createElement('td',null,'₹'+x.d.cash.toLocaleString()),
-                  React.createElement('td',null,'₹'+x.d.card.toLocaleString()),
-                  React.createElement('td',null,'₹'+x.d.upi.toLocaleString())
+                  React.createElement('td',null,rupee(x.d.cash)),
+                  React.createElement('td',null,rupee(x.d.card)),
+                  React.createElement('td',null,rupee(x.d.upi))
                 )),
                 React.createElement('tr',{style:{fontWeight:700,background:'var(--bg3)'}},
                   React.createElement('td',null,'TOTAL ('+rangeMonths+' mo)'),
-                  React.createElement('td',null,'₹'+totRev.toLocaleString()),
-                  React.createElement('td',null,'₹'+totExp.toLocaleString()),
-                  React.createElement('td',null,React.createElement('span',{style:{color:totNet>=0?'var(--green)':'var(--red)'}},'₹'+totNet.toLocaleString())),
+                  React.createElement('td',null,rupee(totRev)),
+                  React.createElement('td',null,rupee(totExp)),
+                  React.createElement('td',null,React.createElement('span',{style:{color:totNet>=0?'var(--green)':'var(--red)'}},rupee(totNet))),
                   React.createElement('td',null,avgGm+'%'),
-                  React.createElement('td',null,'₹'+sum('cash').toLocaleString()),
-                  React.createElement('td',null,'₹'+sum('card').toLocaleString()),
-                  React.createElement('td',null,'₹'+sum('upi').toLocaleString())
+                  React.createElement('td',null,'₹'+sum('cash').toLocaleString('en-IN')),
+                  React.createElement('td',null,'₹'+sum('card').toLocaleString('en-IN')),
+                  React.createElement('td',null,'₹'+sum('upi').toLocaleString('en-IN'))
                 )
               )
             )
@@ -574,9 +574,9 @@ function MasterSalarySheet({salon}={}){
         <td>${e.id}</td><td><b>${e.name}</b><br><small>${e.dept||''}</small></td>
         <td>${e.desig}</td><td>${fmtDMY(e.doj)}</td><td style="color:${e.dol?'#c0392b':'#888'}">${e.dol?fmtDMY(e.dol):'—'}</td>
         <td>${e.weeklyOff||'Sun'}</td>
-        <td>₹${(e.basic||0).toLocaleString()}</td><td>₹${(e.hra||0).toLocaleString()}</td>
-        <td>₹${(e.conv||0).toLocaleString()}</td><td>₹${(e.special||0).toLocaleString()}</td>
-        <td><b>₹${(e.gross||0).toLocaleString()}</b></td>
+        <td>₹${(e.basic||0).toLocaleString('en-IN')}</td><td>₹${(e.hra||0).toLocaleString('en-IN')}</td>
+        <td>₹${(e.conv||0).toLocaleString('en-IN')}</td><td>₹${(e.special||0).toLocaleString('en-IN')}</td>
+        <td><b>₹${(e.gross||0).toLocaleString('en-IN')}</b></td>
         <td>${e.pf?'✓':'✗'}</td><td>${e.esic?'✓':'✗'}</td>
         <td style="font-family:monospace;font-size:10px">${e.pan||'—'}</td>
         <td style="font-family:monospace;font-size:10px">${e.aadhar||'—'}</td>
@@ -621,7 +621,7 @@ function MasterSalarySheet({salon}={}){
     <div class="summary">
       <div class="sum-card"><div class="sum-label">Total Employees</div><div class="sum-val">${data.length}</div></div>
       <div class="sum-card"><div class="sum-label">Active</div><div class="sum-val">${activeCount}</div></div>
-      <div class="sum-card"><div class="sum-label">Total Gross CTC</div><div class="sum-val">₹${totalGross.toLocaleString()}</div></div>
+      <div class="sum-card"><div class="sum-label">Total Gross CTC</div><div class="sum-val">₹${totalGross.toLocaleString('en-IN')}</div></div>
       <div class="sum-card"><div class="sum-label">On PF</div><div class="sum-val">${data.filter(e=>e.pf).length}</div></div>
       <div class="sum-card"><div class="sum-label">On ESIC</div><div class="sum-val">${data.filter(e=>e.esic).length}</div></div>
     </div>
@@ -631,7 +631,7 @@ function MasterSalarySheet({salon}={}){
     </table>
     <div class="footer">
       <div>SalonOS — Confidential | For Internal Use Only</div>
-      <div>Total Gross Payable: <b>₹${totalGross.toLocaleString()}</b></div>
+      <div>Total Gross Payable: <b>₹${totalGross.toLocaleString('en-IN')}</b></div>
     </div>
     <script>window.onload=()=>{window.print();}<\/script>
     </body></html>`;
@@ -721,7 +721,7 @@ function MasterSalarySheet({salon}={}){
     {key:'doj',label:'DOJ',get:e=>e.doj?fmtDMY(e.doj):'(blank)'},
     {key:'dol',label:'DOL',get:e=>e.dol?fmtDMY(e.dol):'(blank)'},
     {key:'weeklyOff',label:'Weekly Off',get:e=>e.weeklyOff||'Sunday'},
-    {key:'gross',label:'Gross CTC',get:e=>'₹'+(e.gross||0).toLocaleString()},
+    {key:'gross',label:'Gross CTC',get:e=>'₹'+(e.gross||0).toLocaleString('en-IN')},
     {key:'bankName',label:'Bank',get:e=>e.bankName||'(blank)'},
     {key:'pan',label:'PAN',get:e=>e.pan||'(blank)'},
     {key:'aadhar',label:'Aadhaar',get:e=>e.aadhar||'(blank)'},
@@ -907,7 +907,7 @@ function MasterSalarySheet({salon}={}){
                 React.createElement('td',null,e.desig),
                 React.createElement('td',null,fmtDMY(e.doj)),
                 React.createElement('td',null,e.dol?React.createElement('span',{style:{color:'var(--red)'}},e.dol):'—'),
-                React.createElement('td',null,'₹'+(e.gross||0).toLocaleString()),
+                React.createElement('td',null,'₹'+(e.gross||0).toLocaleString('en-IN')),
                 React.createElement('td',null,React.createElement('span',{className:'badge badge-gray'},e.status)),
                 React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:4}},
                   React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>openView(e)},'View'),
@@ -937,7 +937,7 @@ function MasterSalarySheet({salon}={}){
 
     // ── Summary Metrics ──
     empView==='active'&&React.createElement('div',{className:'grid4',style:{marginBottom:16}},
-      [{label:'Total Employees',val:employees.length,color:'blue'},{label:'Active',val:employees.filter(e=>e.status==='Active').length,color:'green'},{label:'Total Gross CTC',val:'₹'+employees.reduce((s,e)=>s+Number(e.gross||0),0).toLocaleString(),color:'amber'},{label:'On PF',val:employees.filter(e=>e.pf).length,color:'purple'}].map(m=>
+      [{label:'Total Employees',val:employees.length,color:'blue'},{label:'Active',val:employees.filter(e=>e.status==='Active').length,color:'green'},{label:'Total Gross CTC',val:'₹'+employees.reduce((s,e)=>s+Number(e.gross||0),0).toLocaleString('en-IN'),color:'amber'},{label:'On PF',val:employees.filter(e=>e.pf).length,color:'purple'}].map(m=>
         React.createElement('div',{key:m.label,className:`metric-card ${m.color}`},React.createElement('div',{className:'metric-label'},m.label),React.createElement('div',{className:'metric-value'},m.val))
       )
     ),
@@ -980,7 +980,7 @@ function MasterSalarySheet({salon}={}){
                 React.createElement('td',{'data-xr':ri,'data-xc':3,style:{background:sel(3)}},React.createElement('span',{style:{whiteSpace:'nowrap',fontSize:12}},fmtDMY(e.doj))),
                 React.createElement('td',{'data-xr':ri,'data-xc':4,style:{background:sel(4)}},e.dol?React.createElement('span',{style:{whiteSpace:'nowrap',fontSize:12,color:'var(--red)'}},e.dol):'—'),
                 React.createElement('td',{'data-xr':ri,'data-xc':5,style:{background:sel(5)}},React.createElement('span',{className:'badge badge-blue',style:{whiteSpace:'nowrap'}},e.weeklyOff||'Sunday')),
-                React.createElement('td',{'data-xr':ri,'data-xc':6,style:{background:sel(6)}},React.createElement('span',{style:{fontWeight:600,color:'var(--text)',whiteSpace:'nowrap'}},'₹'+(e.gross||0).toLocaleString())),
+                React.createElement('td',{'data-xr':ri,'data-xc':6,style:{background:sel(6)}},React.createElement('span',{style:{fontWeight:600,color:'var(--text)',whiteSpace:'nowrap'}},'₹'+(e.gross||0).toLocaleString('en-IN'))),
                 React.createElement('td',{'data-xr':ri,'data-xc':7,style:{background:sel(7)}},
                   e.bankName?React.createElement('div',null,
                     React.createElement('div',{style:{fontSize:12,color:'var(--text)',whiteSpace:'nowrap'}},e.bankName),
@@ -1036,7 +1036,7 @@ function MasterSalarySheet({salon}={}){
     showViewModal&&viewEmp&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowViewModal(false)},
       React.createElement('div',{className:'modal',style:{width:680},onClick:e=>e.stopPropagation()},
         React.createElement('div',{className:'modal-title',style:{display:'flex',alignItems:'center',gap:12}},
-          React.createElement('div',{style:{width:44,height:44,borderRadius:'50%',background:'linear-gradient(135deg,var(--accent),var(--purple))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:700,color:'#fff',flexShrink:0}},viewEmp.name.slice(0,2).toUpperCase()),
+          React.createElement('div',{style:{width:44,height:44,borderRadius:'50%',background:'linear-gradient(135deg,var(--accent-fill,var(--accent)),var(--purple))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:700,color:'#fff',flexShrink:0}},viewEmp.name.slice(0,2).toUpperCase()),
           React.createElement('div',null,
             React.createElement('div',null,viewEmp.name),
             React.createElement('div',{style:{fontSize:12,color:'var(--text3)',fontFamily:'var(--font)',fontWeight:400}},viewEmp.id+' · '+viewEmp.desig)
@@ -1058,7 +1058,7 @@ function MasterSalarySheet({salon}={}){
           // Employment
           React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:14}},
             React.createElement('div',{style:{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:10}},'Employment'),
-            [['Dept',viewEmp.dept],['DOJ',fmtDMY(viewEmp.doj)],['DOL',viewEmp.dol?fmtDMY(viewEmp.dol):'—'],['Weekly Off',viewEmp.weeklyOff||'Sunday'],['Gross CTC','₹'+(viewEmp.gross||0).toLocaleString()],['Basic','₹'+(viewEmp.basic||0).toLocaleString()],['PF',viewEmp.pf?'Yes':'No'],['ESIC',viewEmp.esic?'Yes':'No']].map(([k,v])=>
+            [['Dept',viewEmp.dept],['DOJ',fmtDMY(viewEmp.doj)],['DOL',viewEmp.dol?fmtDMY(viewEmp.dol):'—'],['Weekly Off',viewEmp.weeklyOff||'Sunday'],['Gross CTC','₹'+(viewEmp.gross||0).toLocaleString('en-IN')],['Basic','₹'+(viewEmp.basic||0).toLocaleString('en-IN')],['PF',viewEmp.pf?'Yes':'No'],['ESIC',viewEmp.esic?'Yes':'No']].map(([k,v])=>
               React.createElement('div',{key:k,className:'stat-row'},React.createElement('span',{style:{fontSize:12,color:'var(--text3)'}},k),React.createElement('span',{style:{fontSize:12,color:'var(--text)'}},v||'—'))
             )
           )
@@ -1112,7 +1112,7 @@ function MasterSalarySheet({salon}={}){
                 React.createElement('tr',{key:i},
                   React.createElement('td',null,r.id),React.createElement('td',null,r.name),
                   React.createElement('td',null,r.desig),React.createElement('td',null,r.dept),
-                  React.createElement('td',null,'₹'+(r.gross||0).toLocaleString()),
+                  React.createElement('td',null,'₹'+(r.gross||0).toLocaleString('en-IN')),
                   React.createElement('td',null,React.createElement('span',{className:`badge ${r.status==='Active'?'badge-green':'badge-gray'}`},r.status))
                 )
               ))

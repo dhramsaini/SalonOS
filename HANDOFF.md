@@ -371,6 +371,18 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   connector; --uninstall, --run --console. /status reports runtime:"python". Settings tab: Python is the main install
   (Install Python link, Download connector, cmd one-liner TALLY_PY_INSTALL_CMD, remove command); PowerShell under "Other
   ways". Tested on this PC: install (replaced PS), browser relay, restart via Run key. Tests 87.
+· (v2026.09.30.34) Python connector install is a paste-in-cmd command (Smart App Control blocks downloaded .py too).
+· (v2026.09.30.35) **UI/UX pass** (local-test/smoke.html now audits every screen: contrast, <11px text, <30px tap
+  targets on phones, unlabeled controls; ?dark=1, ?phone=1, ?only=ComponentName to view one screen):
+  - light theme --text3 was overridden back to #7C879E by the later body.light block (≈3.3:1) → #5E6A82; --teal/--orange
+    darker; .btn-success dark green (white text was ≈1.8:1). Light-theme contrast issues 960 → ~70 (rest ≥4:1 colour text).
+  - dark theme: --accent #6B93FF for text, --accent-fill/#2F5FE0 for filled buttons/chips/avatars (blue text was 2.9–3.3:1).
+  - hard-coded dark header backgrounds (#1a1a22/#12121a) → var(--bg3): Incentive/Registers/Expenses headers were
+    dark text on near-black in the light theme.
+  - .help-tip (16 px round icon) was used as a note box in 8 places → new .help-note.
+  - phones: tabs 40 px, small buttons 36 px, inputs 40 px (not inside tables).
+  - numbers: ~350 toLocaleString() → 'en-IN' (Indian grouping on any browser); rupee(n) helper "-₹1,32,837" replaces
+    192 '₹'+x.toLocaleString() spots (was "₹-132,837").
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

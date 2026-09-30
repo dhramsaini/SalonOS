@@ -2259,7 +2259,7 @@ function UserManagement(){
           React.createElement('tbody',null,users.map(u=>
             React.createElement('tr',{key:u.id},
               React.createElement('td',null,React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10}},
-                React.createElement('div',{style:{width:30,height:30,borderRadius:'50%',background:'linear-gradient(135deg,var(--accent),var(--purple))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:600,color:'#fff',flexShrink:0}},u.name.slice(0,2).toUpperCase()),
+                React.createElement('div',{style:{width:30,height:30,borderRadius:'50%',background:'linear-gradient(135deg,var(--accent-fill,var(--accent)),var(--purple))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:600,color:'#fff',flexShrink:0}},u.name.slice(0,2).toUpperCase()),
                 React.createElement('span',{style:{fontWeight:500,color:'var(--text)'}},u.name)
               )),
               React.createElement('td',null,u.email),React.createElement('td',null,u.role),

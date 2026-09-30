@@ -100,7 +100,7 @@ function InvoiceIntake({vendors,onUse,onManual,onClose,initial}){
           h('div',{className:'dz-sub'},'or click to browse — PDF, Word (.doc / .docx) or a photo (JPG, PNG)'),
           h('input',{type:'file',id:'intake-file',style:{display:'none'},
             accept:'.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp',onChange:pick})),
-        h('div',{className:'help-tip',style:{marginTop:14}},
+        h('div',{className:'help-note',style:{marginTop:14}},
           'The bill is read in your browser — nothing is uploaded anywhere. GSTIN, invoice number, date and amount are picked up automatically and matched against your vendor master. Scanned bills and photos go through OCR, which takes a few seconds longer.'),
         h('div',{className:'modal-actions'},
           h('button',{className:'btn btn-ghost',onClick:onManual},'Skip — enter manually'),
@@ -154,13 +154,13 @@ function InvoiceIntake({vendors,onUse,onManual,onClose,initial}){
         h('div',{className:'form-row cols3'},field('Taxable value','taxable','number'),field('IGST','igst','number'),field('CGST','cgst','number')),
         h('div',{className:'form-row cols3'},field('SGST','sgst','number'),field('Freight','freight','number'),field('Round off','roundOff','number')),
         h('div',{className:'form-row cols3'},field((isPI?'PI total':'Invoice total')+' ₹','amount','number'),field('Phone','phone'),field('Email','email')),
-        data.aiNotes&&h('div',{className:'help-tip',style:{borderLeft:'3px solid var(--orange)',marginBottom:12}},'Note from the AI: '+data.aiNotes),
+        data.aiNotes&&h('div',{className:'help-note',style:{borderLeft:'3px solid var(--orange)',marginBottom:12}},'Note from the AI: '+data.aiNotes),
         (function(){
           const parts=(Number(data.taxable)||0)+(Number(data.cgst)||0)+(Number(data.sgst)||0)+(Number(data.igst)||0)+(Number(data.freight)||0)+(Number(data.roundOff)||0);
           const tot=Number(data.amount)||0;
           if(!data.taxable||!tot)return null;
           const diff=Math.abs(parts-tot);
-          return h('div',{className:'help-tip',style:{borderLeft:'3px solid '+(diff<=2?'var(--green)':'var(--orange)'),marginBottom:12}},
+          return h('div',{className:'help-note',style:{borderLeft:'3px solid '+(diff<=2?'var(--green)':'var(--orange)'),marginBottom:12}},
             diff<=2?'Taxable value plus GST and round off equals the '+(isPI?'PI':'invoice')+' total — the bill ties.'
                    :'Taxable value plus GST and round off comes to ₹'+Math.round(parts).toLocaleString('en-IN')+', but the total reads ₹'+Math.round(tot).toLocaleString('en-IN')+'. Difference of ₹'+Math.round(diff).toLocaleString('en-IN')+' — check for freight or a missed line.');
         })(),

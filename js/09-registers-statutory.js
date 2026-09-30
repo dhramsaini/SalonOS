@@ -706,11 +706,11 @@ function CashPersonsRegister({salon}={}){
     React.createElement('div',{style:{display:'flex',gap:12,marginBottom:16,flexWrap:'wrap'}},
       React.createElement('div',{className:'card',style:{flex:'1 1 220px',padding:14}},
         React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},'Total Cash Handed Over'),
-        React.createElement('div',{style:{fontSize:20,fontWeight:700,color:'var(--red)'}},'₹'+totalHandover.toLocaleString())
+        React.createElement('div',{style:{fontSize:20,fontWeight:700,color:'var(--red)'}},rupee(totalHandover))
       ),
       React.createElement('div',{className:'card',style:{flex:'1 1 220px',padding:14}},
         React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},'Total Cash Received'),
-        React.createElement('div',{style:{fontSize:20,fontWeight:700,color:'var(--green)'}},'₹'+totalReceived.toLocaleString())
+        React.createElement('div',{style:{fontSize:20,fontWeight:700,color:'var(--green)'}},rupee(totalReceived))
       )
     ),
     React.createElement('div',{style:{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap'}},
@@ -729,7 +729,7 @@ function CashPersonsRegister({salon}={}){
               React.createElement('td',{style:{fontWeight:600}},p.person),
               React.createElement('td',null,React.createElement('span',{className:'badge '+(p.type==='Handover'?'badge-red':'badge-green')},p.type==='Handover'?'Handed Over To':'Received From')),
               React.createElement('td',{style:{textAlign:'center'}},p.count),
-              React.createElement('td',{style:{textAlign:'right',fontWeight:600}},'₹'+p.total.toLocaleString()),
+              React.createElement('td',{style:{textAlign:'right',fontWeight:600}},rupee(p.total)),
               React.createElement('td',{style:{fontSize:11.5,color:'var(--text3)'}},fmtDMY(p.lastDate))
             )))
           )
@@ -746,7 +746,7 @@ function CashPersonsRegister({salon}={}){
               React.createElement('td',{style:{whiteSpace:'nowrap',fontSize:11.5,color:'var(--text3)'}},fmtDMY(r.iso)),
               React.createElement('td',null,React.createElement('span',{className:'badge '+(r.type==='Handover'?'badge-red':'badge-green')},r.type==='Handover'?'Handed Over To':'Received From')),
               React.createElement('td',null,r.person),
-              React.createElement('td',{style:{textAlign:'right',fontWeight:600,color:r.type==='Handover'?'var(--red)':'var(--green)'}},'₹'+r.amount.toLocaleString())
+              React.createElement('td',{style:{textAlign:'right',fontWeight:600,color:r.type==='Handover'?'var(--red)':'var(--green)'}},rupee(r.amount))
             )))
           )
         )
@@ -891,7 +891,7 @@ function ExpenseRegisterSheet({salon}={}){
     React.createElement('div',{style:{display:'flex',gap:12,marginBottom:16,flexWrap:'wrap'}},
       React.createElement('div',{className:'card',style:{flex:'1 1 220px',padding:14}},
         React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},filterExpense==='all'?'Total — All Expenses':'Total — '+filterExpense),
-        React.createElement('div',{style:{fontSize:20,fontWeight:700,color:'var(--red)'}},'₹'+(filterExpense==='all'?grandTotal:filteredRows.reduce((s,r)=>s+r.amount,0)).toLocaleString())
+        React.createElement('div',{style:{fontSize:20,fontWeight:700,color:'var(--red)'}},'₹'+(filterExpense==='all'?grandTotal:filteredRows.reduce((s,r)=>s+r.amount,0)).toLocaleString('en-IN'))
       ),
       React.createElement('div',{className:'card',style:{flex:'1 1 220px',padding:14}},
         React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},'Transactions Shown'),
@@ -916,7 +916,7 @@ function ExpenseRegisterSheet({salon}={}){
               React.createElement('td',{style:{fontWeight:600,cursor:'pointer',color:filterExpense===c.name?'var(--accent)':'var(--text)'},onClick:()=>setFilterExpense(c.name),title:'Show only '+c.name},c.name),
               React.createElement('td',{style:{fontSize:11.5,color:'var(--text3)'}},c.group),
               React.createElement('td',{style:{textAlign:'center'}},c.count),
-              React.createElement('td',{style:{textAlign:'right',fontWeight:600,color:'var(--red)'}},'₹'+c.total.toLocaleString()),
+              React.createElement('td',{style:{textAlign:'right',fontWeight:600,color:'var(--red)'}},rupee(c.total)),
               React.createElement('td',{style:{fontSize:11.5,color:'var(--text3)'}},fmtDMY(c.lastDate))
             )))
           )
@@ -934,7 +934,7 @@ function ExpenseRegisterSheet({salon}={}){
               React.createElement('td',{style:{fontWeight:500}},r.name),
               React.createElement('td',{style:{fontSize:11.5,color:'var(--text3)'}},r.group),
               React.createElement('td',null,r.detail+(r.mode?' · '+r.mode:'')),
-              React.createElement('td',{style:{textAlign:'right',fontWeight:600,color:'var(--red)'}},'₹'+r.amount.toLocaleString())
+              React.createElement('td',{style:{textAlign:'right',fontWeight:600,color:'var(--red)'}},rupee(r.amount))
             )))
           )
         )
@@ -1024,7 +1024,7 @@ function TdsSummaryReport({salon}={}){
   const colTotals={};columns.forEach(c=>{colTotals[c]=rows.reduce((s,r)=>s+(r.cells[c]||0),0);});
   const grandTotal=rows.reduce((s,r)=>s+r.total,0);
   const money=(n)=>n?'₹'+Math.round(n).toLocaleString('en-IN'):'—';
-  const th=(txt,title)=>React.createElement('th',{title,style:{padding:'8px 10px',background:'#12121a',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',textAlign:'right'}},txt);
+  const th=(txt,title)=>React.createElement('th',{title,style:{padding:'8px 10px',background:'var(--bg3)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',textAlign:'right'}},txt);
   const td=(val,bold,color)=>React.createElement('td',{style:{padding:'7px 10px',fontSize:11.5,textAlign:'right',color:color||(bold?'var(--text)':'var(--text2)'),fontWeight:bold?700:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}},val);
   const drillDetail=drill?tdsPartyDetailForMonth(salonId,drill.year,drill.calMonth,recurring):[];
   const drillBySection={};
@@ -1061,7 +1061,7 @@ function TdsSummaryReport({salon}={}){
       React.createElement('div',{className:'table-wrap'},
         React.createElement('table',null,
           React.createElement('thead',null,React.createElement('tr',null,
-            [React.createElement('th',{key:'m',style:{padding:'8px 10px',background:'#12121a',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',borderBottom:'2px solid var(--accent)',textAlign:'left'}},mode==='monthly'?'Month':'Financial Year'),
+            [React.createElement('th',{key:'m',style:{padding:'8px 10px',background:'var(--bg3)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',borderBottom:'2px solid var(--accent)',textAlign:'left'}},mode==='monthly'?'Month':'Financial Year'),
              ...columns.map(c=>th(c,c===SALARY_COL?'Salary TDS — Section 192':tdsSectionFullLabel(c))),
              th('Total')]
           )),
@@ -1182,7 +1182,7 @@ function StatutorySummaryTable({salonId,salon,reportTitle,mode,fy,onModeChange,o
   const rows=statutoryReportRows(salonId,mode,fy);
   const money=(n)=>n?'₹'+Math.round(n).toLocaleString('en-IN'):'—';
   const sum=(k)=>rows.reduce((s,r)=>s+r[k],0);
-  const th=(txt)=>React.createElement('th',{style:{padding:'8px 10px',background:'#12121a',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',textAlign:'right'}},txt);
+  const th=(txt)=>React.createElement('th',{style:{padding:'8px 10px',background:'var(--bg3)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',textAlign:'right'}},txt);
   const td=(val,bold,color)=>React.createElement('td',{style:{padding:'7px 10px',fontSize:11.5,textAlign:'right',color:color||(bold?'var(--text)':'var(--text2)'),fontWeight:bold?700:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}},val);
   // ── Per-month, employee-wise detail — click any month (in Monthly view) to see exactly which
   // employees make up that month's figures, with its own Download/Share (Excel/PDF/Word, or
@@ -1222,7 +1222,7 @@ function StatutorySummaryTable({salonId,salon,reportTitle,mode,fy,onModeChange,o
       React.createElement('div',{className:'table-wrap'},
         React.createElement('table',null,
           React.createElement('thead',null,React.createElement('tr',null,
-            [React.createElement('th',{key:'m',style:{padding:'8px 10px',background:'#12121a',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',borderBottom:'2px solid var(--accent)',textAlign:'left'}},mode==='monthly'?'Month':'Financial Year'),
+            [React.createElement('th',{key:'m',style:{padding:'8px 10px',background:'var(--bg3)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',borderBottom:'2px solid var(--accent)',textAlign:'left'}},mode==='monthly'?'Month':'Financial Year'),
              ...cols.map(c=>th(c.label))]
           )),
           React.createElement('tbody',null,
@@ -1682,7 +1682,7 @@ function FixedAssetsCore({salon,onNavTab}={}){
       return nb-na;
     }),
     [salonId,refreshTick]);
-  const fmt=(n)=>n?'₹'+Math.round(n).toLocaleString():'—';
+  const fmt=(n)=>n?'₹'+Math.round(n).toLocaleString('en-IN'):'—';
   const gstOf=(inv)=>(Number(inv.igst)||0)+(Number(inv.cgst)||0)+(Number(inv.sgst)||0);
   const paidOf=(inv)=>(inv.payments||[]).reduce((s,p)=>s+(Number(p.paidAmount)||0),0);
   const balanceOf=(inv)=>(Number(inv.amount)||0)-paidOf(inv);

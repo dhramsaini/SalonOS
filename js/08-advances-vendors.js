@@ -154,7 +154,7 @@ function AdvanceSheet({period,salon}={}){
     {key:'id',label:'ID',get:a=>a.id},
     {key:'emp',label:'Employee',get:a=>a.emp},
     {key:'date',label:'Date',get:a=>a.date||'(blank)'},
-    {key:'amount',label:'Amount',get:a=>'₹'+a.amount.toLocaleString()},
+    {key:'amount',label:'Amount',get:a=>rupee(a.amount)},
     {key:'mode',label:'Mode',get:a=>a.mode},
     {key:'deductFrom',label:'Recover Against',get:a=>a.deductFrom||'Salary'},
     {key:'status',label:'Status',get:a=>a.status}
@@ -280,15 +280,15 @@ function AdvanceSheet({period,salon}={}){
       'Employees can request an advance with repayment terms of Deduction from Salary — the request stays "Pending Approval" until an ASM (Assist Manager) approves it. For advances already disbursed via Bank Transfer, use "+ New Advance (Bank)" to record them directly. Cash advances still go through the Daily Expenses sheet.'
     ),
     React.createElement('div',{className:'grid4',style:{marginBottom:8}},
-      [{label:'Pending Approval',val:pendingCount,color:'blue'},{label:'Total Advanced',val:'₹'+totalAdv.toLocaleString(),color:'amber'},{label:'Outstanding',val:'₹'+totalOut.toLocaleString(),color:'red'},{label:'Recovered',val:'₹'+totalRec.toLocaleString(),color:'green'}].map(m=>
+      [{label:'Pending Approval',val:pendingCount,color:'blue'},{label:'Total Advanced',val:rupee(totalAdv),color:'amber'},{label:'Outstanding',val:rupee(totalOut),color:'red'},{label:'Recovered',val:rupee(totalRec),color:'green'}].map(m=>
         React.createElement('div',{key:m.label,className:`metric-card ${m.color}`},React.createElement('div',{className:'metric-label'},m.label),React.createElement('div',{className:'metric-value'},m.val))
       )
     ),
     React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:16}},
       'Outstanding split — ',
-      React.createElement('span',{style:{color:'var(--accent2)',fontWeight:600}},'🏦 Salary: ₹'+outBySalary.toLocaleString()),
+      React.createElement('span',{style:{color:'var(--accent2)',fontWeight:600}},'🏦 Salary: ₹'+outBySalary.toLocaleString('en-IN')),
       '  ·  ',
-      React.createElement('span',{style:{color:'var(--blue)',fontWeight:600}},'💰 Incentive: ₹'+outByIncentive.toLocaleString())
+      React.createElement('span',{style:{color:'var(--blue)',fontWeight:600}},'💰 Incentive: ₹'+outByIncentive.toLocaleString('en-IN'))
     ),
     viewMode==='list'&&React.createElement('div',{style:{display:'flex',gap:10,marginBottom:10,flexWrap:'wrap'}},
       ['All','Cash','Bank Transfer'].map(m=>React.createElement('button',{key:m,className:`btn btn-sm ${filterMode===m?'btn-primary':'btn-ghost'}`,onClick:()=>setFilterMode(m)},m))
@@ -322,14 +322,14 @@ function AdvanceSheet({period,salon}={}){
                   synced&&React.createElement('span',{title:'Synced from Daily Sales & Exp — edit the amount there, this updates automatically',style:{marginLeft:6,fontSize:10,color:'var(--blue)'}},'🔗')
                 ),
                 React.createElement('td',{'data-xr':ri,'data-xc':2,style:{background:sel(2)}},a.date),
-                React.createElement('td',{'data-xr':ri,'data-xc':3,style:{background:sel(3)}},'₹'+a.amount.toLocaleString()),
+                React.createElement('td',{'data-xr':ri,'data-xc':3,style:{background:sel(3)}},rupee(a.amount)),
                 React.createElement('td',{'data-xr':ri,'data-xc':4,style:{background:sel(4)}},React.createElement('span',{className:`badge ${a.mode==='Bank Transfer'?'badge-blue':'badge-amber'}`},a.mode)),
                 React.createElement('td',null,a.bankRef?React.createElement('span',{style:{fontFamily:'monospace',fontSize:10,color:'var(--text2)'}},a.bankRef):'—'),
                 React.createElement('td',null,React.createElement('span',{style:{fontSize:12}},a.reason)),
                 React.createElement('td',null,a.approvedBy),
-                React.createElement('td',null,'₹'+a.repayment.toLocaleString()),
+                React.createElement('td',null,rupee(a.repayment)),
                 React.createElement('td',null,a.deductionStart?React.createElement('span',{style:{fontSize:11,color:'var(--text2)'}},a.deductionStart):'—'),
-                React.createElement('td',null,React.createElement('span',{style:{color:a.outstanding>0?'var(--red)':'var(--green)',fontWeight:600}},'₹'+a.outstanding.toLocaleString())),
+                React.createElement('td',null,React.createElement('span',{style:{color:a.outstanding>0?'var(--red)':'var(--green)',fontWeight:600}},rupee(a.outstanding))),
                 React.createElement('td',{'data-xr':ri,'data-xc':5,style:{background:sel(5)}},React.createElement('span',{className:`badge ${a.deductFrom==='Incentive'?'badge-blue':'badge-amber'}`},a.deductFrom||'Salary')),
                 React.createElement('td',{'data-xr':ri,'data-xc':6,style:{background:sel(6)}},React.createElement('span',{className:`badge ${statusBadgeClass(a.status)}`},a.status)),
                 React.createElement('td',null,
@@ -371,13 +371,13 @@ function AdvanceSheet({period,salon}={}){
                 r.hasUnscheduled&&React.createElement('span',{title:'This employee has at least one advance with no Deduction Plan — its flat monthly figure is applied to Salary/Incentive Working every active month, but isn\'t attributable to a specific month here.',style:{marginLeft:5,fontSize:10,color:'var(--text3)',cursor:'help'}},'✱')
               ),
               ...r.monthly.map(m=>React.createElement('td',{key:m.ym,style:{textAlign:'right'}},
-                m.given>0&&React.createElement('div',{style:{color:'var(--blue)'}},'+₹'+m.given.toLocaleString()),
-                m.recovered>0&&React.createElement('div',{style:{color:'var(--red)'}},'−₹'+m.recovered.toLocaleString()),
+                m.given>0&&React.createElement('div',{style:{color:'var(--blue)'}},'+₹'+m.given.toLocaleString('en-IN')),
+                m.recovered>0&&React.createElement('div',{style:{color:'var(--red)'}},'−₹'+m.recovered.toLocaleString('en-IN')),
                 (m.given===0&&m.recovered===0)&&React.createElement('span',{style:{color:'var(--text3)'}},'—')
               )),
-              React.createElement('td',{style:{textAlign:'right',fontWeight:600,color:'var(--blue)'}},'₹'+r.totalGiven.toLocaleString()),
-              React.createElement('td',{style:{textAlign:'right',fontWeight:600,color:'var(--red)'}},'₹'+r.totalRecovered.toLocaleString()),
-              React.createElement('td',{style:{textAlign:'right',fontWeight:600,color:r.outstanding>0?'var(--orange)':'var(--green)'}},'₹'+r.outstanding.toLocaleString())
+              React.createElement('td',{style:{textAlign:'right',fontWeight:600,color:'var(--blue)'}},rupee(r.totalGiven)),
+              React.createElement('td',{style:{textAlign:'right',fontWeight:600,color:'var(--red)'}},rupee(r.totalRecovered)),
+              React.createElement('td',{style:{textAlign:'right',fontWeight:600,color:r.outstanding>0?'var(--orange)':'var(--green)'}},rupee(r.outstanding))
             )))
           )
         ),
@@ -391,9 +391,9 @@ function AdvanceSheet({period,salon}={}){
         React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto',color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},onClick:exportReportExcel},'⬇ Export Excel')
       ),
       React.createElement('div',{className:'grid4',style:{marginBottom:16}},
-        [{label:'Advances Given',val:'₹'+reportTotalGiven.toLocaleString(),color:'blue'},
-         {label:'Outstanding',val:'₹'+reportTotalOutstanding.toLocaleString(),color:'red'},
-         {label:'Recovered',val:'₹'+reportTotalRecovered.toLocaleString(),color:'green'},
+        [{label:'Advances Given',val:rupee(reportTotalGiven),color:'blue'},
+         {label:'Outstanding',val:rupee(reportTotalOutstanding),color:'red'},
+         {label:'Recovered',val:rupee(reportTotalRecovered),color:'green'},
          {label:'Records',val:reportSettled.length,color:'amber'}
         ].map(m=>React.createElement('div',{key:m.label,className:`metric-card ${m.color}`},React.createElement('div',{className:'metric-label'},m.label),React.createElement('div',{className:'metric-value'},m.val)))
       ),
@@ -410,13 +410,13 @@ function AdvanceSheet({period,salon}={}){
                   reportOutstandingList.map(a=>React.createElement('tr',{key:a.id},
                     React.createElement('td',null,a.emp),
                     React.createElement('td',{style:{textAlign:'right',color:'var(--text3)'}},fmtDMY(a.date)),
-                    React.createElement('td',{style:{textAlign:'right'}},'₹'+Number(a.amount).toLocaleString()),
+                    React.createElement('td',{style:{textAlign:'right'}},rupee(Number(a.amount))),
                     React.createElement('td',{style:{textAlign:'right',color:(a.deductFrom||'Salary')==='Incentive'?'var(--blue)':'var(--accent2)'}},(a.deductFrom||'Salary')==='Incentive'?'💰 Incentive':'🏦 Salary'),
-                    React.createElement('td',{style:{textAlign:'right',fontWeight:700,color:'var(--red)'}},'₹'+Number(a.outstanding).toLocaleString())
+                    React.createElement('td',{style:{textAlign:'right',fontWeight:700,color:'var(--red)'}},rupee(Number(a.outstanding)))
                   )),
                   React.createElement('tr',{style:{fontWeight:700}},
                     React.createElement('td',{colSpan:4},'Total'),
-                    React.createElement('td',{style:{textAlign:'right',color:'var(--red)'}},'₹'+reportTotalOutstanding.toLocaleString())
+                    React.createElement('td',{style:{textAlign:'right',color:'var(--red)'}},rupee(reportTotalOutstanding))
                   )
                 )
               )
@@ -438,15 +438,15 @@ function AdvanceSheet({period,salon}={}){
                     return React.createElement('tr',{key:a.id},
                       React.createElement('td',null,a.emp),
                       React.createElement('td',{style:{textAlign:'right',color:'var(--text3)'}},fmtDMY(a.date)),
-                      React.createElement('td',{style:{textAlign:'right'}},'₹'+Number(a.amount).toLocaleString()),
+                      React.createElement('td',{style:{textAlign:'right'}},rupee(Number(a.amount))),
                       React.createElement('td',{style:{textAlign:'right',color:(a.deductFrom||'Salary')==='Incentive'?'var(--blue)':'var(--accent2)'}},(a.deductFrom||'Salary')==='Incentive'?'💰 Incentive':'🏦 Salary'),
-                      React.createElement('td',{style:{textAlign:'right',fontWeight:700,color:'var(--green)'}},'₹'+recovered.toLocaleString()),
+                      React.createElement('td',{style:{textAlign:'right',fontWeight:700,color:'var(--green)'}},rupee(recovered)),
                       React.createElement('td',{style:{textAlign:'right'}},React.createElement('span',{className:'badge '+statusBadgeClass(a.status)},a.status))
                     );
                   }),
                   React.createElement('tr',{style:{fontWeight:700}},
                     React.createElement('td',{colSpan:4},'Total'),
-                    React.createElement('td',{style:{textAlign:'right',color:'var(--green)'}},'₹'+reportTotalRecovered.toLocaleString()),
+                    React.createElement('td',{style:{textAlign:'right',color:'var(--green)'}},rupee(reportTotalRecovered)),
                     React.createElement('td',null)
                   )
                 )
@@ -517,7 +517,7 @@ function AdvanceSheet({period,salon}={}){
                 React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:4}},
                   React.createElement('button',{type:'button',className:'btn btn-ghost btn-sm',onClick:addScheduleRow},'+ Add Month'),
                   React.createElement('span',{style:{fontSize:11.5,color:scheduleTotal===Number(form.amount||0)?'var(--green)':'var(--orange)'}},
-                    'Planned total: ₹'+scheduleTotal.toLocaleString()+' of ₹'+Number(form.amount||0).toLocaleString()+(scheduleTotal!==Number(form.amount||0)?' — doesn\'t match Amount yet':' ✓')
+                    'Planned total: ₹'+scheduleTotal.toLocaleString('en-IN')+' of ₹'+Number(form.amount||0).toLocaleString('en-IN')+(scheduleTotal!==Number(form.amount||0)?' — doesn\'t match Amount yet':' ✓')
                   )
                 )
               )
@@ -538,7 +538,7 @@ function AdvanceSheet({period,salon}={}){
     showDelete&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowDelete(null)},
       React.createElement('div',{className:'modal',style:{width:400},onClick:e=>e.stopPropagation()},
         React.createElement('div',{className:'modal-title',style:{color:'var(--red)'}},'Delete Advance Record'),
-        React.createElement('div',{style:{fontSize:13,color:'var(--text2)',marginBottom:20}},'Delete advance for ',React.createElement('b',null,showDelete.emp),' of ₹'+showDelete.amount.toLocaleString()+'? This cannot be undone.'),
+        React.createElement('div',{style:{fontSize:13,color:'var(--text2)',marginBottom:20}},'Delete advance for ',React.createElement('b',null,showDelete.emp),' of ₹'+showDelete.amount.toLocaleString('en-IN')+'? This cannot be undone.'),
         React.createElement('div',{className:'modal-actions'},
           React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowDelete(null)},'Cancel'),
           React.createElement('button',{className:'btn btn-danger',onClick:()=>{if(advBlockIfLocked(showDelete.date))return;setAdvances(prev=>prev.filter(a=>a.id!==showDelete.id));setShowDelete(null);}},'Delete')
@@ -594,7 +594,7 @@ function AdvanceSheet({period,salon}={}){
       React.createElement('div',{className:'modal',style:{width:520},onClick:e=>e.stopPropagation()},
         React.createElement('div',{className:'modal-title'},'Approve Advance Request'),
         React.createElement('div',{style:{fontSize:13,color:'var(--text2)',marginBottom:14}},
-          React.createElement('b',null,showApproveModal.emp),' requested ₹'+showApproveModal.amount.toLocaleString()+' on '+showApproveModal.date+(showApproveModal.reason?' — '+showApproveModal.reason:'')+'. Repayment terms: Deduction from Salary'+(showApproveModal.deductionStart?', starting '+showApproveModal.deductionStart:'')+'.'
+          React.createElement('b',null,showApproveModal.emp),' requested ₹'+showApproveModal.amount.toLocaleString('en-IN')+' on '+showApproveModal.date+(showApproveModal.reason?' — '+showApproveModal.reason:'')+'. Repayment terms: Deduction from Salary'+(showApproveModal.deductionStart?', starting '+showApproveModal.deductionStart:'')+'.'
         ),
         ASM_LIST.length===0
           ?React.createElement('div',{style:{background:'rgba(255,107,107,0.08)',border:'1px solid rgba(255,107,107,0.2)',borderRadius:'var(--r)',padding:'10px 12px',marginBottom:14,fontSize:12,color:'var(--red)'}},
@@ -666,7 +666,7 @@ function PenaltySheet({period,salon}={}){
     {key:'emp',label:'Employee',get:p=>p.emp},
     {key:'date',label:'Date',get:p=>p.date||'(blank)'},
     {key:'type',label:'Type',get:p=>p.type==='Other'&&p.otherType?p.otherType:p.type},
-    {key:'amount',label:'Amount',get:p=>'₹'+Number(p.amount).toLocaleString()}
+    {key:'amount',label:'Amount',get:p=>rupee(Number(p.amount))}
   ];
   const penFilters=useExcelColumnFilter(penalties,PEN_FILTER_COLS);
   const penWrapRef=useRef(null);
@@ -704,7 +704,7 @@ function PenaltySheet({period,salon}={}){
       )
     ),
     React.createElement('div',{className:'grid3',style:{marginBottom:16}},
-      [{label:'Total Penalties',val:penalties.length,color:'red'},{label:'Total Amount Deducted',val:'₹'+totalPenalties.toLocaleString(),color:'amber'},{label:'This Month',val:penalties.filter(p=>p.month.includes('Jan 2024')).length,color:'blue'}].map(m=>
+      [{label:'Total Penalties',val:penalties.length,color:'red'},{label:'Total Amount Deducted',val:rupee(totalPenalties),color:'amber'},{label:'This Month',val:penalties.filter(p=>p.month.includes('Jan 2024')).length,color:'blue'}].map(m=>
         React.createElement('div',{key:m.label,className:`metric-card ${m.color}`},React.createElement('div',{className:'metric-label'},m.label),React.createElement('div',{className:'metric-value'},m.val))
       )
     ),
@@ -726,7 +726,7 @@ function PenaltySheet({period,salon}={}){
                 React.createElement('td',{'data-xr':ri,'data-xc':1,style:{background:sel(1)}},React.createElement('span',{style:{fontWeight:500,color:'var(--text)'}},p.emp)),
                 React.createElement('td',{'data-xr':ri,'data-xc':2,style:{background:sel(2)}},p.date),
                 React.createElement('td',{'data-xr':ri,'data-xc':3,style:{background:sel(3)}},React.createElement('span',{className:'badge badge-red'},p.type==='Other'&&p.otherType?p.otherType:p.type)),
-                React.createElement('td',{'data-xr':ri,'data-xc':4,style:{background:sel(4)}},React.createElement('span',{style:{color:'var(--red)',fontWeight:600}},'₹'+Number(p.amount).toLocaleString())),
+                React.createElement('td',{'data-xr':ri,'data-xc':4,style:{background:sel(4)}},React.createElement('span',{style:{color:'var(--red)',fontWeight:600}},rupee(Number(p.amount)))),
                 React.createElement('td',null,p.approvedBy),
                 React.createElement('td',null,p.month),
                 React.createElement('td',null,p.remarks),
@@ -1101,7 +1101,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
             return inv;
           });
           const movedTotal=piPayments.reduce((s,p)=>s+Number(p.paidAmount),0);
-          toastSuccess(piPayments.length+' payment'+(piPayments.length===1?'':'s')+' totalling ₹'+movedTotal.toLocaleString()+' moved from the Performa Invoice to this '+savedInvoice.docNature+'.');
+          toastSuccess(piPayments.length+' payment'+(piPayments.length===1?'':'s')+' totalling ₹'+movedTotal.toLocaleString('en-IN')+' moved from the Performa Invoice to this '+savedInvoice.docNature+'.');
         }
       }
       return next;
@@ -1289,7 +1289,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
     {key:'vendor',label:'Vendor',get:inv=>getVendorName(inv.vendorId)},
     {key:'invoiceDate',label:'Invoice Date',get:inv=>inv.invoiceDate||'(blank)'},
     {key:'dueDate',label:'Due Date',get:inv=>isPI(inv)?'—':(inv.dueDate||'(blank)')},
-    {key:'amount',label:'Invoice Amt',get:inv=>'₹'+Number(inv.amount).toLocaleString()}
+    {key:'amount',label:'Invoice Amt',get:inv=>rupee(Number(inv.amount))}
   ];
   const invFilters=useExcelColumnFilter(filteredInv,INV_FILTER_COLS);
   const invWrapRef=useRef(null);
@@ -1315,7 +1315,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
     {key:'vendor',label:'Vendor',get:inv=>getVendorName(inv.vendorId)},
     {key:'invoiceDate',label:'Invoice Date',get:inv=>inv.invoiceDate||'(blank)'},
     {key:'dueDate',label:'Due Date',get:inv=>inv.dueDate||'(blank)'},
-    {key:'amount',label:'Invoice Amt',get:inv=>'₹'+Number(inv.amount).toLocaleString()}
+    {key:'amount',label:'Invoice Amt',get:inv=>rupee(Number(inv.amount))}
   ];
   const outFilters=useExcelColumnFilter(outstandingShown,OUT_FILTER_COLS);
   const outWrapRef=useRef(null);
@@ -1327,7 +1327,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
     {key:'invoiceNo',label:'PI No',get:inv=>inv.invoiceNo||'(blank)'},
     {key:'vendor',label:'Vendor',get:inv=>getVendorName(inv.vendorId)},
     {key:'invoiceDate',label:'PI Date',get:inv=>inv.invoiceDate||'(blank)'},
-    {key:'amount',label:'PI Total',get:inv=>'₹'+Number(inv.amount).toLocaleString()},
+    {key:'amount',label:'PI Total',get:inv=>rupee(Number(inv.amount))},
     {key:'status',label:'Status',get:inv=>isPIOpen(inv)?'Pending Tax Invoice':'Settled'}
   ];
   const piFilters=useExcelColumnFilter(piShown,PI_FILTER_COLS);
@@ -1359,9 +1359,9 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
     // ── Metrics ──
     React.createElement('div',{className:'grid4',style:{marginBottom:16}},
       [{label:'Total Vendors',val:vendors.length,color:'blue'},
-       {label:'Total Outstanding',val:'₹'+totalOutstanding.toLocaleString(),color:'red'},
-       {label:'Overdue',val:'₹'+totalOverdue.toLocaleString(),color:'amber'},
-       {label:'Paid This Month',val:'₹'+totalPaidMonth.toLocaleString(),color:'green'}
+       {label:'Total Outstanding',val:rupee(totalOutstanding),color:'red'},
+       {label:'Overdue',val:rupee(totalOverdue),color:'amber'},
+       {label:'Paid This Month',val:rupee(totalPaidMonth),color:'green'}
       ].map(m=>React.createElement('div',{key:m.label,className:`metric-card ${m.color}`},
         React.createElement('div',{className:'metric-label'},m.label),
         React.createElement('div',{className:'metric-value'},m.val)
@@ -1493,13 +1493,13 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
                   React.createElement('td',{'data-xr':i,'data-xc':3,style:{background:sel(3)}},React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},inv.desc||'—')),
                   React.createElement('td',{'data-xr':i,'data-xc':4,style:{background:sel(4)}},React.createElement('span',{style:{fontSize:12}},inv.invoiceDate||'—')),
                   React.createElement('td',{'data-xr':i,'data-xc':5,style:{background:sel(5)}},React.createElement('span',{style:{fontSize:12,color:overdue&&!cleared?'var(--red)':cleared?'var(--text3)':'var(--text)'}},pi?'—':(inv.dueDate||'—'))),
-                  React.createElement('td',{'data-xr':i,'data-xc':6,style:{background:sel(6)}},React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},'₹'+Number(inv.amount).toLocaleString())),
+                  React.createElement('td',{'data-xr':i,'data-xc':6,style:{background:sel(6)}},React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},rupee(Number(inv.amount)))),
                   // Paid amount with dates — not applicable to a PI, since payment happens on the Tax Invoice booked against it
                   React.createElement('td',null,
                     pi?React.createElement('span',{style:{color:'var(--text3)',fontSize:12}},'N/A — see linked Tax Invoice')
                     :paid>0
                       ?React.createElement('div',null,
-                        React.createElement('div',{style:{fontWeight:600,color:'var(--green)',fontSize:12}},'₹'+paid.toLocaleString()),
+                        React.createElement('div',{style:{fontWeight:600,color:'var(--green)',fontSize:12}},rupee(paid)),
                         inv.payments.map((p)=>React.createElement('div',{key:p.id,style:{fontSize:10,color:'var(--text3)',lineHeight:1.4}},
                           p.paidDate+' · '+p.mode+(p.ref?' · '+p.ref:'')
                         ))
@@ -1513,7 +1513,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
                         ?React.createElement('span',{style:{fontSize:11.5,color:'var(--green)'}},'→ Replaced by '+settledTaxInv.invoiceNo)
                         :React.createElement('span',{style:{fontSize:11.5,color:'var(--text3)'}},'Awaiting Tax Invoice'))
                       :React.createElement('span',{style:{fontWeight:700,fontSize:13,color:cleared?'var(--green)':overdue?'var(--red)':'var(--orange)'}},
-                        cleared?'✓ Cleared':'₹'+balance.toLocaleString()
+                        cleared?'✓ Cleared':rupee(balance)
                       )
                   ),
                   // Attachment
@@ -1569,8 +1569,8 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
       return React.createElement('div',null,
         React.createElement('div',{className:'grid3',style:{marginBottom:14}},
           React.createElement('div',{className:'metric-card amber'},React.createElement('div',{className:'metric-label'},'Outstanding Invoices'),React.createElement('div',{className:'metric-value'},outstandingInv.length)),
-          React.createElement('div',{className:'metric-card amber'},React.createElement('div',{className:'metric-label'},'Total Outstanding'),React.createElement('div',{className:'metric-value'},'₹'+totalOut.toLocaleString())),
-          React.createElement('div',{className:'metric-card red'},React.createElement('div',{className:'metric-label'},'Overdue Amount'),React.createElement('div',{className:'metric-value'},'₹'+totalOver.toLocaleString()))
+          React.createElement('div',{className:'metric-card amber'},React.createElement('div',{className:'metric-label'},'Total Outstanding'),React.createElement('div',{className:'metric-value'},rupee(totalOut))),
+          React.createElement('div',{className:'metric-card red'},React.createElement('div',{className:'metric-label'},'Overdue Amount'),React.createElement('div',{className:'metric-value'},rupee(totalOver)))
         ),
         React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:14,flexWrap:'wrap'}},
           React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'6px 12px',maxWidth:360,flex:1}},
@@ -1610,9 +1610,9 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
                     React.createElement('td',{'data-xr':i,'data-xc':1,style:{background:sel(1)}},React.createElement('div',{style:{fontWeight:500,color:'var(--text)',fontSize:12}},getVendorName(inv.vendorId))),
                     React.createElement('td',{'data-xr':i,'data-xc':2,style:{background:sel(2)}},React.createElement('span',{style:{fontSize:12}},inv.invoiceDate||'—')),
                     React.createElement('td',{'data-xr':i,'data-xc':3,style:{background:sel(3)}},React.createElement('span',{style:{fontSize:12,color:overdue?'var(--red)':'var(--text)'}},inv.dueDate||'—')),
-                    React.createElement('td',{'data-xr':i,'data-xc':4,style:{background:sel(4)}},React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},'₹'+Number(inv.amount).toLocaleString())),
-                    React.createElement('td',null,paid>0?React.createElement('span',{style:{color:'var(--green)',fontWeight:600}},'₹'+paid.toLocaleString()):React.createElement('span',{style:{color:'var(--text3)'}},'—')),
-                    React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:overdue?'var(--red)':'var(--orange)'}},'₹'+balance.toLocaleString())),
+                    React.createElement('td',{'data-xr':i,'data-xc':4,style:{background:sel(4)}},React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},rupee(Number(inv.amount)))),
+                    React.createElement('td',null,paid>0?React.createElement('span',{style:{color:'var(--green)',fontWeight:600}},rupee(paid)):React.createElement('span',{style:{color:'var(--text3)'}},'—')),
+                    React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:overdue?'var(--red)':'var(--orange)'}},rupee(balance))),
                     React.createElement('td',null,React.createElement('span',{className:'badge '+(overdue?'badge-red':'badge-amber')},overdue?'Overdue':'Pending')),
                     React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:4}},
                       (invoiceNeedsApproval(inv,salonId)?approvalCell(inv):React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(76,175,125,0.15)',border:'1px solid rgba(76,175,125,0.4)',color:'var(--green)',padding:'4px 8px',borderRadius:'var(--r)',cursor:'pointer',fontSize:11,fontWeight:500},onClick:()=>{setPayForm({...BLANK_PAY,invoiceId:inv.id,paidAmount:balance});setMatchedBankRowId(null);setShowPayModal(true);}},'Pay')),
@@ -1665,7 +1665,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
                     React.createElement('td',{'data-xr':i,'data-xc':0,style:{background:sel(0)}},React.createElement('span',{style:{fontFamily:'monospace',fontSize:11,color:open?'var(--red)':'var(--accent)'}},inv.invoiceNo)),
                     React.createElement('td',{'data-xr':i,'data-xc':1,style:{background:sel(1)}},React.createElement('div',{style:{fontWeight:500,color:'var(--text)',fontSize:12}},getVendorName(inv.vendorId))),
                     React.createElement('td',{'data-xr':i,'data-xc':2,style:{background:sel(2)}},React.createElement('span',{style:{fontSize:12}},inv.invoiceDate||'—')),
-                    React.createElement('td',{'data-xr':i,'data-xc':3,style:{background:sel(3)}},React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},'₹'+Number(inv.amount).toLocaleString())),
+                    React.createElement('td',{'data-xr':i,'data-xc':3,style:{background:sel(3)}},React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},rupee(Number(inv.amount)))),
                     React.createElement('td',{'data-xr':i,'data-xc':4,style:{background:sel(4)}},React.createElement('span',{className:'badge '+(open?'badge-red':'badge-green')},open?'Pending Tax Invoice':'Settled')),
                     React.createElement('td',null,taxInv?React.createElement('span',{style:{fontFamily:'monospace',fontSize:11,color:'var(--green)'}},taxInv.invoiceNo):React.createElement('span',{style:{color:'var(--text3)'}},'—')),
                     React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:4}},
@@ -1715,9 +1715,9 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
       return React.createElement('div',null,
         React.createElement('div',{className:'grid4',style:{marginBottom:16}},
           React.createElement('div',{className:'metric-card blue'},React.createElement('div',{className:'metric-label'},'Active Vendors'),React.createElement('div',{className:'metric-value'},activeVendors+' / '+vendors.length)),
-          React.createElement('div',{className:'metric-card amber'},React.createElement('div',{className:'metric-label'},'Total Outstanding'),React.createElement('div',{className:'metric-value'},'₹'+totalOut.toLocaleString())),
-          React.createElement('div',{className:'metric-card red'},React.createElement('div',{className:'metric-label'},'Overdue Amount'),React.createElement('div',{className:'metric-value'},'₹'+totalOver.toLocaleString())),
-          React.createElement('div',{className:'metric-card green'},React.createElement('div',{className:'metric-label'},'Total Paid (all time)'),React.createElement('div',{className:'metric-value'},'₹'+totalPaidAll.toLocaleString()))
+          React.createElement('div',{className:'metric-card amber'},React.createElement('div',{className:'metric-label'},'Total Outstanding'),React.createElement('div',{className:'metric-value'},rupee(totalOut))),
+          React.createElement('div',{className:'metric-card red'},React.createElement('div',{className:'metric-label'},'Overdue Amount'),React.createElement('div',{className:'metric-value'},rupee(totalOver))),
+          React.createElement('div',{className:'metric-card green'},React.createElement('div',{className:'metric-label'},'Total Paid (all time)'),React.createElement('div',{className:'metric-value'},rupee(totalPaidAll)))
         ),
         pendingPICount>0&&React.createElement('div',{style:{background:'rgba(255,107,107,0.08)',border:'1px solid rgba(255,107,107,0.3)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:16,fontSize:12.5,color:'var(--text)'}},
           '⚠ '+pendingPICount+' Performa Invoice'+(pendingPICount===1?'':'s')+' still awaiting a Tax Invoice — see the Performa Invoice tab.'
@@ -1730,7 +1730,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
               :topVendors.map(v=>React.createElement('div',{key:v.name,style:{marginBottom:10}},
                   React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}},
                     React.createElement('span',{style:{color:'var(--text2)'}},v.name),
-                    React.createElement('span',{style:{color:'var(--text)',fontWeight:600}},'₹'+v.amt.toLocaleString())
+                    React.createElement('span',{style:{color:'var(--text)',fontWeight:600}},rupee(v.amt))
                   ),
                   React.createElement('div',{style:{height:8,background:'var(--bg3)',borderRadius:4,overflow:'hidden'}},
                     React.createElement('div',{style:{height:'100%',width:(v.amt/maxTopVendor*100)+'%',background:'linear-gradient(90deg,var(--accent),var(--accent2))',borderRadius:4}})
@@ -1742,7 +1742,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
             React.createElement('div',{style:{display:'flex',alignItems:'flex-end',gap:8,height:140,paddingTop:10}},
               paidByMonth.map(m=>React.createElement('div',{key:m.key,style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',height:'100%'}},
                 React.createElement('div',{style:{fontSize:9.5,color:'var(--text3)',marginBottom:4}},m.total>0?'₹'+(m.total>=1000?Math.round(m.total/1000)+'k':m.total):''),
-                React.createElement('div',{title:m.label+': ₹'+m.total.toLocaleString(),style:{width:'100%',height:Math.max(3,Math.round(m.total/maxPaidMonth*100))+'px',background:'linear-gradient(180deg,var(--green),rgba(76,175,125,0.4))',borderRadius:'3px 3px 0 0'}}),
+                React.createElement('div',{title:m.label+': ₹'+m.total.toLocaleString('en-IN'),style:{width:'100%',height:Math.max(3,Math.round(m.total/maxPaidMonth*100))+'px',background:'linear-gradient(180deg,var(--green),rgba(76,175,125,0.4))',borderRadius:'3px 3px 0 0'}}),
                 React.createElement('div',{style:{fontSize:10,color:'var(--text3)',marginTop:6}},m.label)
               ))
             )
@@ -1966,7 +1966,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
           React.createElement('select',{className:'form-control',value:invForm.linkedPI,onChange:ic('linkedPI')},
             React.createElement('option',{value:''},'— Select the Performa Invoice —'),
             invoices.filter(inv=>inv.docNature==='Performa Invoice'&&(!invForm.vendorId||inv.vendorId===invForm.vendorId)&&isPIOpen(inv))
-              .map(inv=>React.createElement('option',{key:piKey(inv),value:piKey(inv)},inv.invoiceNo+' · '+getVendorName(inv.vendorId)+' · ₹'+Number(inv.amount).toLocaleString()))
+              .map(inv=>React.createElement('option',{key:piKey(inv),value:piKey(inv)},inv.invoiceNo+' · '+getVendorName(inv.vendorId)+' · ₹'+Number(inv.amount).toLocaleString('en-IN')))
           ),
           React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:5}},'Confirms this Tax Invoice was received against that Performa Invoice — it stops showing as pending once this is saved.')
         ),
@@ -1984,7 +1984,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-97'},'Freight (₹)'),React.createElement('input',{id:'f-97',type:'number',className:'form-control',value:invForm.freight,onChange:ic('freight'),placeholder:'0'})),
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-95'},'Round Off (₹)'),React.createElement('input',{id:'f-95',type:'number',className:'form-control',value:invForm.roundOff,onChange:ic('roundOff'),placeholder:'0'})),
           React.createElement('div',{className:'form-group'},React.createElement('label',null,(invForm.docNature==='Performa Invoice'?'PI Total (₹)':'Invoice Total (₹)')),
-            React.createElement('input',{className:'form-control',value:((Number(invForm.taxable)||0)+(Number(invForm.igst)||0)+(Number(invForm.cgst)||0)+(Number(invForm.sgst)||0)+(Number(invForm.freight)||0)+(Number(invForm.roundOff)||0)).toLocaleString(),disabled:true,style:{opacity:0.85,fontWeight:700,color:'var(--accent)'}}))
+            React.createElement('input',{className:'form-control',value:((Number(invForm.taxable)||0)+(Number(invForm.igst)||0)+(Number(invForm.cgst)||0)+(Number(invForm.sgst)||0)+(Number(invForm.freight)||0)+(Number(invForm.roundOff)||0)).toLocaleString('en-IN'),disabled:true,style:{opacity:0.85,fontWeight:700,color:'var(--accent)'}}))
         ),
         React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:-6,marginBottom:14}},'Auto-calculated: Taxable Value + IGST + CGST + SGST + Freight + Round Off'),
         React.createElement('div',{className:'form-row cols2'},
@@ -2019,7 +2019,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
               :editingInv.payments.map(p=>
                   React.createElement('div',{key:p.id,style:{background:'rgba(76,175,125,0.08)',border:'1px solid rgba(76,175,125,0.2)',borderRadius:'var(--r)',padding:'10px 12px',marginBottom:6,display:'flex',justifyContent:'space-between',alignItems:'center'}},
                     React.createElement('div',null,
-                      React.createElement('div',{style:{fontWeight:600,color:'var(--green)',fontSize:13}},'₹'+Number(p.paidAmount).toLocaleString()),
+                      React.createElement('div',{style:{fontWeight:600,color:'var(--green)',fontSize:13}},rupee(Number(p.paidAmount))),
                       React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:2}},p.paidDate+' · '+p.mode+(p.ref?' · Ref: '+p.ref:'')),
                       p.note&&React.createElement('div',{style:{fontSize:11,color:'var(--text2)',marginTop:1}},p.note)
                     ),
@@ -2049,8 +2049,8 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
           const payInv=invoices.find(x=>x.id===payForm.invoiceId);
           return React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:16,fontSize:12}},
             React.createElement('div',{style:{fontWeight:500,color:'var(--text)'}},getVendorName(payInv?.vendorId)),
-            React.createElement('div',{style:{color:'var(--text3)',marginTop:2}},payInv?.invoiceNo+' · Invoice ₹'+Number(payInv?.amount||0).toLocaleString()),
-            React.createElement('div',{style:{color:'var(--orange)',marginTop:2,fontWeight:500}},'Balance: ₹'+getBalance(payInv||{amount:0,payments:[]}).toLocaleString())
+            React.createElement('div',{style:{color:'var(--text3)',marginTop:2}},payInv?.invoiceNo+' · Invoice ₹'+Number(payInv?.amount||0).toLocaleString('en-IN')),
+            React.createElement('div',{style:{color:'var(--orange)',marginTop:2,fontWeight:500}},'Balance: ₹'+getBalance(payInv||{amount:0,payments:[]}).toLocaleString('en-IN'))
           );
         })(),
         payForm.invoiceId!==null&&payForm.editingPaymentId===null&&payForm.fromDailySales&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',background:'var(--bg3)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:16}},
@@ -2075,7 +2075,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
                       React.createElement('div',{style:{fontSize:12,color:'var(--text)'}},r.description),
                       React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)'}},r.transactionDate+(r.refNo?' · Ref '+r.refNo:''))
                     ),
-                    React.createElement('div',{style:{fontWeight:600,color:'var(--red)',fontSize:12.5}},'₹'+Number(r.debit).toLocaleString())
+                    React.createElement('div',{style:{fontWeight:600,color:'var(--red)',fontSize:12.5}},rupee(Number(r.debit)))
                   ))
                 ),
             matchedBankRowId!=null&&React.createElement('div',{style:{fontSize:11,color:'var(--green)',marginTop:4}},'✓ Selected — amount, date and reference filled in below. Change any field if needed.')
@@ -2109,7 +2109,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
             :React.createElement('span',{className:`badge ${getBalance(viewInv.inv)<=0?'badge-green':isOverdue(viewInv.inv)?'badge-red':'badge-amber'}`},getBalance(viewInv.inv)<=0?'Cleared':isOverdue(viewInv.inv)?'Overdue':'Pending')
         ),
         React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:14,marginBottom:14}},
-          [['Vendor',getVendorName(viewInv.inv.vendorId)],['Invoice No',viewInv.inv.invoiceNo],['Invoice Date',viewInv.inv.invoiceDate],['Due Date',viewInv.inv.dueDate],['Description',viewInv.inv.desc],['Invoice Amount','₹'+Number(viewInv.inv.amount).toLocaleString()]].map(([k,v])=>
+          [['Vendor',getVendorName(viewInv.inv.vendorId)],['Invoice No',viewInv.inv.invoiceNo],['Invoice Date',viewInv.inv.invoiceDate],['Due Date',viewInv.inv.dueDate],['Description',viewInv.inv.desc],['Invoice Amount',rupee(Number(viewInv.inv.amount))]].map(([k,v])=>
             React.createElement('div',{key:k,className:'stat-row'},React.createElement('span',{style:{fontSize:12,color:'var(--text3)'}},k),React.createElement('span',{style:{fontSize:12,color:'var(--text)',fontWeight:k==='Invoice Amount'?600:400}},v||'—'))
           ),
           !isPI(viewInv.inv)&&linkedPIFor(viewInv.inv)&&React.createElement('div',{className:'stat-row'},React.createElement('span',{style:{fontSize:12,color:'var(--text3)'}},'Booked Against PI'),React.createElement('span',{style:{fontSize:12,color:'var(--green)'}},linkedPIFor(viewInv.inv).invoiceNo)),
@@ -2128,7 +2128,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
                   React.createElement('div',{key:p.id,style:{background:'rgba(76,175,125,0.08)',border:'1px solid rgba(76,175,125,0.2)',borderRadius:'var(--r)',padding:'10px 12px',marginBottom:6}},
                     React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
                       React.createElement('div',null,
-                        React.createElement('div',{style:{fontWeight:600,color:'var(--green)',fontSize:13}},'₹'+Number(p.paidAmount).toLocaleString()),
+                        React.createElement('div',{style:{fontWeight:600,color:'var(--green)',fontSize:13}},rupee(Number(p.paidAmount))),
                         React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:2}},p.paidDate+' · '+p.mode+(p.ref?' · Ref: '+p.ref:'')),
                         p.note&&React.createElement('div',{style:{fontSize:11,color:'var(--text2)',marginTop:1}},p.note)
                       ),
@@ -2141,8 +2141,8 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
                   )
                 ),
               React.createElement('div',{style:{display:'flex',justifyContent:'space-between',borderTop:'1px solid var(--border)',paddingTop:10,marginTop:6}},
-                React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},'Total Paid: ₹'+getPaid(viewInv.inv).toLocaleString()),
-                React.createElement('span',{style:{fontSize:13,fontWeight:700,color:getBalance(viewInv.inv)<=0?'var(--green)':'var(--red)'}},getBalance(viewInv.inv)<=0?'Fully Cleared':'Balance: ₹'+getBalance(viewInv.inv).toLocaleString())
+                React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},'Total Paid: ₹'+getPaid(viewInv.inv).toLocaleString('en-IN')),
+                React.createElement('span',{style:{fontSize:13,fontWeight:700,color:getBalance(viewInv.inv)<=0?'var(--green)':'var(--red)'}},getBalance(viewInv.inv)<=0?'Fully Cleared':'Balance: ₹'+getBalance(viewInv.inv).toLocaleString('en-IN'))
               )
             )
           ),

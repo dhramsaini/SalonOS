@@ -320,7 +320,7 @@ function RecurringExpensesSheet({salon}={}){
     {key:'expenseName',label:'Expense Type',type:'enum',get:i=>displayName(i)},
     {key:'payee',label:'Payee / Vendor',type:'text',get:i=>i.payee},
     {key:'frequency',label:'Frequency',type:'enum',get:i=>i.frequency},
-    {key:'amount',label:'Taxable Amount',type:'number',get:i=>'₹'+Number(i.amount).toLocaleString('en-IN'),raw:i=>Number(i.amount)||0},
+    {key:'amount',label:'Taxable Amount',type:'number',get:i=>rupee(Number(i.amount)),raw:i=>Number(i.amount)||0},
     {key:'paymentMode',label:'Payment Mode',type:'enum',get:i=>i.paymentMode},
     {key:'status',label:'Status',type:'enum',get:i=>i.status}
   ];
@@ -397,7 +397,7 @@ function RecurringExpensesSheet({salon}={}){
                 React.createElement('td',{'data-xr':ri,'data-xc':1,style:{background:sel(1)}},it.payee),
                 React.createElement('td',{'data-xr':ri,'data-xc':2,style:{background:sel(2)}},React.createElement('span',{className:'badge badge-blue'},it.frequency)),
                 React.createElement('td',{'data-xr':ri,'data-xc':3,style:{background:sel(3)}},
-                  React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},'₹'+Number(it.amount).toLocaleString('en-IN')),
+                  React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},rupee(Number(it.amount))),
                   isSpreadRecurring(it)
                     ?(()=>{
                         const bills=variableRecurringBills(it,salonId);const last=bills[bills.length-1];
@@ -991,13 +991,13 @@ function PreviousMonthsPnLSheet({salon}={}){
             const t=ppTotals(r);
             return React.createElement('tr',{key:r.id},
               React.createElement('td',null,React.createElement('b',null,PP_MONTHS[r.month]+' '+r.year)),
-              React.createElement('td',null,'₹'+t.revenue.toLocaleString()),
-              React.createElement('td',null,'₹'+t.direct.toLocaleString()),
-              React.createElement('td',null,'₹'+t.emp.toLocaleString()),
-              React.createElement('td',null,'₹'+t.opexTotal.toLocaleString()),
-              React.createElement('td',null,'₹'+t.gross.toLocaleString()),
-              React.createElement('td',{style:{color:t.ebitda<0?'var(--red)':'var(--green)',fontWeight:600}},'₹'+t.ebitda.toLocaleString()),
-              React.createElement('td',{style:{color:t.pbt<0?'var(--red)':'var(--green)',fontWeight:600}},'₹'+t.pbt.toLocaleString()),
+              React.createElement('td',null,rupee(t.revenue)),
+              React.createElement('td',null,rupee(t.direct)),
+              React.createElement('td',null,rupee(t.emp)),
+              React.createElement('td',null,rupee(t.opexTotal)),
+              React.createElement('td',null,rupee(t.gross)),
+              React.createElement('td',{style:{color:t.ebitda<0?'var(--red)':'var(--green)',fontWeight:600}},rupee(t.ebitda)),
+              React.createElement('td',{style:{color:t.pbt<0?'var(--red)':'var(--green)',fontWeight:600}},rupee(t.pbt)),
               React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:6}},
                 React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>openEdit(r)},'Edit'),
                 React.createElement('button',{'aria-label':'Delete',className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>setShowDelete(r)},React.createElement(IconTrash,{size:14}))
@@ -1109,7 +1109,7 @@ function PnLSheet(){
   const grossProfit=(mi)=>totalRev(mi)-totalExp(mi);
   const gpm=(mi)=>totalRev(mi)>0?((grossProfit(mi)/totalRev(mi))*100).toFixed(1):0;
 
-  const fmtC=(n)=>n===0?'—':'₹'+Math.round(n).toLocaleString();
+  const fmtC=(n)=>n===0?'—':'₹'+Math.round(n).toLocaleString('en-IN');
   const th=(t,right)=>React.createElement('th',{style:{padding:'8px 10px',background:'var(--th-bg)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.04em',textAlign:right?'right':'left',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',minWidth:right?80:160}},t);
   const td=(v,color,bold,bg)=>React.createElement('td',{style:{padding:'7px 10px',fontSize:12,textAlign:'right',color:color||'var(--text2)',fontWeight:bold?600:400,borderBottom:'1px solid var(--border)',background:bg||'transparent',whiteSpace:'nowrap'}},v);
 
@@ -1155,9 +1155,9 @@ function PnLSheet(){
     ),
     // Annual summary cards
     React.createElement('div',{className:'grid4',style:{marginBottom:16}},
-      [{label:'Annual Revenue',val:'₹'+totalRevAnnual.toLocaleString(),color:'blue'},
-       {label:'Annual Expenses',val:'₹'+totalExpAnnual.toLocaleString(),color:'red'},
-       {label:'Annual Net Profit',val:'₹'+gpa.toLocaleString(),color:gpa>0?'green':'red'},
+      [{label:'Annual Revenue',val:rupee(totalRevAnnual),color:'blue'},
+       {label:'Annual Expenses',val:rupee(totalExpAnnual),color:'red'},
+       {label:'Annual Net Profit',val:rupee(gpa),color:gpa>0?'green':'red'},
        {label:'Avg Net Margin',val:totalRevAnnual>0?((gpa/totalRevAnnual)*100).toFixed(1)+'%':'—',color:'amber'}
       ].map(m=>React.createElement('div',{key:m.label,className:`metric-card ${m.color}`},
         React.createElement('div',{className:'metric-label'},m.label),
@@ -1714,7 +1714,7 @@ function StaffReportSheet({period,salon}={}){
                 pctCols.includes(col)
                   ?React.createElement('span',{style:{color:Number(r[col])>=100?'var(--green)':Number(r[col])>=80?'var(--accent)':'var(--red)',fontWeight:600}},r[col]+'%')
                   :numCols.includes(col)&&r[col]
-                    ?'₹'+Number(r[col]).toLocaleString()
+                    ?rupee(Number(r[col]))
                     :r[col]||'—'
               )),
               React.createElement('td',{key:'act',style:{padding:'7px 10px',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}},
@@ -2179,7 +2179,7 @@ function ReportsHub(){
     React.createElement('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:3}},
       React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},label),
       React.createElement('div',{style:{textAlign:'right'}},
-        React.createElement('span',{style:{fontSize:12,fontWeight:600,color:color||'var(--text)'}},'₹'+val.toLocaleString()),
+        React.createElement('span',{style:{fontSize:12,fontWeight:600,color:color||'var(--text)'}},rupee(val)),
         safePct!==undefined&&React.createElement('span',{style:{fontSize:10,color:'var(--text3)',marginLeft:6}},(safePct).toFixed(1)+'%')
       )
     ),
@@ -2220,7 +2220,7 @@ function ReportsHub(){
 
     // KPI strip
     React.createElement('div',{className:'grid4',style:{marginBottom:20}},
-      [{l:'Total Revenue',v:'₹'+rev.toLocaleString(),c:'green'},{l:'Net Profit',v:'₹'+net.toLocaleString(),c:net>0?'teal':'red'},{l:'Total Expenses',v:'₹'+exp.toLocaleString(),c:'amber'},{l:'Gross Margin',v:pctSafe(net,rev).toFixed(1)+'%',c:pctSafe(net,rev)>15?'blue':'red'}].map(m=>
+      [{l:'Total Revenue',v:rupee(rev),c:'green'},{l:'Net Profit',v:rupee(net),c:net>0?'teal':'red'},{l:'Total Expenses',v:rupee(exp),c:'amber'},{l:'Gross Margin',v:pctSafe(net,rev).toFixed(1)+'%',c:pctSafe(net,rev)>15?'blue':'red'}].map(m=>
         React.createElement('div',{key:m.l,className:'metric-card '+m.c},
           React.createElement('div',{className:'metric-label'},m.l),
           React.createElement('div',{className:'metric-value'},m.v)
@@ -2273,7 +2273,7 @@ function ReportsHub(){
           React.createElement(Row,{label:'Other Income',val:d.gift,pct:d.gift/rev*100,color:'var(--teal)'}),
           React.createElement('div',{style:{borderTop:'2px solid var(--accent)',paddingTop:10,marginTop:8,display:'flex',justifyContent:'space-between',fontWeight:700}},
             React.createElement('span',null,'Total Revenue'),
-            React.createElement('span',{style:{color:'var(--green)'}},'₹'+rev.toLocaleString())
+            React.createElement('span',{style:{color:'var(--green)'}},rupee(rev))
           )
         ),
         React.createElement('div',null,
@@ -2293,7 +2293,7 @@ function ReportsHub(){
           [['Cosmetics/Products',d.cosmetics,'var(--blue)'],['Marketing',d.mktg,'var(--teal)'],['Repair & Maintenance',d.rm,'var(--text3)'],['Miscellaneous',d.misc,'var(--text3)']].map(([l,v,c])=>React.createElement(Row,{key:l,label:l,val:v,pct:v/rev*100,color:c})),
           React.createElement('div',{style:{borderTop:'2px solid var(--red)',paddingTop:10,marginTop:8,display:'flex',justifyContent:'space-between',fontWeight:700}},
             React.createElement('span',null,'Total Expenses'),
-            React.createElement('span',{style:{color:'var(--red)'}},'₹'+exp.toLocaleString())
+            React.createElement('span',{style:{color:'var(--red)'}},rupee(exp))
           )
         )
       ),
@@ -2301,13 +2301,13 @@ function ReportsHub(){
       // P&L
       activeReport==='pl'&&React.createElement('div',null,
         React.createElement('div',{className:'grid4',style:{marginBottom:12}},
-          [{l:'Revenue',v:'₹'+rev.toLocaleString(),c:'green'},{l:'Expenses',v:'₹'+exp.toLocaleString(),c:'red'},{l:'Net P/L',v:(net>=0?'+':'')+'₹'+Math.abs(net).toLocaleString(),c:net>=0?'teal':'red'},{l:'Margin',v:pctSafe(net,rev).toFixed(1)+'%',c:pctSafe(net,rev)>15?'blue':'amber'}].map(m=>
+          [{l:'Revenue',v:rupee(rev),c:'green'},{l:'Expenses',v:rupee(exp),c:'red'},{l:'Net P/L',v:(net>=0?'+':'')+'₹'+Math.abs(net).toLocaleString('en-IN'),c:net>=0?'teal':'red'},{l:'Margin',v:pctSafe(net,rev).toFixed(1)+'%',c:pctSafe(net,rev)>15?'blue':'amber'}].map(m=>
             React.createElement('div',{key:m.l,className:'metric-card '+m.c},React.createElement('div',{className:'metric-label'},m.l),React.createElement('div',{className:'metric-value'},m.v))
           )
         ),
         React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:14,fontSize:13,color:'var(--text2)',lineHeight:1.9}},
           React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'4px 24px'}},
-            [['Total Revenue','₹'+rev.toLocaleString(),'var(--green)'],['Cash Sale','₹'+d.svc.toLocaleString(),''],['Card Sale','₹'+d.prod.toLocaleString(),''],['UPI Sale','₹'+d.mem.toLocaleString(),''],['Total Expenses','₹'+exp.toLocaleString(),'var(--red)'],['Salaries + Incentives','₹'+(d.salaries+d.inc).toLocaleString(),''],['Rent + Utilities','₹'+(d.rent+d.elec).toLocaleString(),''],['Others','₹'+(d.cosmetics+d.mktg+d.rm+d.misc).toLocaleString(),'']].map(([k,v,c],i)=>
+            [['Total Revenue',rupee(rev),'var(--green)'],['Cash Sale',rupee(d.svc),''],['Card Sale',rupee(d.prod),''],['UPI Sale',rupee(d.mem),''],['Total Expenses',rupee(exp),'var(--red)'],['Salaries + Incentives','₹'+(d.salaries+d.inc).toLocaleString('en-IN'),''],['Rent + Utilities','₹'+(d.rent+d.elec).toLocaleString('en-IN'),''],['Others','₹'+(d.cosmetics+d.mktg+d.rm+d.misc).toLocaleString('en-IN'),'']].map(([k,v,c],i)=>
               React.createElement('div',{key:i,style:{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid var(--border)'}},
                 React.createElement('span',null,k),React.createElement('span',{style:{fontWeight:600,color:c||'var(--text)'}},v)
               )
@@ -2325,21 +2325,21 @@ function ReportsHub(){
               React.createElement('td',null,React.createElement('span',{style:{fontFamily:'monospace',fontSize:11,color:'var(--accent)'}},e.id)),
               React.createElement('td',null,React.createElement('div',{style:{fontWeight:500,color:'var(--text)'}},e.name),React.createElement('div',{style:{fontSize:10,color:'var(--text3)'}},e.dept)),
               React.createElement('td',null,e.desig),React.createElement('td',null,e.outletName),
-              React.createElement('td',null,'₹'+e.grossAfterLop.toLocaleString()),
-              React.createElement('td',null,e.pfEmp?'₹'+e.pfEmp.toLocaleString():'—'),
-              React.createElement('td',null,e.esicEmp?'₹'+e.esicEmp.toLocaleString():'—'),
-              React.createElement('td',null,e.advAdj?React.createElement('span',{style:{color:'var(--orange)'}},'₹'+e.advAdj.toLocaleString()):'—'),
-              React.createElement('td',null,e.penAmt?React.createElement('span',{style:{color:'var(--red)'}},'₹'+e.penAmt.toLocaleString()):'—'),
-              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:'var(--green)',fontSize:14}},'₹'+e.net.toLocaleString())),
+              React.createElement('td',null,rupee(e.grossAfterLop)),
+              React.createElement('td',null,e.pfEmp?rupee(e.pfEmp):'—'),
+              React.createElement('td',null,e.esicEmp?rupee(e.esicEmp):'—'),
+              React.createElement('td',null,e.advAdj?React.createElement('span',{style:{color:'var(--orange)'}},rupee(e.advAdj)):'—'),
+              React.createElement('td',null,e.penAmt?React.createElement('span',{style:{color:'var(--red)'}},rupee(e.penAmt)):'—'),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:'var(--green)',fontSize:14}},rupee(e.net))),
               React.createElement('td',null,React.createElement('span',{className:'badge '+(e.status==='Active'?'badge-green':'badge-amber')},e.status))
             )
           )),
-          React.createElement('tfoot',null,React.createElement('tr',{style:{background:'#12121a'}},
+          React.createElement('tfoot',null,React.createElement('tr',{style:{background:'var(--bg3)'}},
             React.createElement('td',{colSpan:4,style:{padding:'10px 12px',fontWeight:700,color:'var(--accent2)'}},'TOTAL'),
-            React.createElement('td',{style:{padding:'10px 12px',fontWeight:700,color:'var(--text)'}},'₹'+realSalaryRows.reduce((s,e)=>s+e.grossAfterLop,0).toLocaleString()),
+            React.createElement('td',{style:{padding:'10px 12px',fontWeight:700,color:'var(--text)'}},'₹'+realSalaryRows.reduce((s,e)=>s+e.grossAfterLop,0).toLocaleString('en-IN')),
             React.createElement('td',{colSpan:4}),
             React.createElement('td',{style:{padding:'10px 12px',fontWeight:700,color:'var(--green)',fontSize:14}},
-              '₹'+realSalaryRows.reduce((s,e)=>s+e.net,0).toLocaleString()
+              '₹'+realSalaryRows.reduce((s,e)=>s+e.net,0).toLocaleString('en-IN')
             ),
             React.createElement('td')
           ))
@@ -2382,10 +2382,10 @@ function ReportsHub(){
             const pct=r.totalTarget>0?Math.round(r.totalActual/r.totalTarget*100):null;
             return React.createElement('tr',{key:r.id+'-'+i},
               React.createElement('td',null,React.createElement('span',{style:{fontWeight:500,color:'var(--text)'}},r.name)),
-              React.createElement('td',null,r.totalTarget>0?'₹'+r.totalTarget.toLocaleString():'N/A'),
-              React.createElement('td',null,r.totalActual>0?'₹'+r.totalActual.toLocaleString():'—'),
+              React.createElement('td',null,r.totalTarget>0?rupee(r.totalTarget):'N/A'),
+              React.createElement('td',null,r.totalActual>0?rupee(r.totalActual):'—'),
               React.createElement('td',null,pct!==null?React.createElement('div',null,React.createElement('span',{style:{fontWeight:600,color:pct>=100?'var(--green)':pct>=80?'var(--accent)':'var(--red)'}},(pct||0)+'%'),React.createElement('div',{className:'progress',style:{width:80,marginTop:4}},React.createElement('div',{className:'progress-fill',style:{width:Math.min(100,pct)+'%',background:pct>=100?'var(--green)':pct>=80?'var(--accent)':'var(--red)'}}))):'—'),
-              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:'var(--accent)'}},'₹'+r.totalInc.toLocaleString()))
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:700,color:'var(--accent)'}},rupee(r.totalInc)))
             );
           }))
         )
@@ -2400,15 +2400,15 @@ function ReportsHub(){
               React.createElement('td',null,React.createElement('span',{style:{fontWeight:500,color:'var(--text)'}},v.name)),
               React.createElement('td',null,React.createElement('span',{className:'badge badge-blue'},v.cat)),
               React.createElement('td',null,v.contact),React.createElement('td',null,v.terms),
-              React.createElement('td',null,'₹'+v.amount.toLocaleString()),
-              React.createElement('td',null,React.createElement('span',{style:{color:v.outstanding>0?'var(--red)':'var(--green)',fontWeight:600}},'₹'+v.outstanding.toLocaleString())),
+              React.createElement('td',null,rupee(v.amount)),
+              React.createElement('td',null,React.createElement('span',{style:{color:v.outstanding>0?'var(--red)':'var(--green)',fontWeight:600}},rupee(v.outstanding))),
               React.createElement('td',null,React.createElement('span',{className:'badge '+(v.status==='Outstanding'?'badge-amber':'badge-green')},v.status))
             )
           )),
-          React.createElement('tfoot',null,React.createElement('tr',{style:{background:'#12121a'}},
+          React.createElement('tfoot',null,React.createElement('tr',{style:{background:'var(--bg3)'}},
             React.createElement('td',{colSpan:4,style:{padding:'10px 12px',fontWeight:700,color:'var(--accent2)'}},'TOTAL OUTSTANDING'),
             React.createElement('td'),
-            React.createElement('td',{style:{padding:'10px 12px',fontWeight:700,color:'var(--red)',fontSize:14}},'₹'+realVendorRows.reduce((s,v)=>s+v.outstanding,0).toLocaleString()),
+            React.createElement('td',{style:{padding:'10px 12px',fontWeight:700,color:'var(--red)',fontSize:14}},'₹'+realVendorRows.reduce((s,v)=>s+v.outstanding,0).toLocaleString('en-IN')),
             React.createElement('td')
           ))
         )
@@ -2421,10 +2421,10 @@ function ReportsHub(){
           React.createElement('tbody',null,realAdvanceRows.map((a,i)=>React.createElement('tr',{key:a.id+'-'+i},
             React.createElement('td',null,React.createElement('span',{style:{fontFamily:'monospace',fontSize:11,color:'var(--accent)'}},a.id)),
             React.createElement('td',null,a.emp),React.createElement('td',null,fmtDMY(a.date)),
-            React.createElement('td',null,'₹'+(Number(a.amount)||0).toLocaleString()),
+            React.createElement('td',null,'₹'+(Number(a.amount)||0).toLocaleString('en-IN')),
             React.createElement('td',null,a.reason),React.createElement('td',null,a.approvedBy),
-            React.createElement('td',null,'₹'+(Number(a.repayment)||0).toLocaleString()),
-            React.createElement('td',null,React.createElement('span',{style:{color:(Number(a.outstanding)||0)>0?'var(--red)':'var(--green)',fontWeight:600}},'₹'+(Number(a.outstanding)||0).toLocaleString())),
+            React.createElement('td',null,'₹'+(Number(a.repayment)||0).toLocaleString('en-IN')),
+            React.createElement('td',null,React.createElement('span',{style:{color:(Number(a.outstanding)||0)>0?'var(--red)':'var(--green)',fontWeight:600}},'₹'+(Number(a.outstanding)||0).toLocaleString('en-IN'))),
             React.createElement('td',null,React.createElement('span',{className:'badge '+(a.status==='Active'?'badge-amber':'badge-green')},a.status))
           )))
         )
@@ -2455,7 +2455,7 @@ function ReportsHub(){
           ),
           React.createElement('div',{style:{textAlign:'right'}},
             React.createElement('div',{style:{fontSize:12,fontWeight:600,color:d.status==='overdue'?'var(--red)':d.status==='soon'?'var(--orange)':'var(--text2)'}},fmtDMY(d.due)),
-            d.amount>0&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},'₹'+Number(d.amount).toLocaleString()),
+            d.amount>0&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},rupee(Number(d.amount))),
             React.createElement('span',{className:'badge '+(d.status==='overdue'?'badge-red':d.status==='soon'?'badge-amber':d.status==='done'?'badge-green':'badge-blue'),style:{marginTop:4}},d.status)
           )
         ))
@@ -2468,17 +2468,17 @@ function ReportsHub(){
           React.createElement('thead',null,React.createElement('tr',null,['Date','Cash Sale','Card Sale','UPI Sale','Total Sale'].map(h=>React.createElement('th',{key:h},h)))),
           React.createElement('tbody',null,realCollectionByDate(true).map((r,i)=>React.createElement('tr',{key:i},
             React.createElement('td',null,fmtDMY(r.date)),
-            React.createElement('td',null,'₹'+Math.round(r.cash).toLocaleString()),
-            React.createElement('td',null,'₹'+Math.round(r.card).toLocaleString()),
-            React.createElement('td',null,'₹'+Math.round(r.upi).toLocaleString()),
-            React.createElement('td',null,React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},'₹'+Math.round(r.total).toLocaleString()))
+            React.createElement('td',null,'₹'+Math.round(r.cash).toLocaleString('en-IN')),
+            React.createElement('td',null,'₹'+Math.round(r.card).toLocaleString('en-IN')),
+            React.createElement('td',null,'₹'+Math.round(r.upi).toLocaleString('en-IN')),
+            React.createElement('td',null,React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},'₹'+Math.round(r.total).toLocaleString('en-IN')))
           ))),
-          React.createElement('tfoot',null,React.createElement('tr',{style:{background:'#12121a'}},
+          React.createElement('tfoot',null,React.createElement('tr',{style:{background:'var(--bg3)'}},
             React.createElement('td',{style:{padding:'10px 12px',fontWeight:700,color:'var(--accent2)'}},'TOTAL'),
-            React.createElement('td',{style:{padding:'10px 12px',fontWeight:700}},'₹'+Math.round(realCollectionByDate(true).reduce((s,r)=>s+r.cash,0)).toLocaleString()),
-            React.createElement('td',{style:{padding:'10px 12px',fontWeight:700}},'₹'+Math.round(realCollectionByDate(true).reduce((s,r)=>s+r.card,0)).toLocaleString()),
-            React.createElement('td',{style:{padding:'10px 12px',fontWeight:700}},'₹'+Math.round(realCollectionByDate(true).reduce((s,r)=>s+r.upi,0)).toLocaleString()),
-            React.createElement('td',{style:{padding:'10px 12px',fontWeight:700,color:'var(--text)'}},'₹'+Math.round(realCollectionByDate(true).reduce((s,r)=>s+r.total,0)).toLocaleString())
+            React.createElement('td',{style:{padding:'10px 12px',fontWeight:700}},'₹'+Math.round(realCollectionByDate(true).reduce((s,r)=>s+r.cash,0)).toLocaleString('en-IN')),
+            React.createElement('td',{style:{padding:'10px 12px',fontWeight:700}},'₹'+Math.round(realCollectionByDate(true).reduce((s,r)=>s+r.card,0)).toLocaleString('en-IN')),
+            React.createElement('td',{style:{padding:'10px 12px',fontWeight:700}},'₹'+Math.round(realCollectionByDate(true).reduce((s,r)=>s+r.upi,0)).toLocaleString('en-IN')),
+            React.createElement('td',{style:{padding:'10px 12px',fontWeight:700,color:'var(--text)'}},'₹'+Math.round(realCollectionByDate(true).reduce((s,r)=>s+r.total,0)).toLocaleString('en-IN'))
           ))
         )
       ),
@@ -2486,7 +2486,7 @@ function ReportsHub(){
       // Collection report
       activeReport==='collection'&&React.createElement('div',null,
         React.createElement('div',{className:'grid3',style:{marginBottom:14}},
-          [{l:'Total Cash',v:'₹'+Math.round(realCollectionByDate().reduce((s,r)=>s+r.cash,0)).toLocaleString(),c:'amber'},{l:'Total Card',v:'₹'+Math.round(realCollectionByDate().reduce((s,r)=>s+r.card,0)).toLocaleString(),c:'blue'},{l:'Total UPI',v:'₹'+Math.round(realCollectionByDate().reduce((s,r)=>s+r.upi,0)).toLocaleString(),c:'teal'}].map(m=>
+          [{l:'Total Cash',v:'₹'+Math.round(realCollectionByDate().reduce((s,r)=>s+r.cash,0)).toLocaleString('en-IN'),c:'amber'},{l:'Total Card',v:'₹'+Math.round(realCollectionByDate().reduce((s,r)=>s+r.card,0)).toLocaleString('en-IN'),c:'blue'},{l:'Total UPI',v:'₹'+Math.round(realCollectionByDate().reduce((s,r)=>s+r.upi,0)).toLocaleString('en-IN'),c:'teal'}].map(m=>
             React.createElement('div',{key:m.l,className:'metric-card '+m.c},React.createElement('div',{className:'metric-label'},m.l),React.createElement('div',{className:'metric-value'},m.v))
           )
         ),
@@ -2495,9 +2495,9 @@ function ReportsHub(){
             React.createElement('thead',null,React.createElement('tr',null,['Date','Cash','Card','UPI','Total'].map(h=>React.createElement('th',{key:h},h)))),
             React.createElement('tbody',null,realCollectionByDate().map((r,i)=>React.createElement('tr',{key:i},
               React.createElement('td',null,fmtDMY(r.date)),
-              React.createElement('td',null,'₹'+Math.round(r.cash).toLocaleString()),React.createElement('td',null,'₹'+Math.round(r.card).toLocaleString()),
-              React.createElement('td',null,'₹'+Math.round(r.upi).toLocaleString()),
-              React.createElement('td',null,React.createElement('span',{style:{fontWeight:600}},'₹'+Math.round(r.total).toLocaleString()))
+              React.createElement('td',null,'₹'+Math.round(r.cash).toLocaleString('en-IN')),React.createElement('td',null,'₹'+Math.round(r.card).toLocaleString('en-IN')),
+              React.createElement('td',null,'₹'+Math.round(r.upi).toLocaleString('en-IN')),
+              React.createElement('td',null,React.createElement('span',{style:{fontWeight:600}},'₹'+Math.round(r.total).toLocaleString('en-IN')))
             )))
           )
         )

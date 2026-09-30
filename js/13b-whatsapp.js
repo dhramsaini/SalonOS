@@ -186,7 +186,7 @@ function WhatsAppSalaryNotifyButton({salon,year,month,workings}){
         rows.length===0?h('div',{style:{fontSize:13,color:'var(--text3)'}},'No net pay for this month yet.'):
         h('div',{style:{maxHeight:320,overflow:'auto'}},rows.map(r=>h('label',{key:r.id,style:{display:'flex',gap:8,alignItems:'center',padding:'5px 0',borderTop:'1px solid var(--border)',fontSize:13,opacity:r.to?1:0.5}},
           h('input',{type:'checkbox',disabled:!r.to,checked:!!r.to&&pick[r.id]!==false,onChange:e=>setPick(p=>({...p,[r.id]:e.target.checked}))}),
-          h('span',{style:{flex:1}},r.name),h('span',{style:{color:'var(--text3)',fontSize:12}},r.to?'+'+r.to:'no mobile'),h('b',null,'₹'+r.net.toLocaleString('en-IN'))))),
+          h('span',{style:{flex:1}},r.name),h('span',{style:{color:'var(--text3)',fontSize:12}},r.to?'+'+r.to:'no mobile'),h('b',null,rupee(r.net))))),
         h('div',{className:'modal-actions'},
           h('button',{className:'btn btn-ghost',onClick:()=>setOpen(false)},'Cancel'),
           h('button',{className:'btn btn-primary'+(busy?' btn-loading':''),disabled:busy||!chosen.length,onClick:send},'Send to '+chosen.length))))

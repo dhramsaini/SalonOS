@@ -472,10 +472,10 @@ function IncentiveWorkingCore({period,salon,user}={}){
     );
   };
 
-  const thG=(label,cols2,bg)=>React.createElement('th',{colSpan:cols2,style:{padding:'6px 8px',background:bg||'#1a1a22',color:'var(--text2)',fontSize:10,fontWeight:700,textTransform:'uppercase',textAlign:'center',borderBottom:'1px solid var(--border2)',letterSpacing:'0.06em'}},label);
-  const th2=(txt,onClick,bg)=>React.createElement('th',{onClick,title:onClick?'Go to '+txt+' working':undefined,style:{padding:'7px 8px',background:bg||'#12121a',color:onClick?'var(--accent2)':'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',textAlign:'right',minWidth:80,cursor:onClick?'pointer':'default',textDecoration:onClick?'underline':'none',textUnderlineOffset:'2px'}},txt+(onClick?' 🔗':''));
+  const thG=(label,cols2,bg)=>React.createElement('th',{colSpan:cols2,style:{padding:'6px 8px',background:bg||'var(--bg3)',color:'var(--text2)',fontSize:10,fontWeight:700,textTransform:'uppercase',textAlign:'center',borderBottom:'1px solid var(--border2)',letterSpacing:'0.06em'}},label);
+  const th2=(txt,onClick,bg)=>React.createElement('th',{onClick,title:onClick?'Go to '+txt+' working':undefined,style:{padding:'7px 8px',background:bg||'var(--bg3)',color:onClick?'var(--accent2)':'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',textAlign:'right',minWidth:80,cursor:onClick?'pointer':'default',textDecoration:onClick?'underline':'none',textUnderlineOffset:'2px'}},txt+(onClick?' 🔗':''));
   const td2=(val,color,bold,bg)=>React.createElement('td',{style:{padding:'8px 8px',fontSize:11,textAlign:'right',color:color||'var(--text2)',fontWeight:bold?600:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:bg||undefined}},val);
-  const fmt=(n)=>n?'₹'+Math.round(n).toLocaleString():'—';
+  const fmt=(n)=>n?'₹'+Math.round(n).toLocaleString('en-IN'):'—';
   // Export/report display for the Prod % column — Rule 2 (flat ₹ amount) has no rate at all, so
   // exports show the flat amount instead of a stray "null%".
   const prodRateDisplay=(e)=>e.prodRuleType==='B'&&e.calcMode?.prod!=='manualRate'?'Flat ₹'+e.prodFlatAmount:e.prodRateUsed+'%';
@@ -833,17 +833,17 @@ function IncentiveWorkingCore({period,salon,user}={}){
           MGR_COLLECTION_ITEMS.map(it=>React.createElement('label',{key:it.key,style:{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--text2)',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'5px 10px',cursor:'pointer'}},
             React.createElement('input',{type:'checkbox',checked:!!mgrCollItems[it.key],onChange:()=>toggleMgrCollItem(it.key)}),
             React.createElement('span',null,it.label),
-            React.createElement('span',{style:{color:'var(--text3)'}},'₹'+(mgrCollSum[it.key]||0).toLocaleString())
+            React.createElement('span',{style:{color:'var(--text3)'}},'₹'+(mgrCollSum[it.key]||0).toLocaleString('en-IN'))
           ))
         ),
         React.createElement('div',{style:{display:'flex',gap:20,flexWrap:'wrap',marginBottom:14}},
           React.createElement('div',null,
             React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:4}},'Total Collection'),
-            React.createElement('div',{style:{fontSize:16,fontWeight:700,padding:'6px 0'}},'₹'+mgrTotalCollection.toLocaleString())
+            React.createElement('div',{style:{fontSize:16,fontWeight:700,padding:'6px 0'}},rupee(mgrTotalCollection))
           ),
           React.createElement('div',null,
             React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:4}},'Total Collection (Net of GST)'),
-            React.createElement('div',{style:{fontSize:16,fontWeight:700,padding:'6px 0'}},'₹'+Math.round(mgrNetCollection).toLocaleString())
+            React.createElement('div',{style:{fontSize:16,fontWeight:700,padding:'6px 0'}},'₹'+Math.round(mgrNetCollection).toLocaleString('en-IN'))
           ),
           React.createElement('div',null,
             React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:4}},'Target Collection'),
@@ -865,7 +865,7 @@ function IncentiveWorkingCore({period,salon,user}={}){
         ),
         React.createElement('div',{className:'grid4',style:{marginBottom:14}},
           [{label:'Applicable Rate',val:mgrApplicableRate+'%',color:'blue'},
-           {label:'Manager Incentive Pool',val:'₹'+mgrIncentivePool.toLocaleString(),color:'green'}
+           {label:'Manager Incentive Pool',val:rupee(mgrIncentivePool),color:'green'}
           ].map(m=>React.createElement('div',{key:m.label,className:`metric-card ${m.color}`},
             React.createElement('div',{className:'metric-label'},m.label),
             React.createElement('div',{className:'metric-value'},m.val)
@@ -884,13 +884,13 @@ function IncentiveWorkingCore({period,salon,user}={}){
                     return React.createElement('tr',{key:e.id},
                       React.createElement('td',null,e.name+' — '+e.desig),
                       React.createElement('td',{style:{textAlign:'right'}},React.createElement('input',{type:'number',className:'form-control',style:{width:70,fontSize:12,textAlign:'right'},value:mgrInputs.shares?.[e.id]??'',placeholder:'0',onChange:ev=>setMgrShare(e.id,ev.target.value)}),' %'),
-                      React.createElement('td',{style:{textAlign:'right',fontWeight:600,color:'var(--green)'}},'₹'+shareAmt.toLocaleString())
+                      React.createElement('td',{style:{textAlign:'right',fontWeight:600,color:'var(--green)'}},rupee(shareAmt))
                     );
                   }),
                   React.createElement('tr',null,
                     React.createElement('td',{style:{fontWeight:700}},'Total'),
                     React.createElement('td',{style:{textAlign:'right',fontWeight:700,color:mgrTotalSharePct===100?'var(--green)':'var(--red)'}},mgrTotalSharePct+'%'),
-                    React.createElement('td',{style:{textAlign:'right',fontWeight:700}},'₹'+Math.round(mgrIncentivePool*mgrTotalSharePct/100).toLocaleString())
+                    React.createElement('td',{style:{textAlign:'right',fontWeight:700}},'₹'+Math.round(mgrIncentivePool*mgrTotalSharePct/100).toLocaleString('en-IN'))
                   )
                 )
               )
@@ -938,7 +938,7 @@ function IncentiveWorkingCore({period,salon,user}={}){
           React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',background:'rgba(76,175,125,0.08)',borderRadius:'var(--r)',border:'1px solid rgba(76,175,125,0.3)'}},
             React.createElement('span',{style:{fontSize:12.5,color:'var(--green)',fontWeight:600,flex:1}},'Commission Payable'),
             React.createElement('span',{style:{fontSize:9.5,color:'var(--text3)',marginRight:6}},'(Commission Amount − Already Given)'),
-            React.createElement('div',{className:'form-control',style:{width:150,fontSize:12.5,textAlign:'right',fontWeight:700,background:'var(--bg2)',color:'var(--green)'}},rbCommissionPayable.toLocaleString()),
+            React.createElement('div',{className:'form-control',style:{width:150,fontSize:12.5,textAlign:'right',fontWeight:700,background:'var(--bg2)',color:'var(--green)'}},rbCommissionPayable.toLocaleString('en-IN')),
             React.createElement('span',{style:{fontSize:12,color:'var(--text3)'}},'₹')
           )
         )
@@ -986,10 +986,10 @@ function IncentiveWorkingCore({period,salon,user}={}){
 
     // Summary
     React.createElement('div',{className:'grid4',style:{marginBottom:14}},
-      [{label:'Total Service Inc.',val:'₹'+incData.reduce((s,e)=>s+e.svcIncAmt,0).toLocaleString(),color:'blue'},
-       {label:'Total Membership Inc.',val:'₹'+incData.reduce((s,e)=>s+e.memIncAmt,0).toLocaleString(),color:'purple'},
-       {label:'Total Product Inc.',val:'₹'+incData.reduce((s,e)=>s+e.prodIncAmt,0).toLocaleString(),color:'teal'},
-       {label:'Grand Total Incentive',val:'₹'+incData.reduce((s,e)=>s+e.totalInc,0).toLocaleString(),color:'green'}
+      [{label:'Total Service Inc.',val:'₹'+incData.reduce((s,e)=>s+e.svcIncAmt,0).toLocaleString('en-IN'),color:'blue'},
+       {label:'Total Membership Inc.',val:'₹'+incData.reduce((s,e)=>s+e.memIncAmt,0).toLocaleString('en-IN'),color:'purple'},
+       {label:'Total Product Inc.',val:'₹'+incData.reduce((s,e)=>s+e.prodIncAmt,0).toLocaleString('en-IN'),color:'teal'},
+       {label:'Grand Total Incentive',val:'₹'+incData.reduce((s,e)=>s+e.totalInc,0).toLocaleString('en-IN'),color:'green'}
       ].map(m=>React.createElement('div',{key:m.label,className:`metric-card ${m.color}`},
         React.createElement('div',{className:'metric-label'},m.label),
         React.createElement('div',{className:'metric-value'},m.val)
@@ -1010,20 +1010,20 @@ function IncentiveWorkingCore({period,salon,user}={}){
           // Group header row
           React.createElement('thead',null,
 React.createElement.apply(React,['tr',null].concat([
-              thG('Employee',4,'#1a1a22'),
+              thG('Employee',4,'var(--bg3)'),
               thG('Service ('+targetMult.svc+' Times Target)',3,'rgba(74,158,255,0.15)'),
               cols.membership&&thG('Membership ('+targetMult.mem+' Times Target)',3,'rgba(139,127,232,0.15)'),
               cols.product&&thG('Product ('+targetMult.prod+' Times Target)',3,'rgba(78,205,196,0.15)'),
               thG('Total Achievement',3,'rgba(47,95,224,0.12)'),
               (cols.svcPct||cols.memPct||cols.prodPct)&&thG('Incentive %',(cols.svcPct?1:0)+(cols.memPct?1:0)+(cols.prodPct?1:0),'rgba(255,159,67,0.1)'),
               (cols.amounts||cols.penalty)&&thG('Incentive Amounts',(cols.penalty?1:0)+(cols.amounts?5:0),'rgba(76,175,125,0.12)'),
-              cols.bankDetails&&thG('Bank Details',3,'#1a1a22'),
-              thG('Payout Status',3,'#1a1a22')
+              cols.bankDetails&&thG('Bank Details',3,'var(--bg3)'),
+              thG('Payout Status',3,'var(--bg3)')
             ].filter(Boolean))),
             // Sub-header row — tinted to match its group section above, so the colour-coding
             // reads straight down the table, not just across the group row.
 React.createElement.apply(React,['tr',null].concat([
-              React.createElement('th',{style:{padding:'7px 8px',background:'#12121a',borderBottom:'2px solid var(--accent)',width:32}},
+              React.createElement('th',{style:{padding:'7px 8px',background:'var(--bg3)',borderBottom:'2px solid var(--accent)',width:32}},
                 visibleIncData.length>0&&React.createElement('input',{type:'checkbox',checked:visibleIncData.length>0&&visibleIncData.every(e=>iwSelectedIds.has(e.id)),onChange:()=>setIwSelectedIds(visibleIncData.every(e=>iwSelectedIds.has(e.id))?new Set():new Set(visibleIncData.map(e=>e.id))),title:'Select all'})
               ),
               filterTH(IW_FILTER_COLS[0]),filterTH(IW_FILTER_COLS[1]),th2('Salary'),
@@ -1038,7 +1038,7 @@ React.createElement.apply(React,['tr',null].concat([
               cols.bankDetails&&th2('Bank Name'),cols.bankDetails&&th2('Account No.'),cols.bankDetails&&th2('IFSC Code'),
               filterTH(IW_FILTER_COLS[2]),
               filterTH(IW_FILTER_COLS[3]),
-              React.createElement('th',{style:{padding:'7px 8px',background:'#12121a',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',borderBottom:'2px solid var(--accent)',minWidth:100,textAlign:'center'}},'Mode')
+              React.createElement('th',{style:{padding:'7px 8px',background:'var(--bg3)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',borderBottom:'2px solid var(--accent)',minWidth:100,textAlign:'center'}},'Mode')
             ].filter(Boolean)))
           ),
           React.createElement('tbody',null,
@@ -1189,7 +1189,7 @@ function IncentivePaymentSheet({period,salon}={}){
     // eslint-disable-next-line
   },[period&&period.mi,period&&period.fy]);
   const incData=incWorkingsFor(salon?.id,selYear,selMonth);
-  const fmt=(n)=>n?'₹'+Math.round(n).toLocaleString():'—';
+  const fmt=(n)=>n?'₹'+Math.round(n).toLocaleString('en-IN'):'—';
   const COLS=['Name of Employee','Designation','Total Incentive','Bank Name','Account No.','IFSC Code'];
 
   // ── Selection — pick specific employees to export/share instead of always the whole list.
@@ -1354,7 +1354,7 @@ function IncentiveComparativeSheet({period,salon}={}){
 
   const pctOf=(actual,target)=>target?Math.min(999,Math.round((actual/target)*100)):null; // null = no target (category off)
   const timesFmt=(t)=>(Math.round((t||0)*100)/100).toFixed(2)+'×';
-  const fmt=(n)=>n?'₹'+Math.round(n).toLocaleString():'—';
+  const fmt=(n)=>n?'₹'+Math.round(n).toLocaleString('en-IN'):'—';
   const achvStyle=(pct)=>
     pct===null?{background:'var(--bg3)',color:'var(--text3)'}
     :pct>=100?{background:'rgba(76,175,125,0.16)',color:'var(--green)'}
@@ -1551,7 +1551,7 @@ function MemRuleA({salonId,selYear,selMonth,EMPLOYEES,splitMode,editGroup}){
   const incByEmpId={};incData.forEach(w=>{incByEmpId[w.id]=w;});
 
   const inp=(val,onChange,w)=>React.createElement('input',{type:'number',className:'form-control',style:{width:w||100,fontSize:11.5,textAlign:'right'},placeholder:'0',value:val,onChange});
-  const th=(txt)=>React.createElement('th',{style:{padding:'7px 8px',background:'#12121a',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',textAlign:'right'}},txt);
+  const th=(txt)=>React.createElement('th',{style:{padding:'7px 8px',background:'var(--bg3)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',textAlign:'right'}},txt);
   const td=(val,color,bold)=>React.createElement('td',{style:{padding:'6px 8px',fontSize:11.5,textAlign:'right',color:color||'var(--text2)',fontWeight:bold?600:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}},val);
 
   // Pass 1 — per-row figures and each Staff row's contribution to the Manager pool. Each
@@ -1595,7 +1595,7 @@ function MemRuleA({salonId,selYear,selMonth,EMPLOYEES,splitMode,editGroup}){
       )
     ),
     React.createElement('div',{className:'grid3',style:{marginBottom:14}},
-      [{label:'Manager Incentive Pool (on Membership sold by Staff)',val:'₹'+mgrSharePool.toLocaleString(),color:'orange'}
+      [{label:'Manager Incentive Pool (on Membership sold by Staff)',val:rupee(mgrSharePool),color:'orange'}
       ].map(m=>React.createElement('div',{key:m.label,className:`metric-card ${m.color}`},
         React.createElement('div',{className:'metric-label'},m.label),
         React.createElement('div',{className:'metric-value'},m.val)
@@ -1609,22 +1609,22 @@ function MemRuleA({salonId,selYear,selMonth,EMPLOYEES,splitMode,editGroup}){
         React.createElement('tbody',null,
           computed.map(e=>React.createElement('tr',{key:e.id},
             React.createElement('td',{style:{padding:'6px 10px',fontSize:11.5,color:'var(--text)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}},e.name+(e.isManager?' — '+e.desig:'')),
-            td(e.membershipSold?'₹'+e.membershipSold.toLocaleString():'—'),
+            td(e.membershipSold?rupee(e.membershipSold):'—'),
             td(e.isManager?'—':e.empStaffRate+'%',e.isManager?'var(--text3)':'var(--purple)'),
             td(e.isManager?'—':e.empMgrShareRate+'%',e.isManager?'var(--text3)':'var(--orange)'),
             td(e.isManager?e.empMgrRate+'%':'—',e.isManager?'var(--blue)':'var(--text3)'),
-            td(e.staffIncentive>0?'₹'+e.staffIncentive.toLocaleString():'—',e.staffIncentive>0?'var(--purple)':'var(--text3)'),
+            td(e.staffIncentive>0?rupee(e.staffIncentive):'—',e.staffIncentive>0?'var(--purple)':'var(--text3)'),
             e.isManager
               ?React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'}},
                   React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6}},
                     inp(e.mgrSharePct??'',ev=>setRowField(e.id,'mgrSharePct',ev.target.value),56),
                     React.createElement('span',{style:{fontSize:11,color:'var(--text3)'}},'%'),
-                    React.createElement('span',{style:{fontWeight:600,color:'var(--orange)'}},'₹'+e.mgrShareAmt.toLocaleString())
+                    React.createElement('span',{style:{fontWeight:600,color:'var(--orange)'}},rupee(e.mgrShareAmt))
                   )
                 )
               :td('—','var(--text3)'),
-            td(e.mgrIncOnOwnSold>0?'₹'+e.mgrIncOnOwnSold.toLocaleString():'—',e.mgrIncOnOwnSold>0?'var(--blue)':'var(--text3)'),
-            td(e.membershipIncentive>0?'₹'+e.membershipIncentive.toLocaleString():'—','var(--accent)',true)
+            td(e.mgrIncOnOwnSold>0?rupee(e.mgrIncOnOwnSold):'—',e.mgrIncOnOwnSold>0?'var(--blue)':'var(--text3)'),
+            td(e.membershipIncentive>0?rupee(e.membershipIncentive):'—','var(--accent)',true)
           ))
         )
       )
@@ -1695,7 +1695,7 @@ function MemRuleB({salonId,selYear,selMonth,EMPLOYEES,splitMode,editGroup}){
     return{...e,mgrShareAmt,totalMembershipIncentive:e.eliteCardIncentive+e.mgrIncentive+mgrShareAmt};
   });
 
-  const th=(txt)=>React.createElement('th',{style:{padding:'7px 8px',background:'#12121a',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',textAlign:'right'}},txt);
+  const th=(txt)=>React.createElement('th',{style:{padding:'7px 8px',background:'var(--bg3)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',textAlign:'right'}},txt);
   const td=(val,color,bold)=>React.createElement('td',{style:{padding:'6px 8px',fontSize:11.5,textAlign:'right',color:color||'var(--text2)',fontWeight:bold?600:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}},val);
 
   return React.createElement('div',{className:'card',style:{marginBottom:14,borderLeft:'4px solid var(--purple)'}},
@@ -1714,7 +1714,7 @@ function MemRuleB({salonId,selYear,selMonth,EMPLOYEES,splitMode,editGroup}){
       )
     ),
     React.createElement('div',{className:'grid3',style:{marginBottom:14}},
-      [{label:'Manager Incentive Pool (on Membership sold by Staff)',val:'₹'+totalMgrSharePool.toLocaleString(),color:'orange'}
+      [{label:'Manager Incentive Pool (on Membership sold by Staff)',val:rupee(totalMgrSharePool),color:'orange'}
       ].map(m=>React.createElement('div',{key:m.label,className:`metric-card ${m.color}`},
         React.createElement('div',{className:'metric-label'},m.label),
         React.createElement('div',{className:'metric-value'},m.val)
@@ -1729,24 +1729,24 @@ function MemRuleB({salonId,selYear,selMonth,EMPLOYEES,splitMode,editGroup}){
           computed.map(e=>React.createElement('tr',{key:e.id},
             React.createElement('td',{style:{padding:'6px 10px',fontSize:11.5,color:'var(--text)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}},e.name+(e.isManager?' — '+e.desig:'')),
             React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'}},inp(e.cards||'',ev=>setRowField(e.id,'cards',ev.target.value))),
-            td(e.empValuePerCard?'₹'+e.empValuePerCard.toLocaleString():'—'),
-            td('₹'+e.cardTotalValue.toLocaleString()),
-            td(e.empIncPerCard?'₹'+e.empIncPerCard.toLocaleString():'—'),
-            td(e.totalMembership?'₹'+e.totalMembership.toLocaleString():'—'),
-            td('₹'+e.membershipAfterElite.toLocaleString()),
-            td(e.eliteCardIncentive>0?'₹'+e.eliteCardIncentive.toLocaleString():'—',e.eliteCardIncentive>0?'var(--teal)':'var(--text3)'),
-            td(e.staffIncentive>0?'₹'+e.staffIncentive.toLocaleString()+' ('+e.empStaffRate+'%)':'—',e.staffIncentive>0?'var(--purple)':'var(--text3)'),
-            td(e.mgrIncentive>0?'₹'+e.mgrIncentive.toLocaleString()+' ('+e.empMgrRate+'%)':'—',e.mgrIncentive>0?'var(--blue)':'var(--text3)'),
+            td(e.empValuePerCard?rupee(e.empValuePerCard):'—'),
+            td(rupee(e.cardTotalValue)),
+            td(e.empIncPerCard?rupee(e.empIncPerCard):'—'),
+            td(e.totalMembership?rupee(e.totalMembership):'—'),
+            td(rupee(e.membershipAfterElite)),
+            td(e.eliteCardIncentive>0?rupee(e.eliteCardIncentive):'—',e.eliteCardIncentive>0?'var(--teal)':'var(--text3)'),
+            td(e.staffIncentive>0?rupee(e.staffIncentive)+' ('+e.empStaffRate+'%)':'—',e.staffIncentive>0?'var(--purple)':'var(--text3)'),
+            td(e.mgrIncentive>0?rupee(e.mgrIncentive)+' ('+e.empMgrRate+'%)':'—',e.mgrIncentive>0?'var(--blue)':'var(--text3)'),
             e.isManager
               ?React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'}},
                   React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6}},
                     inp(e.mgrSharePct??'',ev=>setRowField(e.id,'mgrSharePct',ev.target.value),56),
                     React.createElement('span',{style:{fontSize:11,color:'var(--text3)'}},'%'),
-                    React.createElement('span',{style:{fontWeight:600,color:'var(--orange)'}},'₹'+e.mgrShareAmt.toLocaleString())
+                    React.createElement('span',{style:{fontWeight:600,color:'var(--orange)'}},rupee(e.mgrShareAmt))
                   )
                 )
-              :td(e.mgrShareOnStaff>0?'₹'+e.mgrShareOnStaff.toLocaleString()+' ('+e.empMgrShareRate+'%)':'—',e.mgrShareOnStaff>0?'var(--orange)':'var(--text3)'),
-            td(e.totalMembershipIncentive>0?'₹'+e.totalMembershipIncentive.toLocaleString():'—','var(--accent)',true)
+              :td(e.mgrShareOnStaff>0?rupee(e.mgrShareOnStaff)+' ('+e.empMgrShareRate+'%)':'—',e.mgrShareOnStaff>0?'var(--orange)':'var(--text3)'),
+            td(e.totalMembershipIncentive>0?rupee(e.totalMembershipIncentive):'—','var(--accent)',true)
           ))
         )
       )
@@ -1787,7 +1787,7 @@ function MemRuleC({salonId,selYear,selMonth,EMPLOYEES,MONTHS,splitMode,editGroup
   };
 
   const inp=(val,onChange,w)=>React.createElement('input',{type:'number',className:'form-control',style:{width:w||90,fontSize:11.5,textAlign:'right'},placeholder:'0',value:val,onChange});
-  const th=(txt)=>React.createElement('th',{style:{padding:'7px 8px',background:'#12121a',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',textAlign:'right'}},txt);
+  const th=(txt)=>React.createElement('th',{style:{padding:'7px 8px',background:'var(--bg3)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',textAlign:'right'}},txt);
   const td=(val,color,bold)=>React.createElement('td',{style:{padding:'6px 8px',fontSize:11.5,textAlign:'right',color:color||'var(--text2)',fontWeight:bold?600:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}},val);
 
   // Pass 1 — per-row figures and each Staff row's contribution to the Manager pool. Manager
@@ -1903,7 +1903,7 @@ function MemRuleC({salonId,selYear,selMonth,EMPLOYEES,MONTHS,splitMode,editGroup
       )
     ),
     React.createElement('div',{className:'grid3',style:{marginBottom:14}},
-      [{label:'Manager Incentive Pool (on New Membership + Wallet Recharge sold by Staff)',val:'₹'+mgrSharePool.toLocaleString(),color:'orange'}
+      [{label:'Manager Incentive Pool (on New Membership + Wallet Recharge sold by Staff)',val:rupee(mgrSharePool),color:'orange'}
       ].map(m=>React.createElement('div',{key:m.label,className:`metric-card ${m.color}`},
         React.createElement('div',{className:'metric-label'},m.label),
         React.createElement('div',{className:'metric-value'},m.val)
@@ -1934,18 +1934,18 @@ function MemRuleC({salonId,selYear,selMonth,EMPLOYEES,MONTHS,splitMode,editGroup
             React.createElement('td',{style:{padding:'6px 10px',fontSize:11.5,color:'var(--text)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}},e.name+(e.isManager?' — '+e.desig:'')),
             React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'}},inp(e.newMembership||'',ev=>setRowField(e.id,'newMembership',ev.target.value))),
             React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'}},inp(e.walletRecharge||'',ev=>setRowField(e.id,'walletRecharge',ev.target.value))),
-            td(e.incNewMem>0?'₹'+e.incNewMem.toLocaleString()+' ('+e.empNewMemRate+'%)':'—',e.incNewMem>0?'var(--purple)':'var(--text3)'),
-            td(e.incWallet>0?'₹'+e.incWallet.toLocaleString()+' ('+e.empWalletRate+'%)':'—',e.incWallet>0?'var(--teal)':'var(--text3)'),
+            td(e.incNewMem>0?rupee(e.incNewMem)+' ('+e.empNewMemRate+'%)':'—',e.incNewMem>0?'var(--purple)':'var(--text3)'),
+            td(e.incWallet>0?rupee(e.incWallet)+' ('+e.empWalletRate+'%)':'—',e.incWallet>0?'var(--teal)':'var(--text3)'),
             e.isManager
               ?React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'}},
                   React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6}},
                     inp(e.mgrSharePct??'',ev=>setRowField(e.id,'mgrSharePct',ev.target.value),56),
                     React.createElement('span',{style:{fontSize:11,color:'var(--text3)'}},'%'),
-                    React.createElement('span',{style:{fontWeight:600,color:'var(--orange)'}},'₹'+e.mgrShareAmt.toLocaleString())
+                    React.createElement('span',{style:{fontWeight:600,color:'var(--orange)'}},rupee(e.mgrShareAmt))
                   )
                 )
-              :td(e.poolContribution>0?'₹'+e.poolContribution.toLocaleString()+' (pool)':'—',e.poolContribution>0?'var(--orange)':'var(--text3)'),
-            td(e.totalInc>0?'₹'+e.totalInc.toLocaleString():'—','var(--accent)',true)
+              :td(e.poolContribution>0?rupee(e.poolContribution)+' (pool)':'—',e.poolContribution>0?'var(--orange)':'var(--text3)'),
+            td(e.totalInc>0?rupee(e.totalInc):'—','var(--accent)',true)
           ))
         )
       )
@@ -2025,7 +2025,7 @@ function ProductIncentiveRuleCard({salonId,selYear,selMonth,showAdvanced}){
       React.createElement('input',{type:'number',step:'0.1',className:'form-control',style:{width:64,fontSize:12,textAlign:'right'},value:settings.rate,onChange:e=>setRate(e.target.value)}),
       React.createElement('span',{style:{fontSize:12,color:'var(--text3)'}},'%'),
       React.createElement('span',{style:{marginLeft:'auto',fontSize:12,color:'var(--text3)'}},'Product Incentive'),
-      React.createElement('span',{style:{fontSize:14,fontWeight:700,color:'var(--teal)'}},'₹'+incentive.toLocaleString())
+      React.createElement('span',{style:{fontSize:14,fontWeight:700,color:'var(--teal)'}},rupee(incentive))
     ),
 
     ruleType==='B'&&React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',background:'var(--bg3)',borderRadius:'var(--r)',border:'1px solid var(--border)',flexWrap:'wrap'}},
@@ -2033,7 +2033,7 @@ function ProductIncentiveRuleCard({salonId,selYear,selMonth,showAdvanced}){
       React.createElement('span',{style:{fontSize:12,color:'var(--text3)'}},'₹'),
       React.createElement('input',{type:'number',className:'form-control',style:{width:150,fontSize:12.5},placeholder:'0',value:flatRule.amount,onChange:e=>setFlatAmount(e.target.value)}),
       React.createElement('span',{style:{marginLeft:'auto',fontSize:12,color:'var(--text3)'}},'Every employee\'s Product Incentive'),
-      React.createElement('span',{style:{fontSize:14,fontWeight:700,color:'var(--teal)'}},'₹'+flatAmount.toLocaleString())
+      React.createElement('span',{style:{fontSize:14,fontWeight:700,color:'var(--teal)'}},rupee(flatAmount))
     )
   );
 }

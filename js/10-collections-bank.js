@@ -255,7 +255,7 @@ function DueDateSheet({salon,onNavTab}={}){
               React.createElement('span',{style:{fontWeight:600,fontSize:13,color:'var(--text)'},title:DUE_TYPE_HINTS[d.type]||''},d.type),
               d.auto&&React.createElement('span',{className:'badge badge-blue',title:'Auto-generated — recomputed live from Salary Working / Vendor Sheet'},'AUTO'),
               d.paid&&React.createElement('span',{className:'badge badge-green'},'PAID'),
-              d.amount>0&&React.createElement('span',{style:{fontSize:12,color:'var(--text2)',marginLeft:4}},'₹'+Number(d.amount).toLocaleString())
+              d.amount>0&&React.createElement('span',{style:{fontSize:12,color:'var(--text2)',marginLeft:4}},rupee(Number(d.amount)))
             ),
             React.createElement('div',{style:{fontSize:12,color:'var(--text2)'}},d.desc),
             d.paid&&d.paidDate&&React.createElement('div',{style:{fontSize:11,color:'var(--green)',marginTop:2}},
@@ -357,7 +357,7 @@ function DueDateSheet({salon,onNavTab}={}){
                       React.createElement('div',{style:{fontSize:12,color:'var(--text)'}},r.description),
                       React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)'}},r.transactionDate+(r.refNo?' · Ref '+r.refNo:''))
                     ),
-                    React.createElement('div',{style:{fontWeight:600,color:Math.abs((r.debit||0)-(showPayModal.amount||0))<1?'var(--green)':'var(--red)',fontSize:12.5}},'₹'+Number(r.debit).toLocaleString()+(Math.abs((r.debit||0)-(showPayModal.amount||0))<1?' ✓':''))
+                    React.createElement('div',{style:{fontWeight:600,color:Math.abs((r.debit||0)-(showPayModal.amount||0))<1?'var(--green)':'var(--red)',fontSize:12.5}},rupee(Number(r.debit))+(Math.abs((r.debit||0)-(showPayModal.amount||0))<1?' ✓':''))
                   ))
                 ),
             matchedBankRowId!=null&&React.createElement('div',{style:{fontSize:11,color:'var(--green)',marginTop:4}},'✓ Selected — amount, date and reference filled in below. Change any field if needed, or mark paid without linking a transaction.')
@@ -597,7 +597,7 @@ function CollectionReco({salon,onNavTab}={}){
     if(entry.legacy)return entry.legacy;
     const type=REASON_TYPES.find(r=>r.id===entry.type);
     if(!type)return'';
-    let txt=type.label+(entry.amount?' of ₹'+Number(entry.amount).toLocaleString():'');
+    let txt=type.label+(entry.amount?' of ₹'+Number(entry.amount).toLocaleString('en-IN'):'');
     if(entry.invoiceNo||entry.partyName)txt+=' ('+[entry.invoiceNo,entry.partyName].filter(Boolean).join(' · ')+')';
     if(entry.reason)txt+=' — '+entry.reason;
     return txt;
@@ -1465,7 +1465,7 @@ function CollectionSheetView({salon,onNavTab}={}){
     if(entry.legacy)return entry.legacy;
     const type=REASON_TYPES.find(r=>r.id===entry.type);
     if(!type)return'';
-    let txt=type.label+(entry.amount?' of ₹'+Number(entry.amount).toLocaleString():'');
+    let txt=type.label+(entry.amount?' of ₹'+Number(entry.amount).toLocaleString('en-IN'):'');
     if(entry.invoiceNo||entry.partyName)txt+=' ('+[entry.invoiceNo,entry.partyName].filter(Boolean).join(' · ')+')';
     if(entry.reason)txt+=' — '+entry.reason;
     return txt;
@@ -2063,8 +2063,8 @@ function CollectionSheetView({salon,onNavTab}={}){
                       type==='prevMonth'&&(()=>{
                         const ref=prevMonthCreditSaleRefFor(d.date);
                         return React.createElement('div',{style:{fontSize:9.5,color:'var(--text3)',lineHeight:1.5}},
-                          'Last month\'s Credit Sale: ₹'+ref.totalCreditSale.toLocaleString()+' · Received so far: ₹'+ref.receivedSoFar.toLocaleString()+' · ',
-                          React.createElement('span',{style:{color:ref.outstanding>0?'var(--red)':'var(--green)',fontWeight:600}},'Still not received: ₹'+ref.outstanding.toLocaleString())
+                          'Last month\'s Credit Sale: ₹'+ref.totalCreditSale.toLocaleString('en-IN')+' · Received so far: ₹'+ref.receivedSoFar.toLocaleString('en-IN')+' · ',
+                          React.createElement('span',{style:{color:ref.outstanding>0?'var(--red)':'var(--green)',fontWeight:600}},'Still not received: ₹'+ref.outstanding.toLocaleString('en-IN'))
                         );
                       })()
                     );
@@ -2127,7 +2127,7 @@ function CollectionSheetView({salon,onNavTab}={}){
         const recoRow=(label,val,sign)=>React.createElement('div',{key:label,style:{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid var(--border)',fontSize:12.5}},
           React.createElement('span',{style:{color:'var(--text2)'}},label),
           React.createElement('span',{style:{fontWeight:600,color:sign==='less'?'var(--red)':sign==='add'?'var(--green)':(val<0?'var(--red)':'var(--text)')}},
-            (sign==='less'?'− ':sign==='add'?'+ ':(val<0?'':''))+'₹'+Math.abs(val).toLocaleString())
+            (sign==='less'?'− ':sign==='add'?'+ ':(val<0?'':''))+'₹'+Math.abs(val).toLocaleString('en-IN'))
         );
         return React.createElement('div',{className:'card',style:{marginTop:16,maxWidth:460}},
           React.createElement('div',{style:{fontFamily:'var(--font2)',fontSize:15,color:'var(--text)',marginBottom:4}},'Reco of Actual Bank Charges'),
@@ -2140,7 +2140,7 @@ function CollectionSheetView({salon,onNavTab}={}){
           recoRow('Add Short Collection',shortCollection,'add'),
           React.createElement('div',{style:{display:'flex',justifyContent:'space-between',padding:'12px 0 2px',fontSize:14,fontWeight:700}},
             React.createElement('span',null,'Net Bank Charges'),
-            React.createElement('span',{style:{color:netBankCharges===0?'var(--text)':netBankCharges>0?'var(--red)':'var(--green)'}},(netBankCharges>=0?'':'−')+'₹'+Math.abs(netBankCharges).toLocaleString())
+            React.createElement('span',{style:{color:netBankCharges===0?'var(--text)':netBankCharges>0?'var(--red)':'var(--green)'}},(netBankCharges>=0?'':'−')+'₹'+Math.abs(netBankCharges).toLocaleString('en-IN'))
           )
         );
       })(),
@@ -4990,7 +4990,7 @@ function BankStatement({salon,onNavTab}={}){
                   React.createElement('input',{type:'checkbox',checked,onChange:()=>toggleInvoiceSelect(inv)}),
                   React.createElement('div',{style:{minWidth:0}},
                     React.createElement('div',{style:{fontWeight:500,color:'var(--text)',fontSize:12.5}},inv.invoiceNo||'(no invoice no.)'),
-                    React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},inv.docNature+' · Due '+(inv.dueDate||'—')+' · Bal ₹'+bal.toLocaleString())
+                    React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},inv.docNature+' · Due '+(inv.dueDate||'—')+' · Bal ₹'+bal.toLocaleString('en-IN'))
                   )
                 ),
                 checked
@@ -4998,7 +4998,7 @@ function BankStatement({salon,onNavTab}={}){
                       React.createElement('input',{type:'number',className:'form-control',style:{width:110,padding:'6px 8px',fontSize:12,textAlign:'right'},value:linkAllocations[key]!=null?linkAllocations[key]:'',onChange:e=>setLinkAllocations({...linkAllocations,[key]:e.target.value})}),
                       closeMatch&&React.createElement('div',{style:{fontSize:10,color:'var(--green)',marginTop:2}},'Amount matches ✓')
                     )
-                  :React.createElement('div',{style:{fontWeight:600,color:'var(--orange)',fontSize:12.5}},'₹'+bal.toLocaleString())
+                  :React.createElement('div',{style:{fontWeight:600,color:'var(--orange)',fontSize:12.5}},rupee(bal))
               );
             });
           })()
@@ -5009,7 +5009,7 @@ function BankStatement({salon,onNavTab}={}){
           const matches=Math.abs(totalAllocated-debitAmt)<1;
           return React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:12,padding:'8px 12px',background:'var(--bg3)',borderRadius:'var(--r)',marginTop:6}},
             React.createElement('span',{style:{color:'var(--text3)'}},linkSelected.size+' invoice'+(linkSelected.size===1?'':'s')+' selected'),
-            React.createElement('span',{style:{fontWeight:700,color:matches?'var(--green)':'var(--text)'}},'₹'+totalAllocated.toLocaleString()+' of ₹'+debitAmt.toLocaleString()+(matches?' ✓':''))
+            React.createElement('span',{style:{fontWeight:700,color:matches?'var(--green)':'var(--text)'}},rupee(totalAllocated)+' of ₹'+debitAmt.toLocaleString('en-IN')+(matches?' ✓':''))
           );
         })(),
         React.createElement('div',{className:'modal-actions'},
@@ -5065,7 +5065,7 @@ function BankStatement({salon,onNavTab}={}){
               React.createElement('input',{type:'checkbox',checked,onChange:()=>toggleEmpLineComponent(line.employeeId,comp)}),
               React.createElement('div',null,
                 React.createElement('div',{style:{fontWeight:500,color:'var(--text)',fontSize:12}},label),
-                React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)'}},'Outstanding ₹'+outstanding.toLocaleString())
+                React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)'}},'Outstanding ₹'+outstanding.toLocaleString('en-IN'))
               )
             ),
             checked
@@ -5073,7 +5073,7 @@ function BankStatement({salon,onNavTab}={}){
                   React.createElement('input',{type:'number',className:'form-control',style:{width:100,padding:'5px 7px',fontSize:11.5,textAlign:'right'},value:amtValue!=null?amtValue:'',onChange:e=>updateEmpLineAmount(line.employeeId,comp,e.target.value)}),
                   closeMatch&&React.createElement('div',{style:{fontSize:10,color:'var(--green)',marginTop:2}},'Matches ✓')
                 )
-              :React.createElement('div',{style:{fontWeight:600,color:'var(--orange)',fontSize:12}},'₹'+outstanding.toLocaleString())
+              :React.createElement('div',{style:{fontWeight:600,color:'var(--orange)',fontSize:12}},rupee(outstanding))
           );
         };
         const anyDIOutstanding=showDailyIncentive&&DAILY_INCENTIVE_CATEGORIES_ALL.some(cat=>line.dailyIncentive[cat].os>0);
@@ -5123,7 +5123,7 @@ function BankStatement({salon,onNavTab}={}){
           ),
           anySelected&&React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:12,padding:'8px 12px',background:'var(--bg3)',borderRadius:'var(--r)',marginBottom:6}},
             React.createElement('span',{style:{color:'var(--text3)'}},empPayLines.filter(l=>l.selSalary||l.selIncentive||DAILY_INCENTIVE_CATEGORIES_ALL.some(cat=>l.dailyIncentive[cat].sel)).length+' employee'+(empPayLines.filter(l=>l.selSalary||l.selIncentive||DAILY_INCENTIVE_CATEGORIES_ALL.some(cat=>l.dailyIncentive[cat].sel)).length===1?'':'s')+' selected'),
-            React.createElement('span',{style:{fontWeight:700,color:Math.abs(totalAllocated-(Number(row.debit)||0))<1?'var(--green)':'var(--text)'}},'₹'+totalAllocated.toLocaleString()+' of ₹'+(Number(row.debit)||0).toLocaleString())
+            React.createElement('span',{style:{fontWeight:700,color:Math.abs(totalAllocated-(Number(row.debit)||0))<1?'var(--green)':'var(--text)'}},rupee(totalAllocated)+' of ₹'+(Number(row.debit)||0).toLocaleString('en-IN'))
           ),
           React.createElement('div',{className:'modal-actions'},
             React.createElement('button',{className:'btn btn-ghost',onClick:()=>setEmpPayRow(null)},'Cancel'),
@@ -5143,7 +5143,7 @@ function BankStatement({salon,onNavTab}={}){
         )),
         (()=>{
           const total=DAILY_INCENTIVE_CATEGORIES.reduce((s,cat)=>s+(Number(addDIForm.amounts[cat])||0),0);
-          return React.createElement('div',{style:{fontSize:12,color:'var(--text3)',margin:'6px 0 16px'}},'Total: ',React.createElement('span',{style:{fontWeight:700,color:'var(--accent)'}},'₹'+total.toLocaleString()));
+          return React.createElement('div',{style:{fontSize:12,color:'var(--text3)',margin:'6px 0 16px'}},'Total: ',React.createElement('span',{style:{fontWeight:700,color:'var(--accent)'}},rupee(total)));
         })(),
         React.createElement('div',{className:'modal-actions'},
           React.createElement('button',{className:'btn btn-ghost',onClick:()=>setAddDIRow(null)},'Cancel'),
@@ -5174,12 +5174,12 @@ function BankStatement({salon,onNavTab}={}){
             React.createElement('label',null,'Link to existing Advance'),
             React.createElement('select',{className:'form-control',style:{padding:'6px 8px',fontSize:12},value:line.linkExistingId,onChange:e=>updateAdvanceLine(line.employeeId,'linkExistingId',e.target.value)},
               React.createElement('option',{value:''},'— Record as a new Advance instead —'),
-              candidates.map(c=>React.createElement('option',{key:c.id,value:c.id},c.id+' · ₹'+(Number(c.outstanding!=null?c.outstanding:c.amount)||0).toLocaleString()+' · '+c.status+(c.date?' · '+c.date:'')))
+              candidates.map(c=>React.createElement('option',{key:c.id,value:c.id},c.id+' · ₹'+(Number(c.outstanding!=null?c.outstanding:c.amount)||0).toLocaleString('en-IN')+' · '+c.status+(c.date?' · '+c.date:'')))
             )
           ),
           linked
             ?React.createElement('div',{style:{fontSize:11,color:'var(--text3)',lineHeight:1.7,padding:'6px 2px'}},
-                'Linking to '+linked.id+' — ₹'+(Number(linked.outstanding!=null?linked.outstanding:linked.amount)||0).toLocaleString()+' outstanding, '+linked.status+
+                'Linking to '+linked.id+' — ₹'+(Number(linked.outstanding!=null?linked.outstanding:linked.amount)||0).toLocaleString('en-IN')+' outstanding, '+linked.status+
                 (linked.reason?', "'+linked.reason+'"':'')+'. This transaction\u2019s date and Ref No will be attached to it; the amount, deduction plan and reason already on that Advance record stay as they are.'
               )
             :React.createElement(React.Fragment,null,
@@ -5212,7 +5212,7 @@ function BankStatement({salon,onNavTab}={}){
           ),
           advanceLines.length>0&&React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:12,padding:'8px 12px',background:'var(--bg3)',borderRadius:'var(--r)',marginBottom:6}},
             React.createElement('span',{style:{color:'var(--text3)'}},advanceLines.length+' employee'+(advanceLines.length===1?'':'s')),
-            React.createElement('span',{style:{fontWeight:700,color:Math.abs(totalAllocated-(Number(row.debit)||0))<1?'var(--green)':'var(--text)'}},'₹'+totalAllocated.toLocaleString()+' of ₹'+(Number(row.debit)||0).toLocaleString())
+            React.createElement('span',{style:{fontWeight:700,color:Math.abs(totalAllocated-(Number(row.debit)||0))<1?'var(--green)':'var(--text)'}},rupee(totalAllocated)+' of ₹'+(Number(row.debit)||0).toLocaleString('en-IN'))
           ),
           React.createElement('div',{className:'modal-actions'},
             React.createElement('button',{className:'btn btn-ghost',onClick:()=>setAdvanceRow(null)},'Cancel'),

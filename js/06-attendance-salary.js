@@ -148,7 +148,7 @@ function DailyIncentiveCore({period,salon}={}){
       return group?{...r,mode:'Bank',bankRowId:group.newRowId}:r;
     }));
     setSelectedEntries(new Set());
-    success('Added '+groups.length+' row'+(groups.length===1?'':'s')+' to Bank Statement — ₹'+groups.reduce((s,g)=>s+g.total,0).toLocaleString()+' total, already recorded as settled for '+groups.map(g=>g.employeeName).join(', ')+'.');
+    success('Added '+groups.length+' row'+(groups.length===1?'':'s')+' to Bank Statement — ₹'+groups.reduce((s,g)=>s+g.total,0).toLocaleString('en-IN')+' total, already recorded as settled for '+groups.map(g=>g.employeeName).join(', ')+'.');
   };
   const totalInc=entries.reduce((s,r)=>s+r.incentive,0);
   return React.createElement('div',{className:'fade-in'},
@@ -161,7 +161,7 @@ function DailyIncentiveCore({period,salon}={}){
       )
     ),
     selectedCount>0&&!diMonthLocked&&React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',background:'rgba(47,95,224,0.08)',border:'1px solid rgba(47,95,224,0.25)',borderRadius:'var(--r)',padding:'8px 14px',marginBottom:14,fontSize:12}},
-      React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},selectedCount+' entr'+(selectedCount===1?'y':'ies')+' selected · ₹'+selectedTotal.toLocaleString()),
+      React.createElement('span',{style:{fontWeight:600,color:'var(--text)'}},selectedCount+' entr'+(selectedCount===1?'y':'ies')+' selected · ₹'+selectedTotal.toLocaleString('en-IN')),
       React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Sets Mode to Bank for the ticked entries — they\u2019ll then show as Daily Incentive Outstanding in Bank Statement, ready to settle from there',onClick:requestBankPayment},'📤 Request Bank Payment'),
       React.createElement('button',{className:'btn btn-primary btn-sm',title:'Creates the actual Bank Statement row(s) for these entries — one per employee — already recorded as settled',onClick:addToBankStatement},'🏦 Add to Bank Statement'),
       React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setSelectedEntries(new Set())},'Clear selection')
@@ -197,10 +197,10 @@ function DailyIncentiveCore({period,salon}={}){
                   synced&&React.createElement('span',{title:'Synced from Daily Sales & Exp — edit the amount there, this updates automatically',style:{marginLeft:6,fontSize:10,color:'var(--blue)'}},'🔗'),
                   inBank&&React.createElement('span',{title:'Already added to Bank Statement — won\u2019t show as outstanding again',style:{marginLeft:6,fontSize:10,color:'var(--green)'}},'🏦 In Bank Statement')
                 ),
-                React.createElement('td',null,'₹'+r.target.toLocaleString()),
-                React.createElement('td',null,'₹'+r.achieved.toLocaleString()),
+                React.createElement('td',null,rupee(r.target)),
+                React.createElement('td',null,rupee(r.achieved)),
                 React.createElement('td',null,r.rate+'%'),
-                React.createElement('td',null,React.createElement('span',{style:{color:'var(--accent)',fontWeight:600}},'₹'+r.incentive.toLocaleString())),
+                React.createElement('td',null,React.createElement('span',{style:{color:'var(--accent)',fontWeight:600}},rupee(r.incentive))),
                 React.createElement('td',{'data-xr':i,'data-xc':3,style:{background:sel(3)}},React.createElement('span',{className:'badge '+(r.mode==='Bank'?'badge-blue':'badge-amber')},r.mode||'Cash')),
                 React.createElement('td',{'data-xr':i,'data-xc':4,style:{background:sel(4)}},React.createElement('span',{className:'badge '+(r.status==='Computed'?'badge-green':'badge-red')},r.status)),
                 React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:4}},
@@ -214,7 +214,7 @@ function DailyIncentiveCore({period,salon}={}){
         diFilters.Portal(),
         diCellRange.Toolbar()
         ),
-      entries.length>0&&React.createElement('div',{style:{display:'flex',justifyContent:'flex-end',paddingTop:10,borderTop:'1px solid var(--border)',marginTop:8,fontSize:13,fontWeight:700,color:'var(--accent)'}},'Total Incentive: ₹'+totalInc.toLocaleString())
+      entries.length>0&&React.createElement('div',{style:{display:'flex',justifyContent:'flex-end',paddingTop:10,borderTop:'1px solid var(--border)',marginTop:8,fontSize:13,fontWeight:700,color:'var(--accent)'}},'Total Incentive: ₹'+totalInc.toLocaleString('en-IN'))
     ),
     showModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowModal(false)},
       React.createElement('div',{className:'modal',style:{width:480},onClick:e=>e.stopPropagation()},
@@ -299,14 +299,14 @@ function DailyIncentiveLinkedSheet({period,salon,rowName,icon,onNavTab}={}){
     React.createElement('div',{className:'grid4',style:{marginBottom:16}},
       React.createElement('div',{className:'metric-card'},React.createElement('div',{className:'metric-label'},'Days With an Entry'),React.createElement('div',{className:'metric-value'},daysWithEntry)),
       React.createElement('div',{className:'metric-card'},React.createElement('div',{className:'metric-label'},'Total Entries'),React.createElement('div',{className:'metric-value'},entries.length)),
-      React.createElement('div',{className:'metric-card'},React.createElement('div',{className:'metric-label'},'Total for the Month'),React.createElement('div',{className:'metric-value'},'₹'+total.toLocaleString('en-IN'))),
+      React.createElement('div',{className:'metric-card'},React.createElement('div',{className:'metric-label'},'Total for the Month'),React.createElement('div',{className:'metric-value'},rupee(total))),
       React.createElement('div',{className:'metric-card'},
         React.createElement('div',{className:'metric-label'},'By Mode of Payment'),
         Object.keys(modeTotals).length===0
           ?React.createElement('div',{style:{fontSize:13,color:'var(--text3)',marginTop:4}},'—')
           :React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:2,marginTop:4}},
               Object.entries(modeTotals).map(([m,amt])=>React.createElement('div',{key:m,style:{display:'flex',justifyContent:'space-between',fontSize:12,color:'var(--text2)'}},
-                React.createElement('span',null,m),React.createElement('span',{style:{fontWeight:600}},'₹'+amt.toLocaleString('en-IN'))
+                React.createElement('span',null,m),React.createElement('span',{style:{fontWeight:600}},rupee(amt))
               ))
             )
       )
@@ -833,7 +833,7 @@ function AttendanceSheet({period,salon,user}={}){
               React.createElement('tr',null,
                 React.createElement('th',{style:{padding:'8px 12px',background:'var(--th-bg)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',whiteSpace:'nowrap',borderRight:'1px solid var(--border2)',minWidth:160}},'Name of Employee'),
                 ['1. Present','2. Weekoff','3. Holiday','4. Halfday','5. Absent','6. Not Joined','7. Left','8. Not Marked'].map(h=>React.createElement('th',{key:h,style:{padding:'8px 10px',background:'var(--th-bg)',color:'var(--accent2)',fontSize:10,fontWeight:700,textAlign:'center',borderRight:'1px solid var(--border)',minWidth:96}},h)),
-                ['Total','Working Days','Extra Days','Allowed Weekoff','Adjustment','Total Days'].map(h=>React.createElement('th',{key:h,style:{padding:'8px 10px',background:'#12121a',color:'var(--accent)',fontSize:10,fontWeight:700,textAlign:'center',borderLeft:h==='Total'?'2px solid var(--border2)':undefined,borderRight:'1px solid var(--border2)',minWidth:100}},h))
+                ['Total','Working Days','Extra Days','Allowed Weekoff','Adjustment','Total Days'].map(h=>React.createElement('th',{key:h,style:{padding:'8px 10px',background:'var(--bg3)',color:'var(--accent)',fontSize:10,fontWeight:700,textAlign:'center',borderLeft:h==='Total'?'2px solid var(--border2)':undefined,borderRight:'1px solid var(--border2)',minWidth:100}},h))
               )
             ),
             React.createElement('tbody',null,
@@ -1393,7 +1393,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
 
   const th=(txt,w,bg)=>React.createElement('th',{style:{padding:'8px 8px',background:bg||'var(--th-bg)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.04em',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',minWidth:w||80,textAlign:'right'}},txt);
   const td=(val,color,bold,bg)=>React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',color:color||'var(--text2)',fontWeight:bold?600:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:bg||undefined}},val);
-  const fmt=(n)=>n?'₹'+Number(n).toLocaleString():'—';
+  const fmt=(n)=>n?rupee(Number(n)):'—';
   // ── Column-group color coding — Earnings/Incentive columns tinted green, Deductions tinted
   // red, Net Salary tinted blue, Advance columns tinted amber, Bank Details tinted purple —
   // applied to both the header and every body cell in that group, so the sheet's sections are
@@ -1688,9 +1688,9 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     // Summary metrics
     React.createElement('div',{className:'grid4',style:{marginBottom:14}},
       [{label:'Total Employees',val:workings.length,color:'blue'},
-       {label:'Total Gross',val:'₹'+workings.reduce((s,e)=>s+e.grossAfterLop,0).toLocaleString(),color:'amber'},
-       {label:'Total Deductions',val:'₹'+workings.reduce((s,e)=>s+(cols.pfEmp?e.pfEmp:0)+(cols.esic?e.esicEmp:0)+(cols.pt?e.ptAmt:0)+(cols.penalties?e.penAmt:0)+(cols.advAdj?e.advAdj:0),0).toLocaleString(),color:'red'},
-       {label:'Total Net Payable',val:'₹'+workings.reduce((s,e)=>s+e.net,0).toLocaleString(),color:'green'}
+       {label:'Total Gross',val:'₹'+workings.reduce((s,e)=>s+e.grossAfterLop,0).toLocaleString('en-IN'),color:'amber'},
+       {label:'Total Deductions',val:'₹'+workings.reduce((s,e)=>s+(cols.pfEmp?e.pfEmp:0)+(cols.esic?e.esicEmp:0)+(cols.pt?e.ptAmt:0)+(cols.penalties?e.penAmt:0)+(cols.advAdj?e.advAdj:0),0).toLocaleString('en-IN'),color:'red'},
+       {label:'Total Net Payable',val:'₹'+workings.reduce((s,e)=>s+e.net,0).toLocaleString('en-IN'),color:'green'}
       ].map(m=>React.createElement('div',{key:m.label,className:`metric-card ${m.color}`},
         React.createElement('div',{className:'metric-label'},m.label),
         React.createElement('div',{className:'metric-value'},m.val)
@@ -1754,61 +1754,61 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
               td(fmt(e.grossAfterLop),'var(--text)',true),
               cols.serviceInc&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_EARN,cursor:'pointer'},
                 title:'Click to see the incentive working behind this employee\'s figures',onClick:()=>setIncWorkingModal(e)},
-                e.svcIncAmt>0?React.createElement('span',{style:{color:'var(--blue)'}},'+₹'+e.svcIncAmt.toLocaleString()):React.createElement('span',{style:{color:'var(--text3)'}},'—')
+                e.svcIncAmt>0?React.createElement('span',{style:{color:'var(--blue)'}},'+₹'+e.svcIncAmt.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'—')
               ),
               cols.memInc&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_EARN,cursor:'pointer'},
                 title:'Click to see the incentive working behind this employee\'s figures',onClick:()=>setIncWorkingModal(e)},
-                e.memIncAmt>0?React.createElement('span',{style:{color:'var(--purple)'}},'+₹'+e.memIncAmt.toLocaleString()):React.createElement('span',{style:{color:'var(--text3)'}},'—')
+                e.memIncAmt>0?React.createElement('span',{style:{color:'var(--purple)'}},'+₹'+e.memIncAmt.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'—')
               ),
               cols.prodInc&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_EARN,cursor:'pointer'},
                 title:'Click to see the incentive working behind this employee\'s figures',onClick:()=>setIncWorkingModal(e)},
-                e.prodIncAmt>0?React.createElement('span',{style:{color:'var(--teal)'}},'+₹'+e.prodIncAmt.toLocaleString()):React.createElement('span',{style:{color:'var(--text3)'}},'—')
+                e.prodIncAmt>0?React.createElement('span',{style:{color:'var(--teal)'}},'+₹'+e.prodIncAmt.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'—')
               ),
               cols.mgrInc&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_EARN,cursor:'pointer'},
                 title:'Click to see the incentive working behind this employee\'s figures',onClick:()=>setIncWorkingModal(e)},
-                e.mgrIncAmt>0?React.createElement('span',{style:{color:'var(--orange)'}},'+₹'+e.mgrIncAmt.toLocaleString()):React.createElement('span',{style:{color:'var(--text3)'}},'—')
+                e.mgrIncAmt>0?React.createElement('span',{style:{color:'var(--orange)'}},'+₹'+e.mgrIncAmt.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'—')
               ),
               cols.nonPerfPenalty&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_EARN,cursor:'pointer'},
                 title:'Click to see the incentive working behind this employee\'s figures',onClick:()=>setIncWorkingModal(e)},
-                e.nonPerfPenalty>0?React.createElement('span',{style:{color:'var(--red)'}},'−₹'+e.nonPerfPenalty.toLocaleString()):React.createElement('span',{style:{color:'var(--text3)'}},'—')
+                e.nonPerfPenalty>0?React.createElement('span',{style:{color:'var(--red)'}},'−₹'+e.nonPerfPenalty.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'—')
               ),
               cols.totalInc&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:600,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_EARN,cursor:'pointer'},
                 title:'Click to see the incentive working behind this employee\'s figures',onClick:()=>setIncWorkingModal(e)},
-                e.totalIncSW>0?React.createElement('span',{style:{color:'var(--green)'}},'₹'+e.totalIncSW.toLocaleString()):React.createElement('span',{style:{color:'var(--text3)'}},'—')
+                e.totalIncSW>0?React.createElement('span',{style:{color:'var(--green)'}},rupee(e.totalIncSW)):React.createElement('span',{style:{color:'var(--text3)'}},'—')
               ),
-              cols.tea&&td(e.tea>0?'+₹'+e.tea.toLocaleString():'—','var(--teal)',false,SW_BG_EARN),
+              cols.tea&&td(e.tea>0?'+₹'+e.tea.toLocaleString('en-IN'):'—','var(--teal)',false,SW_BG_EARN),
               cols.pfEmp&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_DED,cursor:'pointer'},
                 title:'Click to see the PF working, or override it for this employee this month',onClick:()=>openPfWorking(e)},
-                React.createElement('span',{style:{color:'var(--orange)'}},e.pfEmp>0?'−₹'+e.pfEmp.toLocaleString():'—'),
+                React.createElement('span',{style:{color:'var(--orange)'}},e.pfEmp>0?'−₹'+e.pfEmp.toLocaleString('en-IN'):'—'),
                 e.pfOverridden&&React.createElement('span',{title:'Manually overridden this month',style:{marginLeft:4,fontSize:9,color:'var(--blue)'}},'✎')
               ),
               cols.esic&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_DED,cursor:'pointer'},
                 title:'Click to see the ESIC working, or override it for this employee this month',onClick:()=>openEsicWorking(e)},
-                React.createElement('span',{style:{color:'var(--orange)'}},e.esicEmp>0?'−₹'+e.esicEmp.toLocaleString():'—'),
+                React.createElement('span',{style:{color:'var(--orange)'}},e.esicEmp>0?'−₹'+e.esicEmp.toLocaleString('en-IN'):'—'),
                 e.esicOverridden&&React.createElement('span',{title:'Manually overridden this month',style:{marginLeft:4,fontSize:9,color:'var(--blue)'}},'✎')
               ),
               cols.pt&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_DED,cursor:'pointer'},
                 title:'Click to see the PT working, or override it for this employee this month',onClick:()=>openPtWorking(e)},
                 !ptApplies&&!e.ptOverridden
                   ?React.createElement('span',{style:{color:'var(--text3)'}},'N/A')
-                  :(e.ptAmt>0?React.createElement('span',{style:{color:'var(--orange)'}},'−₹'+e.ptAmt.toLocaleString()):React.createElement('span',{style:{color:'var(--text3)'}},'₹0')),
+                  :(e.ptAmt>0?React.createElement('span',{style:{color:'var(--orange)'}},'−₹'+e.ptAmt.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'₹0')),
                 e.ptOverridden&&React.createElement('span',{title:'Manually overridden this month',style:{marginLeft:4,fontSize:9,color:'var(--blue)'}},'✎')
               ),
               cols.tds&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_DED,cursor:'pointer'},
                 title:'Click to enter TDS for this employee this month',onClick:()=>openTdsEntry(e)},
-                e.tdsAmt>0?React.createElement('span',{style:{color:'var(--orange)'}},'−₹'+e.tdsAmt.toLocaleString()):React.createElement('span',{style:{color:'var(--text3)'}},'—')
+                e.tdsAmt>0?React.createElement('span',{style:{color:'var(--orange)'}},'−₹'+e.tdsAmt.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'—')
               ),
               cols.advAdj&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',cursor:e.advAdj>0&&onNavTab?'pointer':undefined,background:SW_BG_DED},
                 title:e.advAdj>0&&onNavTab?"This month's scheduled installment — click to view/amend on the Advances sheet":undefined,
                 onClick:e.advAdj>0&&onNavTab?()=>onNavTab('advance'):undefined},
-                e.advAdj>0?React.createElement('span',{style:{color:'var(--red)'}},'−₹'+e.advAdj.toLocaleString()):React.createElement('span',{style:{color:'var(--text3)'}},'—')
+                e.advAdj>0?React.createElement('span',{style:{color:'var(--red)'}},'−₹'+e.advAdj.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'—')
               ),
-              cols.penalties&&td(e.penAmt>0?'−₹'+e.penAmt.toLocaleString():'—','var(--red)',false,SW_BG_DED),
+              cols.penalties&&td(e.penAmt>0?'−₹'+e.penAmt.toLocaleString('en-IN'):'—','var(--red)',false,SW_BG_DED),
               td(fmt(e.net),'var(--green)',true,SW_BG_NET),
-              cols.prevMonthAdv&&td(e.prevAdv>0?'₹'+e.prevAdv.toLocaleString():'—',undefined,false,SW_BG_ADV),
-              cols.currMonthAdv&&td(e.currAdv>0?'₹'+e.currAdv.toLocaleString():'—',undefined,false,SW_BG_ADV),
+              cols.prevMonthAdv&&td(e.prevAdv>0?rupee(e.prevAdv):'—',undefined,false,SW_BG_ADV),
+              cols.currMonthAdv&&td(e.currAdv>0?rupee(e.currAdv):'—',undefined,false,SW_BG_ADV),
               cols.nextMonthAdv&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_ADV}},
-                React.createElement('div',null,e.nextAdv>0?'₹'+e.nextAdv.toLocaleString():'—'),
+                React.createElement('div',null,e.nextAdv>0?rupee(e.nextAdv):'—'),
                 e.nextAdv>0&&React.createElement('label',{title:m.nextAdvPull?'Adjusted up to '+fmtDMY(m.nextAdvPullDate)+' as part of this month\'s salary':'Pull this Next Month Advance into this month\'s deduction instead of waiting for its own month',
                   style:{display:'flex',alignItems:'center',gap:4,justifyContent:'flex-end',fontSize:9.5,color:'var(--text3)',marginTop:2,cursor:swLocked?'not-allowed':'pointer'}},
                   React.createElement('input',{type:'checkbox',checked:!!m.nextAdvPull,disabled:swLocked,
@@ -1817,7 +1817,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
                   'Adjust now'
                 )
               ),
-              td(e.closingAdvance>0?'₹'+e.closingAdvance.toLocaleString():'—',e.closingAdvance>0?'var(--red)':'var(--text3)',true,SW_BG_ADV),
+              td(e.closingAdvance>0?rupee(e.closingAdvance):'—',e.closingAdvance>0?'var(--red)':'var(--text3)',true,SW_BG_ADV),
               cols.bankDetails&&td(e.bankName||'—','var(--text2)',false,SW_BG_BANK),
               cols.bankDetails&&td(e.accountNo||'—','var(--text2)',false,SW_BG_BANK),
               cols.bankDetails&&td(e.ifsc||'—','var(--text2)',false,SW_BG_BANK),
@@ -1942,12 +1942,12 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
         React.createElement('div',{style:{fontFamily:'var(--font2)',fontSize:17,color:'var(--text)',marginBottom:6}},showEsicWorking.name+' — ESIC (Emp)'),
         showEsicWorking.esic&&showEsicWorking.gross<=21000
           ?React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'12px 14px',marginBottom:16}},
-              React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,marginBottom:6}},React.createElement('span',null,'Gross Salary'),React.createElement('span',null,'₹'+Math.round(showEsicWorking.gross).toLocaleString())),
+              React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,marginBottom:6}},React.createElement('span',null,'Gross Salary'),React.createElement('span',null,'₹'+Math.round(showEsicWorking.gross).toLocaleString('en-IN'))),
               React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,marginBottom:6}},React.createElement('span',null,'ESIC Rate (Employee)'),React.createElement('span',null,'0.75%')),
-              React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,fontWeight:700,paddingTop:6,borderTop:'1px solid var(--border)'}},React.createElement('span',null,'Auto-Calculated'),React.createElement('span',null,'₹'+Math.round(showEsicWorking.esicAutoAmt).toLocaleString()))
+              React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,fontWeight:700,paddingTop:6,borderTop:'1px solid var(--border)'}},React.createElement('span',null,'Auto-Calculated'),React.createElement('span',null,'₹'+Math.round(showEsicWorking.esicAutoAmt).toLocaleString('en-IN')))
             )
           :React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',background:'var(--bg3)',borderRadius:'var(--r)',padding:'10px 12px',marginBottom:16}},
-              !showEsicWorking.esic?'This employee doesn\'t have ESIC ticked as applicable — go to Master Salary to enable it if that\'s wrong.':'Gross Salary (₹'+Math.round(showEsicWorking.gross).toLocaleString()+') is over the ₹21,000 ESIC wage ceiling, so nothing is auto-calculated.'),
+              !showEsicWorking.esic?'This employee doesn\'t have ESIC ticked as applicable — go to Master Salary to enable it if that\'s wrong.':'Gross Salary (₹'+Math.round(showEsicWorking.gross).toLocaleString('en-IN')+') is over the ₹21,000 ESIC wage ceiling, so nothing is auto-calculated.'),
         React.createElement('div',{style:{marginBottom:6}},
           React.createElement('label',{style:{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:4,fontWeight:600,display:'block'}},'Override for this month (₹)'),
           React.createElement('input',{type:'number',min:0,className:'form-control',placeholder:'Leave blank to use the auto-calculated amount',value:esicOverrideDraft,onChange:ev=>setEsicOverrideDraft(ev.target.value)})
@@ -1971,10 +1971,10 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
           ?(()=>{
               const wageBase=showPfWorking.pfOnActualBasic?showPfWorking.basic:Math.min(showPfWorking.basic,15000);
               return React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'12px 14px',marginBottom:16}},
-                React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,marginBottom:6}},React.createElement('span',null,'Basic Salary'),React.createElement('span',null,'₹'+Math.round(showPfWorking.basic).toLocaleString())),
-                React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,marginBottom:6}},React.createElement('span',null,'PF Wage Base'+(showPfWorking.pfOnActualBasic?' (actual Basic)':' (capped at ₹15,000)')),React.createElement('span',null,'₹'+Math.round(wageBase).toLocaleString())),
+                React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,marginBottom:6}},React.createElement('span',null,'Basic Salary'),React.createElement('span',null,'₹'+Math.round(showPfWorking.basic).toLocaleString('en-IN'))),
+                React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,marginBottom:6}},React.createElement('span',null,'PF Wage Base'+(showPfWorking.pfOnActualBasic?' (actual Basic)':' (capped at ₹15,000)')),React.createElement('span',null,'₹'+Math.round(wageBase).toLocaleString('en-IN'))),
                 React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,marginBottom:6}},React.createElement('span',null,'PF Rate (Employee)'),React.createElement('span',null,'12%')),
-                React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,fontWeight:700,paddingTop:6,borderTop:'1px solid var(--border)'}},React.createElement('span',null,'Auto-Calculated'),React.createElement('span',null,'₹'+Math.round(showPfWorking.pfAutoAmt).toLocaleString()))
+                React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,fontWeight:700,paddingTop:6,borderTop:'1px solid var(--border)'}},React.createElement('span',null,'Auto-Calculated'),React.createElement('span',null,'₹'+Math.round(showPfWorking.pfAutoAmt).toLocaleString('en-IN')))
               );
             })()
           :React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',background:'var(--bg3)',borderRadius:'var(--r)',padding:'10px 12px',marginBottom:16}},
@@ -2001,9 +2001,9 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
         ptApplies
           ?React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'12px 14px',marginBottom:16}},
               React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,marginBottom:6}},React.createElement('span',null,'Outlet State'),React.createElement('span',null,ptState||'—')),
-              React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,marginBottom:6}},React.createElement('span',null,'Gross Salary'),React.createElement('span',null,'₹'+Math.round(showPtWorking.gross).toLocaleString())),
+              React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,marginBottom:6}},React.createElement('span',null,'Gross Salary'),React.createElement('span',null,'₹'+Math.round(showPtWorking.gross).toLocaleString('en-IN'))),
               React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginBottom:6}},'Matched against '+ptState+"'s PT slabs (see Master Sheet → PT Slabs)."),
-              React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,fontWeight:700,paddingTop:6,borderTop:'1px solid var(--border)'}},React.createElement('span',null,'Auto-Calculated'),React.createElement('span',null,'₹'+Math.round(showPtWorking.ptAutoAmt).toLocaleString()))
+              React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,fontWeight:700,paddingTop:6,borderTop:'1px solid var(--border)'}},React.createElement('span',null,'Auto-Calculated'),React.createElement('span',null,'₹'+Math.round(showPtWorking.ptAutoAmt).toLocaleString('en-IN')))
             )
           :React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',background:'var(--bg3)',borderRadius:'var(--r)',padding:'10px 12px',marginBottom:16}},
               'This outlet\'s State ('+(ptState||'not set')+') doesn\'t levy Professional Tax — check Master Sheet if that\'s wrong.'),
@@ -2045,15 +2045,15 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
       const e=incWorkingModal;const d=e.incDetail;
       const iwRow=(label,target,actual,pct,amt,color)=>React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 90px 90px 60px 90px',gap:8,fontSize:11.5,padding:'6px 0',borderBottom:'1px solid var(--border)',alignItems:'center'}},
         React.createElement('span',{style:{color:'var(--text2)'}},label),
-        React.createElement('span',{style:{textAlign:'right',color:'var(--text3)'}},'₹'+Math.round(target).toLocaleString()),
-        React.createElement('span',{style:{textAlign:'right',color:'var(--text3)'}},'₹'+Math.round(actual).toLocaleString()),
+        React.createElement('span',{style:{textAlign:'right',color:'var(--text3)'}},'₹'+Math.round(target).toLocaleString('en-IN')),
+        React.createElement('span',{style:{textAlign:'right',color:'var(--text3)'}},'₹'+Math.round(actual).toLocaleString('en-IN')),
         React.createElement('span',{style:{textAlign:'right',color:'var(--text3)'}},pct+'%'),
-        React.createElement('span',{style:{textAlign:'right',fontWeight:600,color}},amt>0?'₹'+Math.round(amt).toLocaleString():'—')
+        React.createElement('span',{style:{textAlign:'right',fontWeight:600,color}},amt>0?'₹'+Math.round(amt).toLocaleString('en-IN'):'—')
       );
       const simpleRow=(label,note,amt,color)=>React.createElement('div',{style:{marginBottom:10}},
         React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5}},
           React.createElement('span',{style:{color:'var(--text2)'}},label),
-          React.createElement('span',{style:{fontWeight:600,color}},amt>0?'₹'+Math.round(amt).toLocaleString():'—')),
+          React.createElement('span',{style:{fontWeight:600,color}},amt>0?'₹'+Math.round(amt).toLocaleString('en-IN'):'—')),
         note&&React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:2}},note)
       );
       return React.createElement('div',{className:'modal-overlay',onClick:()=>setIncWorkingModal(null)},
@@ -2081,7 +2081,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
 
             React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontWeight:700,fontSize:14,paddingTop:12,marginTop:10,borderTop:'2px solid var(--border2)'}},
               React.createElement('span',null,'Total Inc'),
-              React.createElement('span',{style:{color:'var(--green)'}},'₹'+Math.round(d.totalInc).toLocaleString())),
+              React.createElement('span',{style:{color:'var(--green)'}},'₹'+Math.round(d.totalInc).toLocaleString('en-IN'))),
             React.createElement('div',{style:{fontSize:10,color:'var(--text3)',marginTop:4}},
               'Service + Membership + Product + Manager Incentive − Non-Performance Penalty − Advance Adjustment')
           )
@@ -2114,7 +2114,7 @@ function SalaryPaymentSheet({period,salon}={}){
     // eslint-disable-next-line
   },[period&&period.mi,period&&period.fy]);
   const workings=swWorkingsFor(salon?.id,selYear,selMonth);
-  const fmt=(n)=>n?'₹'+Math.round(n).toLocaleString():'—';
+  const fmt=(n)=>n?'₹'+Math.round(n).toLocaleString('en-IN'):'—';
   const COLS=['Name of Employee','Designation','Net Salary','Bank Name','Account No.','IFSC Code'];
 
   // ── Selection — pick specific employees to export/share instead of always the whole list.

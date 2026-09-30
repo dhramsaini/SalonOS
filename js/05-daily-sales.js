@@ -208,7 +208,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       if(!isNaN(n)){
         const sim=simulateClosingChainNegative(iso,ri,n);
         if(sim.negative){
-          dseSalesToastErr('That would take Closing Cash Balance on '+sim.iso+' negative (₹'+Math.round(sim.amount).toLocaleString()+') — entry blocked.');
+          dseSalesToastErr('That would take Closing Cash Balance on '+sim.iso+' negative (₹'+Math.round(sim.amount).toLocaleString('en-IN')+') — entry blocked.');
           return;
         }
       }
@@ -383,7 +383,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   const blockIfExpenseGoesNegative=(iso,ri,newRowValue)=>{
     const sim=wouldExpenseEntryGoNegative(iso,ri,newRowValue);
     if(sim.negative){
-      dseSalesToastErr('That would take Closing Cash Balance on '+sim.iso+' negative (₹'+Math.round(sim.amount).toLocaleString()+') — entry blocked.');
+      dseSalesToastErr('That would take Closing Cash Balance on '+sim.iso+' negative (₹'+Math.round(sim.amount).toLocaleString('en-IN')+') — entry blocked.');
       return true;
     }
     return false;
@@ -395,7 +395,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     if(CASH_AFFECTING_ROWS.has(sri)&&!isNaN(n)){
       const sim=simulateClosingChainNegative(iso,sri,n);
       if(sim.negative){
-        dseSalesToastErr('That would take Closing Cash Balance on '+sim.iso+' negative (₹'+Math.round(sim.amount).toLocaleString()+') — entry blocked.');
+        dseSalesToastErr('That would take Closing Cash Balance on '+sim.iso+' negative (₹'+Math.round(sim.amount).toLocaleString('en-IN')+') — entry blocked.');
         return;
       }
     }
@@ -451,7 +451,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       const cashPortion=sri===IDX_OREC?valid.filter(e=>e.mode==='Cash').reduce((s,e)=>s+Number(e.amount),0):total;
       const sim=simulateClosingChainNegative(iso,sri,cashPortion);
       if(sim.negative){
-        dseSalesToastErr('That would take Closing Cash Balance on '+sim.iso+' negative (₹'+Math.round(sim.amount).toLocaleString()+') — entry blocked.');
+        dseSalesToastErr('That would take Closing Cash Balance on '+sim.iso+' negative (₹'+Math.round(sim.amount).toLocaleString('en-IN')+') — entry blocked.');
         return;
       }
     }
@@ -802,7 +802,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   // itself, since it may carry other payments), then re-totals the day's cell from what's left.
   const removeInvoiceEntry=(ri,iso,entry)=>{
     if(dseBlockIfLocked(iso))return;
-    if(!window.confirm('Remove this ₹'+Number(entry.amount||0).toLocaleString()+' entry? The matching payment will also be removed from the linked invoice on Vendor Sheet.'))return;
+    if(!window.confirm('Remove this ₹'+Number(entry.amount||0).toLocaleString('en-IN')+' entry? The matching payment will also be removed from the linked invoice on Vendor Sheet.'))return;
     const invoices=loadVendorInvoices(salonId);
     const idx=invoices.findIndex(inv=>inv.id===entry.invoiceId);
     if(idx>=0){
@@ -883,7 +883,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       const ok=commitInvEntries(payDate,payload.ri,[...getInvEntries(payDate,payload.ri),{id:entryId,invoiceId:inv.id,paymentId,amount:paid}]);
       if(!ok)return;
       saveVendorInvoices(nextInvoices,salonId);
-      dseToast('₹'+paid.toLocaleString()+' recorded against invoice # '+(inv.invoiceNo||'—'),'success');
+      dseToast(rupee(paid)+' recorded against invoice # '+(inv.invoiceNo||'—'),'success');
       setShowInvoiceForm(null);
       setInvModal(null);
       return;
@@ -925,7 +925,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     if(!ok)return;
     const newInvoice={id:newId,...invFields,linkedPI:'',payments:[{id:paymentId,paidAmount:paid,paidDate:payDate,mode:'Cash',ref:'',note:'Auto-recorded from Daily Sales & Exp'}]};
     saveVendorInvoices([...invoices,newInvoice],salonId);
-    dseToast('Invoice saved to Vendor Sheet — ₹'+paid.toLocaleString()+' payment recorded against it','success');
+    dseToast('Invoice saved to Vendor Sheet — ₹'+paid.toLocaleString('en-IN')+' payment recorded against it','success');
     setShowInvoiceForm(null);
   };
 
@@ -1170,15 +1170,15 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     const rows=EXPENSE_ROWS.map((r,ri)=>{
       const tot=rowTotal(ri);
       const isSalRow=isPrevSalary(ri);
-      const vals=allDays.map(d=>{const v=getValue(d.iso,ri);return v?`<td style="text-align:right">${Number(v).toLocaleString()}</td>`:`<td style="text-align:right;color:#bbb">-</td>`;}).join('');
+      const vals=allDays.map(d=>{const v=getValue(d.iso,ri);return v?`<td style="text-align:right">${Number(v).toLocaleString('en-IN')}</td>`:`<td style="text-align:right;color:#bbb">-</td>`;}).join('');
       return`<tr${isSalRow&&tot>0?' style="background:#ffebee"':''}>
         <td style="font-weight:${r.name?'400':'300'};color:${r.name?'#222':'#bbb'}">${r.name||'—'}</td>
         <td style="color:#666;font-size:10px">${r.group}</td>
-        <td style="text-align:right;font-weight:600;color:${tot>0?'#1a1a1a':'#bbb'}">${tot?tot.toLocaleString():'-'}</td>
+        <td style="text-align:right;font-weight:600;color:${tot>0?'#1a1a1a':'#bbb'}">${tot?tot.toLocaleString('en-IN'):'-'}</td>
         ${vals}</tr>`;
     }).join('');
     const hdrCols=allDays.map(d=>`<th style="text-align:right;min-width:70px">${d.label}</th>`).join('');
-    const totCols=allDays.map(d=>{const t=dayTotal(d.iso);return`<td style="text-align:right;font-weight:700;color:#2F5FE0">${t?t.toLocaleString():'-'}</td>`;}).join('');
+    const totCols=allDays.map(d=>{const t=dayTotal(d.iso);return`<td style="text-align:right;font-weight:700;color:#2F5FE0">${t?t.toLocaleString('en-IN'):'-'}</td>`;}).join('');
     const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Daily Expenses</title>
     <style>@page{size:A3 landscape;margin:12mm}*{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;font-size:10px;color:#222}
     .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid #2F5FE0}
@@ -1191,7 +1191,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     <div style="text-align:right;font-size:9px;color:#888">Exported: ${new Date().toLocaleString('en-IN')}<br>Period: ${days[0].label} to ${days[days.length-1].label}</div></div>
     <table><thead><tr><th>Daily Expenses</th><th>Expenses Group</th><th>Total</th>${hdrCols}</tr></thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr class="foot"><td>Final Total Exp.</td><td></td><td style="text-align:right">${grandTotal().toLocaleString()}</td>${totCols}</tr></tfoot>
+    <tfoot><tr class="foot"><td>Final Total Exp.</td><td></td><td style="text-align:right">${grandTotal().toLocaleString('en-IN')}</td>${totCols}</tr></tfoot>
     </table><script>window.onload=()=>window.print()<\/script></body></html>`;
     const w=window.open('','_blank');w.document.write(html);w.document.close();
   };
@@ -1211,13 +1211,13 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     const allDays=buildDays(new Date(viewDate),resolveShowCols(viewDate,showCols));
     const rows=EXPENSE_ROWS.map((r,ri)=>{
       const tot=rowTotal(ri);
-      const vals=allDays.map(d=>{const v=getValue(d.iso,ri);return'<td class="num">'+(v?Number(v).toLocaleString():'-')+'</td>';}).join('');
-      return'<tr><td>'+(r.name||'—')+'</td><td>'+r.group+'</td><td class="num">'+(tot?tot.toLocaleString():'-')+'</td>'+vals+'</tr>';
+      const vals=allDays.map(d=>{const v=getValue(d.iso,ri);return'<td class="num">'+(v?Number(v).toLocaleString('en-IN'):'-')+'</td>';}).join('');
+      return'<tr><td>'+(r.name||'—')+'</td><td>'+r.group+'</td><td class="num">'+(tot?tot.toLocaleString('en-IN'):'-')+'</td>'+vals+'</tr>';
     }).join('');
     const hdrCols=allDays.map(d=>'<th class="num">'+d.label+'</th>').join('');
-    const totCols=allDays.map(d=>{const t=dayTotal(d.iso);return'<td class="num">'+(t?t.toLocaleString():'-')+'</td>';}).join('');
+    const totCols=allDays.map(d=>{const t=dayTotal(d.iso);return'<td class="num">'+(t?t.toLocaleString('en-IN'):'-')+'</td>';}).join('');
     return'<table><thead><tr><th>Daily Expenses</th><th>Expenses Group</th><th class="num">Total</th>'+hdrCols+'</tr></thead><tbody>'+rows+'</tbody>'
-      +'<tfoot><tr><td>Final Total Exp.</td><td></td><td class="num">'+grandTotal().toLocaleString()+'</td>'+totCols+'</tr></tfoot></table>';
+      +'<tfoot><tr><td>Final Total Exp.</td><td></td><td class="num">'+grandTotal().toLocaleString('en-IN')+'</td>'+totCols+'</tr></tfoot></table>';
   };
 
   // Group colour map
@@ -1375,8 +1375,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
 
     // Metrics strip
     React.createElement('div',{className:'grid4',style:{marginBottom:16}},
-      [{label:"Today's Total Exp.",val:'₹'+dayTotal(todayISO).toLocaleString(),color:'amber'},
-       {label:'Period Total',val:'₹'+grandTotal().toLocaleString(),color:'red'},
+      [{label:"Today's Total Exp.",val:'₹'+dayTotal(todayISO).toLocaleString('en-IN'),color:'amber'},
+       {label:'Period Total',val:'₹'+grandTotal().toLocaleString('en-IN'),color:'red'},
        {label:'Expense Rows',val:EXPENSE_ROWS.filter(r=>r.name).length,color:'blue'},
        {label:'Days Shown',val:days.length,color:'teal'}].map(m=>
         React.createElement('div',{key:m.label,className:`metric-card ${m.color}`},
@@ -1416,7 +1416,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
               React.createElement('th',{style:{padding:'10px 12px',background:'var(--th-bg)',color:'var(--accent2)',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.06em',borderBottom:'2px solid var(--accent)',position:'sticky',top:0,zIndex:4,minWidth:90,textAlign:'right',borderRight:'2px solid var(--accent)'}},'Total'),
               ...days.map(d=>React.createElement('th',{key:d.iso,style:{
                 padding:'10px 10px',
-                background:isTodayCol(d.iso)?'rgba(47,95,224,0.18)':'#1a1a22',
+                background:isTodayCol(d.iso)?'rgba(47,95,224,0.18)':'var(--bg3)',
                 color:isTodayCol(d.iso)?'var(--accent2)':'var(--text2)',
                 fontSize:11,fontWeight:700,
                 borderBottom:isTodayCol(d.iso)?'2px solid var(--accent)':'2px solid var(--border)',
@@ -1472,7 +1472,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                   borderRight:'2px solid var(--accent)',textAlign:'right',
                   fontWeight:700,fontSize:12,background:dseCellRange.isSelected(ri,2)?'rgba(47,95,224,0.25)':undefined,
                   color:(isPrevSalary(ri)||isPenalty)&&rowTot>0?'var(--red)':rowTot>0?'var(--text)':'var(--text3)'
-                }},rowTot>0?(isPenalty?'-':'')+rowTot.toLocaleString():'-'),
+                }},rowTot>0?(isPenalty?'-':'')+rowTot.toLocaleString('en-IN'):'-'),
                 // Day cells
                 ...days.map((d,di)=>{
                   const isToday=isTodayCol(d.iso);
@@ -1520,7 +1520,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                           }},
                           hasDescData
                             ? React.createElement('div',{style:{textAlign:'right'}},
-                                React.createElement('div',{style:{fontSize:12,fontWeight:600,color:isVendor?'var(--red)':'var(--accent)'}},descTotal.toLocaleString()),
+                                React.createElement('div',{style:{fontSize:12,fontWeight:600,color:isVendor?'var(--red)':'var(--accent)'}},descTotal.toLocaleString('en-IN')),
                                 React.createElement('div',{style:{fontSize:9,color:'var(--text3)',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},getDescLabel(descEntries))
                               )
                             : React.createElement('span',{style:{fontSize:10,color:'var(--text3)'}},'📝 Add')
@@ -1537,7 +1537,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                           }},
                           hasEmpData
                             ? React.createElement('div',{style:{textAlign:'right'}},
-                                React.createElement('div',{style:{fontSize:12,fontWeight:600,color:isPenalty?'var(--red)':'var(--teal)'}},(isPenalty?'-':'')+empTotal.toLocaleString()),
+                                React.createElement('div',{style:{fontSize:12,fontWeight:600,color:isPenalty?'var(--red)':'var(--teal)'}},(isPenalty?'-':'')+empTotal.toLocaleString('en-IN')),
                                 React.createElement('div',{style:{fontSize:9,color:'var(--text3)'}},getEmpLabel(empEntries))
                               )
                             : React.createElement('span',{style:{fontSize:10,color:'var(--text3)'}},'👤 Add')
@@ -1556,7 +1556,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                             }},
                             hasInvData
                               ? React.createElement('div',{style:{textAlign:'right'}},
-                                  React.createElement('div',{style:{fontSize:12,fontWeight:600,color:'var(--red)'}},invTotal.toLocaleString()),
+                                  React.createElement('div',{style:{fontSize:12,fontWeight:600,color:'var(--red)'}},invTotal.toLocaleString('en-IN')),
                                   React.createElement('div',{style:{fontSize:9,color:invLegacyAmount>0?'var(--orange)':'var(--text3)'}},
                                     invEntries.length>0
                                       ?(invEntries.length+' invoice'+(invEntries.length===1?'':'s')+(invLegacyAmount>0?' +unlinked':''))
@@ -1584,13 +1584,13 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                               })
                         : isEmp&&hasEmpData
                           ? React.createElement('div',{style:{textAlign:'right',padding:'4px 6px'}},
-                              React.createElement('div',{style:{fontSize:12,fontWeight:500,color:isPenalty?'var(--red)':'var(--teal)'}},(isPenalty?'-':'')+empTotal.toLocaleString()),
+                              React.createElement('div',{style:{fontSize:12,fontWeight:500,color:isPenalty?'var(--red)':'var(--teal)'}},(isPenalty?'-':'')+empTotal.toLocaleString('en-IN')),
                               React.createElement('div',{style:{fontSize:9,color:'var(--text3)'}},getEmpLabel(empEntries)))
                           : React.createElement('div',{style:{
                               textAlign:'right',padding:'4px 6px',
                               color:hasVal?(isSalRow?'var(--purple)':isVendor?'var(--red)':'var(--text2)'):'var(--text3)',
                               fontWeight:hasVal?500:400
-                            }},hasVal?Number(val).toLocaleString():'-')
+                            }},hasVal?Number(val).toLocaleString('en-IN'):'-')
                   );
                 })
               );
@@ -1600,13 +1600,13 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
             React.createElement('tr',{key:'final-total-exp',style:{background:'var(--th-bg)'}},
               React.createElement('td',{style:{padding:'10px 12px',position:'sticky',left:0,background:'var(--th-bg)',zIndex:2,fontWeight:700,fontSize:13,color:'var(--accent2)',borderRight:'1px solid var(--border2)',borderTop:'2px solid var(--accent)'}},'Final Total Exp.'),
               React.createElement('td',{style:{padding:'10px 12px',borderRight:'1px solid var(--border2)',borderTop:'2px solid var(--accent)'}},''),
-              React.createElement('td',{style:{padding:'10px 12px',textAlign:'right',fontWeight:700,fontSize:13,color:'var(--accent2)',borderRight:'2px solid var(--accent)',borderTop:'2px solid var(--accent)'}},grandTotal().toLocaleString()),
+              React.createElement('td',{style:{padding:'10px 12px',textAlign:'right',fontWeight:700,fontSize:13,color:'var(--accent2)',borderRight:'2px solid var(--accent)',borderTop:'2px solid var(--accent)'}},grandTotal().toLocaleString('en-IN')),
               ...days.map(d=>React.createElement('td',{key:d.iso,style:{
                 padding:'10px 10px',textAlign:'right',fontWeight:700,fontSize:12,
                 color:isTodayCol(d.iso)?'var(--accent2)':'var(--text)',
                 borderRight:'1px solid var(--border)',borderTop:'2px solid var(--accent)',
                 background:isTodayCol(d.iso)?'rgba(47,95,224,0.15)':'transparent'
-              }},dayTotal(d.iso)>0?dayTotal(d.iso).toLocaleString():'-'))
+              }},dayTotal(d.iso)>0?dayTotal(d.iso).toLocaleString('en-IN'):'-'))
             ),
             // Daily Sales & Collection — continues directly on from Final Total Exp., same
             // table, same columns. Total Daily Sale, Total Collection, Opening and Closing Cash
@@ -1627,7 +1627,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                   ),
                   isOpening?React.createElement('div',{style:{fontSize:9,color:'var(--text3)',fontWeight:400,marginTop:2}},'auto-carried from previous day'):null),
                 React.createElement('td',{style:{padding:'7px 12px',borderRight:'1px solid var(--border2)',borderBottom:'1px solid var(--border)',fontSize:11,color:'var(--text3)'}},'Sales & Collection'),
-                React.createElement('td',{style:{padding:'7px 12px',textAlign:'right',fontWeight:700,color:(isComputed||isOpening)?'var(--accent2)':'var(--text)',borderRight:'2px solid var(--accent)',borderBottom:'1px solid var(--border)'}},salesRowTotal(sri)>0?salesRowTotal(sri).toLocaleString():'-'),
+                React.createElement('td',{style:{padding:'7px 12px',textAlign:'right',fontWeight:700,color:(isComputed||isOpening)?'var(--accent2)':'var(--text)',borderRight:'2px solid var(--accent)',borderBottom:'1px solid var(--border)'}},salesRowTotal(sri)>0?salesRowTotal(sri).toLocaleString('en-IN'):'-'),
                 ...days.map((d,ci)=>{
                   const val=salesValueAt(d.iso,sri);
                   const readOnlyHere=isComputed||(isOpening&&!isFirstEverCashDay(d.iso));
@@ -1636,7 +1636,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                   const hasEntryData=entries.length>0;
                   return React.createElement('td',{key:d.iso,'data-xr':globalRi,'data-xc':3+ci,style:{padding:readOnlyHere?'7px 10px':(isEntryRow?'3px 4px':'3px 6px'),textAlign:'right',borderBottom:'1px solid var(--border)',background:sel(3+ci)?'rgba(47,95,224,0.25)':(isTodayCol(d.iso)?'rgba(47,95,224,0.06)':undefined)}},
                     readOnlyHere
-                      ?(val<0?React.createElement('span',{style:{fontWeight:700,color:'var(--red)'}},val.toLocaleString()):React.createElement('span',{style:{fontWeight:700,color:'var(--accent2)'}},val>0?val.toLocaleString():'-'))
+                      ?(val<0?React.createElement('span',{style:{fontWeight:700,color:'var(--red)'}},val.toLocaleString('en-IN')):React.createElement('span',{style:{fontWeight:700,color:'var(--accent2)'}},val>0?val.toLocaleString('en-IN'):'-'))
                       :isEntryRow
                         // Required-field row: click to open modal, same pattern as Daily Sales &
                         // Exp's Description-required rows above — more than one entry per day is
@@ -1651,7 +1651,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                             }},
                             hasEntryData
                               ?React.createElement('div',{style:{textAlign:'right'}},
-                                  React.createElement('div',{style:{fontSize:12,fontWeight:600,color:'var(--accent)'}},getSalesEntryTotal(d.iso,sri).toLocaleString()),
+                                  React.createElement('div',{style:{fontSize:12,fontWeight:600,color:'var(--accent)'}},getSalesEntryTotal(d.iso,sri).toLocaleString('en-IN')),
                                   React.createElement('div',{style:{fontSize:9,color:'var(--text3)',maxWidth:90,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},getSalesEntryLabel(sri,entries))
                                 )
                               :React.createElement('span',{style:{fontSize:10,color:'var(--text3)'}},'📝 Add')
@@ -1690,7 +1690,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       const rawCellVal=Number(data[invModal.iso]&&data[invModal.iso][invModal.ri])||0;
       const legacyAmount=Math.max(0,rawCellVal-total);
       const clearLegacyAmount=()=>{
-        if(!window.confirm('Clear the ₹'+legacyAmount.toLocaleString()+' amount that isn\'t linked to any invoice? This only removes that untracked portion — any invoices listed above are unaffected.'))return;
+        if(!window.confirm('Clear the ₹'+legacyAmount.toLocaleString('en-IN')+' amount that isn\'t linked to any invoice? This only removes that untracked portion — any invoices listed above are unaffected.'))return;
         setValueNow(invModal.iso,invModal.ri,total>0?total:'');
       };
       // Outstanding invoices for this category, shown right here instead of behind a separate
@@ -1716,7 +1716,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                       React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)'}},inv?vendorName(inv.vendorId):'This invoice may have been deleted in Vendor Sheet')
                     ),
                     React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10}},
-                      React.createElement('div',{style:{fontSize:13,fontWeight:700,color:'var(--red)'}},'₹'+Number(entry.amount||0).toLocaleString()),
+                      React.createElement('div',{style:{fontSize:13,fontWeight:700,color:'var(--red)'}},rupee(Number(entry.amount||0))),
                       inv&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Edit full invoice',onClick:()=>openEditInvoiceEntry(invModal.ri,invModal.iso,entry)},'✎'),
                       React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},title:'Remove this entry',onClick:()=>removeInvoiceEntry(invModal.ri,invModal.iso,entry)},'✕')
                     )
@@ -1725,13 +1725,13 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                 legacyAmount>0&&React.createElement('div',{style:{padding:'10px 12px',background:'rgba(255,159,67,0.1)',border:'1px solid rgba(255,159,67,0.35)',borderRadius:'var(--r)'}},
                   React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
                     React.createElement('div',null,
-                      React.createElement('div',{style:{fontSize:12.5,fontWeight:600,color:'var(--orange)'}},'⚠ ₹'+legacyAmount.toLocaleString()+' not linked to any invoice'),
+                      React.createElement('div',{style:{fontSize:12.5,fontWeight:600,color:'var(--orange)'}},'⚠ ₹'+legacyAmount.toLocaleString('en-IN')+' not linked to any invoice'),
                       React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:2}},'Entered before invoice tracking, or from some other source. Add an invoice below to account for it, or clear it.')
                     ),
                     React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)',flexShrink:0},onClick:clearLegacyAmount},'Clear')
                   )
                 ),
-                (entries.length>1||(entries.length>0&&legacyAmount>0))&&React.createElement('div',{style:{textAlign:'right',fontSize:12,fontWeight:700,color:'var(--text)',paddingTop:4}},'Total: ₹'+rawCellVal.toLocaleString())
+                (entries.length>1||(entries.length>0&&legacyAmount>0))&&React.createElement('div',{style:{textAlign:'right',fontSize:12,fontWeight:700,color:'var(--text)',paddingTop:4}},'Total: ₹'+rawCellVal.toLocaleString('en-IN'))
               ),
           outstanding.length>0&&React.createElement('div',{style:{marginBottom:16}},
             React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent2)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8}},'Outstanding Invoices — click ✎ to review and pay'),
@@ -1743,12 +1743,12 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                   React.createElement('div',null,
                     React.createElement('div',{style:{fontSize:12.5,fontWeight:600,color:'var(--text)'}},'Invoice # '+(inv.invoiceNo||'—')),
                     React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)'}},vendorName(inv.vendorId)),
-                    paidSoFar>0&&React.createElement('div',{style:{fontSize:10,color:'var(--green)',marginTop:2}},'Previously Paid: ₹'+paidSoFar.toLocaleString())
+                    paidSoFar>0&&React.createElement('div',{style:{fontSize:10,color:'var(--green)',marginTop:2}},'Previously Paid: ₹'+paidSoFar.toLocaleString('en-IN'))
                   ),
                   React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10}},
                     React.createElement('div',{style:{textAlign:'right'}},
-                      React.createElement('div',{style:{fontSize:13,fontWeight:700,color:'var(--red)'}},'₹'+balance.toLocaleString()),
-                      React.createElement('div',{style:{fontSize:9,color:'var(--text3)'}},'of ₹'+(Number(inv.amount)||0).toLocaleString()+' total')
+                      React.createElement('div',{style:{fontSize:13,fontWeight:700,color:'var(--red)'}},rupee(balance)),
+                      React.createElement('div',{style:{fontSize:9,color:'var(--text3)'}},'of ₹'+(Number(inv.amount)||0).toLocaleString('en-IN')+' total')
                     ),
                     React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Review and pay',onClick:()=>openPayExistingInvoice(invModal.ri,invModal.iso,inv.id)},'✎')
                   )
@@ -1841,7 +1841,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Round Off (₹)'),
             React.createElement('input',{type:'number',className:'form-control',value:invForm.roundOff,onChange:ic2('roundOff'),placeholder:'0'})),
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Invoice Total (₹)'),
-            React.createElement('input',{className:'form-control',value:invFormTotal.toLocaleString(),disabled:true,style:{opacity:0.85,fontWeight:700,color:'var(--accent)'}}))
+            React.createElement('input',{className:'form-control',value:invFormTotal.toLocaleString('en-IN'),disabled:true,style:{opacity:0.85,fontWeight:700,color:'var(--accent)'}}))
         ),
         React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:-6,marginBottom:14}},'Auto-calculated: Taxable Value + IGST + CGST + SGST + Round Off'),
         React.createElement('div',{className:'form-group'},React.createElement('label',null,'Due Date'),
@@ -1867,7 +1867,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
             :0;
           return React.createElement('div',{className:'form-group',style:{marginBottom:0,background:'rgba(76,175,125,0.08)',border:'1px solid rgba(76,175,125,0.3)',borderRadius:'var(--r)',padding:'12px 14px'}},
             otherPaid>0&&React.createElement('div',{style:{fontSize:11,color:'var(--text2)',marginBottom:10,paddingBottom:10,borderBottom:'1px solid rgba(76,175,125,0.25)'}},
-              'Previously Paid (other payments on this invoice): ₹'+otherPaid.toLocaleString()+' — this invoice\'s total will show ₹'+(otherPaid+(Number(invForm.amountPaid)||0)).toLocaleString()+' paid once saved.'),
+              'Previously Paid (other payments on this invoice): ₹'+otherPaid.toLocaleString('en-IN')+' — this invoice\'s total will show ₹'+(otherPaid+(Number(invForm.amountPaid)||0)).toLocaleString('en-IN')+' paid once saved.'),
             React.createElement('label',{style:{color:'var(--green)',fontWeight:600}},'Amount Paid (₹) *'),
             React.createElement('input',{type:'number',min:0,className:'form-control',value:invForm.amountPaid,onChange:ic2('amountPaid'),placeholder:'0'}),
             React.createElement('div',{style:{marginTop:10}},
@@ -1944,7 +1944,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                   },
                     React.createElement('option',{value:''},'— Select Employee —'),
                     empOptions.map(e=>React.createElement('option',{key:e.id,value:e.name},
-                      e.name+(e.status!=='Active'?' — Left':'')+(isOutstandingRow(empModal.ri)?' (₹'+referenceAmountFor(e,EXPENSE_ROWS[empModal.ri]?.name,empModal.iso).toLocaleString()+' ref.)':'')
+                      e.name+(e.status!=='Active'?' — Left':'')+(isOutstandingRow(empModal.ri)?' (₹'+referenceAmountFor(e,EXPENSE_ROWS[empModal.ri]?.name,empModal.iso).toLocaleString('en-IN')+' ref.)':'')
                     ))
                   )
                 ),
@@ -2030,7 +2030,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                         React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
                           React.createElement('button',{type:'button',className:'btn btn-ghost btn-sm',onClick:()=>addEntryScheduleRow(i)},'+ Add Month'),
                           React.createElement('span',{style:{fontSize:11,color:schedTotal===Number(entry.amount||0)?'var(--green)':'var(--orange)'}},
-                            'Planned: ₹'+schedTotal.toLocaleString()+' of ₹'+Number(entry.amount||0).toLocaleString()
+                            'Planned: ₹'+schedTotal.toLocaleString('en-IN')+' of ₹'+Number(entry.amount||0).toLocaleString('en-IN')
                           )
                         )
                       )
@@ -2058,7 +2058,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
         }},
           React.createElement('div',{style:{fontSize:12,color:'var(--teal)'}},getEmpLabel(modalEntries.filter(function(e){return e.empName&&Number(e.amount)>0;}))),
           React.createElement('div',{style:{fontSize:14,fontWeight:700,color:'var(--teal)'}},
-            '₹'+modalEntries.filter(e=>Number(e.amount)>0).reduce((s,e)=>s+Number(e.amount),0).toLocaleString()
+            '₹'+modalEntries.filter(e=>Number(e.amount)>0).reduce((s,e)=>s+Number(e.amount),0).toLocaleString('en-IN')
           )
         ),
 
@@ -2137,7 +2137,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
 
         React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:14,borderTop:'1px solid var(--border)'}},
           React.createElement('div',{style:{fontSize:12,color:'var(--accent)'}},
-            'Total: ₹'+modalDescEntries.reduce((s,e)=>s+(Number(e.amount)||0),0).toLocaleString()
+            'Total: ₹'+modalDescEntries.reduce((s,e)=>s+(Number(e.amount)||0),0).toLocaleString('en-IN')
           ),
           React.createElement('div',{style:{display:'flex',gap:8}},
             React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setDescModal(null)},'Cancel'),
@@ -2181,7 +2181,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
             // Outstanding Recovery: warn (don't block) if this invoice's total across all lines
             // in this save exceeds what's actually still due against it.
             const overDue=salesEntryModal.sri===IDX_OREC?overDueWarningFor(entry,modalSalesEntries,salesEntryModal.iso):null;
-            const overDueWarning=overDue&&'⚠ '+overDue.invoiceNo+': ₹'+Math.round(overDue.entered).toLocaleString()+' entered exceeds the ₹'+Math.round(overDue.due).toLocaleString()+' actually due on this invoice';
+            const overDueWarning=overDue&&'⚠ '+overDue.invoiceNo+': ₹'+Math.round(overDue.entered).toLocaleString('en-IN')+' entered exceeds the ₹'+Math.round(overDue.due).toLocaleString('en-IN')+' actually due on this invoice';
             return React.createElement('div',{key:i,style:{marginBottom:8}},
               React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center'}},
                 (SALES_ENTRY_FIELDS[salesEntryModal.sri]||[]).map(f=>{
@@ -2199,7 +2199,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                       style:{flex:1,padding:'8px 10px',fontSize:12.5,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',color:'var(--text)'}},
                       React.createElement('option',{value:''},options.length?'— Select Invoice No —':'No outstanding invoices'),
                       options.map(o=>React.createElement('option',{key:o.invoiceNo,value:o.invoiceNo},
-                        o.invoiceNo+(o.personName?' — '+o.personName:'')+(o.remaining!=null?' (₹'+o.remaining.toLocaleString()+' due)':'')
+                        o.invoiceNo+(o.personName?' — '+o.personName:'')+(o.remaining!=null?' (₹'+o.remaining.toLocaleString('en-IN')+' due)':'')
                       ))
                     );
                   }
@@ -2220,7 +2220,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                   onBlur:()=>{
                     if(salesEntryModal.sri!==IDX_OREC)return;
                     const w=overDueWarningFor(entry,modalSalesEntries,salesEntryModal.iso);
-                    if(w)dseSalesToastWarn('⚠ '+w.invoiceNo+': ₹'+Math.round(w.entered).toLocaleString()+' entered exceeds the ₹'+Math.round(w.due).toLocaleString()+' actually due on this invoice');
+                    if(w)dseSalesToastWarn('⚠ '+w.invoiceNo+': ₹'+Math.round(w.entered).toLocaleString('en-IN')+' entered exceeds the ₹'+Math.round(w.due).toLocaleString('en-IN')+' actually due on this invoice');
                   },
                   style:{width:110,padding:'8px 10px',fontSize:12.5,background:'var(--bg3)',border:overDueWarning?'1px solid var(--red)':'1px solid var(--border)',borderRadius:'var(--r)',color:'var(--text)',textAlign:'right'}
                 }),
@@ -2238,7 +2238,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
 
         React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:14,borderTop:'1px solid var(--border)'}},
           React.createElement('div',{style:{fontSize:12,color:'var(--accent)'}},
-            'Total: ₹'+modalSalesEntries.reduce((s,e)=>s+(Number(e.amount)||0),0).toLocaleString()
+            'Total: ₹'+modalSalesEntries.reduce((s,e)=>s+(Number(e.amount)||0),0).toLocaleString('en-IN')
           ),
           React.createElement('div',{style:{display:'flex',gap:8}},
             React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setSalesEntryModal(null)},'Cancel'),
@@ -2270,21 +2270,21 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
           ?React.createElement(React.Fragment,null,
               React.createElement('div',{className:'attention-card attention-card-sm',style:{color:'var(--text2)',margin:'10px 0'}},
                 "Couldn't confidently find a Closing Balance figure in that file. Computed Closing Cash Balance from the books: ",
-                React.createElement('b',null,'₹'+Math.round(ocrResult.computed).toLocaleString()),
+                React.createElement('b',null,'₹'+Math.round(ocrResult.computed).toLocaleString('en-IN')),
                 '. Raw text read off the attachment is below — please check it manually.'
               ),
               React.createElement('div',{style:{fontSize:11,color:'var(--text3)',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:10,maxHeight:160,overflowY:'auto',whiteSpace:'pre-wrap',fontFamily:'monospace'}},ocrResult.text||'(no text detected)')
             )
           :React.createElement(React.Fragment,null,
               React.createElement('div',{style:{display:'flex',gap:10,marginBottom:14}},
-                React.createElement('div',{className:'metric-card blue',style:{flex:1}},React.createElement('div',{className:'metric-label'},'Computed (Books)'),React.createElement('div',{className:'metric-value'},'₹'+Math.round(ocrResult.computed).toLocaleString())),
-                React.createElement('div',{className:'metric-card '+(ocrResult.status==='deficiency'?'red':ocrResult.status==='excess'?'amber':'green'),style:{flex:1}},React.createElement('div',{className:'metric-label'},'Register (OCR)'),React.createElement('div',{className:'metric-value'},'₹'+Math.round(ocrResult.value).toLocaleString()))
+                React.createElement('div',{className:'metric-card blue',style:{flex:1}},React.createElement('div',{className:'metric-label'},'Computed (Books)'),React.createElement('div',{className:'metric-value'},'₹'+Math.round(ocrResult.computed).toLocaleString('en-IN'))),
+                React.createElement('div',{className:'metric-card '+(ocrResult.status==='deficiency'?'red':ocrResult.status==='excess'?'amber':'green'),style:{flex:1}},React.createElement('div',{className:'metric-label'},'Register (OCR)'),React.createElement('div',{className:'metric-value'},'₹'+Math.round(ocrResult.value).toLocaleString('en-IN')))
               ),
               ocrResult.status==='deficiency'&&React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--red)',background:'rgba(255,107,107,0.12)',border:'1px solid rgba(255,107,107,0.5)',borderRadius:'var(--r)',padding:'12px 14px',marginBottom:10}},
-                '⚠ Cash Deficiency Detected — the register shows ₹'+Math.abs(ocrResult.diff).toLocaleString()+' less than the computed Closing Cash Balance. Please investigate this shortage before closing the day.'
+                '⚠ Cash Deficiency Detected — the register shows ₹'+Math.abs(ocrResult.diff).toLocaleString('en-IN')+' less than the computed Closing Cash Balance. Please investigate this shortage before closing the day.'
               ),
               ocrResult.status==='excess'&&React.createElement('div',{className:'attention-card attention-card-sm',style:{fontWeight:600,color:'var(--orange)',marginBottom:10}},
-                '⚠ Register shows ₹'+Math.abs(ocrResult.diff).toLocaleString()+' more than the computed Closing Cash Balance — check for an entry missed in the books.'
+                '⚠ Register shows ₹'+Math.abs(ocrResult.diff).toLocaleString('en-IN')+' more than the computed Closing Cash Balance — check for an entry missed in the books.'
               ),
               ocrResult.status==='match'&&React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--green)',background:'rgba(76,175,125,0.12)',border:'1px solid rgba(76,175,125,0.5)',borderRadius:'var(--r)',padding:'12px 14px',marginBottom:10}},
                 '✓ Matches — no discrepancy found for this day.'

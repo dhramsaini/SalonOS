@@ -230,10 +230,10 @@ function BillingSheet({salon}){
 
     // Metrics
     React.createElement('div',{className:'grid4',style:{marginBottom:16}},
-      React.createElement('div',{className:'metric-card green'},React.createElement('div',{className:'metric-label'},"Today's Collection"),React.createElement('div',{className:'metric-value'},'₹'+todaySales.toLocaleString('en-IN'))),
-      React.createElement('div',{className:'metric-card blue'},React.createElement('div',{className:'metric-label'},'This Month'),React.createElement('div',{className:'metric-value'},'₹'+monthSales.toLocaleString('en-IN')),React.createElement('div',{className:'metric-sub'},new Date().toLocaleDateString('en-IN',{month:'long',year:'numeric'}))),
+      React.createElement('div',{className:'metric-card green'},React.createElement('div',{className:'metric-label'},"Today's Collection"),React.createElement('div',{className:'metric-value'},rupee(todaySales))),
+      React.createElement('div',{className:'metric-card blue'},React.createElement('div',{className:'metric-label'},'This Month'),React.createElement('div',{className:'metric-value'},rupee(monthSales)),React.createElement('div',{className:'metric-sub'},new Date().toLocaleDateString('en-IN',{month:'long',year:'numeric'}))),
       React.createElement('div',{className:'metric-card amber'},React.createElement('div',{className:'metric-label'},'Total Invoices'),React.createElement('div',{className:'metric-value'},invoices.length)),
-      React.createElement('div',{className:'metric-card '+(pending>0?'red':'teal')},React.createElement('div',{className:'metric-label'},'Pending Dues'),React.createElement('div',{className:'metric-value'},'₹'+pending.toLocaleString('en-IN')),React.createElement('div',{className:'metric-sub'},invoices.filter(i=>i.status==='Unpaid').length+' unpaid'))
+      React.createElement('div',{className:'metric-card '+(pending>0?'red':'teal')},React.createElement('div',{className:'metric-label'},'Pending Dues'),React.createElement('div',{className:'metric-value'},rupee(pending)),React.createElement('div',{className:'metric-sub'},invoices.filter(i=>i.status==='Unpaid').length+' unpaid'))
     ),
 
     // Filters
@@ -273,7 +273,7 @@ function BillingSheet({salon}){
                 React.createElement('td',{style:{fontSize:12}},inv.staff||'—'),
                 React.createElement('td',null,React.createElement('span',{className:'badge '+modeBadge(inv.paymentMode)},inv.paymentMode)),
                 React.createElement('td',null,React.createElement('span',{className:'badge '+(inv.status==='Paid'?'badge-green':'badge-red')},inv.status)),
-                React.createElement('td',{style:{textAlign:'right',fontWeight:700,color:'var(--text)'}},'₹'+t.total.toLocaleString('en-IN')),
+                React.createElement('td',{style:{textAlign:'right',fontWeight:700,color:'var(--text)'}},rupee(t.total)),
                 React.createElement('td',null,
                   React.createElement('div',{style:{display:'flex',gap:4,flexWrap:'nowrap'}},
                     React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setViewInv(inv)},'View'),
@@ -336,16 +336,16 @@ function BillingSheet({salon}){
             FG('Discount (₹)',INP({type:'number',min:0,value:form.discount,onChange:e=>setForm(f=>({...f,discount:Math.max(0,Number(e.target.value)||0)})),placeholder:'0'}))
           ),
           React.createElement('div',{style:{flex:1,minWidth:240,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'12px 14px'}},
-            [['Subtotal','₹'+liveT.subtotal.toLocaleString('en-IN'),'var(--text2)'],
+            [['Subtotal',rupee(liveT.subtotal),'var(--text2)'],
              ...(liveT.disc>0?[['Discount','− ₹'+liveT.disc.toLocaleString('en-IN'),'var(--red)']]:[]),
-             ['Taxable','₹'+liveT.taxable.toLocaleString('en-IN'),'var(--text2)'],
-             ['GST @ '+GST_PCT+'%','₹'+liveT.gst.toLocaleString('en-IN'),'var(--text2)']
+             ['Taxable',rupee(liveT.taxable),'var(--text2)'],
+             ['GST @ '+GST_PCT+'%',rupee(liveT.gst),'var(--text2)']
             ].map((r,i)=>React.createElement('div',{key:i,style:{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:6}},
               React.createElement('span',{style:{color:'var(--text3)'}},r[0]),React.createElement('span',{style:{color:r[2]}},r[1])
             )),
             React.createElement('div',{style:{display:'flex',justifyContent:'space-between',borderTop:'2px solid var(--accent)',paddingTop:8,marginTop:4}},
               React.createElement('span',{style:{fontWeight:700,color:'var(--text)'}},'Grand Total'),
-              React.createElement('span',{style:{fontWeight:700,fontSize:16,color:'var(--accent)'}},'₹'+liveT.total.toLocaleString('en-IN'))
+              React.createElement('span',{style:{fontWeight:700,fontSize:16,color:'var(--accent)'}},rupee(liveT.total))
             )
           )
         ),
@@ -374,17 +374,17 @@ function BillingSheet({salon}){
             React.createElement('tbody',null,viewInv.items.map((it,i)=>React.createElement('tr',{key:i},
               React.createElement('td',null,it.name),
               React.createElement('td',{style:{textAlign:'right'}},it.qty),
-              React.createElement('td',{style:{textAlign:'right'}},'₹'+it.rate.toLocaleString('en-IN')),
+              React.createElement('td',{style:{textAlign:'right'}},rupee(it.rate)),
               React.createElement('td',{style:{textAlign:'right',fontWeight:600,color:'var(--text)'}},'₹'+(it.qty*it.rate).toLocaleString('en-IN'))
             )))
           )
         ),
         React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'12px 14px'}},
-          [['Subtotal','₹'+t.subtotal.toLocaleString('en-IN')],...(t.disc>0?[['Discount','− ₹'+t.disc.toLocaleString('en-IN')]]:[]),['GST @ '+GST_PCT+'%','₹'+t.gst.toLocaleString('en-IN')]].map((r,i)=>
+          [['Subtotal',rupee(t.subtotal)],...(t.disc>0?[['Discount','− ₹'+t.disc.toLocaleString('en-IN')]]:[]),['GST @ '+GST_PCT+'%',rupee(t.gst)]].map((r,i)=>
             React.createElement('div',{key:i,style:{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:6,color:'var(--text2)'}},React.createElement('span',null,r[0]),React.createElement('span',null,r[1]))
           ),
           React.createElement('div',{style:{display:'flex',justifyContent:'space-between',borderTop:'2px solid var(--accent)',paddingTop:8,marginTop:4}},
-            React.createElement('span',{style:{fontWeight:700,color:'var(--text)'}},'Grand Total'),React.createElement('span',{style:{fontWeight:700,fontSize:16,color:'var(--accent)'}},'₹'+t.total.toLocaleString('en-IN')))
+            React.createElement('span',{style:{fontWeight:700,color:'var(--text)'}},'Grand Total'),React.createElement('span',{style:{fontWeight:700,fontSize:16,color:'var(--accent)'}},rupee(t.total)))
         ),
         React.createElement('div',{className:'modal-actions'},
           React.createElement('button',{className:'btn btn-ghost',onClick:()=>setViewInv(null)},'Close'),
@@ -629,7 +629,7 @@ function AppointmentBook({salon}){
           h('div',{className:'form-group'},h('label',null,'Booked via'),
             h('select',{className:'form-control',value:modal.source,onChange:e=>setModal({...modal,source:e.target.value})},
               ['Phone','Walk-in','Online','WhatsApp'].map(s=>h('option',{key:s},s))))),
-        h('div',{className:'help-tip'},fdDur(modal.service)+' minutes · '+inr(fdRate(modal.service))+' · finishes '+fdT12(modal.start+fdDur(modal.service))),
+        h('div',{className:'help-note'},fdDur(modal.service)+' minutes · '+inr(fdRate(modal.service))+' · finishes '+fdT12(modal.start+fdDur(modal.service))),
         h('div',{className:'modal-actions'},
           h('button',{className:'btn btn-ghost',onClick:()=>setModal(null)},'Cancel'),
           h('button',{className:'btn btn-primary',onClick:save},'Book appointment')))),
@@ -760,7 +760,7 @@ function ClientCRM({salon}){
           h('div',{className:'kv'},h('span',null,'Preferred stylist'),h('span',null,c.stylist)),
           h('div',{className:'kv'},h('span',null,'Membership'),h('span',null,c.tier)),
           h('div',{className:'kv'},h('span',null,'Birthday'),h('span',null,c.birthday)),
-          c.notes?h('div',{className:'help-tip',style:{marginTop:12}},'Note: '+c.notes):null,
+          c.notes?h('div',{className:'help-note',style:{marginTop:12}},'Note: '+c.notes):null,
           h('div',{style:{display:'flex',gap:8,marginTop:16,flexWrap:'wrap'}},
             h('button',{className:'btn btn-primary btn-sm',onClick:()=>toast('Open the Appointment Book to place '+c.name.split(' ')[0]+' in a slot','info')},'Book appointment'),
             h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setWa(c)},'WhatsApp'),
@@ -895,7 +895,7 @@ function InventorySheet({salon}){
         h('div',{className:'form-group'},h('label',null,'Quantity in '+rec.unit),
           h('input',{className:'form-control',type:'number',autoFocus:true,value:rec.qty,
             onChange:e=>setRec({...rec,qty:e.target.value}),onKeyDown:e=>e.key==='Enter'&&receive()})),
-        h('div',{className:'help-tip'},'Landed cost at '+inr(rec.rate)+' per '+rec.unit+' = '+inr((Number(rec.qty)||0)*rec.rate)),
+        h('div',{className:'help-note'},'Landed cost at '+inr(rec.rate)+' per '+rec.unit+' = '+inr((Number(rec.qty)||0)*rec.rate)),
         h('div',{className:'modal-actions'},
           h('button',{className:'btn btn-ghost',onClick:()=>setRec(null)},'Cancel'),
           h('button',{className:'btn btn-primary',onClick:receive},'Add to stock'))))

@@ -11,6 +11,8 @@ function excelCellDate(v){return new Date(v.getTime()+60000);}
 // ── Shared currency formatter, used by every screen ──
 // decimals: number of fraction digits (default 0)
 // dashZero: show '—' instead of '₹0' when the amount is zero (default false)
+// "-₹1,32,837" (sign before the ₹, Indian digit grouping) — '₹'+n.toLocaleString() gave "₹-132,837".
+function rupee(n){const v=Number(n)||0;return(v<0?'-':'')+'₹'+Math.abs(v).toLocaleString('en-IN',{maximumFractionDigits:2});}
 function formatMoney(n,{decimals=0,dashZero=false}={}){
   const num=Number(n||0);
   if(dashZero&&num===0)return '—';
@@ -539,7 +541,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.09.30.34';
+const APP_VERSION='2026.09.30.35';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
