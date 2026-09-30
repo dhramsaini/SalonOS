@@ -58,6 +58,8 @@ function TallyAutoSyncCard({salonId,conn,updateConn,companies,tallyOk,onDone}){
 //   History  — every sync, send, ledger creation and download (kv salonos_tally_log_outlet_<id>).
 //   Settings — connector, company, evening auto-sync, set-up guide.
 // Voucher content comes from the shared builders (js/02-shared.js), so files and live sync match. ──
+// Install with no downloaded file — Windows Smart App Control blocks .bat files from the internet.
+const TALLY_INSTALL_CMD="iex ((New-Object Net.WebClient).DownloadString('https://digitalca.co.in/tally-connector/install.ps1'))";
 function TallyExportSheet({salon,onNavTab}={}){
   const h=React.createElement;
   const salonId=salon?.id;
@@ -456,6 +458,11 @@ function TallyExportSheet({salon,onNavTab}={}){
           h('div',{style:{marginTop:4}},'Download both into one folder and double-click the .bat; keep its window open.')),
         h('a',{className:'btn btn-ghost btn-sm',href:'https://www.python.org/downloads/windows/',target:'_blank',rel:'noopener noreferrer',
           title:'Only for other Tally tools that ask for Python — the SalonOS Tally Connector does not need it'},'🐍 Install Python ↗')),
+      !connState.background&&h('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'10px 12px',marginTop:10,fontSize:12,color:'var(--text2)',lineHeight:1.6}},
+        h('b',null,'Windows says “Smart App Control blocked a file”? '),'Install without a file instead: open ',h('b',null,'Start'),', type ',h('b',null,'PowerShell'),', press Enter, paste this line and press Enter (same install — starts with Windows):',
+        h('div',{style:{display:'flex',gap:8,alignItems:'center',marginTop:6,flexWrap:'wrap'}},
+          h('code',{style:{flex:'1 1 320px',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,padding:'6px 8px',fontSize:11.5,wordBreak:'break-all',userSelect:'all'}},TALLY_INSTALL_CMD),
+          h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{try{navigator.clipboard.writeText(TALLY_INSTALL_CMD).then(()=>success('Copied — paste it in PowerShell'),()=>info('Select the line and copy it (Ctrl+C)'));}catch(e){info('Select the line and copy it (Ctrl+C)');}}},'📋 Copy'))),
       h('div',{style:{fontSize:11,color:'var(--text3)',marginTop:6}},'Python is only for other Tally tools that ask for it — the SalonOS Tally Connector runs on Windows PowerShell and does not need it. When installing, tick “Add python.exe to PATH”.'),
       showConnSettings&&h('div',{className:'form-row cols2',style:{marginTop:12,marginBottom:0}},
         h('div',{className:'form-group'},h('label',null,'Connector address'),h('input',{className:'form-control',value:conn.url,placeholder:TALLY_CONNECTOR_DEFAULT,onChange:e=>updateConn({url:e.target.value.trim()})})),

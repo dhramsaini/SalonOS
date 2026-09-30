@@ -156,14 +156,35 @@ function DynamicDonutChart({segments,size=150,thickness=20,formatValue,centerLab
 // attach — no browser lets a website attach a file to a specific recipient automatically, that's
 // a hard OS/browser restriction, so this gets the person as close to "done" as the platform
 // allows rather than pretending otherwise. ──
-function ShareReportButton({title,subtitle,getBodyHtml,getSheetRows,execSummary,landscape,buildExcelBlob,buildPdfBlob}){
+// ── Draft / Final watermark — a faint repeating diagonal word over a working sheet (pointer
+// events pass through). Draft until the month is marked final (locked), then Final. ──
+function WatermarkOverlay({text,final}){
+  const col=final?'rgba(22,163,74,0.10)':'rgba(220,38,38,0.09)';
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="360" height="240"><text x="180" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="64" font-weight="700" fill="'+col+'" transform="rotate(-28 180 120)">'+text+'</text></svg>';
+  return React.createElement('div',{'aria-hidden':true,style:{position:'absolute',inset:0,pointerEvents:'none',zIndex:3,
+    backgroundImage:'url("data:image/svg+xml;utf8,'+encodeURIComponent(svg)+'")',backgroundRepeat:'repeat'}});
+}
+// P&L (Monthly) "final" per outlet and month: {'<fy>|<mi>':{final:true,by,at}}.
+function loadPnlFinal(sid){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_pnl_final',sid))||'{}');return v&&typeof v==='object'?v:{};}catch(e){return{};}}
+function isPnlFinal(sid,fy,mi){return !!(loadPnlFinal(sid)[fy+'|'+mi]||{}).final;}
+function setPnlFinal(sid,fy,mi,final){
+  const all=loadPnlFinal(sid),u=currentSessionUser();
+  if(final)all[fy+'|'+mi]={final:true,by:(u&&(u.name||u.email))||'',at:new Date().toISOString()};else delete all[fy+'|'+mi];
+  safeLocalSet(outletKey('salonos_pnl_final',sid),JSON.stringify(all));
+}
+function WatermarkBadge({final,hint}){
+  return React.createElement('span',{className:'badge '+(final?'badge-green':'badge-red'),title:hint||'',style:{fontSize:11,marginLeft:8,verticalAlign:'middle'}},final?'FINAL':'DRAFT');
+}
+// watermark: 'DRAFT' | 'FINAL' (optional) — stamped on every format and added to the file name.
+function ShareReportButton({title,subtitle,getBodyHtml,getSheetRows,execSummary,landscape,buildExcelBlob,buildPdfBlob,watermark}){
   const {toast}=useToast();
+  if(watermark)title=title+' ('+(watermark==='FINAL'?'Final':'Draft')+')';
   const [show,setShow]=useState(false);
   const [busy,setBusy]=useState(false);
   const [format,setFormat]=useState('pdf');
   const [channel,setChannel]=useState('device'); // 'device' | 'wa' | 'email'
   const [recipient,setRecipient]=useState('');
-  const printOpts={execSummary,landscape};
+  const printOpts={execSummary,landscape,watermark};
 
   const safeName=title.replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'')||'Report';
   const openModal=()=>{setShow(true);setFormat('pdf');setChannel('device');setRecipient('');loadScript(CDN_XLSX_URL).catch(()=>{});loadScript(CDN_JSPDF_URL).then(()=>loadScript(CDN_JSPDF_AUTOTABLE_URL)).catch(()=>{});};
@@ -175,8 +196,8 @@ function ShareReportButton({title,subtitle,getBodyHtml,getSheetRows,execSummary,
   // formulas or per-cell colour-coding the generic static-values exporter can't do), those are
   // used instead of the generic exporter for that format.
   const buildBlobFor=async(fmt)=>{
-    if(fmt==='excel')return{blob:buildExcelBlob?await buildExcelBlob():await exportReportExcelBlob(title,getSheetRows()),filename:safeName+'.xlsx'};
-    if(fmt==='pdf')return{blob:buildPdfBlob?await buildPdfBlob():await exportReportPdfBlob(title,subtitle,getSheetRows(),{landscape}),filename:safeName+'.pdf'};
+    if(fmt==='excel'){const b=buildExcelBlob?await buildExcelBlob():await exportReportExcelBlob(title,getSheetRows());return{blob:watermark?await stampExcelBlob(b,watermark):b,filename:safeName+'.xlsx'};}
+    if(fmt==='pdf')return{blob:buildPdfBlob?await buildPdfBlob():await exportReportPdfBlob(title,subtitle,getSheetRows(),{landscape,watermark}),filename:safeName+'.pdf'};
     if(fmt==='html')return{blob:exportReportHtmlBlob(title,subtitle,getBodyHtml(),printOpts),filename:safeName+'.html'};
     return{blob:exportReportWordBlob(title,subtitle,getBodyHtml(),printOpts),filename:safeName+'.doc'};
   };

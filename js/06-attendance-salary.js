@@ -1503,7 +1503,8 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     React.createElement('input',{type:'checkbox',checked:cols[k],onChange:()=>toggleCol(k)}),label
   );
 
-  return React.createElement('div',{className:'fade-in'},
+  return React.createElement('div',{className:'fade-in',style:{position:'relative'}},
+    React.createElement(WatermarkOverlay,{text:monthLocked?'FINAL':'DRAFT',final:monthLocked}),
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,
         React.createElement('div',{className:'page-title'},'Salary Working Sheet'),
@@ -1520,7 +1521,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
           try{
             const list=exportWorkings.filter(w=>(Number(w.grossAfterLop)||0)>0||(Number(w.net)||0)>0);
             if(!list.length){alert('No salary for this month yet — mark attendance first.');return;}
-            const blob=await buildPayslipsPdf(salon,selYear,selMonth,list);
+            const blob=await buildPayslipsPdf(salon,selYear,selMonth,list,monthLocked?'':'DRAFT');
             const a=document.createElement('a');a.href=URL.createObjectURL(blob);
             a.download='Payslips_'+String((salon&&salon.name)||'Outlet').replace(/[^\w]+/g,'_')+'_'+MONTHS[selMonth]+'_'+selYear+'.pdf';
             document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(a.href),5000);
@@ -1541,7 +1542,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
           React.createElement('option',{value:'pt'},'PT Challan')
         ),
         ptApplies&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--orange)',borderColor:'rgba(255,159,67,0.4)'},onClick:()=>setShowPtSlabs(true)},'🧾 PT Slabs ('+ptState+')'),
-        React.createElement(ShareReportButton,{title:swReportTitle,subtitle:'Salary Working',getBodyHtml:swReportBodyHtml,getSheetRows:swReportSheetRows,buildExcelBlob:swBuildExcelBlob,landscape:true}),
+        React.createElement(ShareReportButton,{title:swReportTitle,subtitle:'Salary Working',getBodyHtml:swReportBodyHtml,getSheetRows:swReportSheetRows,buildExcelBlob:swBuildExcelBlob,landscape:true,watermark:monthLocked?'FINAL':'DRAFT'}),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:doRefresh},'⟳ Refresh'),
         !monthLocked&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:lockSalaryWorking},'🔒 Lock Salary Working'),
         !monthLocked&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:lockEntireMonth},'🔒 Lock Entire Month'),

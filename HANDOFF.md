@@ -329,6 +329,14 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   - tallySyncVouchers: records each accepted voucher immediately (a stop half-way re-sent them → duplicates in Tally); an
     empty ledger list (no company open) now stops with a clear error, so the evening sync retries instead of failing all.
   Tests 83. Scanner for undefined function calls: scratchpad undef_scan.py (no real hits).
+· (v2026.09.30.26) **DRAFT / FINAL watermark** on Salary Working (final = month locked), Incentive Working (final =
+  IW lock) and P&L (Monthly) (new real "✓ Mark as Final / ↩ Un-finalize" — replaced the old toast-only "Lock month";
+  kv salonos_pnl_final_outlet_<id> {'<fy>|<mi>':{final,by,at}}; Super Admin or edit access to outlet-pnl). Screen:
+  WatermarkOverlay (js/02, tiled SVG, pointer-events none) + WatermarkBadge. Files: ShareReportButton `watermark` prop →
+  title "(Draft)/(Final)", PDF pdfWatermark (jsPDF GState), Word/HTML .sos-wm, Excel stampExcelBlob (tab colour + print
+  header; Excel has no real watermark); P&L's own Excel exports stamped; payslips say DRAFT until Salary Working locked.
+  **Smart App Control** blocks downloaded .bat files: tally-connector/install.ps1 + Settings box with a one-line
+  PowerShell command (iex WebClient.DownloadString …/install.ps1) — same install, no downloaded file. Tested on this PC.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

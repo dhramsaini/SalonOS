@@ -420,13 +420,26 @@ function OutletPnLCore({salon,period}){
     rows.push(['EBITDA',cur.ebitda,of(cur.ebitda).toFixed(1)]);
     cur.below.forEach(l=>rows.push([l.name,l.amt,of(l.amt).toFixed(1)]));
     rows.push(['Profit before tax',cur.pbt,of(cur.pbt).toFixed(1)]);
-    const filename='PnL_'+(salon?salon.name.split('—')[0].trim().replace(/\s/g,'_'):'Outlet')+'_'+PL_MONTHS[mi]+'_FY'+fy+'.xlsx';
+    const filename='PnL_'+(salon?salon.name.split('—')[0].trim().replace(/\s/g,'_'):'Outlet')+'_'+PL_MONTHS[mi]+'_FY'+fy+'_'+(plFinal?'Final':'Draft')+'.xlsx';
     try{
-      const blob=await exportReportExcelBlob('Monthly P&L',rows);
+      const blob=await stampExcelBlob(await exportReportExcelBlob('Monthly P&L',rows),plWm);
       const url=URL.createObjectURL(blob);const a=document.createElement('a');
       a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);
       toast('Monthly P&L exported');
     }catch(err){toast(err.message,'error');}
+  };
+  const [finalTick,setFinalTick]=useState(0);
+  const plFinal=isPnlFinal(sid,fy,mi)&&finalTick>=0;
+  const plFinalRec=loadPnlFinal(sid)[fy+'|'+mi]||null;
+  const plWm=plFinal?'FINAL':'DRAFT';
+  const plUser=currentSessionUser();
+  const canFinalize=!!plUser&&(plUser.role==='Super Admin'||userCanEditSheet(plUser,sid,'outlet-pnl'));
+  const toggleFinal=()=>{
+    const label=PL_MONTHS[mi]+' '+(mi<9?fy.slice(0,4):'20'+fy.slice(5));
+    if(!plFinal){if(!window.confirm('Mark the '+label+' P&L as FINAL? Screens and every download will show FINAL instead of DRAFT. You can un-finalize it later.'))return;}
+    else if(!window.confirm('Un-finalize the '+label+' P&L? It goes back to DRAFT.'))return;
+    setPnlFinal(sid,fy,mi,!plFinal);setFinalTick(t=>t+1);
+    toast(plFinal?label+' P&L is back to Draft':label+' P&L marked Final','success');
   };
   const plReportTitle='Monthly P&L — '+(salon?salon.name.split('—')[0].trim():'Outlet')+' — '+PL_MONTHS[mi]+' '+(mi<9?fy.slice(0,4):'20'+fy.slice(5));
   // ── P&L Excel export with LIVE FORMULAS — not pasted numbers. Totals are real SUM() formulas,
@@ -699,9 +712,9 @@ function OutletPnLCore({salon,period}){
 
       ws3.columns=[{width:42},{width:16},{width:4},{width:52}];
 
-      const filename=(plReportTitle.replace(/[^a-z0-9]+/gi,'_')||'PnL')+'_with_Formulas.xlsx';
+      const filename=(plReportTitle.replace(/[^a-z0-9]+/gi,'_')||'PnL')+'_with_Formulas_'+(plFinal?'Final':'Draft')+'.xlsx';
       const buf=await wb.xlsx.writeBuffer();
-      const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const blob=await stampExcelBlob(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),plWm);
       const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();
       setTimeout(()=>URL.revokeObjectURL(url),4000);
       toast(filename+' downloaded — every total and % is a live formula, open it in Excel to trace it','success');
@@ -790,14 +803,15 @@ function OutletPnLCore({salon,period}){
   const trend=PL_MONTHS.map((m,i)=>{const p=plBuild(sid,fy,i);return {m,rev:p.revenue,pbt:p.pbt}});
   const maxRev=Math.max(...trend.map(t=>t.rev));
 
-  return h('div',{className:'fade-in'},
+  return h('div',{className:'fade-in',style:{position:'relative'}},
+    h(WatermarkOverlay,{text:plWm,final:plFinal}),
     h('div',{className:'section-header'},
-      h('div',null,h('div',{className:'page-title'},fixAmp('Monthly P&L — '+(salon?salon.name:'Outlet'))),
+      h('div',null,h('div',{className:'page-title'},fixAmp('Monthly P&L — '+(salon?salon.name:'Outlet')),h(WatermarkBadge,{final:plFinal,hint:plFinal?'This month’s P&L is marked Final':'Draft until someone marks it Final'})),
         h('div',{className:'page-sub'},'One outlet, one month. Figures roll up from Billing, Daily Sales & Exp., Salary Working and Vendors.')),
       h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         h('button',{className:'btn btn-ghost btn-sm',onClick:exportCsv},'⬇ Export Excel'),
         h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},disabled:plExcelBusy,onClick:exportPnLExcelWithFormulas},plExcelBusy?'Working…':'⬇ Excel with Formulas'),
-        h(ShareReportButton,{title:plReportTitle,subtitle:'FY '+fy,getBodyHtml:plReportBodyHtml,getSheetRows:plReportSheetRows,
+        h(ShareReportButton,{title:plReportTitle,subtitle:'FY '+fy,getBodyHtml:plReportBodyHtml,getSheetRows:plReportSheetRows,watermark:plWm,
           execSummary:[
             'Revenue for the period: <b>'+money(cur.revenue)+'</b>'+(prevRev?' ('+pct(delta(cur.revenue,prevRev))+' vs '+cmp.toLowerCase()+')':''),
             'Gross Profit: <b>'+money(cur.gross)+'</b> ('+of(cur.gross).toFixed(1)+'% of revenue)',
@@ -806,7 +820,9 @@ function OutletPnLCore({salon,period}){
             cur.revenue>=breakEven?'Break-even covered, with '+money(cur.revenue-breakEven)+' of revenue to spare.':'Short of break-even by '+money(breakEven-cur.revenue)+'.'
           ]
         }),
-        h('button',{className:'btn btn-primary btn-sm',onClick:()=>toast('Month locked. Reviewers can now approve it from the Review Centre.','success')},'Lock month'))),
+        canFinalize&&h('button',{className:'btn btn-sm '+(plFinal?'btn-ghost':'btn-primary'),onClick:toggleFinal,
+          title:plFinal&&plFinalRec?'Marked Final'+(plFinalRec.by?' by '+plFinalRec.by:'')+' on '+new Date(plFinalRec.at).toLocaleDateString('en-IN'):'Mark this month’s P&L as final'},
+          plFinal?'↩ Un-finalize':'✓ Mark as Final'))),
 
     h('div',{className:'fd-toolbar'},
       h('div',{className:'fd-date'},
@@ -1794,7 +1810,7 @@ function reportInnerHtml(title,subtitle,bodyHtml,opts){
       <div class="brand">SalonOS — Business Report</div>
       <h1>${title}</h1>
       ${subtitle?`<div class="sub">${subtitle}</div>`:''}
-      <div class="meta">Generated ${new Date().toLocaleString('en-IN',{dateStyle:'long',timeStyle:'short'})}</div>
+      <div class="meta">Generated ${new Date().toLocaleString('en-IN',{dateStyle:'long',timeStyle:'short'})}${opts.watermark?` · <b style="color:${String(opts.watermark).toUpperCase()==='FINAL'?'#15803d':'#b91c1c'}">${String(opts.watermark).toUpperCase()==='FINAL'?'FINAL':'DRAFT — not final'}</b>`:''}</div>
     </div>
     ${opts.execSummary&&opts.execSummary.length?`<div class="exec-summary"><h2>Executive Summary</h2><ul>${opts.execSummary.map(li=>'<li>'+li+'</li>').join('')}</ul></div>`:''}
     ${showToc?`<div class="toc"><h2>Contents</h2><ol>${headings.map(h=>'<li><a href="#'+h.id+'">'+h.text+'</a></li>').join('')}</ol></div>`:''}
@@ -1805,8 +1821,11 @@ function reportPrintableHtml(title,subtitle,bodyHtml,opts){
   opts=opts||{};
   const pageSize=opts.landscape?'A4 landscape':'A4';
   const inner=reportInnerHtml(title,subtitle,bodyHtml,opts);
+  const wm=opts.watermark?String(opts.watermark).toUpperCase():'';
+  const wmCol=wm==='FINAL'?'rgba(22,163,74,0.12)':'rgba(220,38,38,0.12)';
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
     <style>
+      .sos-wm{position:fixed;top:38%;left:0;right:0;text-align:center;font:800 120px Arial,sans-serif;color:${wmCol};transform:rotate(-28deg);z-index:9;pointer-events:none;letter-spacing:0.08em}
       @page{size:${pageSize};margin:16mm 14mm}
       body{margin:0}
       .sos-report{max-width:${opts.landscape?'1280px':'960px'};padding:0}
@@ -1815,6 +1834,7 @@ function reportPrintableHtml(title,subtitle,bodyHtml,opts){
         .sos-report .footer{position:fixed;bottom:0;left:0;right:0}
       }
     </style></head><body>
+    ${wm?`<div class="sos-wm">${wm}</div>`:''}
     <div class="sos-report">${inner.html}</div>
     </body></html>`;
 }
@@ -2275,7 +2295,7 @@ function rupeesInWords(n){
 }
 // ── Branded payslips — one A4 page per employee, built from swWorkingsFor (the exact figures on
 // Salary Working, so the two can never disagree), with the outlet's logo and details. ──
-async function buildPayslipsPdf(salon,year,month,workings){
+async function buildPayslipsPdf(salon,year,month,workings,watermark){
   await loadScript(CDN_JSPDF_URL);
   await loadScript(CDN_JSPDF_AUTOTABLE_URL);
   if(!window.jspdf||!window.jspdf.jsPDF)throw new Error('PDF engine unavailable — check your internet connection.');
@@ -2339,6 +2359,7 @@ async function buildPayslipsPdf(salon,year,month,workings){
     doc.text('This is a computer-generated payslip and does not require a signature.',12,y);
     doc.text('Generated '+new Date().toLocaleString('en-IN')+' · SalonOS',12,y+4.5);
   });
+  if(watermark)pdfWatermark(doc,watermark);
   return doc.output('blob');
 }
 async function exportReportPdfBlob(title,subtitle,sheetRows,opts){
@@ -2428,7 +2449,37 @@ async function exportReportPdfBlob(title,subtitle,sheetRows,opts){
     doc.text('SalonOS — Confidential',8,ph-5);
     doc.text('Page '+i+' of '+pageCount,pw-8,ph-5,{align:'right'});
   }
+  if(opts&&opts.watermark)pdfWatermark(doc,opts.watermark);
   return doc.output('blob');
+}
+// Big faint diagonal DRAFT / FINAL across every page of a jsPDF document.
+function pdfWatermark(doc,label){
+  const text=String(label).toUpperCase(),fin=text==='FINAL';
+  const pw=doc.internal.pageSize.getWidth(),ph=doc.internal.pageSize.getHeight();
+  for(let i=1;i<=doc.internal.getNumberOfPages();i++){
+    doc.setPage(i);
+    try{doc.saveGraphicsState();doc.setGState(new doc.GState({opacity:0.13}));}catch(e){}
+    doc.setFont(undefined,'bold');doc.setFontSize(Math.min(pw,ph)/2.2);
+    if(fin)doc.setTextColor(22,163,74);else doc.setTextColor(220,38,38);
+    doc.text(text,pw/2,ph/2,{align:'center',baseline:'middle',angle:28});
+    try{doc.restoreGraphicsState();}catch(e){}
+  }
+  doc.setTextColor(0,0,0);doc.setFont(undefined,'normal');
+}
+// Marks an .xlsx as DRAFT / FINAL: red/green sheet tabs, the word printed at the top of every
+// page (Excel has no true watermark), and the workbook title.
+async function stampExcelBlob(blob,label){
+  const text=String(label).toUpperCase(),argb=text==='FINAL'?'FF16A34A':'FFDC2626';
+  await loadExcelJS();
+  const wb=new ExcelJS.Workbook();
+  await wb.xlsx.load(await blob.arrayBuffer());
+  wb.title=text;wb.subject=text==='FINAL'?'Final':'Draft — not final';
+  wb.eachSheet(ws=>{
+    ws.properties.tabColor={argb};
+    const hdr='&C&"Arial,Bold"&28&K'+argb.slice(2)+text;
+    ws.headerFooter={...(ws.headerFooter||{}),oddHeader:hdr,evenHeader:hdr,firstHeader:hdr};
+  });
+  return new Blob([await wb.xlsx.writeBuffer()],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
 
 async function pdfToText(file,say){

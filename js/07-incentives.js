@@ -558,7 +558,8 @@ function IncentiveWorkingCore({period,salon,user}={}){
     success('Incentive generated for '+MONTHS[iwGenMonth]+' '+iwGenYear+' — '+n+' employee'+(n===1?'':'s'));
   };
 
-  return React.createElement('div',{className:'fade-in'},
+  return React.createElement('div',{className:'fade-in',style:{position:'relative'}},
+    React.createElement(WatermarkOverlay,{text:iwMonthLocked?'FINAL':'DRAFT',final:iwMonthLocked}),
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,
         React.createElement('div',{className:'page-title'},'Incentive Working Sheet'),
@@ -570,7 +571,7 @@ function IncentiveWorkingCore({period,salon,user}={}){
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openIwGenerate},'🧮 Generate Incentive'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowSettings(true)},'⚙ Incentive Rules & Settings'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},onClick:exportExcel},iwSelectedIds.size>0?'⬇ Export Selected ('+iwSelectedIds.size+')':'⬇ Export Excel'),
-        React.createElement(ShareReportButton,{title:iwReportTitle,subtitle:'Incentive Working',getBodyHtml:iwReportBodyHtml,getSheetRows:iwReportSheetRows,buildExcelBlob:iwBuildExcelBlob,landscape:true}),
+        React.createElement(ShareReportButton,{title:iwReportTitle,subtitle:'Incentive Working',getBodyHtml:iwReportBodyHtml,getSheetRows:iwReportSheetRows,buildExcelBlob:iwBuildExcelBlob,landscape:true,watermark:iwMonthLocked?'FINAL':'DRAFT'}),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:doRefresh},'⟳ Refresh'),
         !iwMonthLocked&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:lockIWMonth},'🔒 Lock Incentive Working'),
         !iwMonthLocked&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:lockEntireMonthIW},'🔒 Lock Entire Month'),
