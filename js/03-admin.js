@@ -233,7 +233,10 @@ function LoginPage({onLogin}){
         ),
         err&&React.createElement('div',{style:{color:'var(--red)',fontSize:12,marginBottom:12}},err),
         React.createElement('button',{className:'btn btn-primary'+(cloudBusy?' btn-loading':''),disabled:cloudBusy,style:{width:'100%',padding:'10px'},onClick:e=>handleLogin(e)},'Sign In'),
-        React.createElement('button',{className:'btn btn-ghost',style:{width:'100%',padding:'10px',marginTop:10},onClick:()=>setShowExit(true)},'Exit'),
+        // Local-only mode: Exit offers a backup of this browser's data. Not in cloud mode — the data is in
+        // the cloud (with nightly backups), and a backup offered BEFORE sign-in would hand this
+        // browser's cached business data to anyone at the login screen of a shared computer.
+        !CLOUD_SYNC_ENABLED&&React.createElement('button',{className:'btn btn-ghost',style:{width:'100%',padding:'10px',marginTop:10},onClick:()=>setShowExit(true)},'Exit'),
         React.createElement('div',{style:{fontSize:10,color:'var(--text3)',textAlign:'center',marginTop:16,paddingTop:14,borderTop:'1px solid var(--border)',letterSpacing:'0.02em'}},'Developed By CA Dharmender Saini, Gurugram')
       )
     ),
@@ -1397,7 +1400,7 @@ function CloudBackupsCard(){
     )
   );
 }
-// Turns a storage key like "salonos_master_employees_outlet_5" into "Master Employees · Mysha…".
+// Turns a storage key like "salonos_master_employees_outlet_5" into "Master Employees · <outlet name>".
 function describeDataKey(key,salons){
   const m=/_outlet_(\d+)$/.exec(key||'');
   const base=String(key||'').replace(/^salonos_/,'').replace(/_outlet_\d+$/,'').replace(/_/g,' ');

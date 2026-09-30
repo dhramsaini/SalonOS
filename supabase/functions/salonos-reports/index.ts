@@ -14,9 +14,11 @@
 //   WHATSAPP_TEMPLATE         (optional) approved template name, default "salonos_daily_summary"
 //   WHATSAPP_TEMPLATE_LANG    (optional) template language code, default "en"
 //
-// Who can trigger it: the scheduled job (no login — it can only send the one scheduled report per
-// day/month to the configured recipients, never data back to the caller), or a signed-in active
-// Super Admin via "Send test report now".
+// Who can trigger it: the scheduled job (no login — it proves itself with the x-salonos-cron header,
+// a random value kept in app_secrets 'cron_secret', step15; it can only send the one scheduled
+// report per day/month to the configured recipients, never data back to the caller), or a signed-in
+// active Super Admin (at aal2 if two-step login is on) via "Send test report now". Any other call is
+// refused — otherwise anyone could send today's report early, and the real 22:00 one would be skipped.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -160,13 +162,34 @@ async function sendWhatsApp(to: string[], title: string, line: string) {
   return errors.length ? { ok: false, error: "WhatsApp failed for " + errors.join("; ") } : { ok: true };
 }
 
+function jwtPayload(jwt: string): Record<string, unknown> {
+  try {
+    const part = jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(part + "=".repeat((4 - (part.length % 4)) % 4)));
+  } catch { return {}; }
+}
 async function isActiveSuperAdmin(req: Request) {
   const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!jwt) return false;
   const { data } = await admin.auth.getUser(jwt);
   if (!data?.user) return false;
+  const hasTotp = (data.user.factors ?? []).some((f: { status?: string }) => f.status === "verified");
+  if (hasTotp && jwtPayload(jwt).aal !== "aal2") return false;
   const { data: p } = await admin.from("profiles").select("role,status").eq("id", data.user.id).maybeSingle();
   return !!p && p.role === "Super Admin" && (p.status ?? "Active") !== "Inactive";
+}
+
+// The scheduled job's proof: header x-salonos-cron = app_secrets 'cron_secret' (step15). No row → no
+// scheduled runs accepted (fails closed).
+async function isCronCall(req: Request) {
+  const got = req.headers.get("x-salonos-cron") ?? "";
+  if (!got) return false;
+  const { data } = await admin.from("app_secrets").select("value").eq("name", "cron_secret").maybeSingle();
+  const want = String(data?.value ?? "");
+  if (!want || got.length !== want.length) return false;
+  let diff = 0;
+  for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ got.charCodeAt(i);
+  return diff === 0;
 }
 
 Deno.serve(async (req) => {
@@ -178,6 +201,7 @@ Deno.serve(async (req) => {
     const kind = body.kind === "monthly" ? "monthly" : "daily";
     const test = !!body.test;
     if (test && !(await isActiveSuperAdmin(req))) return json({ error: "Only a signed-in Super Admin can send a test report." }, 403);
+    if (!test && !(await isCronCall(req))) return json({ error: "Not allowed." }, 403);
 
     const kv = await loadKv();
     const settings = kv.get("salonos_secret_report_settings") ?? {};

@@ -1,6 +1,6 @@
 # SalonOS — handoff notes (for the next Claude session)
 
-Owner: Dharmender Saini (dhramsaini15@gmail.com). Live at **https://digitalca.co.in** (GitHub Pages, repo `dhramsaini/SalonOS`, branch `main`).
+Owner: Dharmender Saini. Live at **https://digitalca.co.in** (GitHub Pages, repo `dhramsaini/SalonOS`, branch `main`).
 Start a new session by reading this file, then continue from **"What's next"** at the bottom.
 
 ## What the app is
@@ -23,12 +23,12 @@ PWA: `manifest.json`, `service-worker.js` (network-first). `tests.html` = self-t
 ## Security model (database-enforced)
 - `public.salonos_key_access(key, want_write)` decides every kv_store/storage access: Super Admin = all; Reviewer = read all outlets, no outlet writes; Owner/Salon Owner = read-only; others per outlet from `profiles.outlet_access` (`View Only` / `View and Edit`), falling back to `profiles.outlet_ids`. Only profiles with a real SalonOS role get anything. Accounts with two-step login must be at aal2 (`salonos_mfa_ok()`).
 - `profiles`: users read only their own row; only active Super Admins manage others (`is_active_super_admin()`).
-- Both Super Admins (dhramsaini15@gmail.com, ca.dharmendersaini@yahoo.com) have **TOTP two-step login ON** — signing in needs the owner's authenticator code (Claude can't do it).
+- Both Super Admin accounts have **TOTP two-step login ON** — signing in needs the owner's authenticator code (Claude can't do it).
 - Public sign-up is OFF in Supabase Auth; min password length 8. Users are created via the `create-user` edge function (admin API). Permanent delete: `admin_delete_user(uuid)`. A Super Admin sets a new password for another (non-Super-Admin) user via edge function `set-user-password` (source in `supabase/functions/`, Verify JWT ON; checks Super Admin + aal2 itself) — User Management → Edit → New Password (👁 to show while typing). Existing passwords can never be viewed (hashed).
 - Salon Manager / ASM get only the Summary Approval screen for Salary / Incentive Working unless given "Edit" on that sheet for the outlet (`summaryApprovalOnly` in js/02-shared.js) — then the real sheet plus a Summary Approval tab.
-- Users today: Payal Roy (Salon Manager, outlets 5 & 6 View and Edit), Amit Verma (Reviewer — since step8 no outlets until given some), the two Super Admins.
+- Users today: one Salon Manager (outlets 5 & 6 View and Edit), one Reviewer (since step8 no outlets until given some), the two Super Admins. Names/emails: User Management in the app (not kept here — this repo is public).
 - Since v2026.09.29.7: everyone except Super Admin (Reviewer included) sees only outlets given in User Management (`userCanSeeOutlet` in js/02-shared.js, same rule as the database); a signed-in user's rights are re-read every 30 s / on focus, so changes apply without logging out.
-- Outlets: **5 = Mysha Ventures LLP**, **6 = Rudraaksh Wellness Private Limited**.
+- Outlets in use: **5** and **6** (company names in Master Sheet).
 
 ## Other Supabase pieces
 - `kv_backups` + `salonos_take_backup()` / `salonos_restore_backup(id, outlet)`; nightly cron 02:00 IST (30 days kept; manual 90; kind `archive` = permanent — #5 is the archive of an old `app_storage` table, 80 rows, also saved as a file by the owner).
@@ -203,3 +203,14 @@ now an exact calculation in the browser (same table).
 
 **Local testing (any computer):** `tools/serve-local.ps1` (read-only static server, localhost:8765, refuses paths outside
 the repo) — also the `salonos-local` preview in `.claude/launch.json`. Then open /tests.html (53 tests on 30 Sep 2026).
+
+**Security review fixes (v2026.09.30.9)** — supabase/step15_cron_secret_ai_limit.sql (run BEFORE deploying the functions):
+- `automation` and `salonos-reports` (Verify JWT OFF) used to accept any caller for scheduled runs. Now a scheduled run needs
+  header `x-salonos-cron` = app_secrets `cron_secret` (random, made by step15; the three pg_cron jobs are re-created to send
+  it). Manual runs / test reports need an active Super Admin at aal2 (when two-step login is on). No secret row → refused.
+- `ai`: caller must be at aal2 if two-step login is on; 50 AI requests per person per IST day (AI_DAILY_LIMIT; Super Admins
+  unlimited), counted in `ai_usage` via rpc `salonos_ai_bump` (service role only). Over the limit → 429, except read_bill,
+  which returns {notConfigured} so the bill is read in the browser instead.
+- Login screen: "Exit" (backup download before sign-in) is hidden in cloud mode — it could hand the browser's cached data to
+  anyone at a shared computer's login screen.
+- Personal details (emails, staff names, company names) removed from this file; the repo is public. Git history still has them.

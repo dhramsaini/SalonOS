@@ -20,8 +20,10 @@
 // Optional digest of new alerts by email / WhatsApp to the "Automatic reports" recipients, using the
 // same secrets as salonos-reports (RESEND_API_KEY, REPORT_FROM, WHATSAPP_*).
 //
-// Who can trigger it: the scheduled job (no login; it only rewrites alerts and returns counts), or a
-// signed-in active Super Admin ("Run checks now"), who also gets the list back.
+// Who can trigger it: the scheduled job (no login — it proves itself with the x-salonos-cron header,
+// a random value kept in app_secrets 'cron_secret', step15; it only rewrites alerts and returns
+// counts), or a signed-in active Super Admin ("Run checks now", at aal2 if two-step login is on),
+// who also gets the list back. Any other call is refused.
 // Deploy with "Verify JWT" OFF (the scheduled call has no user token).
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -361,13 +363,34 @@ async function sendDigest(kv: KV, fresh: Alert[]) {
   return res;
 }
 
+function jwtPayload(jwt: string): Record<string, unknown> {
+  try {
+    const part = jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(part + "=".repeat((4 - (part.length % 4)) % 4)));
+  } catch { return {}; }
+}
 async function superAdminFrom(req: Request) {
   const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!jwt || jwt.split(".").length !== 3) return null;
   const { data } = await admin.auth.getUser(jwt);
   if (!data?.user) return null;
+  const hasTotp = (data.user.factors ?? []).some((f: { status?: string }) => f.status === "verified");
+  if (hasTotp && jwtPayload(jwt).aal !== "aal2") return null;
   const { data: p } = await admin.from("profiles").select("role,status").eq("id", data.user.id).maybeSingle();
   return p && p.role === "Super Admin" && (p.status ?? "Active") !== "Inactive" ? data.user : null;
+}
+
+// The scheduled job's proof: header x-salonos-cron = app_secrets 'cron_secret' (step15). No row → no
+// scheduled runs accepted (fails closed).
+async function isCronCall(req: Request) {
+  const got = req.headers.get("x-salonos-cron") ?? "";
+  if (!got) return false;
+  const { data } = await admin.from("app_secrets").select("value").eq("name", "cron_secret").maybeSingle();
+  const want = String(data?.value ?? "");
+  if (!want || got.length !== want.length) return false;
+  let diff = 0;
+  for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ got.charCodeAt(i);
+  return diff === 0;
 }
 
 async function run(manual: boolean) {
@@ -425,6 +448,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const manual = body.kind === "run";
     if (manual && !user) return json({ error: "Only a signed-in Super Admin can run the checks now." }, 403);
+    if (!manual && !(await isCronCall(req))) return json({ error: "Not allowed." }, 403);
     return json(await run(manual));
   } catch (e) {
     return json({ error: String((e as Error)?.message ?? e) }, 500);

@@ -5,7 +5,8 @@
 // that fails (bad/expired key, no credit, busy, can't read that file type) hands over to the next
 // saved one.
 //
-// Actions (POST JSON {action, ...}) — any signed-in, active SalonOS user. The app only ever sends
+// Actions (POST JSON {action, ...}) — any signed-in, active SalonOS user (at aal2 if two-step login is
+// on), up to AI_DAILY_LIMIT AI requests a day (Super Admins unlimited). The app only ever sends
 // data the signed-in person can already see in SalonOS; nothing is stored here.
 //   status                                   → { configured, providers[] }
 //   read_bill {file (base64), mediaType, categories[]}
@@ -32,13 +33,33 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 class HttpError extends Error { constructor(public status: number, msg: string) { super(msg); } }
 
+function jwtPayload(jwt: string): Record<string, unknown> {
+  try {
+    const part = jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(part + "=".repeat((4 - (part.length % 4)) % 4)));
+  } catch { return {}; }
+}
 async function requireUser(req: Request) {
   const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   const { data: who } = jwt ? await admin.auth.getUser(jwt) : { data: null };
   if (!who?.user) throw new HttpError(401, "Please sign in again.");
+  const hasTotp = (who.user.factors ?? []).some((f: { status?: string }) => f.status === "verified");
+  if (hasTotp && jwtPayload(jwt).aal !== "aal2") throw new HttpError(403, "Sign in again with your authenticator code first.");
   const { data: me } = await admin.from("profiles").select("role,status").eq("id", who.user.id).maybeSingle();
   if (!me || !ROLES.includes(me.role) || (me.status ?? "Active") === "Inactive") throw new HttpError(403, "Your account can't use AI features.");
-  return who.user;
+  return { user: who.user, role: me.role as string };
+}
+
+// Daily AI limit per person (IST day), so one account can't run up the AI bill. Super Admins have no
+// limit. Counted in public.ai_usage by rpc salonos_ai_bump (step15, service role only).
+const AI_DAILY_LIMIT = 50;
+async function countAiCall(userId: string, role: string) {
+  if (role === "Super Admin") return;
+  const { data, error } = await admin.rpc("salonos_ai_bump", { u: userId });
+  if (error) throw new HttpError(500, "Could not check today's AI limit — please try again.");
+  if (Number(data) > AI_DAILY_LIMIT) {
+    throw new HttpError(429, `Today's AI limit (${AI_DAILY_LIMIT} requests) is used up — it resets at midnight. A Super Admin can still use AI.`);
+  }
 }
 
 // ── Providers ──
@@ -364,13 +385,15 @@ async function ask(cfg: Cfg[], body: Record<string, unknown>) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
+  let action = "";
   try {
-    await requireUser(req);
+    const me = await requireUser(req);
     const body = await req.json().catch(() => ({}));
-    const action = String(body.action ?? "");
+    action = String(body.action ?? "");
     const cfg = await aiConfig();
     if (action === "status") return json({ configured: cfg.length > 0, providers: cfg.map((c) => c.provider) });
     if (!cfg.length) return json({ notConfigured: true, error: "AI isn't set up yet — a Super Admin can add the key in Master Settings → AI Assistant." });
+    if (["read_bill", "tag_bank", "explain_pnl", "ask"].includes(action)) await countAiCall(me.user.id, me.role);
     if (action === "read_bill") return json(await readBill(cfg, String(body.file ?? ""), String(body.mediaType ?? ""), body.categories));
     if (action === "tag_bank") return json(await tagBank(cfg, body));
     if (action === "explain_pnl") return json(await explainPnl(cfg, body));
@@ -379,7 +402,8 @@ Deno.serve(async (req) => {
   } catch (e) {
     // No saved AI can read this kind of file (e.g. only Grok is set up and the bill is a PDF): the app
     // then reads it in the browser instead, as if AI weren't set up.
-    if (e instanceof HttpError && e.status === 415) return json({ notConfigured: true, error: e.message });
+    // Same for a bill when today's AI limit is used up — the person can still enter it.
+    if (e instanceof HttpError && (e.status === 415 || (e.status === 429 && action === "read_bill"))) return json({ notConfigured: true, error: e.message });
     const status = e instanceof HttpError ? e.status : 500;
     return json({ error: (e as Error).message || "Something went wrong." }, status);
   }

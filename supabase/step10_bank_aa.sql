@@ -7,7 +7,7 @@
 create table if not exists public.bank_aa_links (
   id           uuid        primary key default gen_random_uuid(),
   outlet_id    bigint      not null,
-  label        text        not null,                 -- e.g. "HDFC Current – Mysha"
+  label        text        not null,                 -- e.g. "HDFC Current – Outlet 5"
   mobile_last4 text,                                 -- only the last 4 digits are kept
   consent_id   text        not null,                 -- Setu consent id
   status       text        not null default 'PENDING', -- PENDING / ACTIVE / REJECTED / REVOKED / EXPIRED / PAUSED
