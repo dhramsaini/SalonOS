@@ -144,20 +144,33 @@ function TallyExportSheet({salon,onNavTab}={}){
   const [showConnSettings,setShowConnSettings]=useState(false);
   const [tallyGuideLang,setTallyGuideLang]=useState(null);
   const checkConnector=async(cfg)=>{
-    const c=cfg||conn;
+    let c=cfg||conn;
     setConnState(s=>({...s,checking:true}));
     try{
-      const st=await tallyConnectorStatus(c);
+      const found=await tallyFindConnector(c);
+      if(found.url!==String(c.url||'').replace(/\/+$/,'')){c={...c,url:found.url};updateConn({url:found.url});}
+      const st=found.status;
       let companies=[];
       if(st.tallyReachable){try{companies=parseTallyCompanies(await tallyConnectorCall(c,'/tally',buildTallyCompanyListXml()));}catch(e){}}
       setConnState({checking:false,ok:true,tally:!!st.tallyReachable,companies,background:!!st.background,version:st.connector||'',
-        msg:st.tallyReachable?('Connected to Tally at '+st.tally+(companies.length?' — '+companies.length+' compan'+(companies.length===1?'y':'ies')+' open':'')):('The connector is running, but Tally is not answering at '+st.tally+' — open Tally with the company loaded and turn on its XML/ODBC server (port 9000).')});
+        msg:st.tallyReachable?('Connected to Tally at '+st.tally+(companies.length?' — '+companies.length+' compan'+(companies.length===1?'y':'ies')+' open':'')):('The connector is running, but Tally is not answering at '+st.tally+' — open Tally and your company; SalonOS keeps checking every 15 seconds.')});
       if(st.tallyReachable&&companies.length===1&&!c.company)updateConn({company:companies[0]});
       return !!st.tallyReachable;
-    }catch(e){setConnState({checking:false,ok:false,tally:false,companies:[],background:false,version:'',msg:e.message});return false;}
+    }catch(e){setConnState({checking:false,ok:false,tally:false,companies:[],background:false,version:'',needsToken:!!e.needsToken,
+      msg:e.needsToken?'This connector was started with a token — enter it below (⚙ Advanced).':e.message});if(e.needsToken)setShowConnSettings(true);return false;}
   };
   useEffect(()=>{checkConnector();/* eslint-disable-next-line */},[]);
   const live=connState.tally;
+  // Until Tally answers, look again every 15 s (Tally still opening, connector just installed) —
+  // nobody has to keep pressing Check connection. Stops after about 10 minutes.
+  const recheckRef=useRef(0);
+  useEffect(()=>{
+    if(live||connState.checking||connState.needsToken)return;
+    if(recheckRef.current>=40)return;
+    const t=setTimeout(()=>{recheckRef.current++;checkConnector();},15000);
+    return()=>clearTimeout(t);
+    // eslint-disable-next-line
+  },[live,connState.checking,connState.needsToken]);
 
   const [busy,setBusy]=useState('');
   const [progress,setProgress]=useState(null);
@@ -442,7 +455,11 @@ function TallyExportSheet({salon,onNavTab}={}){
       connState.ok&&h('div',{style:{fontSize:12,color:connState.background?'var(--green)':'var(--orange)',marginBottom:10}},
         connState.background?'✓ Installed on this computer — starts by itself with Windows (connector '+connState.version+').'
           :'The connector is running in a window that was started by hand. Install it below so it starts by itself with Windows.'),
-      !live&&h('ol',{style:{fontSize:12.5,color:'var(--text2)',lineHeight:1.8,paddingLeft:18,margin:'0 0 10px'}},
+      connState.ok&&!live&&h('ol',{style:{fontSize:12.5,color:'var(--text2)',lineHeight:1.8,paddingLeft:18,margin:'0 0 10px'}},
+        h('li',null,'Open ',h('b',null,'TallyPrime'),' and open your company (Tally may take a minute to start).'),
+        h('li',null,'SalonOS checks again every 15 seconds and connects by itself — or click ⟳ Check connection.'),
+        h('li',null,'Still not connecting? In Tally: F1 Help → Settings → Connectivity → Client/Server configuration → TallyPrime acts as “Both”, Enable ODBC “Yes”, Port 9000.')),
+      !live&&!connState.ok&&h('ol',{style:{fontSize:12.5,color:'var(--text2)',lineHeight:1.8,paddingLeft:18,margin:'0 0 10px'}},
         h('li',null,'In Tally (one time): F1 Help → Settings → Connectivity → Client/Server configuration → TallyPrime acts as “Both”, Enable ODBC “Yes”, Port 9000 (Tally.ERP 9: F12 → Advanced Configuration).'),
         h('li',null,h('b',null,'Install the connector on this computer (one time): '),'click “Install connector” below and open the downloaded file. If Windows says “Windows protected your PC”, click More info → Run anyway. Press Enter when it asks where Tally is (or type the IP of the Tally PC / server).'),
         h('li',null,'Open Tally with your company, then click ⟳ Check connection. From now on the connector starts by itself whenever this computer starts — nothing to keep open.'),
@@ -471,9 +488,11 @@ function TallyExportSheet({salon,onNavTab}={}){
           h('code',{style:{flex:'1 1 320px',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,padding:'6px 8px',fontSize:11.5,wordBreak:'break-all',userSelect:'all'}},TALLY_INSTALL_CMD),
           h('button',{className:'btn btn-primary btn-sm',onClick:()=>{try{navigator.clipboard.writeText(TALLY_INSTALL_CMD).then(()=>success('Copied — now open PowerShell and paste it'),()=>info('Select the line and copy it (Ctrl+C)'));}catch(e){info('Select the line and copy it (Ctrl+C)');}}},'📋 Copy'))),
       h('div',{style:{fontSize:11,color:'var(--text3)',marginTop:6}},'Python is only for other Tally tools that ask for it — the SalonOS Tally Connector runs on Windows PowerShell and does not need it. When installing, tick “Add python.exe to PATH”.'),
+      h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:10}},'Connector address: ',h('b',null,(conn.url||TALLY_CONNECTOR_DEFAULT).replace(/^https?:\/\//,'')),' — found automatically.',
+        conn.token||connState.needsToken?' A token is set.':' No token needed.'),
       showConnSettings&&h('div',{className:'form-row cols2',style:{marginTop:12,marginBottom:0}},
-        h('div',{className:'form-group'},h('label',null,'Connector address'),h('input',{className:'form-control',value:conn.url,placeholder:TALLY_CONNECTOR_DEFAULT,onChange:e=>updateConn({url:e.target.value.trim()})})),
-        h('div',{className:'form-group'},h('label',null,'Connector token (only if started with -Token)'),h('input',{className:'form-control',type:'password',autoComplete:'off',value:conn.token,onChange:e=>updateConn({token:e.target.value})})))),
+        h('div',{className:'form-group'},h('label',null,'Connector address (found automatically — change only if told to)'),h('input',{className:'form-control',value:conn.url,placeholder:TALLY_CONNECTOR_DEFAULT,onChange:e=>updateConn({url:e.target.value.trim()})})),
+        (conn.token||connState.needsToken)&&h('div',{className:'form-group'},h('label',null,'Connector token (only when the connector asks for one)'),h('input',{className:'form-control',type:'password',autoComplete:'off',value:conn.token,onChange:e=>updateConn({token:e.target.value})})))),
     h(TallyAutoSyncCard,{salonId,conn,updateConn,companies:connState.companies,tallyOk:live,onDone:doRefresh}));
 
   // With "auto-create" on: new SalonOS ledgers are created in Tally when this screen opens.

@@ -1285,14 +1285,36 @@ async function tallyConnectorCall(cfg,path,xml){
   try{
     res=await fetch(base+path,xml==null?{headers,cache:'no-store'}:{method:'POST',headers:{...headers,'Content-Type':'text/xml'},body:xml,cache:'no-store'});
   }catch(e){
-    const err=new Error('The SalonOS Tally Connector is not running at '+base+' — start it on this computer (Start-SalonOS-Tally-Connector.bat) and try again.');
+    const err=new Error('The SalonOS Tally Connector is not running on this computer — install it once (Settings below) or restart the computer, then it is found automatically.');
     err.notRunning=true;throw err;
   }
   const text=await res.text();
-  if(!res.ok){let msg='Connector error '+res.status;try{const j=JSON.parse(text);if(j.error)msg=j.error;}catch(e){}throw new Error(msg);}
+  if(!res.ok){let msg='Connector error '+res.status;try{const j=JSON.parse(text);if(j.error)msg=j.error;}catch(e){}const err=new Error(msg);if(res.status===401)err.needsToken=true;throw err;}
   return text;
 }
 async function tallyConnectorStatus(cfg){return JSON.parse(await tallyConnectorCall(cfg,'/status'));}
+// Finds the connector on this computer without anyone typing its address: the saved address first,
+// then the usual ones (localhost / 127.0.0.1, ports 9123–9126). Returns {url,status} or throws the
+// first address's error (e.g. notRunning, needsToken).
+async function tallyFindConnector(cfg){
+  const saved=String(cfg.url||TALLY_CONNECTOR_DEFAULT).replace(/\/+$/,'');
+  try{return{url:saved,status:await tallyConnectorStatus({...cfg,url:saved})};}
+  catch(first){
+    if(!first.notRunning)throw first;
+    const tries=[];
+    for(const host of ['localhost','127.0.0.1'])for(let port=9123;port<=9126;port++){const u='http://'+host+':'+port;if(u!==saved)tries.push(u);}
+    const probe=async u=>{
+      const ctl=typeof AbortController!=='undefined'?new AbortController():null;
+      const t=setTimeout(()=>ctl&&ctl.abort(),2500);
+      try{const r=await fetch(u+'/status',{cache:'no-store',signal:ctl&&ctl.signal,headers:cfg.token?{'X-SalonOS-Token':cfg.token}:{}});
+        const j=await r.json();if(j&&j.connector)return{url:u,status:j};}catch(e){}finally{clearTimeout(t);}
+      return null;
+    };
+    const found=(await Promise.all(tries.map(probe))).find(Boolean);
+    if(found)return found;
+    throw first;
+  }
+}
 // Tally works on the company chosen in SalonOS (when several are open) — added to every request.
 function withTallyCompany(xml,company){
   if(!company)return xml;
