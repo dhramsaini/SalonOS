@@ -890,6 +890,9 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
   const [showInvModal,setShowInvModal]=useState(false);
   const [editInvoiceId,setEditInvoiceId]=useState(null); // null = adding new, string = editing the invoice with this id
   const [showIntake,setShowIntake]=useState(false);
+  const [intakeInitial,setIntakeInitial]=useState(null); // {ai, attachment, draftId} — a bill from the WhatsApp inbox
+  const [showWaInbox,setShowWaInbox]=useState(false);
+  const waNew=waInboxLoad(salonId).filter(x=>x.status==='new').length;
   const [bulkImportResult,setBulkImportResult]=useState(null);
   const bulkFileRef=useRef(null);
   const [bulkBusy,setBulkBusy]=useState(false);
@@ -1345,7 +1348,8 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:downloadInvoiceTemplate},'⬇ Import Template'),
         React.createElement('input',{ref:bulkFileRef,type:'file',accept:'.xlsx,.xls',style:{display:'none'},onChange:handleBulkImportFile}),
         React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:bulkBusy,onClick:()=>bulkFileRef.current&&bulkFileRef.current.click()},bulkBusy?'Importing…':'📥 Bulk Import Invoices'),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--blue)',borderColor:'rgba(74,158,255,0.4)'},onClick:()=>{setInvForm(BLANK_INV);setEditInvoiceId(null);setShowIntake(true);}},'+ Add Invoice'),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--blue)',borderColor:'rgba(74,158,255,0.4)'},onClick:()=>{setInvForm(BLANK_INV);setEditInvoiceId(null);setIntakeInitial(null);setShowIntake(true);}},'+ Add Invoice'),
+        (waNew>0||waInboxLoad(salonId).length>0)&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:waNew?'var(--green)':'var(--text2)'},onClick:()=>setShowWaInbox(true)},'📥 WhatsApp bills'+(waNew?' ('+waNew+')':'')),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{setVForm(BLANK_V);setEditVendor(null);setShowVendorModal(true);}},'+ Add Vendor')
       )
     ),
@@ -1833,10 +1837,13 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
     // ══════════════════════════════════
     // MODAL — ADD INVOICE
     // ══════════════════════════════════
-    showIntake&&React.createElement(InvoiceIntake,{vendors,
+    showWaInbox&&React.createElement(WhatsAppInbox,{salonId,onClose:()=>setShowWaInbox(false),
+      onReview:(draft)=>{setShowWaInbox(false);setInvForm(BLANK_INV);setEditInvoiceId(null);setIntakeInitial({ai:draft.ai,attachment:draft.file,draftId:draft.id});setShowIntake(true);}}),
+    showIntake&&React.createElement(InvoiceIntake,{vendors,initial:intakeInitial,
       onClose:()=>setShowIntake(false),
-      onManual:()=>{setShowIntake(false);setInvForm(BLANK_INV);setShowInvModal(true);},
+      onManual:()=>{setShowIntake(false);setInvForm(intakeInitial?{...BLANK_INV,attachment:intakeInitial.attachment}:BLANK_INV);if(intakeInitial)waInboxSetStatus(salonId,intakeInitial.draftId,'used');setShowInvModal(true);},
       onUse:(d,addVendor)=>{
+        if(intakeInitial)waInboxSetStatus(salonId,intakeInitial.draftId,'used');
         let vid=d.vendorId;
         if(!vid&&addVendor){
           vid=nextPrefixedId(vendors,'V',3);
@@ -1857,7 +1864,8 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
           docNature:d.docNature||'Tax Invoice',bookingDate:d.bookingDate||d.invoiceDate||'',
           igst:d.igst||'',cgst:d.cgst||'',sgst:d.sgst||'',freight:d.freight||'',roundOff:d.roundOff||'',linkedPI:'',assetLines:[],
           category:d.category||(addVendor?'Purchase of Cosmetic':(matchedVendor?matchedVendor.cat:''))});
-        if(d._file)readFileAsAttachment(d._file,rec=>setInvForm(f=>({...f,attachment:rec})),err=>toastError(err==='size'?'The bill is too large to attach (max 4MB) — attach a smaller copy.':'Could not attach the bill — please attach it again.'));
+        if(d._attachment)setInvForm(f=>({...f,attachment:d._attachment})); // already in cloud storage (WhatsApp bill)
+        else if(d._file)readFileAsAttachment(d._file,rec=>setInvForm(f=>({...f,attachment:rec})),err=>toastError(err==='size'?'The bill is too large to attach (max 4MB) — attach a smaller copy.':'Could not attach the bill — please attach it again.'));
         setShowIntake(false);setShowInvModal(true);
       }}),
     showInvModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>{setShowInvModal(false);setEditInvoiceId(null);}},

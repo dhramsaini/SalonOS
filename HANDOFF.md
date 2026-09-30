@@ -231,7 +231,26 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   attendance = worked ÷ present+half+absent; score 50% achievement cap 120%, 30% attendance, 20% sales÷pay cap 4×) ·
   month-end pack PDF `insMonthPackRows` → exportReportPdfBlob. Server: automation `errorWatchAlerts` (kind 'errors',
   Super Admin, client_errors last 24 h, setting errorWatch). Tests: 62.
-2 ☐ WhatsApp (bill photo capture → AI read → invoice, reminders, weekly owner summary) — needs Meta WABA keys.
+2 ✅ (v2026.09.30.11) **WhatsApp** — edge function `whatsapp` (Verify JWT OFF; webhook checked with X-Hub-Signature-256 =
+  HMAC of the app secret; GET = Meta verify-token check). Credentials: app_secrets row `whatsapp` (value {token, appSecret},
+  meta {phoneNumberId, verifyToken, displayPhone, tokenHint, templates{salary,lang}}), saved from Master Settings → 💬 WhatsApp
+  (`WhatsAppSettingsCard`, js/13b-whatsapp.js; actions status/save/remove/test, Super Admin + aal2). Allowed senders + switches:
+  kv `salonos_secret_whatsapp_settings` {senders:[{phone (91…), name, outletId}], billCapture, todayReplies}.
+  Bill photo/PDF from a registered number → storage `outlet_<id>/whatsapp/…` → `ai` read_bill via internal call (anon key +
+  header x-salonos-internal = cron_secret; no user limit) → draft in kv `salonos_whatsapp_inbox_outlet_<id>` (id WA-<msg id>,
+  status new/used/discarded; max 40 per sender per day; Meta retries deduped) → reply to sender. Vendors → 📥 WhatsApp bills
+  (`WhatsAppInbox`) → InvoiceIntake `initial` {ai, attachment} (review step, stored file attached without re-upload;
+  `aiBillToIntake` split out of aiReadBill). "today" → today's sales/expenses/attendance reply. Salary Working → 📲 Notify on
+  WhatsApp (`notify_salary`, needs write on salonos_salary_working_meta_outlet_<id>; template salonos_salary_paid {{1}} name
+  {{2}} month {{3}} net). Reports/automation digest use the saved WhatsApp details when env secrets are absent (Graph v23.0).
+  Weekly summary: salonos-reports kind 'weekly' (`buildWeekly`: last Mon–Sun vs week before, attendance, bills due/overdue),
+  cron `salonos-report-weekly` Mon 03:30 UTC (step16), setting `weekly` in Automatic reports.
+  Owner still has to: create the Meta app + number, paste token/phone ID/app secret, set the webhook, get the two templates
+  approved, and list the sender numbers.
+  **AI: several keys per provider** (up to 5): rows `<provider>_api_key` (key 1) and `<provider>_api_key_<n>`; `ai` tries every key
+  of the primary provider, then others if fallback; a key/credit/network failure stamps meta.failedAt/lastError and that key
+  goes last for 30 min (`orderKeys`); success clears it (lastOkAt). ai-settings save/test/remove take `slot`. UI: per-key rows
+  with status in `AiProviderRow` / `AiKeyEditor` (js/03). Also: Salary Working year list now runs to next year. Tests: 70.
 3 ☐ Email setup guide + weekly summary / month-end pack by email (Resend).
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.

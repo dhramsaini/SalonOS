@@ -1510,48 +1510,72 @@ const AI_PROVIDERS=[
   {id:'xai',name:'Grok',company:'xAI',site:'console.x.ai → API Keys',ph:'xai-…',note:'Grok reads photos (JPG/PNG) but not PDF bills — PDFs go to another saved AI, or are read in the browser.',
     models:{'grok-4.7':'Grok 4.7 — most capable'}},
 ];
-function AiProviderRow({p,st,onChanged,isPrimary}){
+const AI_MAX_KEYS=5;
+// Form for one key: a new key (slot null → next free number) or an existing one (replace key and/or model).
+function AiKeyEditor({p,slot,cur,onSaved,onCancel}){
   const {success,error:toastError}=useToast();
-  const [open,setOpen]=useState(false);
+  const known=Object.keys(p.models);
   const [key,setKey]=useState('');
   const [showKey,setShowKey]=useState(false);
-  const known=Object.keys(p.models);
-  const [model,setModel]=useState(st.model||known[0]);
-  const [custom,setCustom]=useState(known.indexOf(st.model||known[0])===-1);
-  const [busy,setBusy]=useState('');
-  useEffect(()=>{setModel(st.model||known[0]);setCustom(known.indexOf(st.model||known[0])===-1);},[st.model]);
+  const [model,setModel]=useState((cur&&cur.model)||known[0]);
+  const [custom,setCustom]=useState(known.indexOf((cur&&cur.model)||known[0])===-1);
+  const [busy,setBusy]=useState(false);
   const save=async()=>{
-    setBusy('save');
-    try{const r=await aiSettingsCall('save',{provider:p.id,key:key.trim(),model:model.trim()});setKey('');setShowKey(false);setOpen(false);
-      success(p.name+(key.trim()?' key saved and checked':' model updated')+' — it replied: "'+(r.reply||'ok')+'"');await onChanged();}
+    setBusy(true);
+    try{const r=await aiSettingsCall('save',{provider:p.id,slot:slot||undefined,key:key.trim(),model:model.trim()});
+      success(p.name+' key '+(r.slot||slot||'')+(key.trim()?' saved and checked':' model updated')+' — it replied: "'+(r.reply||'ok')+'"');await onSaved();}
     catch(e){toastError(e.message);}
-    setBusy('');
+    setBusy(false);
   };
-  const test=async()=>{setBusy('test');try{const r=await aiSettingsCall('test',{provider:p.id});success(p.name+' is working — '+r.model+' replied: "'+(r.reply||'ok')+'"');}catch(e){toastError(e.message);}setBusy('');};
-  const remove=async()=>{if(!confirm('Remove the saved '+p.name+' key?'))return;setBusy('remove');try{await aiSettingsCall('remove',{provider:p.id});success(p.name+' key removed.');await onChanged();}catch(e){toastError(e.message);}setBusy('');};
+  const h=React.createElement;
+  return h('div',{style:{marginTop:8,padding:'10px 12px',background:'var(--bg3)',borderRadius:'var(--r)'}},
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:8}},(slot?'Key '+slot+' — ':'New key — ')+'create keys at '+p.site+' (billing is on that '+p.company+' account).'+(p.note?' '+p.note:'')),
+    h('div',{className:'form-row cols2'},
+      h('div',{className:'form-group'},h('label',null,cur?'Replace key (leave blank to keep it)':p.name+' API key *'),
+        h('div',{style:{position:'relative'}},
+          h('input',{className:'form-control',type:showKey?'text':'password',autoComplete:'off',spellCheck:false,value:key,onChange:e=>setKey(e.target.value),placeholder:p.ph,style:{paddingRight:40}}),
+          h('button',{type:'button',onClick:()=>setShowKey(s=>!s),'aria-label':showKey?'Hide key':'Show key',style:{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:14}},showKey?'🙈':'👁'))),
+      h('div',{className:'form-group'},h('label',null,'Model'),
+        h('select',{className:'form-control',value:custom?'__custom__':model,onChange:e=>{if(e.target.value==='__custom__'){setCustom(true);setModel('');}else{setCustom(false);setModel(e.target.value);}}},
+          known.map(m=>h('option',{key:m,value:m},p.models[m])),h('option',{value:'__custom__'},'Other model — type its name')),
+        custom&&h('input',{className:'form-control',style:{marginTop:6},value:model,placeholder:'exact model name from '+p.company,onChange:e=>setModel(e.target.value)}))),
+    h('div',{style:{display:'flex',gap:6}},
+      h('button',{className:'btn btn-primary btn-sm',disabled:busy||!model.trim()||(!key.trim()&&(!cur||model.trim()===cur.model)),onClick:save},busy?'Checking…':(key.trim()||!cur?'Save & check key':'Save & check model')),
+      h('button',{className:'btn btn-ghost btn-sm',onClick:onCancel},'Cancel')));
+}
+// One provider: all its saved keys (tried in order; a key that failed in the last 30 minutes is tried last).
+function AiProviderRow({p,st,onChanged,isPrimary}){
+  const {success,error:toastError}=useToast();
+  const [editing,setEditing]=useState(null); // null | 'new' | slot number
+  const [busy,setBusy]=useState('');
+  const keys=st.keys||(st.configured?[{slot:1,keyHint:st.keyHint,model:st.model}]:[]);
+  const canMulti=!!st.keys; // an older ai-settings on the server only knows one key per provider
+  const ago=iso=>{const m=Math.round((Date.now()-Date.parse(iso))/60000);return m<1?'just now':m<60?m+' min ago':m<1440?Math.round(m/60)+' h ago':Math.round(m/1440)+' d ago';};
+  const test=async(slot)=>{setBusy('test'+slot);try{const r=await aiSettingsCall('test',{provider:p.id,slot});success(p.name+' key '+slot+' is working — '+r.model+' replied: "'+(r.reply||'ok')+'"');}catch(e){toastError('Key '+slot+': '+e.message);}setBusy('');await onChanged();};
+  const remove=async(slot)=>{if(!confirm('Remove '+p.name+' key '+slot+'?'))return;setBusy('rm'+slot);try{await aiSettingsCall('remove',{provider:p.id,slot});success(p.name+' key '+slot+' removed.');await onChanged();}catch(e){toastError(e.message);}setBusy('');};
+  const done=async()=>{setEditing(null);await onChanged();};
   const h=React.createElement;
   return h('div',{style:{border:'1px solid '+(isPrimary?'rgba(47,95,224,0.45)':'var(--border)'),borderRadius:'var(--r)',padding:'10px 12px',marginBottom:8,background:isPrimary?'rgba(47,95,224,0.04)':'transparent'}},
     h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}},
       h('div',{style:{fontWeight:600,fontSize:13,minWidth:150}},p.name,h('span',{style:{fontWeight:400,color:'var(--text3)',fontSize:11.5}},' · '+p.company)),
-      st.configured
-        ?h('span',{style:{fontSize:12,color:'var(--green)'}},'✓ '+st.keyHint+' · '+st.model+(isPrimary?' · used first':''))
-        :h('span',{style:{fontSize:12,color:'var(--text3)'}},'No key'),
-      h('div',{style:{marginLeft:'auto',display:'flex',gap:6}},
-        st.configured&&h('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:test},busy==='test'?'Testing…':'Test'),
-        h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setOpen(o=>!o)},open?'Close':st.configured?'Change':'Add key'),
-        st.configured&&h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},disabled:!!busy,onClick:remove},'Remove'))),
-    open&&h('div',{style:{marginTop:10}},
-      h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:8}},'Create a key at '+p.site+' (billing is on your '+p.company+' account).'+(p.note?' '+p.note:'')),
-      h('div',{className:'form-row cols2'},
-        h('div',{className:'form-group'},h('label',null,st.configured?'Replace key (leave blank to keep the current one)':p.name+' API key *'),
-          h('div',{style:{position:'relative'}},
-            h('input',{className:'form-control',type:showKey?'text':'password',autoComplete:'off',spellCheck:false,value:key,onChange:e=>setKey(e.target.value),placeholder:p.ph,style:{paddingRight:40}}),
-            h('button',{type:'button',onClick:()=>setShowKey(s=>!s),'aria-label':showKey?'Hide key':'Show key',style:{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:14}},showKey?'🙈':'👁'))),
-        h('div',{className:'form-group'},h('label',null,'Model'),
-          h('select',{className:'form-control',value:custom?'__custom__':model,onChange:e=>{if(e.target.value==='__custom__'){setCustom(true);setModel('');}else{setCustom(false);setModel(e.target.value);}}},
-            known.map(m=>h('option',{key:m,value:m},p.models[m])),h('option',{value:'__custom__'},'Other model — type its name')),
-          custom&&h('input',{className:'form-control',style:{marginTop:6},value:model,placeholder:'exact model name from '+p.company,onChange:e=>setModel(e.target.value)}))),
-      h('button',{className:'btn btn-primary btn-sm',disabled:!!busy||!model.trim()||(!key.trim()&&(!st.configured||model.trim()===st.model)),onClick:save},busy==='save'?'Checking…':(key.trim()||!st.configured?'Save & check key':'Save & check model')))
+      h('span',{style:{fontSize:12,color:keys.length?'var(--green)':'var(--text3)'}},keys.length?keys.length+' key'+(keys.length>1?'s':'')+(isPrimary?' · used first':''):'No key'),
+      h('div',{style:{marginLeft:'auto'}},
+        (keys.length===0||(canMulti&&keys.length<AI_MAX_KEYS))&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setEditing(editing==='new'?null:'new')},keys.length?'+ Add another key':'Add key'))),
+    keys.map(k=>h('div',{key:k.slot,style:{borderTop:'1px solid var(--border)',marginTop:8,paddingTop:8}},
+      h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',fontSize:12}},
+        h('b',null,'Key '+k.slot),
+        h('span',{style:{color:'var(--text2)'}},k.keyHint+' · '+k.model),
+        k.failedAt&&(Date.now()-Date.parse(k.failedAt)<30*60000)
+          ?h('span',{style:{color:'var(--orange)'}},'⚠ failed '+ago(k.failedAt)+' — skipped for now'+(k.lastError?': '+k.lastError:''))
+          :k.failedAt?h('span',{style:{color:'var(--text3)'}},'failed '+ago(k.failedAt)+', will be tried again')
+          :k.lastOkAt?h('span',{style:{color:'var(--green)'}},'✓ worked '+ago(k.lastOkAt)):null,
+        h('div',{style:{marginLeft:'auto',display:'flex',gap:6}},
+          h('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:()=>test(k.slot)},busy==='test'+k.slot?'Testing…':'Test'),
+          h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setEditing(editing===k.slot?null:k.slot)},editing===k.slot?'Close':'Change'),
+          h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},disabled:!!busy,onClick:()=>remove(k.slot)},'Remove'))),
+      editing===k.slot&&h(AiKeyEditor,{p,slot:k.slot,cur:k,onSaved:done,onCancel:()=>setEditing(null)}))),
+    editing==='new'&&h(AiKeyEditor,{p,slot:null,cur:null,onSaved:done,onCancel:()=>setEditing(null)}),
+    keys.length>1&&h('div',{style:{fontSize:11,color:'var(--text3)',marginTop:6}},'Tried in order; if one is rejected, out of credit or busy, the next '+p.name+' key takes over (the failed one waits 30 minutes).')
   );
 }
 function AiSettingsCard(){
@@ -1569,7 +1593,7 @@ function AiSettingsCard(){
   return h('div',{className:'card',style:{marginBottom:16}},
     h('div',{className:'card-title'},'🤖 AI Assistant (API keys)'),
     h('div',{style:{fontSize:11.5,color:'var(--text3)',lineHeight:1.6,marginBottom:12}},
-      'Powers bill reading, bank-row tagging, “Explain this month” and 💬 Ask. Add a key for any of these AI services — one is enough; more give a backup. Each key is checked, then stored securely on the server — never shown again or saved in any browser.'),
+      'Powers bill reading, bank-row tagging, “Explain this month” and 💬 Ask. One key is enough; add more — even several for the same AI (up to '+AI_MAX_KEYS+' each) — and if one stops working, the next takes over automatically. Each key is checked, then stored securely on the server — never shown again or saved in any browser.'),
     st===null?h('div',{style:{fontSize:12,color:'var(--text3)'}},'Checking…'):
     st.error?h('div',{style:{fontSize:12,color:'var(--red)'}},st.error):
     h(React.Fragment,null,
@@ -1580,7 +1604,7 @@ function AiSettingsCard(){
         h('select',{className:'form-control',style:{width:'auto'},value:st.primary||saved[0].id,onChange:e=>setPrefs(e.target.value,st.fallback!==false)},saved.map(p=>h('option',{key:p.id,value:p.id},p.name))),
         h('label',{style:{display:'flex',alignItems:'center',gap:6,cursor:'pointer'}},
           h('input',{type:'checkbox',checked:st.fallback!==false,onChange:e=>setPrefs(st.primary||saved[0].id,e.target.checked)}),
-          'If it fails (key expired, no credit, busy), try the other saved keys')))
+          'If all its keys fail (expired, no credit, busy), try the other AIs’ keys')))
   );
 }
 // ── Automatic reports (Super Admin) — who gets the nightly summary (22:00 IST) and the monthly
@@ -1595,6 +1619,7 @@ function ReportSettingsCard(){
   const [phones,setPhones]=useState((saved.whatsapp||[]).join(', '));
   const [daily,setDaily]=useState(saved.daily!==false);
   const [monthly,setMonthly]=useState(saved.monthly!==false);
+  const [weekly,setWeekly]=useState(saved.weekly!==false);
   const [busy,setBusy]=useState(false);
   const [lastResult,setLastResult]=useState(null);
   const split=s=>s.split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean);
@@ -1604,7 +1629,7 @@ function ReportSettingsCard(){
     if(badE.length)return toastError('Not a valid email: '+badE.join(', '));
     const badP=ph.filter(p=>p.replace(/[^\d]/g,'').length<10);
     if(badP.length)return toastError('WhatsApp numbers need the country code, e.g. 91 98xxxxxxxx: '+badP.join(', '));
-    safeLocalSet(REPORT_SETTINGS_KEY,JSON.stringify({emails:em,whatsapp:ph,daily,monthly}));
+    safeLocalSet(REPORT_SETTINGS_KEY,JSON.stringify({emails:em,whatsapp:ph,daily,weekly,monthly}));
     success('Report settings saved');
   };
   const test=async(kind)=>{
@@ -1628,7 +1653,7 @@ function ReportSettingsCard(){
   return React.createElement('div',{className:'card',style:{marginBottom:16}},
     React.createElement('div',{className:'card-title'},'📬 Automatic reports'),
     React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:12,lineHeight:1.6}},
-      'A nightly summary at 10 PM (each outlet\'s sales, expenses and attendance for the day, plus month-to-date sales) and a monthly summary on the 1st at 9 AM. Needs a one-time setup in Supabase (see the SalonOS setup notes) before anything is sent.'),
+      'A nightly summary at 10 PM (each outlet\'s sales, expenses and attendance for the day, plus month-to-date sales), a weekly summary every Monday at 9 AM (last week against the week before, attendance and bills due this week) and a monthly summary on the 1st at 9 AM. Email needs the one-time email setup; WhatsApp uses Master Settings → WhatsApp.'),
     React.createElement('div',{className:'form-group',style:{marginBottom:10}},
       React.createElement('label',null,'Email to (comma separated)'),
       React.createElement('input',{className:'form-control',value:emails,onChange:e=>setEmails(e.target.value),placeholder:'owner@example.com, accounts@example.com'})),
@@ -1637,10 +1662,12 @@ function ReportSettingsCard(){
       React.createElement('input',{className:'form-control',value:phones,onChange:e=>setPhones(e.target.value),placeholder:'91 98xxxxxxxx'})),
     React.createElement('div',{style:{display:'flex',flexWrap:'wrap',marginBottom:12}},
       React.createElement('label',{style:row},React.createElement('input',{type:'checkbox',checked:daily,onChange:e=>setDaily(e.target.checked)}),'Nightly summary'),
+      React.createElement('label',{style:row},React.createElement('input',{type:'checkbox',checked:weekly,onChange:e=>setWeekly(e.target.checked)}),'Weekly summary (Monday)'),
       React.createElement('label',{style:row},React.createElement('input',{type:'checkbox',checked:monthly,onChange:e=>setMonthly(e.target.checked)}),'Monthly summary')),
     React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
       React.createElement('button',{className:'btn btn-primary btn-sm',onClick:save},'Save'),
       React.createElement('button',{className:'btn btn-ghost btn-sm'+(busy?' btn-loading':''),disabled:busy,onClick:()=>test('daily')},'Send test nightly report'),
+      React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,onClick:()=>test('weekly')},'Send test weekly report'),
       React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,onClick:()=>test('monthly')},'Send test monthly report')),
     lastResult&&React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginTop:10}},
       Object.keys(lastResult).map(k=>k+': '+(lastResult[k].ok?'sent ✓':lastResult[k].error)).join(' · ')||'Nothing to send — add recipients and save first.')
@@ -1838,6 +1865,7 @@ function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup}={}){
     CLOUD_SYNC_ENABLED&&React.createElement(CloudBackupsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(ReportSettingsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(AiSettingsCard,null),
+    CLOUD_SYNC_ENABLED&&React.createElement(WhatsAppSettingsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(AutomationSettingsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(ChangeHistoryCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(AppErrorsCard,null),

@@ -50,6 +50,19 @@ async function requireUser(req: Request) {
   return { user: who.user, role: me.role as string };
 }
 
+// SalonOS's own server functions (the WhatsApp bill reader) call with header x-salonos-internal =
+// app_secrets cron_secret (step15); they have their own per-sender limits.
+async function isInternalCall(req: Request) {
+  const got = req.headers.get("x-salonos-internal") ?? "";
+  if (!got) return false;
+  const { data } = await admin.from("app_secrets").select("value").eq("name", "cron_secret").maybeSingle();
+  const want = String(data?.value ?? "");
+  if (!want || got.length !== want.length) return false;
+  let diff = 0;
+  for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ got.charCodeAt(i);
+  return diff === 0;
+}
+
 // Daily AI limit per person (IST day), so one account can't run up the AI bill. Super Admins have no
 // limit. Counted in public.ai_usage by rpc salonos_ai_bump (step15, service role only).
 const AI_DAILY_LIMIT = 50;
@@ -64,26 +77,57 @@ async function countAiCall(userId: string, role: string) {
 
 // ── Providers ──
 type Provider = "anthropic" | "openai" | "gemini" | "xai";
-type Cfg = { provider: Provider; key: string; model: string };
+// One saved key. name = its app_secrets row; onResult (set by aiConfig) records whether it worked.
+type Cfg = { provider: Provider; key: string; model: string; name?: string; slot?: number; onResult?: (ok: boolean, msg?: string) => void };
 const PROVIDERS: Provider[] = ["anthropic", "openai", "gemini", "xai"];
 const SECRET_NAME: Record<Provider, string> = { anthropic: "anthropic_api_key", openai: "openai_api_key", gemini: "gemini_api_key", xai: "xai_api_key" };
 const DEFAULT_MODEL: Record<Provider, string> = { anthropic: "claude-opus-5-5", openai: "gpt-6-astra", gemini: "gemini-3.8-flash", xai: "grok-4.7" };
 const LABEL: Record<Provider, string> = { anthropic: "Claude", openai: "ChatGPT", gemini: "Gemini", xai: "Grok" };
 
-// The saved keys, in the order they should be tried: the chosen one first, then (if fallback is
-// on) the others that have a key.
+// Up to MAX_KEYS keys per provider: key 1 is row "<provider>_api_key" (as before), key n is
+// "<provider>_api_key_<n>". A key that failed (rejected, out of credit, busy…) in the last
+// FAIL_COOLDOWN_MIN minutes moves behind that provider's other keys until it works again.
+const MAX_KEYS = 5;
+const FAIL_COOLDOWN_MIN = 30;
+const keyRowName = (p: Provider, slot: number) => slot === 1 ? SECRET_NAME[p] : SECRET_NAME[p] + "_" + slot;
+// deno-lint-ignore no-explicit-any
+export function orderKeys(rows: { name: string; value: string; meta: any }[], nowMs: number): Record<Provider, Cfg[]> {
+  const out = {} as Record<Provider, Cfg[]>;
+  for (const p of PROVIDERS) {
+    const keys: (Cfg & { cool: boolean })[] = [];
+    for (let slot = 1; slot <= MAX_KEYS; slot++) {
+      const r = rows.find((x) => x.name === keyRowName(p, slot));
+      if (!r) continue;
+      const failedAt = Date.parse(r.meta?.failedAt ?? "");
+      keys.push({ provider: p, key: String(r.value), model: (r.meta?.model as string) || DEFAULT_MODEL[p], name: r.name, slot,
+        cool: !isNaN(failedAt) && nowMs - failedAt < FAIL_COOLDOWN_MIN * 60e3 });
+    }
+    out[p] = [...keys.filter((k) => !k.cool), ...keys.filter((k) => k.cool)].map(({ cool: _c, ...k }) => k);
+  }
+  return out;
+}
+// The saved keys in the order they should be tried: every key of the chosen provider first, then
+// (if fallback is on) the other providers' keys.
 async function aiConfig(): Promise<Cfg[]> {
-  const { data } = await admin.from("app_secrets").select("name,value,meta").in("name", [...Object.values(SECRET_NAME), "ai_settings"]);
+  const names = PROVIDERS.flatMap((p) => Array.from({ length: MAX_KEYS }, (_, i) => keyRowName(p, i + 1)));
+  const { data } = await admin.from("app_secrets").select("name,value,meta").in("name", [...names, "ai_settings"]);
   const rows = data ?? [];
   const pref = rows.find((r) => r.name === "ai_settings")?.meta ?? {};
-  const saved: Cfg[] = PROVIDERS.flatMap((p) => {
-    const r = rows.find((x) => x.name === SECRET_NAME[p]);
-    return r ? [{ provider: p, key: r.value as string, model: (r.meta?.model as string) || DEFAULT_MODEL[p] }] : [];
-  });
-  const primary = PROVIDERS.includes(pref.primary) ? pref.primary : saved[0]?.provider;
-  const first = saved.filter((c) => c.provider === primary);
-  const rest = saved.filter((c) => c.provider !== primary);
-  return pref.fallback === false ? (first.length ? first : rest.slice(0, 1)) : [...first, ...rest];
+  const byP = orderKeys(rows, Date.now());
+  const withKeys = PROVIDERS.filter((p) => byP[p].length);
+  const primary: Provider | undefined = PROVIDERS.includes(pref.primary) && byP[pref.primary as Provider].length ? pref.primary : withKeys[0];
+  const order = primary ? [primary, ...withKeys.filter((p) => p !== primary)] : [];
+  const list = (pref.fallback === false ? order.slice(0, 1) : order).flatMap((p) => byP[p]);
+  for (const c of list) {
+    const meta = rows.find((r) => r.name === c.name)?.meta ?? {};
+    c.onResult = (ok, msg) => {
+      if (ok && !meta.failedAt) return;
+      const next = ok ? { ...meta, failedAt: null, lastError: null, lastOkAt: new Date().toISOString() }
+        : { ...meta, failedAt: new Date().toISOString(), lastError: String(msg ?? "").slice(0, 200) };
+      admin.from("app_secrets").update({ meta: next }).eq("name", c.name!).then(() => {}, () => {});
+    };
+  }
+  return list;
 }
 
 // Parts are provider-neutral: {type:'text', text} or {type:'file', mediaType, data (base64)}.
@@ -213,13 +257,19 @@ export async function callAI(cfgs: Cfg[], parts: Part[], schema: Record<string, 
         : c.provider === "openai" ? await viaOpenAI(c, parts, schema, opts)
         : c.provider === "gemini" ? await viaGemini(c, parts, schema, opts)
         : await viaXai(c, parts, schema, opts);
-      try { return { data: JSON.parse(text), model: c.model, provider: LABEL[c.provider] }; }
+      let data: Json;
+      try { data = JSON.parse(text); }
       catch { throw new ProviderError("retry", LABEL[c.provider] + "'s answer could not be read."); }
+      c.onResult?.(true);
+      return { data, model: c.model, provider: LABEL[c.provider] };
     } catch (e) {
       if (!(e instanceof ProviderError)) throw e;
       if (e.kind === "fatal") throw new HttpError(502, e.message);
       if (e.kind !== "unsupported") unsupportedOnly = false;
-      problems.push(e.message);
+      const which = c.slot && c.slot > 1 ? " (key " + c.slot + ")" : "";
+      problems.push(e.message + which);
+      // A refused or garbled answer says nothing about the key itself — only key/credit/network problems count.
+      if (e.kind === "retry" && !/declined|could not be read/.test(e.message)) c.onResult?.(false, e.message);
     }
   }
   if (unsupportedOnly) throw new HttpError(415, problems.join(" "));
@@ -387,11 +437,12 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   let action = "";
   try {
-    const me = await requireUser(req);
+    // deno-lint-ignore no-explicit-any
+    const me: { user: any; role: string } = (await isInternalCall(req)) ? { user: { id: "internal" }, role: "Super Admin" } : await requireUser(req);
     const body = await req.json().catch(() => ({}));
     action = String(body.action ?? "");
     const cfg = await aiConfig();
-    if (action === "status") return json({ configured: cfg.length > 0, providers: cfg.map((c) => c.provider) });
+    if (action === "status") return json({ configured: cfg.length > 0, providers: [...new Set(cfg.map((c) => c.provider))] });
     if (!cfg.length) return json({ notConfigured: true, error: "AI isn't set up yet — a Super Admin can add the key in Master Settings → AI Assistant." });
     if (["read_bill", "tag_bank", "explain_pnl", "ask"].includes(action)) await countAiCall(me.user.id, me.role);
     if (action === "read_bill") return json(await readBill(cfg, String(body.file ?? ""), String(body.mediaType ?? ""), body.categories));

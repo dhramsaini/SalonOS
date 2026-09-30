@@ -42,6 +42,8 @@
     // The nightly automation check (server code) — compiled and tested inside the frame.
     const automationTs=await (await fetch('supabase/functions/automation/index.ts?t='+Date.now(),{cache:'no-store'})).text();
     const aiTs=await (await fetch('supabase/functions/ai/index.ts?t='+Date.now(),{cache:'no-store'})).text();
+    const waTs=await (await fetch('supabase/functions/whatsapp/index.ts?t='+Date.now(),{cache:'no-store'})).text();
+    const repTs=await (await fetch('supabase/functions/salonos-reports/index.ts?t='+Date.now(),{cache:'no-store'})).text();
 
     // In-memory storage (the frame has no real storage at all) + made-up test data.
     const setup=`(function(){
@@ -348,6 +350,49 @@
         eq('App errors alert: last 24 h only, most frequent first, users counted',[a.length,a[0].akey,a[0].title,a[0].body.split('\\n')[0],a[0].severity,mod.errorWatchAlerts([],now).length],
           [1,'errors:2026-10-05','3 app errors in the last 24 hours','• Save failed (2×, 2 users)','info',0]);
       }catch(err){results.push({name:'App errors alert',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      const tsMod=(src)=>{const js=window.ts.transpileModule(src,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020,esModuleInterop:true}}).outputText;
+        const m={};class FakeAnthropic{};['AuthenticationError','PermissionDeniedError','NotFoundError','RateLimitError','APIConnectionError','APIError'].forEach(n=>{FakeAnthropic[n]=class extends Error{};});
+        new Function('exports','require','Deno',js)(m,(x)=>/anthropic/.test(x)?FakeAnthropic:{createClient:()=>({})},{env:{get:()=>''},serve:()=>{}});return m;};
+      try{
+        // Several keys for the same AI: the next key takes over, and each key's result is recorded.
+        const mod=tsMod(window.__AI_TS);
+        const oldFetch=window.fetch;const log=[];
+        window.fetch=async(url,opts)=>{const bad=/bad/.test(opts.headers.Authorization);
+          return new Response(JSON.stringify(bad?{error:{message:'invalid key'}}:{status:'completed',output:[{type:'message',content:[{type:'output_text',text:'{"answer":"ok"}'}]}]}),{status:bad?401:200,headers:{'Content-Type':'application/json'}});};
+        const k=(key,slot)=>({provider:'openai',key,model:'gpt-6-astra',slot,onResult:(ok)=>log.push(slot+':'+ok)});
+        const schema={type:'object',properties:{answer:{type:'string'}},required:['answer'],additionalProperties:false};
+        const r=await mod.callAI([k('bad-1',1),k('good-2',2)],[{type:'text',text:'hi'}],schema);
+        window.fetch=oldFetch;
+        eq('AI keys: key 1 rejected → key 2 of the same AI answers, both results recorded',[r.data.answer,r.provider,log],['ok','ChatGPT',['1:false','2:true']]);
+        const now=Date.parse('2026-10-05T10:00:00Z');
+        const rows=[{name:'openai_api_key',value:'k1',meta:{model:'m1',failedAt:'2026-10-05T09:50:00Z'}},{name:'openai_api_key_2',value:'k2',meta:{}},
+          {name:'openai_api_key_3',value:'k3',meta:{failedAt:'2026-10-05T08:00:00Z'}},{name:'anthropic_api_key',value:'a1',meta:{}}];
+        const o=mod.orderKeys(rows,now);
+        eq('AI keys: a key that failed in the last 30 min is tried last; older failures are tried again',[o.openai.map(c=>c.slot),o.openai[2].model,o.anthropic.length,o.gemini.length],[[2,3,1],'m1',1,0]);
+      }catch(err){results.push({name:'AI multiple keys',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const wa=tsMod(window.__WA_TS);
+        eq('WhatsApp: Indian numbers normalised with country code',[wa.waNumber('98765 43210'),wa.waNumber('+91-98765-43210'),wa.waNumber('098765 43210'),wa.waNumber('12345')],['919876543210','919876543210','919876543210','']);
+        eq('WhatsApp: bill categories same as the app’s',wa.BILL_CATEGORIES,AI_BILL_CATEGORIES);
+        const raw=new TextEncoder().encode('{"entry":[]}');
+        const key=await crypto.subtle.importKey('raw',new TextEncoder().encode('0123456789abcdef0123456789abcdef'),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+        const mac=Array.from(new Uint8Array(await crypto.subtle.sign('HMAC',key,raw))).map(b=>b.toString(16).padStart(2,'0')).join('');
+        eq('WhatsApp: webhook signature checked with the app secret',[await wa.validSignature('0123456789abcdef0123456789abcdef',raw,'sha256='+mac),await wa.validSignature('0123456789abcdef0123456789abcdef',raw,'sha256='+'0'.repeat(64)),await wa.validSignature('',raw,'sha256='+mac)],[true,false,false]);
+        const kv=new Map();['salonos_daily_sales_collection_data_outlet_902','salonos_daily_sales_data_outlet_902','salonos_master_employees_outlet_902','salonos_attendance_outlet_902'].forEach(k=>kv.set(k,JSON.parse(localStorage.getItem(k)||'null')));
+        const txt=wa.todayText(kv,902,'Outlet B',new Date(Date.UTC(2026,8,13,12)));
+        eq('WhatsApp: "today" reply for the sender’s outlet',txt.split('\\n').slice(0,4),['📊 Outlet B — today','Sales: ₹2,000','Expenses: ₹0','This month so far: ₹15,000']);
+      }catch(err){results.push({name:'WhatsApp',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const rep=tsMod(window.__REP_TS);
+        const kv=new Map();['salonos_salons','salonos_daily_sales_collection_data_outlet_902','salonos_vendor_invoices_outlet_902','salonos_master_employees_outlet_902','salonos_attendance_outlet_902'].forEach(k=>kv.set(k,JSON.parse(localStorage.getItem(k)||'null')||undefined));
+        kv.set('salonos_salons',[{id:902,name:'Test Outlet B',status:'Active'}]);
+        const w=rep.buildWeekly(kv,new Date(Date.UTC(2026,8,15,10)));
+        eq('Weekly summary: last Mon–Sun vs the week before, bills due this week',[w.key,w.title,w.line],['weekly:2026-09-14','Weekly summary — 7 Sep to 13 Sep','Test Outlet B: ₹8,000 sales (+0% vs week before), attendance 100%, bills due ₹300, overdue ₹500']);
+      }catch(err){results.push({name:'Weekly summary',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const d=aiBillToIntake({supplierName:'Test Vendor Pvt',supplierGstin:'',invoiceNo:'B-9',invoiceDate:'2026-09-12',dueDate:'',total:1180,taxable:1000,cgst:90,sgst:90,category:'Housekeeping',docNature:'Tax Invoice',notes:''},[{id:'V1',name:'Test Vendor'}]);
+        eq('WhatsApp bill → invoice form fields (vendor matched by name)',[d.vendorId,d.matchBy,d.invoiceNo,d.amount,d.taxable,d.aiCategory],['V1','name','B-9',1180,1000,'Housekeeping']);
+      }catch(err){results.push({name:'Bill to invoice form',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
@@ -355,6 +400,7 @@
     const doc='<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><div id="root"></div>'
       +'<script>window.__AUTOMATION_TS='+esc(JSON.stringify(automationTs))+';<\/script>'
       +'<script>window.__AI_TS='+esc(JSON.stringify(aiTs))+';<\/script>'
+      +'<script>window.__WA_TS='+esc(JSON.stringify(waTs))+';window.__REP_TS='+esc(JSON.stringify(repTs))+';<\/script>'
       +'<script>'+setup+'<\/script>'
       +libs.map(s=>'<script src="'+s+'"><\/script>').join('')
       +'<script>'+esc(app)+'<\/script>'

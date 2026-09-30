@@ -1512,7 +1512,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
         React.createElement('input',{className:'form-control',style:{width:220},placeholder:'🔍 Search employee…',value:swSearch,onChange:e=>setSwSearch(e.target.value)}),
         swSearch&&React.createElement('span',{style:{fontSize:11,color:'var(--text3)'}},swVisibleWorkings.length+' of '+workings.length+' match'),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
-        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},[2023,2024,2025,2026].map(y=>React.createElement('option',{key:y},y))),
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},Array.from({length:new Date().getFullYear()-2021},(_,i)=>2023+i).map(y=>React.createElement('option',{key:y},y))),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openGenerate},'🧮 Generate Salary'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:exportExcel},swSelectedIds.size>0?'⬇ Export Selected ('+swSelectedIds.size+')':'⬇ Export Excel'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',title:'One branded payslip page per employee (the ticked ones, or everyone)',onClick:async()=>{
@@ -1525,6 +1525,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
             document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(a.href),5000);
           }catch(e){alert('Could not create payslips: '+(e.message||e));}
         }},swSelectedIds.size>0?'📄 Payslips ('+swSelectedIds.size+')':'📄 Payslips (PDF)'),
+        CLOUD_SYNC_ENABLED&&React.createElement(WhatsAppSalaryNotifyButton,{salon,year:selYear,month:selMonth,workings:exportWorkings}),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:'',title:'Generates a printable Challan from this month\'s Salary Working figures — opens in a new tab, ready to print or Save as PDF',onChange:e=>{if(e.target.value)generateChallan(e.target.value);e.target.value='';}},
           React.createElement('option',{value:''},'🧾 Generate Challan…'),
           React.createElement('option',{value:'esic'},'ESIC Challan'),

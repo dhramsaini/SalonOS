@@ -372,12 +372,20 @@ async function sendDigest(kv: KV, fresh: Alert[]) {
     });
     res.email = r.ok ? "sent" : `failed (${r.status})`;
   }
-  if (phones.length && WA_TOKEN && WA_PHONE_ID) {
+  // WhatsApp details: Edge Function secrets if set, else the ones saved in Master Settings → WhatsApp.
+  let wa = WA_TOKEN && WA_PHONE_ID ? { token: WA_TOKEN, phoneId: WA_PHONE_ID } : null;
+  if (!wa && phones.length) {
+    const { data } = await admin.from("app_secrets").select("value,meta").eq("name", "whatsapp").maybeSingle();
+    let v: { token?: string } = {};
+    try { v = JSON.parse(data?.value ?? "{}"); } catch { /* none */ }
+    if (v.token && data?.meta?.phoneNumberId) wa = { token: v.token, phoneId: String(data.meta.phoneNumberId) };
+  }
+  if (phones.length && wa) {
     const line = fresh.map((a) => a.title).join(" | ").slice(0, 1000);
     let ok = 0;
     for (const p of phones) {
-      const r = await fetch(`https://graph.facebook.com/v20.0/${WA_PHONE_ID}/messages`, {
-        method: "POST", headers: { Authorization: `Bearer ${WA_TOKEN}`, "Content-Type": "application/json" },
+      const r = await fetch(`https://graph.facebook.com/v23.0/${wa.phoneId}/messages`, {
+        method: "POST", headers: { Authorization: `Bearer ${wa.token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ messaging_product: "whatsapp", to: p.replace(/[^\d]/g, ""), type: "template",
           template: { name: WA_TEMPLATE, language: { code: WA_LANG }, components: [{ type: "body", parameters: [{ type: "text", text: "SalonOS · " + title }, { type: "text", text: line }] }] } }),
       });

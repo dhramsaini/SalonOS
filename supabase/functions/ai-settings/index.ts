@@ -5,11 +5,15 @@
 // first, and whether it falls back to the others, is the "ai_settings" row. Only an active Super
 // Admin (at two-step level when their account has an authenticator) can change anything here.
 //
+// Each provider can hold up to 5 keys (e.g. two Claude accounts): the "ai" function tries them in
+// order and skips one that failed in the last 30 minutes, so a key that runs out of credit or is
+// revoked doesn't stop AI. Key 1 is row "<provider>_api_key", key n is "<provider>_api_key_<n>".
 // Actions (POST JSON {action, ...}):
-//   status                                → { providers: {p: {configured, model, keyHint, updatedAt, updatedBy}}, models, primary, fallback }
-//   save   {provider, key, model}         → checks the key with a tiny request, then stores it (blank key = change model only)
-//   test   {provider}                     → a tiny request with the stored key
-//   remove {provider}                     → deletes that key
+//   status                                → { providers: {p: {configured, model, keyHint, updatedAt, updatedBy, keys:[{slot, keyHint, model, updatedAt, updatedBy, failedAt, lastError, lastOkAt}]}}, models, primary, fallback }
+//   save   {provider, slot?, key, model}  → checks the key with a tiny request, then stores it (no slot = next free one;
+//                                           blank key = change that slot's model only)
+//   test   {provider, slot?}              → a tiny request with that stored key (slot 1 by default)
+//   remove {provider, slot?}              → deletes that key (slot 1 by default)
 //   prefs  {primary, fallback}            → which provider is used first, and whether to try the others on failure
 // Deploy with "Verify JWT" ON.
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -133,6 +137,14 @@ async function tryKey(p: Provider, apiKey: string, model: string) {
   return { ok: true, model: r.modelVersion ?? model, reply: text.slice(0, 200) };
 }
 const hintOf = (key: string) => "…" + key.slice(-4);
+const MAX_KEYS = 5;
+const rowName = (p: Provider, slot: number) => slot === 1 ? SECRET[p] : SECRET[p] + "_" + slot;
+const ALL_ROWS = PROVIDERS.flatMap((p) => Array.from({ length: MAX_KEYS }, (_, i) => rowName(p, i + 1)));
+const slotOf = (v: unknown, dflt = 1) => {
+  const s = v == null || v === "" ? dflt : Number(v);
+  if (!Number.isInteger(s) || s < 1 || s > MAX_KEYS) throw new HttpError(400, "Key number must be 1 to " + MAX_KEYS + ".");
+  return s;
+};
 const providerOf = (v: unknown): Provider => {
   const p = String(v ?? "anthropic") as Provider; // old app versions send no provider = Claude
   if (!PROVIDERS.includes(p)) throw new HttpError(400, "Unknown AI provider.");
@@ -148,11 +160,16 @@ Deno.serve(async (req) => {
     const action = String(body.action ?? "");
 
     if (action === "status") {
-      const { data } = await admin.from("app_secrets").select("name,meta,updated_at").in("name", [...Object.values(SECRET), "ai_settings"]);
+      const { data } = await admin.from("app_secrets").select("name,meta,updated_at").in("name", [...ALL_ROWS, "ai_settings"]);
       const rows = data ?? [];
       const providers = Object.fromEntries(PROVIDERS.map((p) => {
-        const r = rows.find((x) => x.name === SECRET[p]);
-        return [p, { configured: !!r, model: r?.meta?.model ?? MODELS[p][0], keyHint: r?.meta?.keyHint ?? "", updatedAt: r?.updated_at ?? null, updatedBy: r?.meta?.updatedByEmail ?? "" }];
+        const keys = Array.from({ length: MAX_KEYS }, (_, i) => i + 1).flatMap((slot) => {
+          const r = rows.find((x) => x.name === rowName(p, slot));
+          return r ? [{ slot, keyHint: r.meta?.keyHint ?? "", model: r.meta?.model ?? MODELS[p][0], updatedAt: r.updated_at ?? null,
+            updatedBy: r.meta?.updatedByEmail ?? "", failedAt: r.meta?.failedAt ?? null, lastError: r.meta?.lastError ?? null, lastOkAt: r.meta?.lastOkAt ?? null }] : [];
+        });
+        const f = keys[0];
+        return [p, { configured: keys.length > 0, model: f?.model ?? MODELS[p][0], keyHint: f?.keyHint ?? "", updatedAt: f?.updatedAt ?? null, updatedBy: f?.updatedBy ?? "", keys }];
       }));
       const pref = rows.find((x) => x.name === "ai_settings")?.meta ?? {};
       const firstSaved = PROVIDERS.find((p) => providers[p].configured) ?? null;
@@ -169,33 +186,52 @@ Deno.serve(async (req) => {
       const model = String(body.model ?? "").trim() || MODELS[p][0];
       if (!MODEL_RE.test(model)) throw new HttpError(400, "That model name doesn't look right.");
       if (!key) {
-        // Only the model changed — check it with the stored key, then keep the key.
-        const { data } = await admin.from("app_secrets").select("value,meta").eq("name", SECRET[p]).maybeSingle();
+        // Only the model changed — check it with that stored key, then keep the key.
+        const slot = slotOf(body.slot);
+        const { data } = await admin.from("app_secrets").select("value,meta").eq("name", rowName(p, slot)).maybeSingle();
         if (!data) throw new HttpError(400, "Paste the API key first.");
         const check = await tryKey(p, data.value, model);
-        await admin.from("app_secrets").update({ meta: { ...data.meta, model }, updated_at: new Date().toISOString(), updated_by: user.id }).eq("name", SECRET[p]);
-        return json({ ok: true, model, reply: check.reply });
+        await admin.from("app_secrets").update({ meta: { ...data.meta, model, failedAt: null, lastError: null }, updated_at: new Date().toISOString(), updated_by: user.id }).eq("name", rowName(p, slot));
+        return json({ ok: true, slot, model, reply: check.reply });
       }
       checkKeyShape(p, key);
+      const { data: existing } = await admin.from("app_secrets").select("name,value").in("name", Array.from({ length: MAX_KEYS }, (_, i) => rowName(p, i + 1)));
+      if ((existing ?? []).some((r) => r.value === key && (body.slot == null || r.name !== rowName(p, slotOf(body.slot))))) throw new HttpError(400, "This key is already saved.");
+      let slot: number;
+      if (body.slot != null && body.slot !== "") slot = slotOf(body.slot);
+      else {
+        const used = new Set((existing ?? []).map((r) => r.name));
+        const free = Array.from({ length: MAX_KEYS }, (_, i) => i + 1).find((s) => !used.has(rowName(p, s)));
+        if (!free) throw new HttpError(400, "Already " + MAX_KEYS + " " + LABEL[p] + " keys saved — remove one first.");
+        slot = free;
+      }
       const check = await tryKey(p, key, model);
       const { error } = await admin.from("app_secrets").upsert({
-        name: SECRET[p], value: key, updated_at: new Date().toISOString(), updated_by: user.id,
+        name: rowName(p, slot), value: key, updated_at: new Date().toISOString(), updated_by: user.id,
         meta: { model, keyHint: hintOf(key), updatedByEmail: user.email ?? "" },
       });
       if (error) throw new HttpError(500, error.message);
-      return json({ ok: true, model, keyHint: hintOf(key), reply: check.reply });
+      return json({ ok: true, slot, model, keyHint: hintOf(key), reply: check.reply });
     }
 
     if (action === "test") {
       const p = providerOf(body.provider);
-      const { data } = await admin.from("app_secrets").select("value,meta").eq("name", SECRET[p]).maybeSingle();
-      if (!data) throw new HttpError(400, "No " + LABEL[p] + " key saved yet.");
-      return json(await tryKey(p, data.value, data.meta?.model ?? MODELS[p][0]));
+      const slot = slotOf(body.slot);
+      const { data } = await admin.from("app_secrets").select("value,meta").eq("name", rowName(p, slot)).maybeSingle();
+      if (!data) throw new HttpError(400, "No " + LABEL[p] + " key " + slot + " saved yet.");
+      try {
+        const r = await tryKey(p, data.value, data.meta?.model ?? MODELS[p][0]);
+        await admin.from("app_secrets").update({ meta: { ...data.meta, failedAt: null, lastError: null, lastOkAt: new Date().toISOString() } }).eq("name", rowName(p, slot));
+        return json({ ...r, slot });
+      } catch (e) {
+        await admin.from("app_secrets").update({ meta: { ...data.meta, failedAt: new Date().toISOString(), lastError: String((e as Error).message).slice(0, 200) } }).eq("name", rowName(p, slot));
+        throw e;
+      }
     }
 
     if (action === "remove") {
       const p = providerOf(body.provider);
-      await admin.from("app_secrets").delete().eq("name", SECRET[p]);
+      await admin.from("app_secrets").delete().eq("name", rowName(p, slotOf(body.slot)));
       return json({ ok: true });
     }
 

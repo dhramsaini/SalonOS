@@ -1,15 +1,26 @@
 
 
-function InvoiceIntake({vendors,onUse,onManual,onClose}){
+// initial (optional): {ai, attachment} — a bill already read on the server (WhatsApp inbox); opens
+// straight on the review step with that stored file attached.
+function InvoiceIntake({vendors,onUse,onManual,onClose,initial}){
   const {toast}=useToast();
-  const [stage,setStage]=useState('pick');   // pick | busy | review | error
+  const fromInitial=()=>{
+    if(!initial)return null;
+    const d=initial.ai?aiBillToIntake(initial.ai,vendors):{conf:{},raw:'Not read automatically — enter the details.',docNature:'Tax Invoice'};
+    d.fileName=initial.attachment&&initial.attachment.name;
+    d.bookingDate=d.invoiceDate||'';
+    d.category=d.vendorId?(((vendors.find(v=>v.id===d.vendorId)||{}).cat)||d.aiCategory||''):(d.aiCategory||'');
+    if(d.amount)d.amount=Math.round(Number(d.amount));
+    return d;
+  };
+  const [stage,setStage]=useState(initial?'review':'pick');   // pick | busy | review | error
   const [msg,setMsg]=useState('');
   const [file,setFile]=useState(null);
-  const [data,setData]=useState(null);
+  const [data,setData]=useState(fromInitial);
   const [err,setErr]=useState('');
   const [showRaw,setShowRaw]=useState(false);
   const [drag,setDrag]=useState(false);
-  const [newVendor,setNewVendor]=useState(true);
+  const [newVendor,setNewVendor]=useState(()=>{const d=fromInitial();return !(d&&d.vendorId);});
 
   const run=async(f)=>{
     const ext=(f.name.split('.').pop()||'').toLowerCase();
@@ -72,7 +83,7 @@ function InvoiceIntake({vendors,onUse,onManual,onClose}){
   const use=()=>{
     if(!data.amount)return toast('Enter the '+(data.docNature==='Performa Invoice'?'PI':'invoice')+' amount before continuing','error');
     if(!data.category)return toast('Select a Category before continuing','error');
-    onUse({...data,amount:Math.round(Number(data.amount)||0),_file:file},newVendor);
+    onUse({...data,amount:Math.round(Number(data.amount)||0),_file:file,_attachment:initial?initial.attachment:null},newVendor);
   };
   const isPI=data&&data.docNature==='Performa Invoice';
 

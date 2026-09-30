@@ -1,6 +1,7 @@
 // SalonOS — automatic owner reports (Supabase Edge Function "salonos-reports").
 //
 // • Nightly (22:00 IST) : today's sales / expenses / attendance per outlet + month-to-date sales.
+// • Weekly (Monday, 09:00 IST): last week per outlet vs the week before, attendance, bills due this week.
 // • Monthly (1st, 09:00 IST): last month's sales and expenses per outlet.
 // Delivered by email (Resend) and/or WhatsApp (Meta Cloud API) to the recipients a Super Admin
 // sets in SalonOS → Master Settings → Automatic reports (stored in kv_store as
@@ -131,6 +132,58 @@ ${rows.map((r: any) => `<tr><td>${escapeHtml(r.name)}</td><td align="right">${in
   return { key: `monthly:${y}-${pad(m + 1)}`, title, html, line };
 }
 
+// Weekly (Monday 09:00 IST): last Monday–Sunday per outlet against the week before, attendance for
+// the week (worked ÷ working days marked), and vendor bills due in the coming 7 days.
+export function buildWeekly(kv: KV, now: Date) {
+  const dn = Math.floor(now.getTime() / 864e5); // IST day number (now is already shifted to IST)
+  const monday = dn - ((new Date(dn * 864e5).getUTCDay() + 6) % 7); // this week's Monday
+  const dOf = (n: number) => new Date(n * 864e5);
+  const lab = (n: number) => `${dOf(n).getUTCDate()} ${MONTHS[dOf(n).getUTCMonth()].slice(0, 3)}`;
+  const outlets = (kv.get("salonos_salons") ?? []).filter((s: any) => s.status === "Active");
+  const week = (sid: number, start: number) => {
+    let sales = 0, exp = 0, days = 0;
+    for (let i = 0; i < 7; i++) { const f = dayFigures(kv, sid, isoOf(dOf(start + i))); sales += f.sales; exp += f.exp; if (f.entered) days++; }
+    return { sales, exp, days };
+  };
+  const rows = outlets.map((o: any) => {
+    const sid = Number(o.id);
+    const cur = week(sid, monday - 7), prev = week(sid, monday - 14);
+    const emps = (kv.get(`salonos_master_employees_outlet_${sid}`) ?? []).filter((e: any) => e.status === "Active");
+    const att = kv.get(`salonos_attendance_outlet_${sid}`) ?? {};
+    let worked = 0, working = 0;
+    for (const e of emps) for (let i = 0; i < 7; i++) {
+      const d = dOf(monday - 7 + i);
+      const v = att[`${e.id}_${d.getUTCFullYear()}_${d.getUTCMonth()}`]?.days?.[d.getUTCDate() - 1];
+      if (v === "present") { worked++; working++; } else if (v === "half") { worked += 0.5; working++; } else if (v === "absent") working++;
+    }
+    let due = 0, overdue = 0;
+    for (const inv of kv.get(`salonos_vendor_invoices_outlet_${sid}`) ?? []) {
+      if (!inv || inv.docNature === "Performa Invoice") continue;
+      const bal = num(inv.amount) - (inv.payments ?? []).reduce((t: number, p: any) => t + num(p.paidAmount), 0);
+      const m = String(inv.dueDate ?? "").match(/^(\d{4})-(\d{2})-(\d{2})|^(\d{2})\/(\d{2})\/(\d{4})/);
+      if (bal <= 0.5 || !m) continue;
+      const dd = m[1] ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : Date.UTC(+m[6], +m[5] - 1, +m[4]);
+      const n = Math.floor(dd / 864e5);
+      if (n < dn) overdue += bal; else if (n <= dn + 7) due += bal;
+    }
+    const chg = prev.sales ? Math.round((cur.sales - prev.sales) / prev.sales * 100) : null;
+    return { name: String(o.name).split("—")[0].trim(), cur, prev, chg, attPct: working ? Math.round(worked / working * 100) : null, due, overdue };
+  });
+  const title = `Weekly summary — ${lab(monday - 7)} to ${lab(monday - 1)}`;
+  const html = `<h2 style="margin:0 0 4px;color:#14335e">${escapeHtml(title)}</h2>
+<p style="margin:0 0 16px;color:#5e6a82">Automatic report from SalonOS — last week against the week before.</p>
+${rows.map((r: any) => `<table cellpadding="6" style="border-collapse:collapse;width:100%;max-width:560px;margin-bottom:16px;font:14px Arial,sans-serif;border:1px solid #d9e1f0">
+<tr><th colspan="2" style="background:#14335e;color:#fff;text-align:left">${escapeHtml(r.name)}</th></tr>
+<tr><td>Sales</td><td align="right"><b>${inr(r.cur.sales)}</b>${r.chg == null ? "" : ` <span style="color:${r.chg >= 0 ? "#12805c" : "#cf3d3d"}">(${r.chg >= 0 ? "+" : ""}${r.chg}%)</span>`}</td></tr>
+<tr><td>Expenses</td><td align="right">${inr(r.cur.exp)}</td></tr>
+<tr><td>Days with sales entered</td><td align="right">${r.cur.days} of 7</td></tr>
+<tr><td>Attendance</td><td align="right">${r.attPct == null ? "not marked" : r.attPct + "%"}</td></tr>
+<tr><td>Vendor bills due this week</td><td align="right">${inr(r.due)}${r.overdue > 0.5 ? ` <span style="color:#cf3d3d">+ ${inr(r.overdue)} overdue</span>` : ""}</td></tr>
+</table>`).join("")}`;
+  const line = rows.map((r: any) => `${r.name}: ${inr(r.cur.sales)} sales${r.chg == null ? "" : ` (${r.chg >= 0 ? "+" : ""}${r.chg}% vs week before)`}, attendance ${r.attPct == null ? "not marked" : r.attPct + "%"}, bills due ${inr(r.due)}${r.overdue > 0.5 ? `, overdue ${inr(r.overdue)}` : ""}`).join(" | ");
+  return { key: `weekly:${isoOf(dOf(monday))}`, title, html, line };
+}
+
 async function sendEmail(to: string[], subject: string, html: string) {
   if (!RESEND_API_KEY) return { ok: false, error: "Email is not set up yet — add RESEND_API_KEY in Supabase Edge Function secrets." };
   if (!to.length) return { ok: false, error: "No email recipients set." };
@@ -141,16 +194,26 @@ async function sendEmail(to: string[], subject: string, html: string) {
   });
   return r.ok ? { ok: true } : { ok: false, error: `Email failed (${r.status}): ${(await r.text()).slice(0, 300)}` };
 }
+// WhatsApp details: Edge Function secrets if set, else the ones saved in Master Settings → WhatsApp
+// (app_secrets row "whatsapp", written by the whatsapp function).
+async function waCreds() {
+  if (WA_TOKEN && WA_PHONE_ID) return { token: WA_TOKEN, phoneId: WA_PHONE_ID };
+  const { data } = await admin.from("app_secrets").select("value,meta").eq("name", "whatsapp").maybeSingle();
+  let v: { token?: string } = {};
+  try { v = JSON.parse(data?.value ?? "{}"); } catch { /* none */ }
+  return v.token && data?.meta?.phoneNumberId ? { token: v.token, phoneId: String(data.meta.phoneNumberId) } : null;
+}
 async function sendWhatsApp(to: string[], title: string, line: string) {
-  if (!WA_TOKEN || !WA_PHONE_ID) return { ok: false, error: "WhatsApp is not set up yet — add WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID in Supabase Edge Function secrets." };
+  const wa = await waCreds();
+  if (!wa) return { ok: false, error: "WhatsApp is not set up yet — connect it in Master Settings → WhatsApp." };
   if (!to.length) return { ok: false, error: "No WhatsApp numbers set." };
   const errors: string[] = [];
   for (const num of to) {
     // Business-initiated WhatsApp messages must use a Meta-approved template; ours has two text
     // parameters: {{1}} the report title and {{2}} the one-line summary (no line breaks allowed).
-    const r = await fetch(`https://graph.facebook.com/v20.0/${WA_PHONE_ID}/messages`, {
+    const r = await fetch(`https://graph.facebook.com/v23.0/${wa.phoneId}/messages`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${WA_TOKEN}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${wa.token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         messaging_product: "whatsapp", to: num.replace(/[^\d]/g, ""), type: "template",
         template: { name: WA_TEMPLATE, language: { code: WA_LANG },
@@ -198,7 +261,7 @@ Deno.serve(async (req) => {
     new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
   try {
     const body = await req.json().catch(() => ({}));
-    const kind = body.kind === "monthly" ? "monthly" : "daily";
+    const kind = body.kind === "monthly" ? "monthly" : body.kind === "weekly" ? "weekly" : "daily";
     const test = !!body.test;
     if (test && !(await isActiveSuperAdmin(req))) return json({ error: "Only a signed-in Super Admin can send a test report." }, 403);
     if (!test && !(await isCronCall(req))) return json({ error: "Not allowed." }, 403);
@@ -206,7 +269,7 @@ Deno.serve(async (req) => {
     const kv = await loadKv();
     const settings = kv.get("salonos_secret_report_settings") ?? {};
     if (!test && settings[kind] === false) return json({ skipped: `${kind} reports are turned off` });
-    const report = kind === "monthly" ? buildMonthly(kv) : buildDaily(kv);
+    const report = kind === "monthly" ? buildMonthly(kv) : kind === "weekly" ? buildWeekly(kv, istNow()) : buildDaily(kv);
 
     // Scheduled runs send each report once only, however often the job is triggered.
     const state = kv.get("salonos_secret_report_state") ?? {};

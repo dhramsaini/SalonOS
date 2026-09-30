@@ -2687,6 +2687,11 @@ async function aiReadBill(file,vendors){
   if(error){let msg=error.message||'AI could not read the bill';try{const b=error.context&&await error.context.json();if(b&&b.error)msg=b.error;}catch(e){}throw new Error(msg);}
   if(!data||data.notConfigured)return null;
   if(data.error)throw new Error(data.error);
+  return aiBillToIntake(data,vendors);
+}
+// The ai function's read_bill answer → the fields InvoiceIntake reviews (also used for bills that
+// arrived on WhatsApp, which the server has already read).
+function aiBillToIntake(data,vendors){
   const R={conf:{},raw:'Read by AI ('+(data.provider?data.provider+' · ':'')+(data.model||'')+').'+(data.notes?'\nNotes from the AI: '+data.notes:'')+'\n\n'+JSON.stringify(data,null,2)};
   const put=(k,v)=>{if(v!==''&&v!=null&&!(typeof v==='number'&&v===0)){R[k]=v;R.conf[k]='ai';}};
   put('vendorName',String(data.supplierName||'').trim());put('gst',String(data.supplierGstin||'').toUpperCase().replace(/\s/g,''));
