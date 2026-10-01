@@ -484,6 +484,8 @@ tbody tr:nth-child(n+11){animation-delay:0.16s}
   .form-control:not(table *){min-height:40px}
   .seg button,.fy-chip{min-height:34px}
 }
+/* Clickable menu items and anything acting as a button show the hand pointer, not the text I-beam. */
+.nav-item,[role=button],.sidebar-logo,.user-chip{cursor:pointer;-webkit-user-select:none;user-select:none}
 .help-note{display:block;font-size:12px;line-height:1.55;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:8px 11px} /* a short explanatory note under a card or form */
 .help-tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--border2);color:var(--text3);font-size:10px;cursor:help;margin-left:4px;flex-shrink:0}
 
@@ -877,24 +879,24 @@ body.light kbd{background:#fff}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 <!-- App code, split by area (js/). Load order matters; ?v= must match APP_VERSION so browsers never mix releases. -->
-<script src="js/01-foundation.js?v=2026.10.01.49"></script>
-<script src="js/02-shared.js?v=2026.10.01.49"></script>
-<script src="js/03-admin.js?v=2026.10.01.49"></script>
-<script src="js/04-outlet-staff.js?v=2026.10.01.49"></script>
-<script src="js/05-daily-sales.js?v=2026.10.01.49"></script>
-<script src="js/06-attendance-salary.js?v=2026.10.01.49"></script>
-<script src="js/07-incentives.js?v=2026.10.01.49"></script>
-<script src="js/08-advances-vendors.js?v=2026.10.01.49"></script>
-<script src="js/09-registers-statutory.js?v=2026.10.01.49"></script>
-<script src="js/10-collections-bank.js?v=2026.10.01.49"></script>
-<script src="js/11-expenses-reports.js?v=2026.10.01.49"></script>
-<script src="js/12-front-desk.js?v=2026.10.01.49"></script>
-<script src="js/13-pnl.js?v=2026.10.01.49"></script>
-<script src="js/13a-insights.js?v=2026.10.01.49"></script>
-<script src="js/13b-whatsapp.js?v=2026.10.01.49"></script>
-<script src="js/13c-email.js?v=2026.10.01.49"></script>
-<script src="js/13d-guides.js?v=2026.10.01.49"></script>
-<script src="js/14-import-and-app.js?v=2026.10.01.49"></script>
+<script src="js/01-foundation.js?v=2026.10.01.50"></script>
+<script src="js/02-shared.js?v=2026.10.01.50"></script>
+<script src="js/03-admin.js?v=2026.10.01.50"></script>
+<script src="js/04-outlet-staff.js?v=2026.10.01.50"></script>
+<script src="js/05-daily-sales.js?v=2026.10.01.50"></script>
+<script src="js/06-attendance-salary.js?v=2026.10.01.50"></script>
+<script src="js/07-incentives.js?v=2026.10.01.50"></script>
+<script src="js/08-advances-vendors.js?v=2026.10.01.50"></script>
+<script src="js/09-registers-statutory.js?v=2026.10.01.50"></script>
+<script src="js/10-collections-bank.js?v=2026.10.01.50"></script>
+<script src="js/11-expenses-reports.js?v=2026.10.01.50"></script>
+<script src="js/12-front-desk.js?v=2026.10.01.50"></script>
+<script src="js/13-pnl.js?v=2026.10.01.50"></script>
+<script src="js/13a-insights.js?v=2026.10.01.50"></script>
+<script src="js/13b-whatsapp.js?v=2026.10.01.50"></script>
+<script src="js/13c-email.js?v=2026.10.01.50"></script>
+<script src="js/13d-guides.js?v=2026.10.01.50"></script>
+<script src="js/14-import-and-app.js?v=2026.10.01.50"></script>
 <script>
 // ── Phone card view for list tables — marks read-only list tables (one record per row) so the
 // CSS above can show each row as a labelled card on phones. Editable grids (text/number inputs or
