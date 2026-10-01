@@ -1011,7 +1011,7 @@ function App(){
   };
   const CMD_ACTIONS=[
     ...GLOBAL_NAV.map(n=>({label:n.label,group:'Go to',icon:n.icon,run:()=>setActivePage(n.id)})),
-    ...accessibleSalons.map(sn=>({label:sn.name,group:'Outlet',icon:'💈',run:()=>handleSelectSalon(sn)})),
+    ...accessibleSalons.map(sn=>({label:sn.name,group:'Outlet',icon:sn.businessType==='Restaurant'?'🍽':'💈',run:()=>handleSelectSalon(sn)})),
     ...accessibleSalons.flatMap(sn=>sheetsAllowedForSalon(sn).map(t=>({label:sn.name.split('—')[0].trim()+' → '+t.label,group:'Sheet',icon:'📄',
       run:()=>{setSelectedSalon(sn);setActivePage('salon');navToSalonTab(t.id);}}))),
     {label:'Sign out',group:'Account',icon:'⏻',run:logout},
@@ -1040,7 +1040,7 @@ function App(){
           className:`nav-item ${activePage==='salon'&&selectedSalon?.id===s.id?'active':''}`,
           tabIndex:0,role:'button',
           onClick:()=>{handleSelectSalon(s);closeSidebar();},onKeyDown:e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();handleSelectSalon(s);closeSidebar();}}},
-          React.createElement('span',{className:'icon'},'💈'),
+          React.createElement('span',{className:'icon'},s.businessType==='Restaurant'?'🍽':'💈'),
           React.createElement('span',{style:{fontSize:12,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},s.name.split('—')[0].trim())
         ))
       ),

@@ -793,11 +793,14 @@ function MasterSheet({onSelect,salons,setSalons,user}){
     }catch(err){toast(err.message||'Could not read that file — make sure it matches the template','error');}
     setBulkBusy(false);
   };
-  const openAdd=()=>{setForm({...BLANK});setEditItem(null);setShowModal(true);};
+  // + Add Salon / + Add Restaurant open the same form, with Line of Business already set.
+  const openAdd=(kind)=>{setForm({...BLANK,businessType:kind==='Restaurant'?'Restaurant':'Salon'});setEditItem(null);setShowModal(true);};
+  const isRestForm=form&&form.businessType==='Restaurant';
+  const outletWord=isRestForm?'Restaurant':'Salon';
   const openEdit=(s)=>{setForm({...BLANK,...s});setEditItem(s);setShowModal(true);};
 
   const save=()=>{
-    if(!form.name.trim()){toast('Salon name is required','error');return;}
+    if(!form.name.trim()){toast(outletWord+' name is required','error');return;}
     if(!form.city.trim()){toast('City is required','error');return;}
     const bankMismatch=bankIfscMismatch(form.bankName,form.bankIFSC);
     if(bankMismatch){toast(bankMismatch,'error');return;}
@@ -814,10 +817,10 @@ function MasterSheet({onSelect,salons,setSalons,user}){
         toast('Outlet Type changed: '+editItem.type+' → '+formToSave.type+' (logged)','success');
       }
       setSalons(prev=>prev.map(s=>s.id===formToSave.id?{...formToSave,typeHistory}:s));
-      if(editItem.type===formToSave.type)toast('Salon updated successfully','success');
+      if(editItem.type===formToSave.type)toast(outletWord+' updated successfully','success');
     } else {
       setSalons(prev=>[...prev,{...formToSave,id:nextId(),typeHistory:[]}]);
-      toast('Salon added successfully','success');
+      toast(outletWord+' added successfully','success');
     }
     setShowModal(false);
   };
@@ -892,13 +895,14 @@ function MasterSheet({onSelect,salons,setSalons,user}){
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,
         React.createElement('div',{className:'page-title'},'Master Sheet'),
-        React.createElement('div',{className:'page-sub'},'All registered salon outlets')
+        React.createElement('div',{className:'page-sub'},'All registered outlets — salons and restaurants')
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:downloadSalonTemplate},'⬇ Import Template'),
         React.createElement('input',{ref:bulkFileRef,type:'file',accept:'.xlsx,.xls',style:{display:'none'},onChange:handleBulkSalonFile}),
         React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:bulkBusy,onClick:()=>bulkFileRef.current&&bulkFileRef.current.click()},bulkBusy?'Importing…':'📥 Bulk Import Salons'),
-        React.createElement('button',{className:'btn btn-primary',onClick:openAdd},'+ Add Salon')
+        React.createElement('button',{className:'btn btn-primary',onClick:()=>openAdd('Salon')},'💈 + Add Salon'),
+        React.createElement('button',{className:'btn btn-success',onClick:()=>openAdd('Restaurant')},'🍽 + Add Restaurant')
       )
     ),
 
@@ -927,18 +931,20 @@ function MasterSheet({onSelect,salons,setSalons,user}){
         ?React.createElement('div',{className:'empty-state'},
           React.createElement('div',{className:'empty-icon'},'🏪'),
           React.createElement('div',{className:'empty-title'},'No salons found'),
-          React.createElement('div',{className:'empty-sub'},search?'Try a different search term.':'Click + Add Salon to register your first outlet.')
+          React.createElement('div',{className:'empty-sub'},search?'Try a different search term.':'Click + Add Salon or + Add Restaurant to register your first outlet.')
         )
         :React.createElement('div',{className:'table-wrap'},
           React.createElement('table',null,
             React.createElement('thead',null,React.createElement('tr',null,
-              ['Salon Name','City / State','Type','GST Number','PAN','Manager','Phone','Status','Actions'].map(h=>React.createElement('th',{key:h},h))
+              ['Outlet Name','City / State','Type','GST Number','PAN','Manager','Phone','Status','Actions'].map(h=>React.createElement('th',{key:h},h))
             )),
             React.createElement('tbody',null,filtered.map(s=>
               React.createElement('tr',{key:s.id},
                 React.createElement('td',null,
                   React.createElement('div',{style:{fontWeight:600,color:'var(--text)'}},s.name),
-                  React.createElement('div',{style:{fontSize:10,color:'var(--text3)',marginTop:2}},'Est. '+s.est)
+                  React.createElement('div',{style:{display:'flex',gap:6,alignItems:'center',marginTop:3}},
+                    React.createElement('span',{className:'badge '+(s.businessType==='Restaurant'?'badge-amber':'badge-blue')},s.businessType==='Restaurant'?'🍽 Restaurant':'💈 Salon'),
+                    s.est&&React.createElement('span',{style:{fontSize:10,color:'var(--text3)'}},'Est. '+s.est))
                 ),
                 React.createElement('td',null,
                   React.createElement('div',{style:{fontSize:12}},s.city),
@@ -980,10 +986,10 @@ function MasterSheet({onSelect,salons,setSalons,user}){
     // ── ADD / EDIT MODAL ──
     showModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowModal(false)},
       React.createElement('div',{className:'modal',style:{width:620},onClick:e=>e.stopPropagation()},
-        React.createElement('div',{className:'modal-title'},editItem?'Edit Salon — '+editItem.name:'Add New Salon'),
+        React.createElement('div',{className:'modal-title'},(isRestForm?'🍽 ':'💈 ')+(editItem?'Edit '+outletWord+' — '+editItem.name:'Add New '+outletWord)),
 
         React.createElement('div',{className:'form-row cols2'},
-          FG('Salon Name *',INP({value:form.name,onChange:fc('name'),placeholder:'e.g. Luxe Studio — CP'})),
+          FG(outletWord+' Name *',INP({value:form.name,onChange:fc('name'),placeholder:isRestForm?'e.g. Spice Route — Cyber Hub':'e.g. Luxe Studio — CP'})),
           FG('Outlet Type',SEL(form.type,fc('type'),['Owned','COCO','FOCO','Franchise']))
         ),
         React.createElement('div',{className:'form-row cols2'},
