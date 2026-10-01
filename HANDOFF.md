@@ -435,6 +435,9 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   hrs), added to totalInc (so Incentive Payment and P&L include it). Columns after Mgr Inc (OT ✓, Normal Hrs/Day, OT Hrs,
   OT Amt) + totals; CSV/print append the OT columns; Excel builder adds Days/Normal/OT Hrs/OT Amt with a live formula and
   adds OT Amt to the Total Incentive formula. Tests 111.
+· (v2026.10.01.47) OT working moved to Incentive Rules & Settings → "Overtime (OT) Working" (Applicable, Normal Hrs/Day,
+  OT Hrs, working, OT Amount, totals); the main sheet shows only "OT Inc" after Mgr Inc (header opens Settings). Exports
+  (CSV/print/Excel) carry only OT Inc; Excel Total Incentive formula still includes it.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

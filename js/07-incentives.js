@@ -517,16 +517,16 @@ function IncentiveWorkingCore({period,salon,user}={}){
   const iwReportTitle='Incentive Working — '+MONTHS[selMonth]+' '+selYear+(salon?' — '+salon.name.split('—')[0].trim():'')+(iwSelectedIds.size>0?' (selected)':'');
   const iwTotalRaw=[iwExportTotalLabel,'',iwSum('salary'),iwSum('svcTarget'),iwSum('svcActual'),'',iwSum('memTarget'),iwSum('memActual'),'',iwSum('prodTarget'),iwSum('prodActual'),'',iwSum('totalTarget'),iwSum('totalActual'),'','','','',iwSum('penaltyAmt'),iwSum('advAdj'),iwSum('svcIncAmt'),iwSum('memIncAmt'),iwSum('prodIncAmt'),iwSum('mgrIncAmt'),iwSum('totalInc')];
   if(cols.bankDetails)iwTotalRaw.push('','','');
-  if(cols.ot)iwTotalRaw.push('',exportIncData.reduce((x,e)=>x+(e.otAmt>0?e.otHours:0),0),iwSum('otAmt'));
+  if(cols.ot)iwTotalRaw.push(iwSum('otAmt'));
   const iwReportBodyHtml=()=>{
     const headers=['Employee','Designation','Salary','Svc Target','Svc Achieved','Svc Achv. (×)','Mem Target','Mem Achieved','Mem Achv. (×)','Prod Target','Prod Achieved','Prod Achv. (×)','Total Target','Total Achieved','Total Achv. (×)','Svc Rate %','Mem Rate %','Prod Rate %','Penalty','Advance Adj.','Svc Inc','Mem Inc','Prod Inc','Mgr Inc','Total Incentive'];
     if(cols.bankDetails)headers.push('Bank Name','Account No.','IFSC Code');
-    if(cols.ot)headers.push('Normal Hrs/Day','OT Hrs','OT Amt');
+    if(cols.ot)headers.push('OT Inc');
     const headRow='<tr>'+headers.map((h,i)=>'<th'+(i<2?'':' class="num"')+'>'+h+'</th>').join('')+'</tr>';
     const bodyRows=exportIncData.map(e=>{
       const cells=[e.name,e.desig,fmt(e.salary),fmt(e.svcTarget),fmt(e.svcActual),formatTimes(e.svcTimesRaw,timesFmt),fmt(e.memTarget),fmt(e.memActual),formatTimes(e.memTimesRaw,timesFmt),fmt(e.prodTarget),fmt(e.prodActual),formatTimes(e.prodTimesRaw,timesFmt),fmt(e.totalTarget),fmt(e.totalActual),formatTimes(e.totalTimesRaw,timesFmt),e.svcRateUsed+'%',e.memRateUsed+'%',prodRateDisplay(e),fmt(e.penaltyAmt),fmt(e.advAdj),fmt(e.svcIncAmt),fmt(e.memIncAmt),fmt(e.prodIncAmt),fmt(e.mgrIncAmt),fmt(e.totalInc)];
       if(cols.bankDetails)cells.push(e.bankName||'—',e.accountNo||'—',e.ifsc||'—');
-      if(cols.ot)cells.push(e.otApplicable?(e.otNormalHours||'—'):'n/a',e.otApplicable?(e.otHours||'—'):'n/a',e.otAmt?fmt(e.otAmt):'—');
+      if(cols.ot)cells.push(e.otAmt?fmt(e.otAmt):'—');
       return '<tr>'+cells.map((c,i)=>'<td'+(i<2?'':' class="num"')+'>'+c+'</td>').join('')+'</tr>';
     }).join('');
     const totalRow='<tr style="font-weight:700;background:#f4f4f4">'+iwTotalRaw.map((v,i)=>'<td'+(i<2?'':' class="num"')+'>'+(typeof v==='number'?fmt(v):v)+'</td>').join('')+'</tr>';
@@ -535,12 +535,12 @@ function IncentiveWorkingCore({period,salon,user}={}){
   const iwReportSheetRows=()=>{
     const header=['Employee','Designation','Salary','Svc Target','Svc Achieved','Svc Achievement (Times)','Mem Target','Mem Achieved','Mem Achievement (Times)','Prod Target','Prod Achieved','Prod Achievement (Times)','Total Target','Total Achieved','Total Achievement (Times)','Svc Rate %','Mem Rate %','Prod Rate %','Penalty','Advance Adj.','Svc Inc','Mem Inc','Prod Inc','Mgr Inc','Total Incentive'];
     if(cols.bankDetails)header.push('Bank Name','Account No.','IFSC Code');
-    if(cols.ot)header.push('Normal Hrs/Day','OT Hrs','OT Amt');
+    if(cols.ot)header.push('OT Inc');
     return[header,
       ...exportIncData.map(e=>{
         const row=[e.name,e.desig,e.salary,e.svcTarget,e.svcActual,formatTimes(e.svcTimesRaw,timesFmt),e.memTarget,e.memActual,formatTimes(e.memTimesRaw,timesFmt),e.prodTarget,e.prodActual,formatTimes(e.prodTimesRaw,timesFmt),e.totalTarget,e.totalActual,formatTimes(e.totalTimesRaw,timesFmt),e.svcRateUsed,e.memRateUsed,prodRateDisplay(e),e.penaltyAmt,e.advAdj,e.svcIncAmt,e.memIncAmt,e.prodIncAmt,e.mgrIncAmt,e.totalInc];
         if(cols.bankDetails)row.push(e.bankName||'',e.accountNo||'',e.ifsc||'');
-        if(cols.ot)row.push(e.otApplicable?e.otNormalHours||0:'n/a',e.otApplicable?e.otHours||0:'n/a',e.otAmt||0);
+        if(cols.ot)row.push(e.otAmt||0);
         return row;
       }),
       iwTotalRaw];
@@ -966,6 +966,29 @@ function IncentiveWorkingCore({period,salon,user}={}){
         React.createElement(ColToggle,{k:'ot',label:'Overtime (OT)'})
       )
     ),
+    // ── Overtime (OT) Working — the hours behind the "OT Inc" column (only the amount shows on the
+    // main sheet). OT = Total Monthly Salary ÷ days in the month ÷ normal working hours × OT hours. ──
+    cols.ot&&React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:14}},
+      React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:4,textTransform:'uppercase',letterSpacing:'0.08em',fontWeight:600}},'Overtime (OT) Working — '+MONTHS[selMonth]+' '+selYear),
+      React.createElement('div',{style:{fontSize:11.5,color:'var(--text2)',marginBottom:8,lineHeight:1.5}},'OT = Total Monthly Salary ÷ days in the month ('+new Date(selYear,selMonth+1,0).getDate()+') ÷ normal working hours per day × OT hours. Untick “Applicable” for staff without OT. Normal hours carry forward to next month. Only the OT amount shows on Incentive Working (“OT Inc”).'),
+      React.createElement('div',{className:'table-wrap'},React.createElement('table',{style:{fontSize:12}},
+        React.createElement('thead',null,React.createElement('tr',null,['Employee','Designation','Salary','Applicable','Normal Hrs/Day','OT Hrs','Working','OT Amount'].map(t=>React.createElement('th',{key:t},t)))),
+        React.createElement('tbody',null,incData.map(e=>{
+          const locked=iwMetaFor(e.id).status==='Approved'||iwMonthLocked;
+          return React.createElement('tr',{key:e.id},
+            React.createElement('td',{style:{fontWeight:600}},e.name),
+            React.createElement('td',{style:{color:'var(--text3)'}},e.desig),
+            React.createElement('td',{style:{textAlign:'right'}},fmt(e.salary)),
+            React.createElement('td',{style:{textAlign:'center'}},React.createElement('input',{type:'checkbox',checked:e.otApplicable,disabled:locked,onChange:ev=>setActual(e.id,'otApplicable',ev.target.checked?1:0)})),
+            React.createElement('td',{style:{textAlign:'right'}},e.otApplicable?actualInput(e.id,'otNormalHours',e.otNormalHours,locked):'—'),
+            React.createElement('td',{style:{textAlign:'right'}},e.otApplicable?actualInput(e.id,'otHours',e.otHours,locked):'—'),
+            React.createElement('td',{style:{fontSize:11,color:'var(--text3)'}},e.otApplicable&&e.otNormalHours&&e.otHours?'₹'+Math.round(e.salary).toLocaleString('en-IN')+' ÷ '+e.otDays+' ÷ '+e.otNormalHours+' × '+e.otHours:(e.otApplicable&&e.otHours&&!e.otNormalHours?'enter normal hours':'—')),
+            React.createElement('td',{style:{textAlign:'right',fontWeight:700,color:e.otAmt>0?'var(--orange)':'var(--text3)'}},e.otAmt>0?fmt(e.otAmt):'—'));
+        }),
+        React.createElement('tr',{style:{fontWeight:700}},React.createElement('td',{colSpan:5},'Total'),
+          React.createElement('td',{style:{textAlign:'right'}},String(incData.reduce((x,e)=>x+(e.otAmt>0?e.otHours:0),0))),
+          React.createElement('td',null,''),
+          React.createElement('td',{style:{textAlign:'right',color:'var(--orange)'}},fmt(incData.reduce((x,e)=>x+(e.otAmt||0),0)))))))),
 
     React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:14}},
       React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.08em',fontWeight:600}},'Achievement — times display format'),
@@ -1022,7 +1045,7 @@ React.createElement.apply(React,['tr',null].concat([
               cols.product&&thG('Product ('+targetMult.prod+' Times Target)',3,'rgba(78,205,196,0.15)'),
               thG('Total Achievement',3,'rgba(47,95,224,0.12)'),
               (cols.svcPct||cols.memPct||cols.prodPct)&&thG('Incentive %',(cols.svcPct?1:0)+(cols.memPct?1:0)+(cols.prodPct?1:0),'rgba(255,159,67,0.1)'),
-              (cols.amounts||cols.penalty||cols.ot)&&thG('Incentive Amounts',(cols.penalty?1:0)+(cols.amounts?5:0)+(cols.ot?4:0),'rgba(76,175,125,0.12)'),
+              (cols.amounts||cols.penalty||cols.ot)&&thG('Incentive Amounts',(cols.penalty?1:0)+(cols.amounts?5:0)+(cols.ot?1:0),'rgba(76,175,125,0.12)'),
               cols.bankDetails&&thG('Bank Details',3,'var(--bg3)'),
               thG('Payout Status',3,'var(--bg3)')
             ].filter(Boolean))),
@@ -1041,7 +1064,7 @@ React.createElement.apply(React,['tr',null].concat([
               cols.penalty&&th2('Non-Performance Penalty',null,'rgba(76,175,125,0.12)'),
               cols.advAdj&&th2('Advance Adj.',null,'rgba(76,175,125,0.12)'),
               cols.amounts&&th2('Svc Inc',()=>goToSection(svcSectionRef),'rgba(76,175,125,0.12)'),cols.amounts&&th2('Mem Inc',()=>goToSection(memSectionRef),'rgba(76,175,125,0.12)'),cols.amounts&&th2('Prod Inc',()=>goToSection(prodSectionRef),'rgba(76,175,125,0.12)'),cols.amounts&&th2('Mgr Inc',()=>goToSection(mgrSectionRef),'rgba(76,175,125,0.12)'),
-              cols.ot&&th2('OT ✓',null,'rgba(255,159,67,0.14)'),cols.ot&&th2('Normal Hrs/Day',null,'rgba(255,159,67,0.14)'),cols.ot&&th2('OT Hrs',null,'rgba(255,159,67,0.14)'),cols.ot&&th2('OT Amt',null,'rgba(255,159,67,0.14)'),cols.amounts&&th2('Total Inc',null,'rgba(76,175,125,0.12)'),
+              cols.ot&&th2('OT Inc',()=>setShowSettings(true),'rgba(76,175,125,0.12)'),cols.amounts&&th2('Total Inc',null,'rgba(76,175,125,0.12)'),
               cols.bankDetails&&th2('Bank Name'),cols.bankDetails&&th2('Account No.'),cols.bankDetails&&th2('IFSC Code'),
               filterTH(IW_FILTER_COLS[2]),
               filterTH(IW_FILTER_COLS[3]),
@@ -1104,15 +1127,8 @@ React.createElement.apply(React,['tr',null].concat([
               cols.amounts&&(e.manualOv?.mgr
                 ?React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'},title:'This employee is individually set to Manual for Manager Incentive'},amtInput(e.id,'mgrAmt',e.mgrManualAmt,locked))
                 :td2(e.mgrIncAmt>0?fmt(e.mgrIncAmt):'—',e.mgrIncAmt>0?'var(--orange)':'var(--text3)')),
-              cols.ot&&React.createElement('td',{key:'otA',style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'center',background:'rgba(255,159,67,0.06)'}},
-                React.createElement('input',{type:'checkbox',checked:e.otApplicable,disabled:locked,title:e.otApplicable?'OT applicable — untick if overtime doesn’t apply to this employee':'OT not applicable',
-                  onChange:ev=>setActual(e.id,'otApplicable',ev.target.checked?1:0)})),
-              cols.ot&&React.createElement('td',{key:'otN',style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right',background:'rgba(255,159,67,0.06)'}},
-                e.otApplicable?actualInput(e.id,'otNormalHours',e.otNormalHours,locked):'—'),
-              cols.ot&&React.createElement('td',{key:'otH',style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right',background:'rgba(255,159,67,0.06)'}},
-                e.otApplicable?actualInput(e.id,'otHours',e.otHours,locked):'—'),
-              cols.ot&&React.createElement('td',{key:'otAmt',style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right',fontWeight:600,color:e.otAmt>0?'var(--orange)':'var(--text3)',background:'rgba(255,159,67,0.06)'},
-                  title:e.otAmt>0?'₹'+Math.round(e.salary).toLocaleString('en-IN')+' ÷ '+e.otDays+' days ÷ '+e.otNormalHours+' hrs × '+e.otHours+' OT hrs':(e.otApplicable&&!e.otNormalHours&&e.otHours?'Enter the normal working hours per day':'')},
+              cols.ot&&React.createElement('td',{key:'otAmt',style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right',color:e.otAmt>0?'var(--orange)':'var(--text3)'},
+                  title:e.otAmt>0?'Overtime: ₹'+Math.round(e.salary).toLocaleString('en-IN')+' ÷ '+e.otDays+' days ÷ '+e.otNormalHours+' hrs × '+e.otHours+' OT hrs — edit in Incentive Rules & Settings → Overtime (OT) Working':'Enter OT hours in Incentive Rules & Settings → Overtime (OT) Working'},
                 e.otAmt>0?fmt(e.otAmt):'—'),
               cols.amounts&&td2(fmt(e.totalInc),'var(--accent)',true),
               cols.bankDetails&&td2(e.bankName||'—','var(--text2)'),
@@ -1175,9 +1191,6 @@ React.createElement.apply(React,['tr',null].concat([
               cols.amounts&&td2(fmt(iwTotalRowData.reduce((s,e)=>s+(e.memIncAmt||0),0)),'var(--purple)',true),
               cols.amounts&&td2(fmt(iwTotalRowData.reduce((s,e)=>s+(e.prodIncAmt||0),0)),'var(--teal)',true),
               cols.amounts&&td2(fmt(iwTotalRowData.reduce((s,e)=>s+(e.mgrIncAmt||0),0)),'var(--orange)',true),
-              cols.ot&&React.createElement('td',{style:{padding:'6px 8px',borderBottom:'1px solid var(--border)'}},''),
-              cols.ot&&React.createElement('td',{style:{padding:'6px 8px',borderBottom:'1px solid var(--border)'}},''),
-              cols.ot&&td2(String(iwTotalRowData.reduce((s,e)=>s+(e.otAmt>0?e.otHours:0),0)),'var(--text2)',true),
               cols.ot&&td2(fmt(iwTotalRowData.reduce((s,e)=>s+(e.otAmt||0),0)),'var(--orange)',true),
               cols.amounts&&td2(fmt(iwTotalRowData.reduce((s,e)=>s+(e.totalInc||0),0)),'var(--accent)',true),
               cols.bankDetails&&React.createElement('td',{style:{padding:'8px 8px',borderBottom:'1px solid var(--border)'}},''),
