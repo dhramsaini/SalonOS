@@ -408,6 +408,60 @@ function GuideVideoButton({id,label}){
     open&&h(GuideVideoModal,{guide:g,initialLang:'en',onClose:()=>setOpen(false)}));
 }
 
+// ── Complete training video — every screen with a real example outlet, spoken in English or
+// Hindi, with chapters. Made by tools/training-video (local-test/demo.html + narration). ──
+const TRAINING_VIDEO_REV='1';
+const TRAINING_CHAPTERS={"en":[{"key":"intro","title":"Welcome to SalonOS","start":0.0},{"key":"start","title":"Getting started","start":23.07},{"key":"front","title":"Front desk","start":147.82},{"key":"money","title":"Daily sales, collection & bank","start":227.14},{"key":"payroll","title":"Payroll & HR","start":365.7},{"key":"vendors","title":"Vendors & expenses","start":569.01},{"key":"reports","title":"P&L, reports & Tally","start":687.57},{"key":"admin","title":"Users, settings & good habits","start":826.71}],"hi":[{"key":"intro","title":"SalonOS में आपका स्वागत है","start":0.0},{"key":"start","title":"शुरुआत","start":28.69},{"key":"front","title":"फ्रंट डेस्क","start":169.52},{"key":"money","title":"डेली सेल्स, कलेक्शन और बैंक","start":257.19},{"key":"payroll","title":"पेरोल और HR","start":405.04},{"key":"vendors","title":"वेंडर और खर्चे","start":625.77},{"key":"reports","title":"P&L, रिपोर्ट्स और Tally","start":750.43},{"key":"admin","title":"यूज़र, सेटिंग्स और अच्छी आदतें","start":896.62}],"duration":{"en":909,"hi":987}};
+function trainingVideoUrl(lang){return 'guides/training_'+(lang==='hi'?'hi':'en')+'.mp4?r='+TRAINING_VIDEO_REV;}
+function fmtClock(sec){sec=Math.max(0,Math.round(sec));return Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0');}
+function TrainingVideoModal({initialLang,onClose}){
+  const h=React.createElement;
+  const [lang,setLang]=useState(initialLang||'en');
+  const [failed,setFailed]=useState(false);
+  const [now,setNow]=useState(0);
+  const vref=useRef(null);
+  const chapters=TRAINING_CHAPTERS[lang]||[];
+  const curIdx=chapters.reduce((k,c,i)=>now>=c.start-0.25?i:k,0);
+  const seek=(c)=>{const v=vref.current;if(!v)return;v.currentTime=c.start+0.05;v.play().catch(()=>{});};
+  return h('div',{className:'modal-overlay',onClick:onClose},
+    h('div',{className:'modal',style:{width:1120,maxWidth:'97vw',padding:16},onClick:e=>e.stopPropagation()},
+      h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:10,flexWrap:'wrap'}},
+        h('div',{className:'modal-title',style:{margin:0,flex:1}},lang==='hi'?'🎓 SalonOS ट्रेनिंग वीडियो':'🎓 SalonOS training video'),
+        ['en','hi'].map(l=>h('button',{key:l,className:'btn btn-sm '+(lang===l?'btn-primary':'btn-ghost'),onClick:()=>{setLang(l);setFailed(false);setNow(0);}},l==='en'?'English':'हिंदी'))),
+      h('div',{style:{display:'flex',gap:14,flexWrap:'wrap',alignItems:'flex-start'}},
+        h('div',{style:{flex:'1 1 560px',minWidth:0}},
+          failed
+            ?h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'🎞'),h('div',{className:'empty-title'},lang==='hi'?'वीडियो लोड नहीं हुआ':'The video could not be loaded'),
+                h('div',{className:'empty-sub'},lang==='hi'?'इंटरनेट जाँचें और दोबारा खोलें।':'Check the connection and open it again.'))
+            :h('video',{key:lang,ref:vref,src:trainingVideoUrl(lang),controls:true,autoPlay:true,playsInline:true,preload:'metadata',onError:()=>setFailed(true),
+                onTimeUpdate:e=>setNow(e.currentTarget.currentTime),style:{width:'100%',aspectRatio:'16/9',background:'#000',borderRadius:10,display:'block'}})),
+        h('div',{style:{flex:'0 1 280px',minWidth:220,maxHeight:460,overflowY:'auto'}},
+          h('div',{style:{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}},lang==='hi'?'अध्याय':'Chapters'),
+          chapters.map((c,i)=>h('button',{key:c.key,type:'button',onClick:()=>seek(c),
+            style:{display:'flex',gap:8,alignItems:'baseline',width:'100%',textAlign:'left',padding:'8px 10px',marginBottom:4,borderRadius:8,cursor:'pointer',
+              border:'1px solid '+(i===curIdx?'var(--accent)':'var(--border)'),background:i===curIdx?'var(--accent-dim, rgba(59,130,246,0.12))':'var(--bg2)',color:'var(--text)',fontSize:13}},
+            h('span',{style:{fontVariantNumeric:'tabular-nums',color:'var(--text3)',fontSize:11.5,minWidth:38}},fmtClock(c.start)),
+            h('span',{style:{fontWeight:i===curIdx?700:500}},(i?i+'. ':'')+c.title))))),
+      h('div',{className:'modal-actions'},
+        h('a',{className:'btn btn-ghost',href:trainingVideoUrl(lang),download:'SalonOS_Training_'+(lang==='hi'?'Hindi':'English')+'.mp4'},lang==='hi'?'⬇ डाउनलोड':'⬇ Download'),
+        h('button',{className:'btn btn-primary',onClick:onClose},lang==='hi'?'बंद करें':'Close')))
+  );
+}
+function TrainingVideoCard({lang}){
+  const h=React.createElement;
+  const [open,setOpen]=useState(false);
+  const ch=TRAINING_CHAPTERS[lang]||[];
+  const mins=Math.round((TRAINING_CHAPTERS.duration&&TRAINING_CHAPTERS.duration[lang]||0)/60);
+  return h('div',{style:{border:'1px solid var(--accent)',borderRadius:12,padding:'12px 14px',marginBottom:12,background:'var(--bg3)'}},
+    h('div',{style:{display:'flex',alignItems:'center',gap:10}},
+      h('div',{style:{fontSize:26}},'🎓'),
+      h('div',{style:{flex:1,minWidth:0}},
+        h('div',{style:{fontWeight:700,fontSize:14}},lang==='hi'?'पूरा ट्रेनिंग वीडियो':'Complete training video'),
+        h('div',{style:{fontSize:11.5,color:'var(--text3)'}},(lang==='hi'?'हर स्क्रीन, example के साथ · ':'Every screen, with examples · ')+(ch.length-1)+(lang==='hi'?' अध्याय · ':' chapters · ')+(mins?mins+(lang==='hi'?' मिनट':' min'):''))),
+      h('button',{className:'btn btn-primary btn-sm',onClick:()=>setOpen(true)},lang==='hi'?'▶ देखें':'▶ Watch')),
+    open&&h(TrainingVideoModal,{initialLang:lang,onClose:()=>setOpen(false)}));
+}
+
 function StaffGuidesList(){
   const h=React.createElement;
   const {success,error:toastError}=useToast();
@@ -418,6 +472,7 @@ function StaffGuidesList(){
     h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:8}},
       h('div',{style:{fontWeight:700,fontSize:14,flex:1}},'🎬 Video guides'),
       ['en','hi'].map(l=>h('button',{key:l,className:'btn btn-sm '+(lang===l?'btn-primary':'btn-ghost'),onClick:()=>setLang(l)},l==='en'?'English':'हिंदी'))),
+    h(TrainingVideoCard,{lang}),
     h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:8}},lang==='hi'?'🎞 वीडियो देखें · ▶ आवाज़ के साथ ऐनिमेटेड गाइड · ⬇ वीडियो डाउनलोड करके स्टाफ़ को WhatsApp पर भेजें।':'🎞 watch the video · ▶ animated guide with voice · ⬇ download the video to send to staff on WhatsApp.'),
     STAFF_GUIDES.map(g=>h('div',{key:g.id,style:{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderTop:'1px solid var(--border)'}},
       h('div',{style:{fontSize:22}},g.icon),
