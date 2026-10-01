@@ -878,7 +878,7 @@ function RecurringExpensesSheet({salon}={}){
       const bills=variableRecurringBills(it,salonId);
       const firstBill=bills.length?Math.min(...bills.map(b=>Math.min(b.first,b.bookIdx))):now-5;
       const start=monthIndexOfIso(it.startDate);
-      const from=Math.max(start!=null?start:-1e9,Math.min(firstBill,now-5),now-23),to=now+(bills.some(b=>b.last>now)?Math.max(...bills.map(b=>b.last))-now:0);
+      const from=Math.max(now-23,Math.min(firstBill,start!=null?start:now-5,now-5)) /* the months of bills already entered show too (e.g. the July bill the August estimate comes from) */,to=now+(bills.some(b=>b.last>now)?Math.max(...bills.map(b=>b.last))-now:0);
       const rows=recurringAccrualRegister(it,salonId,from,to);
       const r2=v=>v==null?'—':rupee(Math.round(v*100)/100);
       const billRef=b=>b?(b.inv.invoiceNo||'bill')+' · '+rupee(Math.round(b.amount))+(b.months>1?' for '+monthLabelOfIndex(b.first)+'–'+monthLabelOfIndex(b.last):' for '+monthLabelOfIndex(b.first)):'';

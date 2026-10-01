@@ -390,6 +390,17 @@
         eq('Estimate removed (0): no provision in August, the full August bill is adjusted in September',[recurringAccrualRow(it0,910,2026*12+7).recognized,recurringAccrualRow(it0,910,2026*12+8).adjustmentsHere.map(x=>x.diff)],[0,[110000]]);
       }catch(err){results.push({name:'Manual estimate',ok:false,got:String(err&&err.message||err),want:'no error'});}
       try{
+        // The owner's case: Monthly Variable electricity starting Aug; bill 12426328 ₹16,850 for Jun–Jul booked in July.
+        saveVendors([{id:'V1',name:'DHVBNL',cat:'Electricity Expenses'}],913);
+        safeLocalSet(outletKey('salonos_recurring_expenses',913),JSON.stringify([{id:'E1',expenseName:'Electricity Expenses',payee:'DHVBNL',amount:8000,frequency:'Monthly',dueDay:5,status:'Active',startDate:'2026-08-01',amountType:'Variable',billTiming:'arrears'}]));
+        const jul={id:'B1',vendorId:'V1',invoiceNo:'12426328',invoiceDate:'25/07/2026',amount:16850,periodFrom:'2026-06',periodTo:'2026-07',payments:[]};
+        saveVendorInvoices([jul],913);
+        const it=loadRecurringExpenses(913)[0];const row=mo=>recurringAccrualRow(it,913,2026*12+mo);
+        eq('August estimate comes from the July bill (₹16,850 ÷ 2)',[row(7).estimated,row(7).basis&&row(7).basis.inv.invoiceNo,row(7).recognized],[8425,'12426328',8425]);
+        saveVendorInvoices([jul,{id:'B2',vendorId:'V1',invoiceNo:'SEP-1',invoiceDate:'25/09/2026',amount:18000,periodFrom:'2026-08',periodTo:'2026-09',payments:[]}],913);
+        eq('Aug–Sep bill in September: Aug stays ₹8,425, Sep = ₹9,000 + Aug adjustment ₹575',[row(7).recognized,row(8).recognized,row(8).adjustmentsHere.map(a=>a.diff),row(6).actual],[8425,9575,[575],8425]);
+      }catch(err){results.push({name:'Owner electricity case',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
         const mod={};new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});
