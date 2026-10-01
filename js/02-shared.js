@@ -398,6 +398,20 @@ function userCanViewSheet(u,outletId,sheetId){
 // An outlet's current settings (Master Sheet saves update SALONS in place; the salon object a
 // screen was opened with can be an older copy).
 function outletSettings(salonId){return SALONS.find(s=>String(s.id)===String(salonId))||{};}
+// Line of business, per outlet (Master Sheet → Line of Business). Salon is the default for every
+// outlet saved before restaurants existed. Restaurant outlets get their own sheets, expense rows,
+// P&L lines and departments (js/15-restaurant.js).
+function isRestaurantOutlet(salonId){return outletSettings(salonId).businessType==='Restaurant';}
+function bizKeyOf(salonId){return isRestaurantOutlet(salonId)?'restaurant':'salon';}
+const RESTAURANT_VENDOR_CATEGORIES=['Food & Raw Material Purchase','Liquor Purchase','Packaging Material','Gas / LPG','Pest Control','Licences & Fees'];
+// A vendor category list with the restaurant categories added (before "Other") for a restaurant
+// outlet — or, with no outlet given, whenever any restaurant outlet exists.
+function withBizCategories(list,salonId){
+  const rest=salonId!=null&&salonId!==''?isRestaurantOutlet(salonId):SALONS.some(s=>s.businessType==='Restaurant');
+  if(!rest)return list;
+  const i=list.indexOf('Other');const extra=RESTAURANT_VENDOR_CATEGORIES.filter(c=>!list.includes(c));
+  return i<0?[...list,...extra]:[...list.slice(0,i),...extra,...list.slice(i)];
+}
 function currentSessionUser(){try{return JSON.parse(sessionStorage.getItem('salonos_user')||'null');}catch(e){return null;}}
 // The outlets the signed-in user may see, out of `list` (default: every outlet).
 function salonsForCurrentUser(list){const u=currentSessionUser();return(list||SALONS).filter(s=>userCanSeeOutlet(u,s.id));}
@@ -1491,6 +1505,8 @@ const TALLY_NATURE_LEDGERS={
   'Cash Deposit':['Cash','Cash-in-Hand'],
   'Card Settlement':['Card Settlement Receivable','Current Assets'],
   'UPI Settlement':['UPI Settlement Receivable','Current Assets'],
+  'Swiggy Settlement':['Swiggy Receivable','Current Assets'],
+  'Zomato Settlement':['Zomato Receivable','Current Assets'],
   'Bank Charges':['Bank Charges','Indirect Expenses'],
   'Interest':['Bank Interest','Indirect Incomes'],
   'Salary':['Salaries & Wages','Indirect Expenses'],
@@ -3050,12 +3066,16 @@ function unsettleEmployeePayFor(salonId,employeeId,year,month,{salary,incentive}
 // Master Salary "dept" field. A role with no employees this month just shows ₹0 — real absence,
 // not a placeholder.
 const PL_ROLE_MAP=[
-  {dept:'Hairdresser',salaryLabel:'Hairdresser Salary',incLabel:'Hairdresser Monthly Incentive'},
-  {dept:'Beautician',salaryLabel:'Beautician Salary',incLabel:'Beautician Monthly Incentive'},
-  {dept:'Pedicurist',salaryLabel:'Pedicurist Salary',incLabel:'Pedicurist Monthly Incentive'},
+  {dept:'Hairdresser',salaryLabel:'Hairdresser Salary',incLabel:'Hairdresser Monthly Incentive',biz:'salon'},
+  {dept:'Beautician',salaryLabel:'Beautician Salary',incLabel:'Beautician Monthly Incentive',biz:'salon'},
+  {dept:'Pedicurist',salaryLabel:'Pedicurist Salary',incLabel:'Pedicurist Monthly Incentive',biz:'salon'},
   {dept:'Manager',salaryLabel:'Manager Salary',incLabel:'Manager Monthly Incentive'},
   {dept:'Helper',salaryLabel:'Helper Salary',incLabel:null},
   {dept:'Housekeeper',salaryLabel:'Housekeeper Salary',incLabel:null},
+  {dept:'Kitchen',salaryLabel:'Kitchen Staff Salary',incLabel:null,biz:'restaurant'},
+  {dept:'Service',salaryLabel:'Service Staff Salary',incLabel:null,biz:'restaurant'},
+  {dept:'Bar',salaryLabel:'Bar Staff Salary',incLabel:null,biz:'restaurant'},
+  {dept:'Accounts / Admin',salaryLabel:'Accounts & Admin Salary',incLabel:null,biz:'restaurant'},
 ];
 function employeeCostFor(salonId,year,month){
   const sw=swWorkingsFor(salonId,year,month);
@@ -3063,8 +3083,9 @@ function employeeCostFor(salonId,year,month){
   const incByEmp={};inc.forEach(e=>{incByEmp[e.id]=e.totalInc;});
   // "Salary" here is Gross Salary + Tea, matching Salary Working's own "Gross Salary" and "Tea"
   // columns — not just the base gross-after-LOP figure.
-  const salaryLines=PL_ROLE_MAP.map(r=>({name:r.salaryLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+e.grossAfterLop+e.tea,0),group:'Employee Salary'}));
-  const incentiveLines=PL_ROLE_MAP.filter(r=>r.incLabel).map(r=>({name:r.incLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+(incByEmp[e.id]||0),0),group:'Employee Monthly Incentive'}));
+  const roleMap=PL_ROLE_MAP.filter(r=>!r.biz||r.biz===bizKeyOf(salonId));
+  const salaryLines=roleMap.map(r=>({name:r.salaryLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+e.grossAfterLop+e.tea,0),group:'Employee Salary'}));
+  const incentiveLines=roleMap.filter(r=>r.incLabel&&!isRestaurantOutlet(salonId)).map(r=>({name:r.incLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+(incByEmp[e.id]||0),0),group:'Employee Monthly Incentive'}));
   const pfEr=sw.reduce((s,e)=>s+e.pfEr,0);
   const esicEr=sw.reduce((s,e)=>s+e.esicEr,0);
   // Employee Daily Incentive — real per-day commission entries from Daily Sales & Exp, paid out
@@ -3084,6 +3105,8 @@ function employeeCostFor(salonId,year,month){
     ...salaryLines,
     ...incentiveLines,
     ...dailyIncentiveLines,
+    ...(isRestaurantOutlet(salonId)&&outletSettings(salonId).serviceChargeApplicable&&typeof serviceChargeDistributedFor==='function'
+      ?[{name:'Service Charge to Staff',amt:serviceChargeDistributedFor(salonId,year,month),group:'Employee Service Charge'}]:[]),
     {name:'PF Employer Contribution',amt:pfEr},
     {name:'ESIC Employer Contribution',amt:esicEr}
   ];

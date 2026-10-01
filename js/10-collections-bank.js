@@ -97,7 +97,7 @@ function DueDateSheet({salon,onNavTab}={}){
   // Sheet (vendor-wise with Category). Recomputed fresh every render from live data, with only
   // their paid status persisted (see loadDueAutoOverrides) since everything else about them is
   // always derived, never stored — so they can never go stale the way a manually-entered item can. ──
-  const autoItems=[...autoStatutoryDueItemsFor(salonId),...autoTdsDueItemsFor(salonId),...autoSalaryIncentiveDueItemsFor(salonId),...autoVendorDueItemsFor(salonId),...autoAmountUpdateReminders(salonId)];
+  const autoItems=[...autoStatutoryDueItemsFor(salonId),...autoTdsDueItemsFor(salonId),...autoSalaryIncentiveDueItemsFor(salonId),...autoVendorDueItemsFor(salonId),...autoAmountUpdateReminders(salonId),...autoLicenceDueItemsFor(salonId)];
   const allItems=[...autoItems,...dueDates];
   const markPaid=(d)=>{
     setShowPayModal(d);
@@ -3221,6 +3221,8 @@ function BankStatement({salon,onNavTab}={}){
     const desc=String(description||'').toLowerCase();
     const baseDate=valueDate||transactionDate;
     if(!baseDate)return null;
+    if(desc.includes('swiggy')||desc.includes('bundl tech'))return{nature:'Swiggy Settlement',cradleeDate:baseDate};
+    if(desc.includes('zomato'))return{nature:'Zomato Settlement',cradleeDate:baseDate};
     if(desc.includes('upi settlement'))return{nature:'UPI Settlement',cradleeDate:addDaysToDMY(baseDate,-1)};
     if(desc.includes('cards settl'))return{nature:'Card Settlement',cradleeDate:addDaysToDMY(baseDate,-1)};
     if(desc.includes('pos pymt'))return{nature:'Card Settlement',cradleeDate:addDaysToDMY(baseDate,-1)};
@@ -3675,7 +3677,7 @@ function BankStatement({salon,onNavTab}={}){
     return true;
   });
   const totals=filtered.reduce((a,r)=>({debit:a.debit+r.debit,credit:a.credit+r.credit}),{debit:0,credit:0});
-  const natures=['','Collection','Cash Deposit','Card Settlement','UPI Settlement','Bank Charges','Interest','Vendor Payment','Salary','Incentive','Daily Incentive','Advance Salary','TDS','GST','ESIC Payment','Electricity Expenses','Drycleaning Expenses','Telephone & Internet Expenses','DG Rent','Royalty','Rent','Tax Payment','Transfer','Refund','Other'];
+  const natures=['','Collection','Cash Deposit','Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','Bank Charges','Interest','Vendor Payment','Salary','Incentive','Daily Incentive','Advance Salary','TDS','GST','ESIC Payment','Electricity Expenses','Drycleaning Expenses','Telephone & Internet Expenses','DG Rent','Royalty','Rent','Tax Payment','Transfer','Refund','Other'];
   // Loaded once for the "link the rest with Vendor Sheet automatically" classification rule.
   const [vendors]=useState(()=>loadVendors(salonId));
   const [employees]=useState(()=>loadEmployees(salonId));
@@ -3685,7 +3687,7 @@ function BankStatement({salon,onNavTab}={}){
   // and to Vendors (debits tagged Vendor Payment, and of those, how many are actually linked to a
   // Vendor Sheet invoice vs. just labelled). Computed off the full, unfiltered rows list so it
   // always reflects the whole imported statement, not whatever the on-screen filters narrow it to. ──
-  const REVENUE_NATURES=new Set(['Card Settlement','UPI Settlement','Cash Deposit','Collection']);
+  const REVENUE_NATURES=new Set(['Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','Cash Deposit','Collection']);
   const reconciliationStats=useMemo(()=>{
     let creditTotal=0,creditMapped=0,creditUnclassified=0;
     let debitTotal=0,vendorPaymentTotal=0,vendorPaymentLinked=0,debitUnclassified=0;

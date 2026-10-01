@@ -434,8 +434,18 @@ function epfEmployerContributionFor(basic,pfOnActualBasic,pfApplicableAtSalon,pf
   return Math.round(wageBase*0.12);
 }
 function MasterSalarySheet({salon}={}){
-  const DEPARTMENTS=['Hairdresser','Beautician','Pedicurist','Manager','Helper','Housekeeper'];
-  const DESIG_BY_DEPT={
+  const DEPARTMENTS=isRestaurantOutlet(salon?.id)
+    ?['Kitchen','Service','Bar','Manager','Accounts / Admin','Helper','Housekeeper']
+    :['Hairdresser','Beautician','Pedicurist','Manager','Helper','Housekeeper'];
+  const DESIG_BY_DEPT=isRestaurantOutlet(salon?.id)?{
+    'Kitchen':['Head Chef','Sous Chef','Chef de Partie','Commis','Tandoor Chef','Kitchen Helper'],
+    'Service':['Captain','Steward','Waiter','Host / Hostess','Cashier'],
+    'Bar':['Bartender','Bar Back'],
+    'Manager':['Restaurant Manager','Assistant Manager','F&B Manager'],
+    'Accounts / Admin':['Accountant','Store Keeper'],
+    'Helper':['Helper','Dishwasher'],
+    'Housekeeper':['Housekeeper']
+  }:{
     'Hairdresser':['Unisex Hairdresser','Men Hairdresser','Ladies Hairdresser'],
     'Beautician':['Beautician'],
     'Pedicurist':['Pedicurist'],
@@ -1184,8 +1194,8 @@ const EXPENSE_ROWS=[
   {name:'Donation',group:'Daily Expenses'},
   {name:'Staff Refreshment',group:'Daily Expenses'},
   {name:'Diesel Expenses',group:'Diesel Expenses'},
-  {name:'Membership Commission/Incentives',group:'M.Ship Pro. And Daily Incentive'},
-  {name:'Product Commission/Incentives',group:'M.Ship Pro. And Daily Incentive'},
+  {name:'Membership Commission/Incentives',group:'M.Ship Pro. And Daily Incentive',biz:'salon'},
+  {name:'Product Commission/Incentives',group:'M.Ship Pro. And Daily Incentive',biz:'salon'},
   {name:'Service Commission/Incentives',group:'M.Ship Pro. And Daily Incentive'},
   {name:'Target Commission/Incentives',group:'M.Ship Pro. And Daily Incentive'},
   {name:'Advance To Employees',group:'Salary Payable'},
@@ -1205,9 +1215,9 @@ const EXPENSE_ROWS=[
   {name:'Cleaning Supplies',group:'Daily Expenses'},
   {name:'Marketing Expenses',group:'Marketing Expenses'},
   {name:'Uniform Expenses',group:'Uniform Expenses'},
-  {name:'Cosmetics & Stock Local',group:'Unregistered Purchase'},
-  {name:'Store Items',group:'Unregistered Purchase'},
-  {name:'Client Food',group:'Daily Expenses'},
+  {name:'Cosmetics & Stock Local',group:'Unregistered Purchase',biz:'salon'},
+  {name:'Store Items',group:'Unregistered Purchase',biz:'salon'},
+  {name:'Client Food',group:'Daily Expenses',biz:'salon'},
   {name:'Electricity Expenses',group:'Electricity Expenses'},
   {name:'DG Rent',group:'DG Rent'},
   {name:'Royalty',group:'Royalty'},
@@ -1216,7 +1226,20 @@ const EXPENSE_ROWS=[
   {name:'Maintenance Expenses',group:'Maintenance Expenses'},
   {name:'Bank Charges',group:'Bank Charges'},
   {name:'Unregistered Purchase',group:'Unregistered Purchase'},
+  // Restaurant outlets only (appended — rows are stored by position, so never insert above).
+  {name:'Vegetables & Fruits',group:'Food Purchase (Local)',biz:'restaurant'},
+  {name:'Dairy & Eggs',group:'Food Purchase (Local)',biz:'restaurant'},
+  {name:'Meat, Chicken & Seafood',group:'Food Purchase (Local)',biz:'restaurant'},
+  {name:'Grocery & Provisions',group:'Food Purchase (Local)',biz:'restaurant'},
+  {name:'Bakery & Bread',group:'Food Purchase (Local)',biz:'restaurant'},
+  {name:'Beverages & Ice',group:'Food Purchase (Local)',biz:'restaurant'},
+  {name:'Gas / LPG',group:'Gas / LPG',biz:'restaurant'},
+  {name:'Packaging Material',group:'Packaging Material',biz:'restaurant'},
+  {name:'Kitchen Consumables',group:'Kitchen Consumables',biz:'restaurant'},
+  {name:'Pest Control',group:'Pest Control',biz:'restaurant'},
 ];
+// Salon-only and restaurant-only rows are hidden on the other kind of outlet.
+function expenseRowVisibleFor(row,salonId){return !row||!row.biz||row.biz===bizKeyOf(salonId);}
 // Vendor-linked rows — if these have value, cell turns red until voucher entered in Vendor Sheet
 const VENDOR_ROWS=new Set(['Repair & Maintenance','Telephone & Internet Expenses','Electric Work','Drycleaning Expenses','Rent','Accessories','Tanker Cleaning']);
 // Expense rows that can only be entered on a day there's a real, unpaid vendor invoice (matched
@@ -1613,6 +1636,11 @@ const PL_OPEX_LINES=[
   {name:'Maintenance Expenses',group:'Maintenance Expenses',noDaily:true,alsoVendorCat:'Maintenance Expenses',vendorWinsOverRecurring:true},
   {name:'Bank Charges',group:'Bank Charges',alsoNature:'Bank Charges',alsoNetBankCharges:true},
   {name:'Penalty Recovery',group:'Penalty',credit:true},
+  // Restaurant outlets only.
+  {name:'Aggregator Commission & Charges',biz:'restaurant',fn:(s,y,m)=>typeof aggregatorChargesFor==='function'?aggregatorChargesFor(s,y,m):0},
+  {name:'Kitchen Consumables',group:'Kitchen Consumables',biz:'restaurant'},
+  {name:'Pest Control',group:'Pest Control',biz:'restaurant',alsoVendorCat:'Pest Control'},
+  {name:'Licences & Fees',group:'Licences & Fees',biz:'restaurant',alsoVendorCat:'Licences & Fees'},
 ];
 // Which Recurring Expenses "Expense Type" each P&L Operating Expense line pulls from — most
 // share the exact same name, "Maintenance Expenses" here maps to "Maintenance Bill" there since
@@ -1988,7 +2016,8 @@ function autoCreateRecurringInvoices(salonId,asOf){
   return due;
 }
 function operatingExpensesFor(salonId,year,month){
-  const lines=PL_OPEX_LINES.map(l=>{
+  const lines=PL_OPEX_LINES.filter(l=>!l.biz||l.biz===bizKeyOf(salonId)).map(l=>{
+    if(l.fn)return{name:l.name,amt:Math.round(l.fn(salonId,year,month)||0)};
     let amt=l.noDaily?0:(l.row?dailySalesRowSumFor(salonId,year,month,l.row):dailySalesGroupSumFor(salonId,year,month,l.group));
     if(l.alsoNature)amt+=bankStatementNatureDebitSumFor(salonId,year,month,l.alsoNature);
     const recurringType=PL_OPEX_RECURRING_MAP[l.name];

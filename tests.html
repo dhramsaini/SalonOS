@@ -54,7 +54,22 @@
       const put=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
       put('salonos_salons',[
         {id:901,name:'Test Outlet A',state:'Delhi',status:'Active',pfApplicable:true,esicApplicable:true,ptApplicable:false},
-        {id:902,name:'Test Outlet B',state:'Delhi',status:'Active',pfApplicable:false,esicApplicable:false,ptApplicable:false}]);
+        {id:902,name:'Test Outlet B',state:'Delhi',status:'Active',pfApplicable:false,esicApplicable:false,ptApplicable:false},
+        {id:904,name:'Test Restaurant',state:'Delhi',status:'Active',businessType:'Restaurant',servesLiquor:true,serviceChargeApplicable:true,fssaiValidTill:'2026-12-31'}]);
+      // Restaurant outlet 904 — counter sales, food & liquor bills, a local vegetable purchase (row 41),
+      // stock counts, Swiggy/Zomato payouts and service charge for September 2026.
+      put('salonos_daily_sales_collection_data_outlet_904',{'2026-09-10':{0:10500,1:21000,2:0}});
+      put('salonos_daily_sales_data_outlet_904',{'2026-09-12':{41:5000}});
+      put('salonos_vendors_outlet_904',[{id:'V1',name:'Fresh Foods',status:'Active'}]);
+      put('salonos_vendor_invoices_outlet_904',[
+        {id:'F1',vendorId:'V1',invoiceNo:'F-1',invoiceDate:'2026-09-05',bookingDate:'2026-09-05',category:'Food & Raw Material Purchase',taxable:50000,amount:50000,payments:[],docNature:'Tax Invoice'},
+        {id:'L1',vendorId:'V1',invoiceNo:'L-1',invoiceDate:'2026-09-06',bookingDate:'2026-09-06',category:'Liquor Purchase',taxable:20000,amount:20000,payments:[],docNature:'Tax Invoice'}]);
+      put('salonos_food_stock_outlet_904',{'2026-08':{closingFood:10000,closingBar:4000},'2026-09':{closingFood:12000,closingBar:6000,barSales:60000}});
+      put('salonos_aggregator_payouts_outlet_904',[
+        {id:'a1',platform:'Swiggy',periodFrom:'2026-09-29',periodTo:'2026-10-05',payoutDate:'2026-10-08',grossSales:7000,commission:1400,netPayout:5600},
+        {id:'a2',platform:'Zomato',periodFrom:'2026-09-01',periodTo:'2026-09-07',payoutDate:'2026-09-10',grossSales:10000,commission:2000,pgCharges:200,tds:100,netPayout:7700}]);
+      put('salonos_service_charge_outlet_904',{settings:{housePct:10,method:'equal'},months:{'2026-09':{collected:10000}}});
+      put('salonos_master_employees_outlet_904',['K1','K2','S1'].map(id=>({id,name:'Staff '+id,desig:id[0]==='K'?'Commis':'Steward',dept:id[0]==='K'?'Kitchen':'Service',doj:'2024-01-01',dol:'',weeklyOff:'',status:'Active',gross:20000,basic:10000,hra:0,conv:0,special:10000,pf:false,esic:false,pt:false,tds:false})));
       const emp=(id,gross,basic,extra)=>Object.assign({id,name:'Emp '+id,desig:'Unisex Hairdresser',dept:'Hairdresser',doj:'2024-01-01',dol:'',weeklyOff:'',status:'Active',gross,basic,hra:0,conv:0,special:0,pf:true,pfOnActualBasic:false,esic:true,pt:false,tds:false},extra||{});
       put('salonos_master_employees_outlet_901',[emp('E1',20000,12000),emp('E2',30000,20000,{pfOnActualBasic:true}),emp('E3',20000,18000)]);
       put('salonos_master_employees_outlet_902',[emp('E4',20000,12000)]);
@@ -424,6 +439,34 @@
           [userCanEditSheet(so,901,'daily-sales'),userCanEditSheet(so,901,'attendance'),userCanEditSheet(so,902,'daily-sales'),userCanViewSheet(so,902,'daily-sales'),userCanEditSheet(ow,901,'daily-sales')],
           [true,false,false,true,false]);
       }catch(err){results.push({name:'Salon Owner access',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
+        // Restaurant line of business (outlet 904).
+        eq('Restaurant: payout 29 Sep–5 Oct is 2/7 September',Math.round(aggMonthShare({periodFrom:'2026-09-29',periodTo:'2026-10-05'},2026,8)*7),2);
+        const ag=aggregatorMonthFor(904,2026,8);
+        eq('Restaurant: September Swiggy + Zomato sales and charges',[aggregatorSalesFor(904,2026,8,'Swiggy'),aggregatorSalesFor(904,2026,8,'Zomato'),ag.charges],[2000,10000,2600]);
+        eq('Restaurant: row 41 is the first restaurant expense row',EXPENSE_ROWS[41].name,'Vegetables & Fruits');
+        const fc=foodCostFor(904,2026,8),bc=barCostFor(904,2026,8);
+        eq('Restaurant: food = opening 10,000 + purchases 55,000 − closing 12,000; liquor = 4,000 + 20,000 − 6,000',[fc.opening,fc.purchases,fc.consumption,bc.consumption],[10000,55000,53000,18000]);
+        const pl=plBuild(904,'2026-27',5);
+        const rev=Object.fromEntries(pl.sections[0].lines.map(l=>[l.name,l.amt]));
+        eq('Restaurant P&L revenue: counter ÷1.05, Swiggy, Zomato, bar, service charge',
+          [rev['Revenue from Operations - Cash Sale'],rev['Revenue from Operations - Card Sale'],rev['Revenue from Operations - Swiggy'],rev['Revenue from Operations - Zomato'],rev['Revenue from Operations - Bar Sale'],rev['Service Charge Collected'],pl.revenue],
+          [10000,20000,2000,10000,60000,10000,112000]);
+        const dir=Object.fromEntries(pl.sections[1].lines.map(l=>[l.name,l.amt]));
+        eq('Restaurant P&L direct cost: food and liquor consumption',[dir['Food Cost (Consumption)'],dir['Liquor Cost'],dir['Purchase of Cosmetic']],[53000,18000,undefined]);
+        const op=Object.fromEntries(pl.sections[3].lines.map(l=>[l.name,l.amt]));
+        eq('Restaurant P&L: aggregator commission & charges in operating expenses',op['Aggregator Commission & Charges'],2600);
+        const sc=serviceChargeSplitFor(904,2026,8);
+        eq('Service charge: 10% house share, rest split equally',[sc.house,sc.distributable,sc.rows.map(r=>r.amount)],[1000,9000,[3000,3000,3000]]);
+        const emp=Object.fromEntries(pl.sections[2].lines.map(l=>[l.name,l.amt]));
+        eq('Restaurant P&L employee cost: kitchen / service salary and service charge to staff',[emp['Kitchen Staff Salary']>0,emp['Service Staff Salary']>0,emp['Service Charge to Staff'],emp['Hairdresser Salary']],[true,true,9000,undefined]);
+        eq('Restaurant: salon-only rows and sheets hidden, restaurant ones shown',
+          [expenseRowVisibleFor(EXPENSE_ROWS.find(r=>r.name==='Cosmetics & Stock Local'),904),expenseRowVisibleFor(EXPENSE_ROWS[41],904),expenseRowVisibleFor(EXPENSE_ROWS[41],901),
+           salonTabsFor({businessType:'Restaurant'}).some(t=>t.id==='appointments'),salonTabsFor({businessType:'Restaurant'}).some(t=>t.id==='food-cost'),salonTabsFor({id:901}).some(t=>t.id==='food-cost')],
+          [false,true,false,false,true,false]);
+        eq('Restaurant: FSSAI renewal shows in Due Dates',autoLicenceDueItemsFor(904).map(x=>x.due),['2026-12-31']);
+        eq('Salon P&L unchanged by restaurant lines',plBuild(901,'2026-27',5).sections[1].lines.map(l=>l.name),['Purchase of Cosmetic','Unregistered Purchase']);
+      }catch(err){results.push({name:'Restaurant line of business',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;

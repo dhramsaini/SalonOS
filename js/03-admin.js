@@ -986,6 +986,37 @@ function MasterSheet({onSelect,salons,setSalons,user}){
           FG('Salon Name *',INP({value:form.name,onChange:fc('name'),placeholder:'e.g. Luxe Studio — CP'})),
           FG('Outlet Type',SEL(form.type,fc('type'),['Owned','COCO','FOCO','Franchise']))
         ),
+        React.createElement('div',{className:'form-row cols2'},
+          FG('Line of Business',SEL(form.businessType||'Salon',fc('businessType'),['Salon','Restaurant'])),
+          React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',alignSelf:'center',lineHeight:1.5}},
+            form.businessType==='Restaurant'?'Restaurant sheets: Swiggy & Zomato, Food Cost and Service Charge. Salon-only sheets (Appointments, Billing, Clients, Inventory, Incentive Working, Cradlee imports) are hidden.'
+              :'Salon sheets: Appointments, Billing, Clients, Inventory, Incentive Working and the Cradlee imports.')
+        ),
+        form.businessType==='Restaurant'&&React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'12px 14px',marginBottom:14}},
+          React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:10}},'🍽 Restaurant settings'),
+          React.createElement('div',{className:'form-row cols2'},
+            FG('FSSAI Licence No.',INP({value:form.fssaiNo||'',onChange:fc('fssaiNo'),placeholder:'14-digit FSSAI number'})),
+            FG('FSSAI valid till',INP({type:'date',value:form.fssaiValidTill||'',onChange:fc('fssaiValidTill')}))),
+          React.createElement('div',{className:'form-row cols2'},
+            FG('Fire NOC valid till',INP({type:'date',value:form.fireNocValidTill||'',onChange:fc('fireNocValidTill')})),
+            FG('Health / trade licence valid till',INP({type:'date',value:form.tradeLicenceValidTill||'',onChange:fc('tradeLicenceValidTill')}))),
+          React.createElement('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:13,margin:'4px 0 8px',cursor:'pointer'}},
+            React.createElement('input',{type:'checkbox',checked:!!form.servesLiquor,onChange:fcCheck('servesLiquor')}),'Serves liquor (bar) — adds the Bar section in Food Cost, bar sales and liquor cost in the P&L'),
+          form.servesLiquor&&React.createElement('div',{className:'form-row cols3'},
+            FG('Liquor licence No.',INP({value:form.liquorLicenceNo||'',onChange:fc('liquorLicenceNo')})),
+            FG('Liquor licence valid till',INP({type:'date',value:form.liquorLicenceValidTill||'',onChange:fc('liquorLicenceValidTill')})),
+            FG('Excise registration No.',INP({value:form.exciseRegNo||'',onChange:fc('exciseRegNo')}))),
+          React.createElement('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:13,margin:'4px 0 8px',cursor:'pointer'}},
+            React.createElement('input',{type:'checkbox',checked:!!form.serviceChargeApplicable,onChange:fcCheck('serviceChargeApplicable')}),'Service charge on bills — shared with staff (Service Charge sheet)'),
+          form.serviceChargeApplicable&&React.createElement('div',{className:'form-row cols2'},
+            FG('Service charge %',INP({type:'number',value:form.serviceChargeRate||'',onChange:fc('serviceChargeRate'),placeholder:'e.g. 5'})),
+            React.createElement('div',null)),
+          React.createElement('div',{style:{display:'flex',gap:18,flexWrap:'wrap',fontSize:13,margin:'4px 0 6px'}},
+            React.createElement('span',{style:{color:'var(--text3)'}},'Delivery apps:'),
+            React.createElement('label',{style:{display:'flex',gap:6,alignItems:'center',cursor:'pointer'}},React.createElement('input',{type:'checkbox',checked:!!form.aggSwiggy,onChange:fcCheck('aggSwiggy')}),'Swiggy'),
+            React.createElement('label',{style:{display:'flex',gap:6,alignItems:'center',cursor:'pointer'}},React.createElement('input',{type:'checkbox',checked:!!form.aggZomato,onChange:fcCheck('aggZomato')}),'Zomato')),
+          React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)'}},'Licence expiry dates appear in Due Dates as renewal reminders.')
+        ),
         (form.typeHistory&&form.typeHistory.length>0)&&React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:14}},
           React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6}},'Outlet Type change history'),
           form.typeHistory.slice().reverse().map((h,i)=>React.createElement('div',{key:i,style:{fontSize:12,color:'var(--text2)',padding:'3px 0'}},
@@ -2135,7 +2166,8 @@ function UserManagement(){
     {id:'penalty',label:'Penalties'},{id:'vendors',label:'Vendors'},{id:'due-dates',label:'Due Dates'},
     {id:'outlet-pnl',label:'P&L (Monthly)'},{id:'collection',label:'Collection Summary'},{id:'collection-sheet',label:'Collection Reco'},{id:'bank-statement',label:'Bank Statement'},
     {id:'bank-payment',label:'Bank Payment'},{id:'tally-export',label:'Tally Export'},{id:'reports',label:'Reports'},{id:'recurring-expenses',label:'Recurring Expenses'},
-    {id:'previous-pnl',label:'Previous Months P&L'},{id:'fixed-assets',label:'Fixed Assets'},{id:'audit-log',label:'Audit Log'},{id:'import-center',label:'Import Center'}
+    {id:'previous-pnl',label:'Previous Months P&L'},{id:'fixed-assets',label:'Fixed Assets'},{id:'audit-log',label:'Audit Log'},{id:'import-center',label:'Import Center'},
+    {id:'aggregators',label:'Swiggy & Zomato (restaurant)'},{id:'food-cost',label:'Food Cost (restaurant)'},{id:'service-charge',label:'Service Charge (restaurant)'}
   ];
   const PERMISSION_LEVELS=['No Access','View Only','Edit'];
   const OUTLET_ACCESS_LEVELS=['No Access','View Only','View and Edit'];

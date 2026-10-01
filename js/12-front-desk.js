@@ -1026,6 +1026,14 @@ const PL_DIRECT_REAL_LINES=[
   {name:'Purchase of Cosmetic',group:'Purchase of Cosmetic',alsoVendorCat:'Purchase of Cosmetic'},
   {name:'Unregistered Purchase',group:'Unregistered Purchase'}
 ];
+// Restaurant outlets: food consumption (opening + purchases − closing stock, from Food Cost),
+// liquor consumption when the outlet has a bar, packaging and gas.
+const PL_DIRECT_RESTAURANT_LINES=[
+  {name:'Food Cost (Consumption)',fn:(s,y,m)=>foodCostFor(s,y,m).consumption},
+  {name:'Liquor Cost',bar:true,fn:(s,y,m)=>barCostFor(s,y,m).consumption},
+  {name:'Packaging Material',group:'Packaging Material',alsoVendorCat:'Packaging Material'},
+  {name:'Gas / LPG',group:'Gas / LPG',alsoVendorCat:'Gas / LPG'}
+];
 
 // Manual overrides for the two P&L items that have no real, naturally-tracked data source
 // anywhere in this app: Other Income (gift cards, membership fees, anything not captured by
@@ -1538,7 +1546,21 @@ function plBuild(sid,fy,mi){
   let revTotal=0,directTotal=0,opexTotal=0;
   PL_STRUCT.forEach((S,si)=>{
     if(S.sec==='Revenue'){
-      const lines=[
+      // Restaurant: counter sales from Daily Sales & Exp (÷ 1.05 for 5% GST), Swiggy / Zomato food
+      // sales from their payouts, bar sales and service charge when the outlet has them.
+      const rest=cal&&isRestaurantOutlet(sid);
+      const ro=rest?outletSettings(sid):null;
+      const rc=rest?restaurantCounterSalesFor(sid,cal.year,cal.month):null;
+      const lines=rest?[
+        {name:'Revenue from Operations - Cash Sale',amt:rc.cash},
+        {name:'Revenue from Operations - Card Sale',amt:rc.card},
+        {name:'Revenue from Operations - UPI Sale',amt:rc.upi},
+        {name:'Revenue from Operations - Swiggy',amt:aggregatorSalesFor(sid,cal.year,cal.month,'Swiggy')},
+        {name:'Revenue from Operations - Zomato',amt:aggregatorSalesFor(sid,cal.year,cal.month,'Zomato')},
+        ...(ro.servesLiquor?[{name:'Revenue from Operations - Bar Sale',amt:barSalesFor(sid,cal.year,cal.month)}]:[]),
+        ...(ro.serviceChargeApplicable?[{name:'Service Charge Collected',amt:serviceChargeCollectedFor(sid,cal.year,cal.month)}]:[]),
+        {name:'Other Income',amt:otherIncome}
+      ]:[
         {name:'Revenue from Operations - Cash Sale',amt:Math.round(realCash)},
         {name:'Revenue from Operations - Card Sale',amt:Math.round(realCard)},
         {name:'Revenue from Operations - UPI Sale',amt:Math.round(realUpi)},
@@ -1568,8 +1590,9 @@ function plBuild(sid,fy,mi){
     }
     // Direct cost of service — the two real lines from Daily Sales & Exp / Vendor invoices;
     // PL_STRUCT's own `lines` for this section is empty, so there's nothing synthetic left here.
+    const directDefs=isRestaurantOutlet(sid)?PL_DIRECT_RESTAURANT_LINES.filter(l=>!l.bar||outletSettings(sid).servesLiquor):PL_DIRECT_REAL_LINES;
     const extraLines=(S.sec==='Direct cost of service'&&cal)
-      ?PL_DIRECT_REAL_LINES.map(l=>({name:l.name,amt:dailySalesGroupSumFor(sid,cal.year,cal.month,l.group)+(l.alsoVendorCat?vendorInvoiceCategorySumFor(sid,cal.year,cal.month,l.alsoVendorCat):0)}))
+      ?directDefs.map(l=>({name:l.name,amt:l.fn?Math.round(l.fn(sid,cal.year,cal.month)||0):dailySalesGroupSumFor(sid,cal.year,cal.month,l.group)+(l.alsoVendorCat?vendorInvoiceCategorySumFor(sid,cal.year,cal.month,l.alsoVendorCat):0)}))
       :[];
     const lines=extraLines;
     const tot=lines.reduce((t,l)=>t+l.amt,0);

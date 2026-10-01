@@ -961,7 +961,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
   // at once instead of one at a time. Vendor is matched by name against the Vendor List (exact
   // match first, then a loose contains-match); rows that can't be matched, or are missing
   // Invoice No / Invoice Total / Category, are skipped and reported rather than guessed at. ──
-  const CATEGORY_OPTIONS=['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Other'];
+  const CATEGORY_OPTIONS=withBizCategories(['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Other'],salonId);
   const downloadInvoiceTemplate=async()=>{
     await loadScript(CDN_XLSX_URL);
     if(!window.XLSX){toastError('Excel engine unavailable — check your internet connection.');return;}
@@ -1786,7 +1786,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
         React.createElement('div',{className:'modal-title'},editVendor?'Edit Vendor — '+vForm.name:'Add New Vendor'),
         React.createElement('div',{className:'form-row cols2'},
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-80'},'Vendor Name *'),React.createElement('input',{id:'f-80',className:'form-control',value:vForm.name,onChange:vc('name'),placeholder:'e.g. L\'Oreal India Pvt Ltd'})),
-          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-81'},'Category'),React.createElement('select',{id:'f-81',className:'form-control',value:vForm.cat,onChange:vc('cat')},['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Other'].map(c=>React.createElement('option',{key:c},c))))
+          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-81'},'Category'),React.createElement('select',{id:'f-81',className:'form-control',value:vForm.cat,onChange:vc('cat')},withBizCategories(['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Other'],salonId).map(c=>React.createElement('option',{key:c},c))))
         ),
         React.createElement('div',{className:'form-row'},
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-82'},'Address'),React.createElement('textarea',{id:'f-82',className:'form-control',rows:2,value:vForm.address,onChange:vc('address'),placeholder:'Full address with PIN code',style:{resize:'vertical'}}))
@@ -1915,7 +1915,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
               setInvForm(f=>({...f,category:val,assetLines:(val==='Fixed Assets'&&(!f.assetLines||!f.assetLines.length))?[{id:'AL1',name:'',amount:''}]:(f.assetLines||[])}));
             }},
               React.createElement('option',{value:''},'— Select Category —'),
-              ['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Fixed Assets','Other'].map(c=>React.createElement('option',{key:c,value:c},c))
+              withBizCategories(['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Fixed Assets','Other'],salonId).map(c=>React.createElement('option',{key:c,value:c},c))
             )
           )
         ),

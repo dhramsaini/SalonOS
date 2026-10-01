@@ -1156,10 +1156,10 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   const exportCSV=async()=>{
     const allDays=buildDays(new Date(viewDate),resolveShowCols(viewDate,showCols));
     const headers=['Daily Expenses','Expenses Group','Total',...allDays.map(d=>d.label)];
-    const rows=EXPENSE_ROWS.map((r,ri)=>[r.name,r.group,rowTotal(ri)||0,...allDays.map(d=>getValue(d.iso,ri)||'-')]);
+    const rows=EXPENSE_ROWS.map((r,ri)=>!expenseRowVisibleFor(r,salonId)?null:[r.name,r.group,rowTotal(ri)||0,...allDays.map(d=>getValue(d.iso,ri)||'-')]);
     const totRow=['Final Total Exp.','',grandTotal(),...allDays.map(d=>dayTotal(d.iso)||0)];
     try{
-      const blob=await exportReportExcelBlob('Daily Expenses',[headers,...rows,totRow]);
+      const blob=await exportReportExcelBlob('Daily Expenses',[headers,...rows.filter(Boolean),totRow]);
       const url=URL.createObjectURL(blob);
       const a=document.createElement('a');a.href=url;a.download=`Daily_Expenses_${viewDate}.xlsx`;a.click();URL.revokeObjectURL(url);
     }catch(err){dseToastErr(err.message);}
@@ -1167,7 +1167,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
 
   const exportPDF=()=>{
     const allDays=buildDays(new Date(viewDate),resolveShowCols(viewDate,showCols));
-    const rows=EXPENSE_ROWS.map((r,ri)=>{
+    const rows=EXPENSE_ROWS.map((r,ri)=>{if(!expenseRowVisibleFor(r,salonId))return null;
       const tot=rowTotal(ri);
       const isSalRow=isPrevSalary(ri);
       const vals=allDays.map(d=>{const v=getValue(d.iso,ri);return v?`<td style="text-align:right">${Number(v).toLocaleString('en-IN')}</td>`:`<td style="text-align:right;color:#bbb">-</td>`;}).join('');
@@ -1203,13 +1203,13 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   const dseReportSheetRows=()=>{
     const allDays=buildDays(new Date(viewDate),resolveShowCols(viewDate,showCols));
     const headers=['Daily Expenses','Expenses Group','Total',...allDays.map(d=>d.label)];
-    const rows=EXPENSE_ROWS.map((r,ri)=>[r.name,r.group,rowTotal(ri)||0,...allDays.map(d=>getValue(d.iso,ri)||'-')]);
+    const rows=EXPENSE_ROWS.map((r,ri)=>!expenseRowVisibleFor(r,salonId)?null:[r.name,r.group,rowTotal(ri)||0,...allDays.map(d=>getValue(d.iso,ri)||'-')]);
     const totRow=['Final Total Exp.','',grandTotal(),...allDays.map(d=>dayTotal(d.iso)||0)];
-    return[headers,...rows,totRow];
+    return[headers,...rows.filter(Boolean),totRow];
   };
   const dseReportBodyHtml=()=>{
     const allDays=buildDays(new Date(viewDate),resolveShowCols(viewDate,showCols));
-    const rows=EXPENSE_ROWS.map((r,ri)=>{
+    const rows=EXPENSE_ROWS.map((r,ri)=>{if(!expenseRowVisibleFor(r,salonId))return null;
       const tot=rowTotal(ri);
       const vals=allDays.map(d=>{const v=getValue(d.iso,ri);return'<td class="num">'+(v?Number(v).toLocaleString('en-IN'):'-')+'</td>';}).join('');
       return'<tr><td>'+(r.name||'—')+'</td><td>'+r.group+'</td><td class="num">'+(tot?tot.toLocaleString('en-IN'):'-')+'</td>'+vals+'</tr>';
@@ -1272,7 +1272,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       total>0?'₹'+fmt(total)+' ✎':'+ Add');
     const heading=(text,right)=>React.createElement('div',{style:{padding:'10px 12px',display:'flex',justifyContent:'space-between',gap:8,fontWeight:700,fontSize:12,letterSpacing:'.06em',textTransform:'uppercase',color:'var(--accent2)',background:'rgba(47,95,224,0.1)'}},
       React.createElement('span',null,text),right?React.createElement('span',null,right):null);
-    const salesRows=SALES_ROWS.map((row,sri)=>{
+    const salesRows=SALES_ROWS.map((row,sri)=>{if(sri===IDX_LUZO&&isRestaurantOutlet(salonId))return null;
       const isComputed=row.type==='computed',isOpening=sri===IDX_OPENING;
       const readOnly=isComputed||(isOpening&&!isFirstEverCashDay(iso));
       const val=salesValueAt(iso,sri);
@@ -1284,7 +1284,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       return React.createElement('div',{key:'s'+sri,style:{...rowStyle,background:readOnly?'rgba(47,95,224,0.06)':undefined}},
         React.createElement('div',{style:{fontSize:14,fontWeight:readOnly?700:500,color:readOnly?'var(--accent2)':'var(--text)'}},row.name),right);
     });
-    const expRows=EXPENSE_ROWS.map((row,ri)=>{
+    const expRows=EXPENSE_ROWS.map((row,ri)=>{if(!expenseRowVisibleFor(row,salonId))return null;
       if(!row.name)return null;
       const isInv=INVOICE_GATED_EXPENSE_ROWS.includes(row.name);
       let right;
@@ -1376,7 +1376,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     React.createElement('div',{className:'grid4',style:{marginBottom:16}},
       [{label:"Today's Total Exp.",val:'₹'+dayTotal(todayISO).toLocaleString('en-IN'),color:'amber'},
        {label:'Period Total',val:'₹'+grandTotal().toLocaleString('en-IN'),color:'red'},
-       {label:'Expense Rows',val:EXPENSE_ROWS.filter(r=>r.name).length,color:'blue'},
+       {label:'Expense Rows',val:EXPENSE_ROWS.filter(r=>r.name&&expenseRowVisibleFor(r,salonId)).length,color:'blue'},
        {label:'Days Shown',val:days.length,color:'teal'}].map(m=>
         React.createElement('div',{key:m.label,className:`metric-card ${m.color}`},
           React.createElement('div',{className:'metric-label'},m.label),
@@ -1440,7 +1440,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
           ),
           // Body rows
           React.createElement('tbody',null,
-            EXPENSE_ROWS.map((row,ri)=>{
+            EXPENSE_ROWS.map((row,ri)=>{if(!expenseRowVisibleFor(row,salonId))return null;
               const rowTot=rowTotal(ri);
               const isBlank=!row.name;
               // Some expense rows are always paid against a real Vendor Sheet invoice — every
@@ -1614,7 +1614,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
             React.createElement('tr',{key:'sales-section-header'},
               React.createElement('td',{colSpan:3+days.length,style:{padding:'10px 12px',background:'rgba(47,95,224,0.12)',fontSize:11,fontWeight:700,color:'var(--accent2)',textTransform:'uppercase',letterSpacing:'0.06em',borderTop:'2px solid var(--accent)',borderBottom:'1px solid var(--border)'}},'Daily Sales & Collection')
             ),
-            ...SALES_ROWS.map((row,sri)=>{
+            ...SALES_ROWS.map((row,sri)=>{if(sri===IDX_LUZO&&isRestaurantOutlet(salonId))return null;
               const isComputed=row.type==='computed';
               const isOpening=sri===IDX_OPENING;
               const globalRi=EXPENSE_ROWS.length+sri;
@@ -1788,7 +1788,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
           React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10}},'New Vendor — same form as Vendor Sheet'),
           React.createElement('div',{className:'form-row cols2'},
             React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-40'},'Vendor Name *'),React.createElement('input',{id:'f-40',className:'form-control',value:invForm.newVendorName,onChange:ic2('newVendorName'),placeholder:'e.g. L\'Oreal India Pvt Ltd',autoFocus:true})),
-            React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-41'},'Category'),React.createElement('select',{id:'f-41',className:'form-control',value:invForm.newVendorCat,onChange:ic2('newVendorCat')},['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Other'].map(c=>React.createElement('option',{key:c},c))))
+            React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-41'},'Category'),React.createElement('select',{id:'f-41',className:'form-control',value:invForm.newVendorCat,onChange:ic2('newVendorCat')},withBizCategories(['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Other'],salonId).map(c=>React.createElement('option',{key:c},c))))
           ),
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-42'},'Address'),React.createElement('textarea',{id:'f-42',className:'form-control',rows:2,value:invForm.newVendorAddress,onChange:ic2('newVendorAddress'),placeholder:'Full address with PIN code',style:{resize:'vertical'}})),
           React.createElement('div',{className:'form-row cols2'},

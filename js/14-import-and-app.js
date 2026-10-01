@@ -148,7 +148,7 @@ function InvoiceIntake({vendors,onUse,onManual,onClose,initial}){
             h('label',null,'Category *'),
             h('select',{className:'form-control',value:data.category||'',onChange:e=>set('category',e.target.value)},
               h('option',{value:''},'— Select Category —'),
-              ['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Other'].map(c=>h('option',{key:c,value:c},c)))
+              withBizCategories(['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Other']).map(c=>h('option',{key:c,value:c},c)))
           )
         ),
         h('div',{className:'form-row cols3'},field('Taxable value','taxable','number'),field('IGST','igst','number'),field('CGST','cgst','number')),
@@ -241,17 +241,22 @@ const SALON_TAB_GROUP_COLORS_RGB={
 // decide which training videos a person sees).
 const REPORTS_ONLY_ROLES=['Owner','Reviewer'];
 const REPORTS_ONLY_TAB_IDS=['outlet-dashboard','outlet-pnl','previous-pnl','reports','collection','collection-sheet','due-dates','audit-log'];
+// Sheets of one outlet — salon-only / restaurant-only sheets (biz) appear only on that kind of outlet.
+function salonTabsFor(sn){const k=sn&&sn.businessType==='Restaurant'?'restaurant':'salon';return SALON_TABS.filter(t=>!t.biz||t.biz===k);}
 const SALON_TABS=[
   {id:'outlet-dashboard',label:'Dashboard',icon:'📊',group:'Overview'},
-  {id:'appointments',label:'Appointments',icon:'📅',group:'Front Desk'},
-  {id:'billing',label:'Billing',icon:'🧾',group:'Front Desk'},
-  {id:'clients',label:'Clients',icon:'👥',group:'Front Desk'},
-  {id:'inventory',label:'Inventory',icon:'📦',group:'Front Desk'},
+  {id:'appointments',label:'Appointments',icon:'📅',group:'Front Desk',biz:'salon'},
+  {id:'billing',label:'Billing',icon:'🧾',group:'Front Desk',biz:'salon'},
+  {id:'clients',label:'Clients',icon:'👥',group:'Front Desk',biz:'salon'},
+  {id:'inventory',label:'Inventory',icon:'📦',group:'Front Desk',biz:'salon'},
   {id:'master-salary',label:'Master Salary',icon:'💰',group:'Payroll & HR'},
   {id:'daily-sales',label:'Daily Sales & Exp.',icon:'💵',group:'Money'},
+  {id:'aggregators',label:'Swiggy & Zomato',icon:'🛵',group:'Money',biz:'restaurant'},
+  {id:'food-cost',label:'Food Cost',icon:'🍳',group:'Money',biz:'restaurant'},
+  {id:'service-charge',label:'Service Charge',icon:'🍽',group:'Payroll & HR',biz:'restaurant'},
   {id:'attendance',label:'Attendance',icon:'✅',group:'Payroll & HR'},
   {id:'salary-working',label:'Salary Working',icon:'📋',group:'Payroll & HR'},
-  {id:'incentive-working',label:'Incentive Working',icon:'🏆',group:'Payroll & HR'},
+  {id:'incentive-working',label:'Incentive Working',icon:'🏆',group:'Payroll & HR',biz:'salon'},
   {id:'daily-incentive',label:'Daily Incentive',icon:'🎯',group:'Payroll & HR'},
   {id:'advance',label:'Advances',icon:'💳',group:'Payroll & HR'},
   {id:'penalty',label:'Penalties',icon:'⚠️',group:'Payroll & HR'},
@@ -261,8 +266,8 @@ const SALON_TABS=[
   {id:'bank-payment',label:'Bank Payment',icon:'🏧',group:'Money'},
   {id:'recurring-expenses',label:'Recurring Expenses',icon:'🔁',group:'Money'},
   {id:'fixed-assets',label:'Fixed Assets',icon:'🏢',group:'Money'},
-  {id:'collection',label:'Collection Summary',icon:'📥',group:'Money'},
-  {id:'collection-sheet',label:'Collection Reco',icon:'📊',group:'Money'},
+  {id:'collection',label:'Collection Summary',icon:'📥',group:'Money',biz:'salon'},
+  {id:'collection-sheet',label:'Collection Reco',icon:'📊',group:'Money',biz:'salon'},
   {id:'outlet-pnl',label:'P&L (Monthly)',icon:'📈',group:'Reports & Compliance'},
   {id:'previous-pnl',label:'Previous Months P&L',icon:'🗂️',group:'Reports & Compliance'},
   {id:'tally-export',label:'Tally Export',icon:'🔄',group:'Reports & Compliance'},
@@ -426,6 +431,11 @@ function App(){
     const firstAllowed=SALON_TABS.find(t=>(oa[t.id]||'View Only')!=='No Access');
     if(firstAllowed)setSalonTab(firstAllowed.id);
   },[user,salonTab,selectedSalon]);
+  // A salon-only sheet doesn't exist on a restaurant outlet (and the other way round) — opening
+  // another kind of outlet while on one lands on its dashboard instead.
+  useEffect(()=>{
+    if(selectedSalon&&!salonTabsFor(selectedSalon).some(t=>t.id===salonTab))setSalonTab('outlet-dashboard');
+  },[selectedSalon,salonTab]);
   // Keeps the currently-active sheet visible in the horizontally-scrolling tab strip — matters
   // most when salonTab changes from somewhere other than clicking a visible tab button (the
   // command palette's "Go to" entries, or the permission-redirect above), where the newly active
@@ -871,8 +881,8 @@ function App(){
   // (SalaryWorkingSheet/IncentiveWorkingSheet already branch on role for that), never the actual
   // working sheet, so showing the tab itself is safe regardless of the sheet-permission matrix.
   const visibleSalonTabs=((user&&user.role==='Super Admin')||!user||!outletSheetAccess
-    ?SALON_TABS
-    :SALON_TABS.filter(t=>(outletSheetAccess[t.id]||'View Only')!=='No Access'||(isSummaryApproverRole(user)&&(t.id==='salary-working'||t.id==='incentive-working')))
+    ?salonTabsFor(selectedSalon)
+    :salonTabsFor(selectedSalon).filter(t=>(outletSheetAccess[t.id]||'View Only')!=='No Access'||(isSummaryApproverRole(user)&&(t.id==='salary-working'||t.id==='incentive-working')))
   ).filter(t=>!isReportOnlyRole||REPORTS_ONLY_TAB_IDS.includes(t.id));
   // Guards the "🔗 jump to Bank Statement / Daily Sales & Exp" links (Collection Sheet, etc.)
   // too — a report-only user can't land on a working document by clicking through one of those
@@ -909,6 +919,9 @@ function App(){
     'fixed-assets':FixedAssetsSheet,
     'audit-log':AuditLogSheet,
     'import-center':ImportCenter,
+    'aggregators':AggregatorsSheet,
+    'food-cost':FoodCostSheet,
+    'service-charge':ServiceChargeSheet,
   };
 
   // FY 2022-23 up to the current FY (a fixed list used to stop at 2026-27).
@@ -991,9 +1004,9 @@ function App(){
   // Ctrl+F jump a user straight into a sheet their own permissions say "No Access" to, bypassing
   // the tab bar being hidden (the only enforcement that existed before this).
   const sheetsAllowedForSalon=(sn)=>{
-    if(!user||user.role==='Super Admin')return SALON_TABS;
+    if(!user||user.role==='Super Admin')return salonTabsFor(sn);
     const oa=(user.sheetAccessByOutlet&&user.sheetAccessByOutlet[sn.id])||user.sheetAccess||null;
-    const base=!oa?SALON_TABS:SALON_TABS.filter(t=>(oa[t.id]||'View Only')!=='No Access'||(isSummaryApproverRole(user)&&(t.id==='salary-working'||t.id==='incentive-working')));
+    const base=!oa?salonTabsFor(sn):salonTabsFor(sn).filter(t=>(oa[t.id]||'View Only')!=='No Access'||(isSummaryApproverRole(user)&&(t.id==='salary-working'||t.id==='incentive-working')));
     return base.filter(t=>!isReportOnlyRole||REPORTS_ONLY_TAB_IDS.includes(t.id));
   };
   const CMD_ACTIONS=[
