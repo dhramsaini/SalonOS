@@ -417,6 +417,7 @@ function App(){
   const [activePage,setActivePage]=useState('dashboard');
   const [selectedSalon,setSelectedSalon]=useState(null);
   const [salonTab,setSalonTab]=useState('master-salary');
+  const [dashTab,setDashTab]=useState('overview'); // Master Dashboard: 'overview' | 'compliance'
   // If the sheet currently open stops being accessible to this user (an admin just changed
   // their permissions, or they logged in with an account that never had access to it), move
   // them to the first sheet they can actually see rather than leaving them on a hidden one.
@@ -674,7 +675,7 @@ function App(){
     }
   };
   const logout=()=>{
-    sessionStorage.removeItem('salonos_user');setLoggedIn(false);setUser(null);
+    sessionStorage.removeItem('salonos_user');try{sessionStorage.removeItem('salonos_due_popup_shown');}catch(e){}setLoggedIn(false);setUser(null);
     // scope:'local' — Supabase's default signOut() is global and revokes this account's session on
     // EVERY device/browser, silently breaking cloud sync wherever else it was still open.
     if(CLOUD_SYNC_ENABLED)getSupabaseClient().then(supa=>supa&&supa.auth.signOut({scope:'local'})).catch(()=>{});
@@ -943,7 +944,7 @@ function App(){
     }
     if(activePage==='collaboration')return React.createElement(CollaborationReview,{user,salons:accessibleSalons,submissions,setSubmissions});
     if(activePage==='dashboard'&&salons.length===0)return React.createElement(GettingStarted,{onAddSalon:()=>setActivePage('master-sheet'),isAdmin});
-    if(activePage==='dashboard')return React.createElement(MasterDashboard,{selFY,setSelFY,FYS,accessibleSalons});
+    if(activePage==='dashboard')return React.createElement(MasterDashboard,{selFY,setSelFY,FYS,accessibleSalons,dashTab,setDashTab,onOpenOutletTab:openFromAlert});
     if(activePage==='insights')return React.createElement(OwnerInsights,{accessibleSalons,user});
     if(activePage==='master-sheet')return React.createElement(MasterSheet,{onSelect:handleSelectSalon,salons,setSalons:setSalonsAndSync,user});
     if(activePage==='pnl')return React.createElement(PnLSheet,null);
@@ -1021,6 +1022,7 @@ function App(){
     React.createElement(ToastContainer,{toasts,remove:removeToast}),
     showHelp&&React.createElement(HelpPanel,{onClose:()=>setShowHelp(false)}),
     React.createElement(CommandPalette,{open:cmdOpen,setOpen:setCmdOpen,actions:CMD_ACTIONS}),
+    React.createElement(DueReminderPopup,{user,accessibleSalons,onOpenRegister:()=>{setDashTab('compliance');setActivePage('dashboard');}}),
     React.createElement('div',{className:'app'},
     sidebarOpen&&React.createElement('div',{className:'sidebar-backdrop show',onClick:closeSidebar}),
     React.createElement('div',{className:'sidebar'+(sidebarOpen?' open':'')},

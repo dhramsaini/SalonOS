@@ -335,7 +335,20 @@ function GettingStarted({onAddSalon,isAdmin}){
   );
 }
 
-function MasterDashboard({selFY,setSelFY,FYS,accessibleSalons}){
+function MasterDashboard({selFY,setSelFY,FYS,accessibleSalons,dashTab,setDashTab,onOpenOutletTab}){
+  const h=React.createElement;
+  const [ownTab,setOwnTab]=useState('overview');
+  const tab=dashTab||ownTab,setTab=setDashTab||setOwnTab;
+  return h('div',{className:'fade-in'},
+    h('div',{className:'tab-bar',style:{marginBottom:16}},
+      [['overview','📊 Overview'],['compliance','📌 Due Date Compliance register']].map(([k,l])=>h('button',{key:k,type:'button',className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
+    tab==='compliance'
+      ?h('div',null,h('div',{className:'page-title'},'Due Date Compliance register'),
+          h('div',{className:'page-sub'},'Payments and compliance across all your outlets — overdue, due this week, pending and paid'),
+          h(ComplianceRegister,{accessibleSalons,onOpenOutletTab}))
+      :h(MasterDashboardOverview,{selFY,setSelFY,FYS,accessibleSalons}));
+}
+function MasterDashboardOverview({selFY,setSelFY,FYS,accessibleSalons}){
   const [selOutlet,setSelOutlet]=useState('all');
   // Scoped to accessibleSalons (the same outlet-permission list the sidebar/outlet switcher
   // already uses), NOT the raw global SALONS — this used to aggregate every outlet's real

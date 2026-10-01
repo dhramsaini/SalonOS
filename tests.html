@@ -440,6 +440,14 @@
           [true,false,false,true,false]);
       }catch(err){results.push({name:'Salon Owner access',ok:false,got:String(err&&err.message||err),want:'no error'});}
       try{
+        // Due Date Compliance register statuses.
+        const dd=n=>{const d=new Date(localTodayIso()+'T00:00:00');d.setDate(d.getDate()+n);return localIsoOf(d);};
+        eq('Compliance: overdue / due within 5 days / pending / paid',
+          [complianceStatusOf({due:dd(-1)}),complianceStatusOf({due:dd(0)}),complianceStatusOf({due:dd(5)}),complianceStatusOf({due:dd(6)}),complianceStatusOf({due:''}),complianceStatusOf({due:dd(-3),paid:true})],
+          ['Overdue','Due','Due','Pending','Pending','Paid']);
+        eq('Compliance: every outlet item listed with its outlet',complianceRowsFor([{id:904,name:'Test Restaurant'}]).some(r=>r.type==='Licence Renewal'&&r.outlet==='Test Restaurant'),true);
+      }catch(err){results.push({name:'Compliance register',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
+      try{
         // Restaurant line of business (outlet 904).
         eq('Restaurant: payout 29 Sep–5 Oct is 2/7 September',Math.round(aggMonthShare({periodFrom:'2026-09-29',periodTo:'2026-10-05'},2026,8)*7),2);
         const ag=aggregatorMonthFor(904,2026,8);

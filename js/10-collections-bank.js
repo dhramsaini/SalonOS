@@ -5233,3 +5233,138 @@ function BankStatement({salon,onNavTab}={}){
 const RECURRING_EXPENSE_TYPES=['Rent','Staff Room Rent','Royalty','Electricity Expenses','DG Rent','Telephone & Internet Expenses','Marketing Expenses','Drycleaning Expenses','Professional Fee','Maintenance Bill','Software Subscription','Other'];
 const RECURRING_FREQUENCIES=['Monthly','Bi-Monthly','Quarterly','Half-Yearly','Yearly'];
 const RECURRING_FREQ_DIVISOR={Monthly:1,'Bi-Monthly':2,Quarterly:3,'Half-Yearly':6,Yearly:12};
+
+// ═══ Due Date Compliance register (Master Dashboard) and the login reminder ═══════════════════
+// Every payment / compliance item of every outlet — the same list each outlet's Due Dates sheet
+// shows (auto items from Salary Working, Vendors, TDS and licences, plus items added by hand).
+// "Update Amount" reminders are left out — they ask for a figure, they aren't a payment.
+function allDueItemsFor(sid){
+  let manual=[];try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_due_dates',sid))||'[]');if(Array.isArray(v))manual=v;}catch(e){}
+  const auto=[...autoStatutoryDueItemsFor(sid),...autoTdsDueItemsFor(sid),...autoSalaryIncentiveDueItemsFor(sid),...autoVendorDueItemsFor(sid),
+    ...(typeof autoLicenceDueItemsFor==='function'?autoLicenceDueItemsFor(sid):[])];
+  return [...auto,...manual.map(d=>({...d,manual:true}))].filter(d=>d&&d.type!=='Update Amount');
+}
+const DUE_SOON_DAYS=5;
+function dueDaysFrom(iso){
+  if(!iso)return null;const d=new Date(String(iso).slice(0,10)+'T00:00:00');if(isNaN(d))return null;
+  const t=new Date(localTodayIso()+'T00:00:00');return Math.round((d-t)/86400000);
+}
+// Paid · Overdue (unpaid, date gone) · Due (unpaid, within the next 5 days) · Pending (unpaid, later or no date)
+function complianceStatusOf(d){
+  if(d.paid||d.status==='done')return 'Paid';
+  const n=dueDaysFrom(d.due);
+  if(n!=null&&n<0)return 'Overdue';
+  if(n!=null&&n<=DUE_SOON_DAYS)return 'Due';
+  return 'Pending';
+}
+function complianceRowsFor(salons){
+  const out=[];
+  (salons||[]).forEach(s=>{allDueItemsFor(s.id).forEach(d=>{
+    out.push({...d,outletId:s.id,outlet:s.name,status4:complianceStatusOf(d),days:dueDaysFrom(d.due),amt:Number(d.paid?(d.paidAmount||d.amount):d.amount)||0});
+  });});
+  return out.sort((a,b)=>String(a.due||'9999').localeCompare(String(b.due||'9999')));
+}
+const COMP_BADGE={Overdue:'badge-red',Due:'badge-amber',Pending:'badge-blue',Paid:'badge-green'};
+const compDaysText=r=>r.days==null?'—':r.status4==='Paid'?'':r.days<0?(-r.days)+' day'+(r.days===-1?'':'s')+' overdue':r.days===0?'due today':'in '+r.days+' day'+(r.days===1?'':'s');
+const compDate=iso=>iso?String(iso).slice(0,10).split('-').reverse().join('/'):'—';
+
+function ComplianceRegister({accessibleSalons,onOpenOutletTab}){
+  const h=React.createElement;
+  const {toast,error:toastError}=useToast();
+  const salons=(accessibleSalons||[]).filter(s=>s.status!=='Inactive');
+  const [status,setStatus]=useState('Open');
+  const [outlet,setOutlet]=useState('all');
+  const [cat,setCat]=useState('all');
+  const [from,setFrom]=useState('');
+  const [to,setTo]=useState('');
+  const [q,setQ]=useState('');
+  const all=useMemo(()=>complianceRowsFor(salons),[salons.map(s=>s.id).join(',')]);
+  const cats=Array.from(new Set(all.map(r=>r.type).filter(Boolean))).sort();
+  const base=all.filter(r=>(outlet==='all'||String(r.outletId)===String(outlet))&&(cat==='all'||r.type===cat)
+    &&(!from||(r.due&&r.due>=from))&&(!to||(r.due&&r.due<=to))
+    &&(!q||[r.outlet,r.type,r.desc].join(' ').toLowerCase().includes(q.toLowerCase())));
+  const rows=base.filter(r=>status==='All'||(status==='Open'?r.status4!=='Paid':r.status4===status));
+  const sum=k=>base.filter(r=>r.status4===k);
+  const tot=list=>list.reduce((s,r)=>s+r.amt,0);
+  const card=(k,label,color,sub)=>{const l=sum(k);return h('div',{className:'metric-card '+color,style:{cursor:'pointer',outline:status===k?'2px solid var(--accent)':'none'},onClick:()=>setStatus(k)},
+    h('div',{className:'metric-label'},label),h('div',{className:'metric-value'},rupee(tot(l))),h('div',{style:{fontSize:11,color:'var(--text3)',marginTop:3}},l.length+' item'+(l.length===1?'':'s')+(sub?' · '+sub:'')));};
+  const exportXlsx=async()=>{
+    try{
+      const sheet=[['Due Date Compliance register — '+compDate(localTodayIso())],[],['Outlet','Category','Description','Due date','Amount','Status','Days','Paid on','Reference'],
+        ...rows.map(r=>[r.outlet,r.type,r.desc||'',compDate(r.due),r.amt,r.status4,compDaysText(r),r.paid?compDate(r.paidDate):'',r.ref||'']),['Total','','','',tot(rows)]];
+      const blob=await exportReportExcelBlob('Compliance register',sheet);
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='Compliance_Register_'+localTodayIso()+'.xlsx';document.body.appendChild(a);a.click();a.remove();
+      toast('Excel downloaded','success');
+    }catch(e){toastError('Could not build the Excel file — please try again');}
+  };
+  return h('div',null,
+    h('div',{className:'grid4',style:{marginBottom:14}},
+      card('Overdue','Overdue','red','date passed, not paid'),
+      card('Due','Due in '+DUE_SOON_DAYS+' days','amber','pay this week'),
+      card('Pending','Pending (later)','blue','not yet due'),
+      card('Paid','Paid','green','marked paid')),
+    h('div',{className:'card',style:{marginBottom:12,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
+      ['Open','Overdue','Due','Pending','Paid','All'].map(k=>h('button',{key:k,type:'button',className:'btn btn-sm '+(status===k?'btn-primary':'btn-ghost'),onClick:()=>setStatus(k)},
+        k==='Open'?'All unpaid':k==='Due'?'Due ('+DUE_SOON_DAYS+' days)':k)),
+      h('select',{className:'form-control',style:{width:'auto'},value:outlet,onChange:e=>setOutlet(e.target.value),'aria-label':'Outlet'},
+        h('option',{value:'all'},'All outlets'),salons.map(s=>h('option',{key:s.id,value:s.id},s.name))),
+      h('select',{className:'form-control',style:{width:'auto'},value:cat,onChange:e=>setCat(e.target.value),'aria-label':'Category'},
+        h('option',{value:'all'},'All categories'),cats.map(c=>h('option',{key:c,value:c},c))),
+      h('label',{style:{fontSize:12,color:'var(--text3)'}},'From'),h('input',{type:'date',className:'form-control',style:{width:'auto'},value:from,onChange:e=>setFrom(e.target.value)}),
+      h('label',{style:{fontSize:12,color:'var(--text3)'}},'To'),h('input',{type:'date',className:'form-control',style:{width:'auto'},value:to,onChange:e=>setTo(e.target.value)}),
+      h('input',{className:'form-control',style:{width:200},placeholder:'Search outlet, category, description…',value:q,onChange:e=>setQ(e.target.value)}),
+      h('button',{type:'button',className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},onClick:exportXlsx},'⬇ Export Excel')),
+    h('div',{className:'help-note',style:{marginBottom:12}},'Every payment and compliance date of your outlets in one place — PF, ESIC, PT, TDS, salary and incentive, vendor bills, licence renewals and items added on each outlet’s Due Dates sheet. Pay and mark paid on the outlet’s Due Dates sheet (Open).'),
+    h('div',{className:'card'},rows.length===0
+      ?h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'✅'),h('div',{className:'empty-title'},status==='Overdue'?'Nothing overdue':'Nothing here'),h('div',{className:'empty-sub'},'Change the filters to see other items.'))
+      :h('div',{className:'table-wrap'},h('table',null,
+        h('thead',null,h('tr',null,['Outlet','Category','Description','Due date','Amount','Status','','Paid on',''].map((t,i)=>h('th',{key:i},t)))),
+        h('tbody',null,rows.map((r,i)=>h('tr',{key:r.outletId+'|'+r.id+'|'+i},
+          h('td',{style:{fontWeight:600}},String(r.outlet).split('—')[0].trim()),
+          h('td',null,r.type,r.auto&&h('span',{className:'badge badge-gray',style:{marginLeft:6,fontSize:9.5}},'AUTO')),
+          h('td',{style:{maxWidth:360,fontSize:12.5,color:'var(--text2)'}},r.desc||'—'),
+          h('td',{style:{whiteSpace:'nowrap'}},compDate(r.due)),
+          h('td',{style:{textAlign:'right',fontWeight:600}},r.amt?rupee(r.amt):'—'),
+          h('td',null,h('span',{className:'badge '+COMP_BADGE[r.status4]},r.status4)),
+          h('td',{style:{fontSize:11.5,color:r.status4==='Overdue'?'var(--red)':'var(--text3)',whiteSpace:'nowrap'}},compDaysText(r)),
+          h('td',{style:{fontSize:12,whiteSpace:'nowrap'}},r.paid?compDate(r.paidDate)+(r.ref?' · '+r.ref:''):'—'),
+          h('td',null,onOpenOutletTab&&h('button',{type:'button',className:'btn btn-ghost btn-sm',onClick:()=>{const s=salons.find(x=>String(x.id)===String(r.outletId));if(s)onOpenOutletTab(s,'due-dates');}},'Open →')))),
+          h('tr',{style:{fontWeight:700}},h('td',{colSpan:4},'Total ('+rows.length+')'),h('td',{style:{textAlign:'right'}},rupee(tot(rows))),h('td',{colSpan:4})))))));
+}
+
+// Login reminder — Owner, Salon Owner, Super Admin and Accountant: overdue items and anything due
+// in the next 5 days, once per sign-in.
+const DUE_POPUP_ROLES=['Super Admin','Owner','Salon Owner','Accountant'];
+const DUE_POPUP_DAYS=5;
+function DueReminderPopup({user,accessibleSalons,onOpenRegister}){
+  const h=React.createElement;
+  const KEY='salonos_due_popup_shown';
+  const [open,setOpen]=useState(false);
+  const [rows,setRows]=useState([]);
+  useEffect(()=>{
+    if(!user||!DUE_POPUP_ROLES.includes(user.role))return;
+    try{if(sessionStorage.getItem(KEY))return;}catch(e){}
+    const list=complianceRowsFor((accessibleSalons||[]).filter(s=>s.status!=='Inactive'))
+      .filter(r=>r.status4==='Overdue'||(r.status4!=='Paid'&&r.days!=null&&r.days>=0&&r.days<=DUE_POPUP_DAYS));
+    try{sessionStorage.setItem(KEY,'1');}catch(e){}
+    if(list.length){setRows(list);setOpen(true);}
+  },[user&&user.id,(accessibleSalons||[]).length]);
+  if(!open)return null;
+  const over=rows.filter(r=>r.status4==='Overdue'),soon=rows.filter(r=>r.status4!=='Overdue');
+  const tot=l=>l.reduce((s,r)=>s+r.amt,0);
+  const table=(list)=>h('div',{className:'table-wrap',style:{maxHeight:240,overflowY:'auto'}},h('table',null,
+    h('thead',null,h('tr',null,['Outlet','Category','Description','Due date','Amount',''].map((t,i)=>h('th',{key:i},t)))),
+    h('tbody',null,list.map((r,i)=>h('tr',{key:i},h('td',{style:{fontWeight:600}},String(r.outlet).split('—')[0].trim()),h('td',null,r.type),
+      h('td',{style:{fontSize:12,color:'var(--text2)',maxWidth:280}},r.desc||'—'),h('td',{style:{whiteSpace:'nowrap'}},compDate(r.due)),
+      h('td',{style:{textAlign:'right',fontWeight:600}},r.amt?rupee(r.amt):'—'),h('td',{style:{fontSize:11.5,whiteSpace:'nowrap',color:r.status4==='Overdue'?'var(--red)':'var(--orange)'}},compDaysText(r)))))));
+  return h('div',{className:'modal-overlay',onClick:()=>setOpen(false)},
+    h('div',{className:'modal',style:{width:860,maxWidth:'96vw'},onClick:e=>e.stopPropagation(),role:'dialog','aria-label':'Payments due'},
+      h('div',{className:'modal-title'},'📌 Payments needing attention'),
+      over.length>0&&h('div',{style:{marginBottom:14}},
+        h('div',{style:{fontWeight:700,color:'var(--red)',marginBottom:6}},'🔴 Overdue — '+over.length+' item'+(over.length===1?'':'s')+' · '+rupee(tot(over))),table(over)),
+      soon.length>0&&h('div',{style:{marginBottom:6}},
+        h('div',{style:{fontWeight:700,color:'var(--orange)',marginBottom:6}},'🟡 Due in the next '+DUE_POPUP_DAYS+' days — '+soon.length+' item'+(soon.length===1?'':'s')+' · '+rupee(tot(soon))),table(soon)),
+      h('div',{className:'modal-actions'},
+        h('button',{className:'btn btn-ghost',onClick:()=>setOpen(false)},'Close'),
+        h('button',{className:'btn btn-primary',onClick:()=>{setOpen(false);onOpenRegister&&onOpenRegister();}},'Open compliance register'))));
+}
