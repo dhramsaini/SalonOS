@@ -1899,7 +1899,7 @@ function loadTeaConfig(salonId){
   return{...TEA_CONFIG_DEFAULT};
 }
 function saveTeaConfig(cfg,salonId){safeLocalSet(outletKey('salonos_tea_config',salonId),JSON.stringify(cfg));}
-const IW_COLS_DEFAULT={svcTarget:true,membership:true,product:true,svcPct:true,memPct:true,prodPct:true,amounts:true,penalty:true,advAdj:true,bankDetails:false};
+const IW_COLS_DEFAULT={svcTarget:true,membership:true,product:true,svcPct:true,memPct:true,prodPct:true,amounts:true,penalty:true,advAdj:true,bankDetails:false,ot:false};
 function loadIWCols(salonId){
   try{const raw=JSON.parse(cachedLocalGet(outletKey('salonos_iw_cols',salonId))||'null');if(raw&&typeof raw==='object')return{...IW_COLS_DEFAULT,...raw};}catch(e){}
   return{...IW_COLS_DEFAULT};
@@ -2892,13 +2892,24 @@ function incWorkingsFor(salonId,year,month){
           ?iwM.advanceSettledBreakdown.reduce((s,b)=>s+(Number(b.amount)||0),0)
           :advanceDeductionFor(salonId,e.name,'Incentive',year,month))
       :0;
+    // Overtime (OT) — Column Groups → "Overtime (OT)" on, and the employee's OT box ticked:
+    // Total Monthly Salary ÷ days in the month ÷ normal working hours × OT hours. Normal working hours
+    // carry forward from the employee's previous month until changed.
+    const otA=actuals[incActualKey(e.id,year,month)]||{};
+    const prevOt=actuals[incActualKey(e.id,month===0?year-1:year,month===0?11:month-1)]||{};
+    const otApplicable=otA.otApplicable!==undefined?otA.otApplicable!==false&&otA.otApplicable!==0:(prevOt.otApplicable!==undefined?prevOt.otApplicable!==false&&prevOt.otApplicable!==0:true);
+    const otNormalHours=Number(otA.otNormalHours)||Number(prevOt.otNormalHours)||0;
+    const otHours=Number(otA.otHours)||0;
+    const otDays=new Date(year,month+1,0).getDate();
+    const otAmt=cols.ot&&otApplicable&&otNormalHours>0&&otHours>0?Math.round(salary/otDays/otNormalHours*otHours):0;
     return{...e,salary,svcTarget,svcActual:Math.round(svcActual),memTarget,memActual:Math.round(memActual),prodTarget,prodActual:Math.round(prodActual),
+      otApplicable,otNormalHours,otHours,otDays,otAmt,
       totalTarget:Math.round(totalTarget),totalActual:Math.round(totalActual),svcTimesRaw,memTimesRaw,prodTimesRaw,totalTimesRaw,svcPct,memPct,prodPct,
       svcRate,memRate,prodRate,svcRateUsed:svcRateUsed!=null?svcRateUsed:svcRate,
       memRateUsed:memRateUsed!=null?memRateUsed:memRate,prodRateUsed:prodRateUsed!=null?prodRateUsed:prodRate,
       svcManualAmt,memManualAmt,prodManualAmt,mgrManualAmt,calcMode:effCalcMode,manualOv,prodRuleType,prodFlatAmount,
       svcIncAmt,memIncAmt,prodIncAmt,mgrIncAmt:mgrIncAmt||0,
-      penaltyAmt,advAdj,totalInc:Math.max(0,totalInc-penaltyAmt-advAdj),fromReport,activeModel};
+      penaltyAmt,advAdj,totalInc:Math.max(0,totalInc+otAmt-penaltyAmt-advAdj),fromReport,activeModel};
   });
 }
 

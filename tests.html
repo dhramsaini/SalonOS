@@ -401,6 +401,22 @@
         eq('Aug–Sep bill in September: Aug stays ₹8,425, Sep = ₹9,000 + Aug adjustment ₹575',[row(7).recognized,row(8).recognized,row(8).adjustmentsHere.map(a=>a.diff),row(6).actual],[8425,9575,[575],8425]);
       }catch(err){results.push({name:'Owner electricity case',ok:false,got:String(err&&err.message||err),want:'no error'});}
       try{
+        // Overtime in Incentive Working: ₹20,000 salary, September (30 days), 9 normal hrs/day, 10 OT hrs → ₹741.
+        const E1=incWorkingsFor(901,2026,8).find(e=>e.id==='E1');
+        saveIWCols({...loadIWCols(901),ot:true},901);
+        const act=loadIncentiveActuals(901);
+        act[incActualKey('E1',2026,8)]={...(act[incActualKey('E1',2026,8)]||{}),otNormalHours:9,otHours:10};
+        saveIncentiveActuals(act,901);
+        const E1b=incWorkingsFor(901,2026,8).find(e=>e.id==='E1');
+        eq('OT = salary ÷ days ÷ normal hrs × OT hrs, added to Total Inc',[E1b.otAmt,E1b.totalInc-E1.totalInc],[741,741]);
+        act[incActualKey('E1',2026,8)].otApplicable=0;saveIncentiveActuals(act,901);
+        eq('OT not applicable (box unticked) → no OT',incWorkingsFor(901,2026,8).find(e=>e.id==='E1').otAmt,0);
+        act[incActualKey('E1',2026,9)]={otHours:5};act[incActualKey('E1',2026,8)].otApplicable=1;saveIncentiveActuals(act,901);
+        eq('Normal hours carry forward from last month (₹20,000 ÷ 31 ÷ 9 × 5)',incWorkingsFor(901,2026,9).find(e=>e.id==='E1').otAmt,Math.round(20000/31/9*5));
+        saveIWCols({...loadIWCols(901),ot:false},901);
+        eq('OT column off → no OT',incWorkingsFor(901,2026,8).find(e=>e.id==='E1').otAmt,0);
+      }catch(err){results.push({name:'Overtime',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
         const mod={};new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});

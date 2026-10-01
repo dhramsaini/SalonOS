@@ -2080,7 +2080,7 @@ async function buildSalaryWorkingExcelBlob({title,workings,cols,metaFor,MONTHS,s
 // category's Incentive amount are all formulas too, built from Achieved and Rate cells on the
 // same row (edit either and Incentive recalculates). Mgr Incentive stays a value — it comes from
 // the separate salon-wide Manager Incentive panel, not a per-row rate.
-async function buildIncentiveWorkingExcelBlob({title,incData,targetMult,includeBankDetails}){
+async function buildIncentiveWorkingExcelBlob({title,incData,targetMult,includeBankDetails,includeOT}){
   await loadExcelJS();
   const wb=new ExcelJS.Workbook();
   wb.creator='SalonOS';wb.created=new Date();
@@ -2102,6 +2102,7 @@ async function buildIncentiveWorkingExcelBlob({title,incData,targetMult,includeB
     {id:'penalty',header:'Penalty'},
     {id:'advAdj',header:'Advance Adj.'},
     {id:'svcInc',header:'Svc Inc'},{id:'memInc',header:'Mem Inc'},{id:'prodInc',header:'Prod Inc'},{id:'mgrInc',header:'Mgr Inc'},
+    ...(includeOT?[{id:'otDays',header:'Days in Month'},{id:'otNormal',header:'Normal Hrs/Day'},{id:'otHours',header:'OT Hrs'},{id:'otAmt',header:'OT Amt'}]:[]),
     {id:'totalInc',header:'Total Incentive'},
     ...(includeBankDetails?[{id:'bankName',header:'Bank Name'},{id:'accountNo',header:'Account No.'},{id:'ifsc',header:'IFSC Code'}]:[])
   ];
@@ -2136,7 +2137,9 @@ async function buildIncentiveWorkingExcelBlob({title,incData,targetMult,includeB
       // of — falls back to the plain figure instead of a formula referencing an empty rate cell.
       prodInc:e.prodRateUsed!=null?{formula:'ROUND('+L('prodAchieved')+r+'*'+L('prodRate')+r+'/100,0)',result:e.prodIncAmt}:e.prodIncAmt,
       mgrInc:e.mgrIncAmt||0,
-      totalInc:{formula:'MAX(0,'+L('svcInc')+r+'+'+L('memInc')+r+'+'+L('prodInc')+r+'+'+L('mgrInc')+r+'-'+L('penalty')+r+'-'+L('advAdj')+r+')',result:e.totalInc},
+      ...(includeOT?{otDays:e.otDays||0,otNormal:e.otApplicable?(e.otNormalHours||0):0,otHours:e.otApplicable?(e.otHours||0):0,
+        otAmt:{formula:'IF(OR('+L('otNormal')+r+'=0,'+L('otDays')+r+'=0),0,ROUND('+salaryRef+'/'+L('otDays')+r+'/'+L('otNormal')+r+'*'+L('otHours')+r+',0))',result:e.otAmt||0}}:{}),
+      totalInc:{formula:'MAX(0,'+L('svcInc')+r+'+'+L('memInc')+r+'+'+L('prodInc')+r+'+'+L('mgrInc')+r+(includeOT?'+'+L('otAmt')+r:'')+'-'+L('penalty')+r+'-'+L('advAdj')+r+')',result:e.totalInc},
       bankName:e.bankName||'',accountNo:e.accountNo||'',ifsc:e.ifsc||''
     };
     const excelRow=ws.addRow(colDefs.map(c=>rowVals[c.id]));

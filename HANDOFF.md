@@ -428,6 +428,13 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   claimed/adjustments follow), 🗑 (0 = no provision), ↺ (automatic). "Bills entered" list with ✏ Edit (openEditBill →
   Enter bill window in edit mode, keeps id/enteredAt/non-TDS payments, TDS line recomputed) and 🗑 Delete (blocked if
   payments other than TDS exist; also removes it from Vendor Sheet). Tests 105.
+· (v2026.10.01.45) Register also shows months of bills already entered (before the item's start date).
+· (v2026.10.01.46) **Overtime (OT) in Incentive Working**: Column Groups toggle "Overtime (OT)" (IW cols.ot, default off).
+  Per employee (incentive actuals, same key as Svc/Mem/Prod): otApplicable (tick box, carries from last month),
+  otNormalHours (carries from last month), otHours. incWorkingsFor: otAmt = round(gross ÷ days in month ÷ normal hrs × OT
+  hrs), added to totalInc (so Incentive Payment and P&L include it). Columns after Mgr Inc (OT ✓, Normal Hrs/Day, OT Hrs,
+  OT Amt) + totals; CSV/print append the OT columns; Excel builder adds Days/Normal/OT Hrs/OT Amt with a live formula and
+  adds OT Amt to the Total Incentive formula. Tests 111.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.
