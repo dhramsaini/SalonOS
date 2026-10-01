@@ -442,6 +442,10 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   workings (summary, service, membership, product, manager, OT, deductions, employee-wise statement); builds sections
   from incData (wkSections → HTML with h3 per section / sheet rows split by blank rows) into ShareReportButton
   (PDF/Word/Excel/HTML, DRAFT/FINAL watermark).
+· (v2026.10.01.49) **Salon Owner follows User Management access** (owner's decision): app — REPORTS_ONLY_ROLES =
+  Owner, Reviewer (js/14); userCanEditSheet / canEditBank no longer block Salon Owner. Database — step19 (RUN 30 Sep/1 Oct,
+  live def verified = step8 first): salonos_key_access never-write list = Reviewer, Owner. Tested as Nisha in a rolled-back
+  transaction (Salon Owner: write own outlet true, secrets false). Tests 112.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

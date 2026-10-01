@@ -843,12 +843,11 @@ function App(){
 
   const isAdmin=user?.role==='Super Admin';
   const isReviewer=['Super Admin','Reviewer'].includes(user?.role);
-  // Owner / Salon Owner / Reviewer now get a curated, read-only view — reports and oversight
-  // only, none of the day-to-day working documents (Daily Sales, Salary Working, Bank Statement,
-  // Vendor Sheet, Advances, Import Center, etc.) and no submission workflow either, since that's
-  // a working task, not a report. Everyone else (Manager, ASM, Accountant, Data Entry User,
-  // Super Admin) is unaffected — this only narrows these three specific roles.
-  const REPORTS_ONLY_ROLES=['Owner','Salon Owner','Reviewer'];
+  // Owner / Reviewer get a curated, read-only view — reports and oversight only, none of the
+  // day-to-day working documents (Daily Sales, Salary Working, Bank Statement, Vendor Sheet,
+  // Advances, Import Center, etc.). Salon Owner follows the outlet and sheet access set in User
+  // Management (View Only / Edit per sheet), like Salon Manager — database rule step19.
+  const REPORTS_ONLY_ROLES=['Owner','Reviewer'];
   const isReportOnlyRole=!!(user&&REPORTS_ONLY_ROLES.includes(user.role));
   const REPORTS_ONLY_TAB_IDS=['outlet-dashboard','outlet-pnl','previous-pnl','reports','collection','collection-sheet','due-dates','audit-log'];
   const GLOBAL_NAV=[

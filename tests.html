@@ -417,6 +417,14 @@
         eq('OT column off → no OT',incWorkingsFor(901,2026,8).find(e=>e.id==='E1').otAmt,0);
       }catch(err){results.push({name:'Overtime',ok:false,got:String(err&&err.message||err),want:'no error'});}
       try{
+        // Salon Owner follows the access set in User Management; Owner and Reviewer stay read-only.
+        const mk=role=>({role,outletAccess:{'901':'View and Edit','902':'View Only'},sheetAccessByOutlet:{'901':{'daily-sales':'Edit','attendance':'View Only'}}});
+        const so=mk('Salon Owner'),ow=mk('Owner');
+        eq('Salon Owner edits where allowed, views where View Only; Owner never edits',
+          [userCanEditSheet(so,901,'daily-sales'),userCanEditSheet(so,901,'attendance'),userCanEditSheet(so,902,'daily-sales'),userCanViewSheet(so,902,'daily-sales'),userCanEditSheet(ow,901,'daily-sales')],
+          [true,false,false,true,false]);
+      }catch(err){results.push({name:'Salon Owner access',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
         const mod={};new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});

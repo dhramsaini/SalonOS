@@ -363,7 +363,7 @@ function userCanSeeOutlet(u,outletId){
 function userCanEditSheet(u,outletId,sheetId){
   if(!u)return false;
   if(u.role==='Super Admin')return true;
-  if(['Reviewer','Owner','Salon Owner'].includes(u.role))return false;
+  if(['Reviewer','Owner'].includes(u.role))return false; // Salon Owner follows the outlet/sheet access set in User Management
   const oa=u.outletAccess&&Object.keys(u.outletAccess).length?u.outletAccess:null;
   if(oa?oa[String(outletId)]!=='View and Edit':!(u.outletIds||[]).map(String).includes(String(outletId)))return false;
   const sa=u.sheetAccessByOutlet&&u.sheetAccessByOutlet[outletId];
