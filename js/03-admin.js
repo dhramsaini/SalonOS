@@ -1994,6 +1994,94 @@ function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup}={}){
   );
 }
 
+// ── User Management → "By outlet": for every outlet, each login that can open it, with the access
+// actually in force — the same rules the app and the database apply (userCanSeeOutlet,
+// userCanEditSheet, the reports-only roles, and Salon Manager / ASM landing on the Summary
+// Approval screen for Salary / Incentive Working unless given Edit there). ──
+function userSheetRight(u,outletId,sheetId){
+  if(!u||!userCanSeeOutlet(u,outletId))return 'No Access';
+  if(u.role==='Super Admin')return 'Edit';
+  if(REPORTS_ONLY_ROLES.includes(u.role))return REPORTS_ONLY_TAB_IDS.includes(sheetId)?'View Only':'No Access';
+  const m=(u.sheetAccessByOutlet&&u.sheetAccessByOutlet[outletId])||u.sheetAccess||null;
+  const visible=!m||(m[sheetId]||'View Only')!=='No Access';
+  if((sheetId==='salary-working'||sheetId==='incentive-working')&&summaryApprovalOnly(u,outletId,sheetId))
+    return 'Approval only';
+  if(!visible)return 'No Access';
+  return userCanEditSheet(u,outletId,sheetId)?'Edit':'View Only';
+}
+function userOutletRight(u,outletId){
+  if(!u||!userCanSeeOutlet(u,outletId))return 'No Access';
+  if(u.role==='Super Admin')return 'Full (Super Admin)';
+  if(REPORTS_ONLY_ROLES.includes(u.role))return 'Reports only';
+  const oa=u.outletAccess&&Object.keys(u.outletAccess).length?u.outletAccess:null;
+  return oa?(oa[String(outletId)]||'No Access'):'View and Edit';
+}
+function UserAccessByOutlet({users,salons,sheets,onEdit}){
+  const h=React.createElement;
+  const {toast,error:toastError}=useToast();
+  const [outletSel,setOutletSel]=useState('all');
+  const [q,setQ]=useState('');
+  const [hideAdmins,setHideAdmins]=useState(false);
+  const [open,setOpen]=useState({});
+  const list=(salons||[]).filter(s=>outletSel==='all'||String(s.id)===String(outletSel));
+  const match=u=>!q||[u.name,u.email,u.role].join(' ').toLowerCase().includes(q.toLowerCase());
+  const rowsFor=s=>(users||[]).filter(u=>userCanSeeOutlet(u,s.id)&&match(u)&&!(hideAdmins&&u.role==='Super Admin'))
+    .map(u=>{const r={};sheets.forEach(sh=>{r[sh.id]=userSheetRight(u,s.id,sh.id);});return{u,outlet:userOutletRight(u,s.id),r};})
+    .sort((a,b)=>(a.u.role==='Super Admin')-(b.u.role==='Super Admin')||String(a.u.name).localeCompare(String(b.u.name)));
+  const chip=(label,kind)=>h('span',{key:label,className:'badge '+(kind==='Edit'?'badge-green':kind==='View Only'?'badge-blue':kind==='Approval only'?'badge-amber':'badge-gray'),style:{margin:'0 4px 4px 0',fontWeight:500,whiteSpace:'nowrap',display:'inline-block'}},label);
+  const exportXlsx=async()=>{
+    try{
+      const rows=[['User access by outlet — '+new Date().toLocaleDateString('en-IN')],[]];
+      list.forEach(s=>{
+        rows.push([s.name]);
+        rows.push(['User','Email','Role','Status','Outlet access',...sheets.map(sh=>sh.label)]);
+        rowsFor(s).forEach(x=>rows.push([x.u.name,x.u.email,x.u.role,x.u.status||'Active',x.outlet,...sheets.map(sh=>x.r[sh.id])]));
+        rows.push([]);
+      });
+      const blob=await exportReportExcelBlob('User access by outlet',rows);
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='User_Access_by_Outlet.xlsx';document.body.appendChild(a);a.click();a.remove();
+      toast('Excel downloaded','success');
+    }catch(e){toastError('Could not build the Excel file — please try again');}
+  };
+  return h('div',null,
+    h('div',{className:'card',style:{marginBottom:12,display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}},
+      h('select',{className:'form-control',style:{width:'auto'},value:outletSel,onChange:e=>setOutletSel(e.target.value),'aria-label':'Outlet'},
+        h('option',{value:'all'},'All outlets'),(salons||[]).map(s=>h('option',{key:s.id,value:s.id},s.name))),
+      h('input',{className:'form-control',style:{width:220},placeholder:'Search user, email or role…',value:q,onChange:e=>setQ(e.target.value)}),
+      h('label',{style:{display:'flex',gap:6,alignItems:'center',fontSize:12.5,color:'var(--text2)'}},
+        h('input',{type:'checkbox',checked:hideAdmins,onChange:e=>setHideAdmins(e.target.checked)}),'Hide Super Admins'),
+      h('button',{type:'button',className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},onClick:exportXlsx},'⬇ Export Excel')),
+    h('div',{className:'help-note',style:{marginBottom:12}},'Each outlet lists every login that can open it, with the rights actually in force: Edit, View Only, or Approval only (Salon Manager / ASM see only the summary to approve on Salary and Incentive Working). Owner and Reviewer accounts are reports-only. Click a user’s Edit to change their access.'),
+    list.length===0&&h('div',{className:'card',style:{color:'var(--text3)'}},'No outlets yet.'),
+    list.map(s=>{
+      const rows=rowsFor(s);
+      return h('div',{key:s.id,className:'card',style:{marginBottom:14}},
+        h('div',{style:{display:'flex',alignItems:'baseline',gap:10,marginBottom:8,flexWrap:'wrap'}},
+          h('div',{style:{fontWeight:700,fontSize:15}},'🏪 '+s.name),
+          h('div',{style:{fontSize:12,color:'var(--text3)'}},rows.length+' user'+(rows.length===1?'':'s')+' with access')),
+        rows.length===0?h('div',{style:{fontSize:12.5,color:'var(--text3)'}},'Nobody besides Super Admins has access to this outlet.'):
+        h('div',{className:'table-wrap'},h('table',null,
+          h('thead',null,h('tr',null,['User','Role','Outlet access','Can edit','View only','Approval only','No access','Status',''].map(t=>h('th',{key:t},t)))),
+          h('tbody',null,rows.map(x=>{
+            const by=k=>sheets.filter(sh=>x.r[sh.id]===k);
+            const ed=by('Edit'),vw=by('View Only'),ap=by('Approval only'),na=by('No Access');
+            const key=s.id+'|'+x.u.id;
+            const sa=x.u.role==='Super Admin';
+            const inactive=(x.u.status||'Active')!=='Active';
+            return h('tr',{key:x.u.id,style:{opacity:inactive?0.55:1,verticalAlign:'top'}},
+              h('td',null,h('div',{style:{fontWeight:600}},x.u.name),h('div',{style:{fontSize:11,color:'var(--text3)'}},x.u.email)),
+              h('td',null,x.u.role),
+              h('td',null,h('span',{className:'badge '+(x.outlet==='View and Edit'||sa?'badge-green':x.outlet==='View Only'?'badge-blue':'badge-amber'),style:{whiteSpace:'nowrap'}},x.outlet)),
+              h('td',{style:{maxWidth:360}},sa?chip('All sheets','Edit'):(ed.length?(open[key]||ed.length<=6?ed.map(sh=>chip(sh.label,'Edit')):[...ed.slice(0,5).map(sh=>chip(sh.label,'Edit')),h('button',{key:'more',type:'button',className:'btn btn-ghost btn-sm',style:{padding:'1px 8px',fontSize:11},onClick:()=>setOpen(o=>({...o,[key]:true}))},'+'+(ed.length-5)+' more')]):h('span',{style:{color:'var(--text3)'}},'—'))),
+              h('td',{style:{maxWidth:300}},vw.length?vw.map(sh=>chip(sh.label,'View Only')):h('span',{style:{color:'var(--text3)'}},'—')),
+              h('td',null,ap.length?ap.map(sh=>chip(sh.label,'Approval only')):h('span',{style:{color:'var(--text3)'}},'—')),
+              h('td',{style:{color:'var(--text3)',fontSize:12}},na.length?(na.length+' sheet'+(na.length===1?'':'s')):'—'),
+              h('td',null,h('span',{className:'badge '+(inactive?'badge-gray':'badge-green')},x.u.status||'Active')),
+              h('td',null,h('button',{type:'button',className:'btn btn-ghost btn-sm',onClick:()=>onEdit(x.u)},'Edit')));
+          }))))
+      );
+    }));
+}
 function UserManagement(){
   const {toast}=useToast();
   // Cloud mode: the account list IS the `profiles` table (real Supabase logins) — mutated only
@@ -2027,6 +2115,7 @@ function UserManagement(){
   const [showModal,setShowModal]=useState(false);
   const [editId,setEditId]=useState(null);
   const [showDelete,setShowDelete]=useState(null);
+  const [viewMode,setViewMode]=useState('user'); // 'user' = one row per login · 'outlet' = who can do what, outlet by outlet
   // Fixed role list — Super Admin always keeps full access everywhere regardless of the
   // per-sheet matrix below (there has to be an account nobody can lock themselves out with).
   // Salon Owner/Salon Manager/ASM/Accountant are business-facing roles distinct from Reviewer
@@ -2249,7 +2338,10 @@ function UserManagement(){
         )
       )
     ),
-    React.createElement('div',{className:'card'},
+    React.createElement('div',{style:{display:'flex',gap:6,marginBottom:12}},
+      [['user','👤 By user'],['outlet','🏪 By outlet']].map(([k,l])=>React.createElement('button',{key:k,type:'button',className:'btn btn-sm '+(viewMode===k?'btn-primary':'btn-ghost'),onClick:()=>setViewMode(k)},l))),
+    viewMode==='outlet'&&React.createElement(UserAccessByOutlet,{users,salons:salonsList,sheets:PERMISSION_SHEETS,onEdit:openEdit}),
+    viewMode==='user'&&React.createElement('div',{className:'card'},
       React.createElement('div',{className:'table-wrap'},
         React.createElement('table',null,
           React.createElement('thead',null,React.createElement('tr',null,
