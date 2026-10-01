@@ -663,8 +663,7 @@ function AttendanceSheet({period,salon,user}={}){
   }
   return React.createElement('div',{className:'fade-in'},
     React.createElement('div',{className:'section-header'},
-      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Employee Attendance'),React.createElement('div',{className:'page-sub'},'Monthly attendance register — click any cell to mark it (previous day must be marked first)'),
-        React.createElement('div',{style:{marginTop:6}},React.createElement(GuideVideoButton,{id:'attendance'}))),
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Employee Attendance'),React.createElement('div',{className:'page-sub'},'Monthly attendance register — click any cell to mark it (previous day must be marked first)')),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},months.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y))),
@@ -1528,7 +1527,6 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
           }catch(e){alert('Could not create payslips: '+(e.message||e));}
         }},swSelectedIds.size>0?'📄 Payslips ('+swSelectedIds.size+')':'📄 Payslips (PDF)'),
         CLOUD_SYNC_ENABLED&&React.createElement(WhatsAppSalaryNotifyButton,{salon,year:selYear,month:selMonth,workings:exportWorkings}),
-        React.createElement(GuideVideoButton,{id:'salary'}),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:'',title:'Generates a printable Challan from this month\'s Salary Working figures — opens in a new tab, ready to print or Save as PDF',onChange:e=>{if(e.target.value)generateChallan(e.target.value);e.target.value='';}},
           React.createElement('option',{value:''},'🧾 Generate Challan…'),
           React.createElement('option',{value:'esic'},'ESIC Challan'),

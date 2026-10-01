@@ -1177,8 +1177,7 @@ function CollectionReco({salon,onNavTab}={}){
         React.createElement('div',{style:{fontSize:20}},'📥'),
         React.createElement('div',{style:{flex:1,minWidth:260}},
           React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:4}},
-            React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)'}},'Get the Collection Report from Cradlee'),
-            React.createElement(GuideVideoButton,{id:'cradlee',label:'🎬 Video: import from Cradlee'})),
+            React.createElement('div',{style:{fontSize:13,fontWeight:600,color:'var(--text)'}},'Get the Collection Report from Cradlee')),
           React.createElement('div',{style:{fontSize:12,color:'var(--text2)',lineHeight:1.7,marginBottom:8}},
             'Pick the period, click "Open Cradlee", log in there and export Reports → Collection Report for the same dates (Excel or CSV). '+(dirHandle?'SalonOS picks the export up from your connected folder by itself':'Then press 📄 Choose file — it opens in Downloads')+' — only that period is kept, and rows already imported are skipped. Your Cradlee login is only ever typed on Cradlee’s own site.'),
           React.createElement('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}},cQuick.map(([t,fn])=>React.createElement('button',{key:t,className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 9px'},onClick:fn},t))),
@@ -2905,7 +2904,6 @@ function BankStatement({salon,onNavTab}={}){
   const [acctForm,setAcctForm]=useState(null); // null, or the account being added/edited
   const [guideLang,setGuideLang]=useState(null); // 'en' | 'hi' while the walkthrough is open
   const guideButtons=React.createElement('span',{style:{display:'inline-flex',gap:6,flexWrap:'wrap'}},
-    React.createElement(GuideVideoButton,{id:'bank-statement',label:'🎬 Video: import from start'}),
     React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 10px'},onClick:()=>setGuideLang('en')},'▶ Watch how it works'),
     React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'3px 10px'},onClick:()=>setGuideLang('hi')},'▶ हिंदी में देखें'));
   const [waitSince,setWaitSince]=useState(0);

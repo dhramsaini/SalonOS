@@ -299,8 +299,7 @@ function OwnerInsights({accessibleSalons,user}){
     h('div',{className:'page-sub'},'Today at a glance, where the month is heading, bills due and how the team is doing — '+today.getDate()+' '+INS_MONTHS[tm]+' '+ty),
     h('div',{style:{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}},
       h('select',{className:'form-control',style:{width:'auto'},value:sel,onChange:e=>setSel(e.target.value)},
-        h('option',{value:'all'},'All outlets'),salons.map(s=>h('option',{key:s.id,value:s.id},s.name))),
-      h(GuideVideoButton,{id:'insights'})),
+        h('option',{value:'all'},'All outlets'),salons.map(s=>h('option',{key:s.id,value:s.id},s.name)))),
     salons.length===0&&h('div',{className:'card',style:{color:'var(--text3)',fontSize:13}},'No active outlets you can see yet.'),
 
     shown.length>0&&h('div',{className:'card-title',style:{margin:'4px 0 10px'}},'📍 Today'),
