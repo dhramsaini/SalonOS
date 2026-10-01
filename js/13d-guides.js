@@ -462,19 +462,102 @@ function TrainingVideoCard({lang}){
     open&&h(TrainingVideoModal,{initialLang:lang,onClose:()=>setOpen(false)}));
 }
 
+// ── Module videos (one per sheet / page, English and Hindi). A person sees only the videos for the
+// pages and outlet sheets their own access lets them open (same rules as the sidebar and the sheet
+// tabs). Made by tools/training-video (mbuild.py). ──
+const MODULE_VIDEO_REV='1';
+const MODULE_VIDEOS=[];
+function moduleVideoUrl(id,lang){return 'guides/modules/'+id+'_'+(lang==='hi'?'hi':'en')+'.mp4?r='+MODULE_VIDEO_REV;}
+function userCanSeeVideo(u,access){
+  if(!access||access==='all')return true;
+  if(!u)return false;
+  const sa=u.role==='Super Admin';
+  const reportOnly=REPORTS_ONLY_ROLES.includes(u.role);
+  const [kind,id]=String(access).split(':');
+  if(kind==='page'){
+    if(id==='collaboration')return !reportOnly;
+    if(id==='master-sheet'||id==='users'||id==='settings')return sa;
+    if(id==='pnl')return sa||reportOnly;
+    return true; // dashboard, insights, reports hub: every signed-in user
+  }
+  if(sa)return true;
+  if(reportOnly&&!REPORTS_ONLY_TAB_IDS.includes(id))return false;
+  return SALONS.filter(s=>userCanSeeOutlet(u,s.id)).some(s=>{
+    const m=(u.sheetAccessByOutlet&&u.sheetAccessByOutlet[s.id])||u.sheetAccess||null;
+    if(!m)return true;
+    return (m[id]||'View Only')!=='No Access'||(isSummaryApproverRole(u)&&(id==='salary-working'||id==='incentive-working'));
+  });
+}
+function visibleModuleVideos(u){return MODULE_VIDEOS.filter(v=>userCanSeeVideo(u,v.access));}
+function ModuleVideoModal({video,initialLang,onClose}){
+  const h=React.createElement;
+  const [lang,setLang]=useState(initialLang||'en');
+  const [failed,setFailed]=useState(false);
+  return h('div',{className:'modal-overlay',onClick:onClose},
+    h('div',{className:'modal',style:{width:900,maxWidth:'96vw',padding:16},onClick:e=>e.stopPropagation()},
+      h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:10,flexWrap:'wrap'}},
+        h('div',{className:'modal-title',style:{margin:0,flex:1}},video.icon+' '+video.title[lang]),
+        ['en','hi'].map(l=>h('button',{key:l,className:'btn btn-sm '+(lang===l?'btn-primary':'btn-ghost'),onClick:()=>{setLang(l);setFailed(false);}},l==='en'?'English':'हिंदी'))),
+      failed
+        ?h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'🎞'),h('div',{className:'empty-title'},lang==='hi'?'वीडियो लोड नहीं हुआ':'The video could not be loaded'),
+            h('div',{className:'empty-sub'},lang==='hi'?'इंटरनेट जाँचें और दोबारा खोलें।':'Check the connection and open it again.'))
+        :h('video',{key:lang,src:moduleVideoUrl(video.id,lang),controls:true,autoPlay:true,playsInline:true,preload:'metadata',onError:()=>setFailed(true),
+            style:{width:'100%',aspectRatio:'16/9',background:'#000',borderRadius:10,display:'block'}}),
+      h('div',{className:'modal-actions'},
+        h('a',{className:'btn btn-ghost',href:moduleVideoUrl(video.id,lang),download:'SalonOS_'+video.id+'_'+(lang==='hi'?'Hindi':'English')+'.mp4'},lang==='hi'?'⬇ डाउनलोड':'⬇ Download'),
+        h('button',{className:'btn btn-primary',onClick:onClose},lang==='hi'?'बंद करें':'Close'))));
+}
+// "🎓 Video" next to the period on each outlet sheet — the module video for the sheet that is open.
+function ModuleVideoButton({id}){
+  const h=React.createElement;
+  const [open,setOpen]=useState(false);
+  const v=MODULE_VIDEOS.find(x=>x.access==='tab:'+id);
+  if(!v||!userCanSeeVideo(currentSessionUser(),v.access))return null;
+  return h(React.Fragment,null,
+    h('button',{type:'button',className:'btn btn-ghost btn-sm',title:'Training video: '+v.title.en+' / '+v.title.hi,onClick:()=>setOpen(true)},'🎓 Video'),
+    open&&h(ModuleVideoModal,{video:v,initialLang:'en',onClose:()=>setOpen(false)}));
+}
+function ModuleVideosList({lang}){
+  const h=React.createElement;
+  const [watching,setWatching]=useState(null);
+  const vids=visibleModuleVideos(currentSessionUser());
+  if(!vids.length)return null;
+  const groups=[];vids.forEach(v=>{let g=groups.find(x=>x.k===v.group.en);if(!g){g={k:v.group.en,v:v.group,items:[]};groups.push(g);}g.items.push(v);});
+  const mins=v=>{const d=v.dur&&v.dur[lang];return d?Math.max(1,Math.round(d/60))+(lang==='hi'?' मिनट':' min'):'';};
+  return h('div',{style:{marginBottom:14}},
+    h('div',{style:{fontWeight:700,fontSize:13.5,margin:'4px 0 2px'}},(lang==='hi'?'🎓 मॉड्यूल वीडियो':'🎓 Module videos')+' ('+vids.length+')'),
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:6}},lang==='hi'?'हर स्क्रीन का पूरा वीडियो — सिर्फ वही जो आप खोल सकते हैं।':'A full video for each screen — only the ones you can open.'),
+    groups.map(g=>h('div',{key:g.k},
+      h('div',{style:{fontSize:10.5,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.08em',margin:'10px 0 2px'}},g.v[lang]),
+      g.items.map(v=>h('div',{key:v.id,style:{display:'flex',alignItems:'center',gap:10,padding:'7px 0',borderTop:'1px solid var(--border)'}},
+        h('div',{style:{fontSize:20,width:26,textAlign:'center'}},v.icon),
+        h('div',{style:{flex:1,minWidth:0}},
+          h('div',{style:{fontSize:13,fontWeight:600}},v.title[lang]),
+          h('div',{style:{fontSize:11,color:'var(--text3)'}},mins(v))),
+        h('button',{className:'btn btn-primary btn-sm',title:lang==='hi'?'वीडियो देखें':'Watch the video',onClick:()=>setWatching(v)},'▶'),
+        h('a',{className:'btn btn-ghost btn-sm',title:lang==='hi'?'वीडियो डाउनलोड करें':'Download the video',href:moduleVideoUrl(v.id,lang),download:'SalonOS_'+v.id+'_'+(lang==='hi'?'Hindi':'English')+'.mp4'},'⬇'))))),
+    watching&&h(ModuleVideoModal,{video:watching,initialLang:lang,onClose:()=>setWatching(null)}));
+}
+// The short how-to clips, each tied to the page or sheet it is about.
+const STAFF_GUIDE_ACCESS={login:'all',whatsapp:'all',alerts:'all','daily-sales':'tab:daily-sales',attendance:'tab:attendance','vendor-bill':'tab:vendors',
+  'bank-statement':'tab:bank-statement',cradlee:'tab:collection','staff-report':'tab:incentive-working',salary:'tab:salary-working',insights:'page:insights'};
+
 function StaffGuidesList(){
   const h=React.createElement;
-  const {success,error:toastError}=useToast();
   const [lang,setLang]=useState('en');
   const [playing,setPlaying]=useState(null);
   const [watching,setWatching]=useState(null);
+  const u=currentSessionUser();
+  const clips=STAFF_GUIDES.filter(g=>userCanSeeVideo(u,STAFF_GUIDE_ACCESS[g.id]||'all'));
   return h('div',{style:{marginBottom:14}},
     h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:8}},
       h('div',{style:{fontWeight:700,fontSize:14,flex:1}},'🎬 Video guides'),
       ['en','hi'].map(l=>h('button',{key:l,className:'btn btn-sm '+(lang===l?'btn-primary':'btn-ghost'),onClick:()=>setLang(l)},l==='en'?'English':'हिंदी'))),
-    h(TrainingVideoCard,{lang}),
-    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:8}},lang==='hi'?'🎞 वीडियो देखें · ▶ आवाज़ के साथ ऐनिमेटेड गाइड · ⬇ वीडियो डाउनलोड करके स्टाफ़ को WhatsApp पर भेजें।':'🎞 watch the video · ▶ animated guide with voice · ⬇ download the video to send to staff on WhatsApp.'),
-    STAFF_GUIDES.map(g=>h('div',{key:g.id,style:{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderTop:'1px solid var(--border)'}},
+    u&&u.role==='Super Admin'&&h(TrainingVideoCard,{lang}),
+    h(ModuleVideosList,{lang}),
+    clips.length>0&&h('div',{style:{fontWeight:700,fontSize:13.5,margin:'4px 0 2px'}},lang==='hi'?'⚡ छोटे how-to clips':'⚡ Short how-to clips'),
+    clips.length>0&&h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:8}},lang==='hi'?'🎞 वीडियो देखें · ▶ आवाज़ के साथ ऐनिमेटेड गाइड · ⬇ वीडियो डाउनलोड करके स्टाफ़ को WhatsApp पर भेजें।':'🎞 watch the video · ▶ animated guide with voice · ⬇ download the video to send to staff on WhatsApp.'),
+    clips.map(g=>h('div',{key:g.id,style:{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderTop:'1px solid var(--border)'}},
       h('div',{style:{fontSize:22}},g.icon),
       h('div',{style:{flex:1,minWidth:0}},
         h('div',{style:{fontSize:13,fontWeight:600}},g.title[lang]),

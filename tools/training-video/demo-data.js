@@ -38,7 +38,7 @@
   const banks={};
   [5,6,7].forEach((sid,si)=>{
     const ds={},ex={},cr=[],bk=[];let cid=1,bid=1;
-    for(let m=3;m<=8;m++){const n=new Date(2026,m+1,0).getDate();for(let d=1;d<=n;d++){
+    for(let m=3;m<=9;m++){const n=m===9?1:new Date(2026,m+1,0).getDate();for(let d=1;d<=n;d++){
       const v=sale(sid,si,m,d),iso='2026-'+pad(m+1)+'-'+pad(d),dmy=dmyOf(m,d);
       cr.push({id:cid++,centerName:['Glow Sector 21','Glow DLF Phase 4','Glow Rajouri Garden'][si],invoiceDate:dmy,cash:v.cash,card:v.card,upi:v.upi,wallet:0,district:0,luzo:v.luzo,online:0,total:v.cash+v.card+v.upi+v.luzo,calculatedTotal:v.cash+v.card+v.upi+v.luzo,isValid:true});
       if(m>=7){
@@ -48,6 +48,7 @@
         if(d===5)e[3]=640;if(d===15)e[4]=501;if(d===12)e[28]=3500;if(d===18)e[19]=1800;
         if(d%7===0)e[30]=Math.round(3800+rnd(d,6)*1800);
         ex[iso]=e;
+        ds[iso][11]=Math.max(0,v.cash-Object.values(e).reduce((x,y)=>x+y,0)-(m===7&&d===1?5000:0));
         const nx=new Date(2026,m,d+1),ndmy=pad(nx.getDate())+'/'+pad(nx.getMonth()+1)+'/2026';
         bk.push({id:bid++,transactionDate:ndmy,description:'UPI SETTLEMENT PHONEPE '+iso.replace(/-/g,''),credit:v.upi,debit:0,nature:'UPI Settlement',cradleeDate:dmy});
         bk.push({id:bid++,transactionDate:ndmy,description:'CARD SETTL PINELABS MID 77120',credit:v.card,debit:0,nature:'Card Settlement',cradleeDate:dmy});
@@ -62,7 +63,8 @@
     {id:'V2',name:'Kumar Traders',status:'Active',category:'Consumables',phone:'9899012345'},
     {id:'V3',name:'Sharma Properties',status:'Active',category:'Rent',phone:'9811122233'},
     {id:'V4',name:'DHBVN (Electricity)',status:'Active',category:'Electricity Expenses'},
-    {id:'V5',name:'Airtel Business',status:'Active',category:'Telephone & Internet Expenses'}]);
+    {id:'V5',name:'Airtel Business',status:'Active',category:'Telephone & Internet Expenses'},
+    {id:'V6',name:'Salon Furniture Co',status:'Active',category:'Fixed Assets',gstin:'06AAKCS7788Q1Z3'}]);
   [[6,90000,15800,60000],[7,75000,12400,48000]].forEach(([sid,rent,elec,stock])=>{
     put('salonos_vendors_outlet_'+sid,[{id:'V1',name:'Landlord',status:'Active',category:'Rent'},{id:'V2',name:'Power utility',status:'Active',category:'Electricity Expenses'},{id:'V3',name:"L'Oréal India Pvt Ltd",status:'Active',category:'Salon Products'}]);
     put('salonos_vendor_invoices_outlet_'+sid,[
@@ -74,6 +76,7 @@
     {id:'I1',vendorId:'V1',invoiceNo:'LOR/26/4471',invoiceDate:'2026-09-04',bookingDate:'2026-09-04',dueDate:'2026-10-04',category:'Salon Products',taxable:24000,cgst:2160,sgst:2160,amount:28320,payments:[{paidAmount:15000,paidDate:'2026-09-20',mode:'Bank Transfer'}],docNature:'Tax Invoice',enteredAt:'2026-09-04T11:00:00'},
     {id:'I2',vendorId:'V2',invoiceNo:'KT-1182',invoiceDate:'2026-09-12',bookingDate:'2026-09-12',dueDate:'2026-09-27',category:'Consumables',taxable:4200,cgst:378,sgst:378,amount:4956,payments:[],docNature:'Tax Invoice',enteredAt:'2026-09-12T11:00:00'},
     {id:'I3',vendorId:'V3',invoiceNo:'RENT-SEP',invoiceDate:'2026-09-01',bookingDate:'2026-09-01',dueDate:'2026-09-07',category:'Rent',taxable:85000,cgst:7650,sgst:7650,amount:100300,payments:[{paidAmount:100300,paidDate:'2026-09-06',mode:'Bank Transfer'}],docNature:'Tax Invoice',enteredAt:'2026-09-01T10:00:00'},
+    {id:'I5',vendorId:'V6',invoiceNo:'SFC/112',invoiceDate:'2026-08-18',bookingDate:'2026-08-18',dueDate:'2026-09-17',category:'Fixed Assets',desc:'Styling chairs and mirror stations',taxable:96000,cgst:8640,sgst:8640,amount:113280,payments:[{paidAmount:60000,paidDate:'2026-08-25',mode:'Bank Transfer'}],docNature:'Tax Invoice',assetLines:[{id:1,name:'Hydraulic styling chairs (4)',amount:64000},{id:2,name:'Mirror stations (2)',amount:32000}]},
     {id:'I4',vendorId:'V5',invoiceNo:'AIR-88213',invoiceDate:'2026-09-08',bookingDate:'2026-09-08',dueDate:'2026-09-25',category:'Telephone & Internet Expenses',taxable:1999,cgst:180,sgst:180,amount:2359,payments:[{paidAmount:2359,paidDate:'2026-09-21',mode:'UPI'}],docNature:'Tax Invoice',enteredAt:'2026-09-08T10:00:00'}]);
   const bank=banks[5].bk;let bid=banks[5].bid;
   bank.push({id:bid++,transactionDate:'06/09/2026',description:'NEFT-SHARMA PROPERTIES-RENT SEP',debit:100300,credit:0,nature:'Vendor Payment'});

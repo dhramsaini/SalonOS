@@ -237,6 +237,10 @@ const SALON_TAB_GROUP_COLORS_RGB={
   'Money':'76,175,125',
   'Reports & Compliance':'255,159,67'
 };
+// Owner / Reviewer: reports-only accounts — only these outlet sheets (also used by Help & Guide to
+// decide which training videos a person sees).
+const REPORTS_ONLY_ROLES=['Owner','Reviewer'];
+const REPORTS_ONLY_TAB_IDS=['outlet-dashboard','outlet-pnl','previous-pnl','reports','collection','collection-sheet','due-dates','audit-log'];
 const SALON_TABS=[
   {id:'outlet-dashboard',label:'Dashboard',icon:'📊',group:'Overview'},
   {id:'appointments',label:'Appointments',icon:'📅',group:'Front Desk'},
@@ -591,7 +595,7 @@ function App(){
 
   useEffect(()=>{
     const onKey=(e)=>{
-      if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();setCmdOpen(o=>!o)}
+      if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==='f'){e.preventDefault();setCmdOpen(o=>!o)}
       if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();setCmdOpen(true)}
     };
     window.addEventListener('keydown',onKey);
@@ -847,9 +851,7 @@ function App(){
   // day-to-day working documents (Daily Sales, Salary Working, Bank Statement, Vendor Sheet,
   // Advances, Import Center, etc.). Salon Owner follows the outlet and sheet access set in User
   // Management (View Only / Edit per sheet), like Salon Manager — database rule step19.
-  const REPORTS_ONLY_ROLES=['Owner','Reviewer'];
   const isReportOnlyRole=!!(user&&REPORTS_ONLY_ROLES.includes(user.role));
-  const REPORTS_ONLY_TAB_IDS=['outlet-dashboard','outlet-pnl','previous-pnl','reports','collection','collection-sheet','due-dates','audit-log'];
   const GLOBAL_NAV=[
     ...(isReportOnlyRole?[]:[{id:'collaboration',label:isReviewer?'Review Centre':'My Submissions',icon:'✅'}]),
     {id:'dashboard',label:'Dashboard',icon:'📊'},
@@ -950,7 +952,8 @@ function App(){
           selectedSalon&&defaultPeriods[selectedSalon.id]?React.createElement('span',{className:'badge badge-green'},'Default'):null,
           React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},onClick:()=>setGateFor(selectedSalon)},'Change period'),
           selectedSalon&&defaultPeriods[selectedSalon.id]?React.createElement('button',{className:'btn btn-ghost btn-sm',
-            onClick:()=>{pgSave(null,selectedSalon.id);setDefaultPeriods(prev=>{const n={...prev};delete n[selectedSalon.id];return n;});addToast('Default cleared for this outlet — it will ask for a period again','info')}},'Clear default'):null
+            onClick:()=>{pgSave(null,selectedSalon.id);setDefaultPeriods(prev=>{const n={...prev};delete n[selectedSalon.id];return n;});addToast('Default cleared for this outlet — it will ask for a period again','info')}},'Clear default'):null,
+          typeof ModuleVideoButton==='function'&&React.createElement(ModuleVideoButton,{id:salonTab})
         ),
         // Phone: one big "current sheet" button opening the full-screen sheet picker, instead of a
         // 27-tab strip that shows two tabs at a time.
@@ -986,7 +989,7 @@ function App(){
   // Same per-outlet sheet-permission filter as visibleSalonTabs above, but usable for ANY outlet
   // (visibleSalonTabs is scoped to whichever outlet is currently open) — the command palette
   // used to list every sheet of every outlet unfiltered, straight from SALON_TABS, which let
-  // Ctrl+K jump a user straight into a sheet their own permissions say "No Access" to, bypassing
+  // Ctrl+F jump a user straight into a sheet their own permissions say "No Access" to, bypassing
   // the tab bar being hidden (the only enforcement that existed before this).
   const sheetsAllowedForSalon=(sn)=>{
     if(!user||user.role==='Super Admin')return SALON_TABS;
@@ -1087,10 +1090,10 @@ function App(){
           React.createElement('button',{className:'theme-toggle hide-phone',onClick:()=>setTheme(theme==='light'?'dark':'light'),
             title:theme==='light'?'Switch to dark':'Switch to light'},theme==='light'?React.createElement(IconMoon,null):React.createElement(IconSun,null),
             React.createElement('span',null,theme==='light'?'Dark':'Light')),
-          React.createElement('div',{className:'kbd-hint hide-phone',onClick:()=>setCmdOpen(true),title:'Quick jump'},
+          React.createElement('div',{className:'kbd-hint hide-phone',onClick:()=>setCmdOpen(true),title:'Search sheets, employees and vendors (Ctrl+F)'},
             React.createElement(IconSearch,{size:13}),
             React.createElement('span',null,'Search'),
-            React.createElement('kbd',null,navigator.platform.indexOf('Mac')>-1?'⌘K':'Ctrl K')),
+            React.createElement('kbd',null,navigator.platform.indexOf('Mac')>-1?'⌘F':'Ctrl F')),
           activePage==='salon'&&period
             ?React.createElement('span',{className:'hide-phone',title:'Set via this outlet\'s period picker below',style:{fontSize:11,padding:'4px 8px',border:'1px solid var(--border)',borderRadius:6,color:'var(--text2)'}},'FY '+period.fy)
             :React.createElement('select',{className:'form-control hide-phone',style:{width:'auto',fontSize:11,padding:'4px 8px'},value:selFY,onChange:e=>setSelFY(e.target.value)},FYS.map(f=>React.createElement('option',{key:f,value:f},'FY '+f))),

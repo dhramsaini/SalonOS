@@ -44,6 +44,7 @@
     document.querySelectorAll('.toast,.toast-container,[class*=toast]').forEach(t=>t.style.display='none');
     const vis=el=>{const r=el.getBoundingClientRect();if(!r.width||!r.height)return false;const cs=getComputedStyle(el);return cs.visibility!=='hidden'&&cs.display!=='none';};
     const find=q=>{
+      if(q==='@modal'){const ms=[...document.querySelectorAll('.modal-overlay > *, .modal')].filter(vis);return ms.pop();}
       if(q[0]==='$')return [...document.querySelectorAll(q.slice(1))].find(vis);
       const want=q.toLowerCase();
       const all=[...document.querySelectorAll('button,a,th,td,label,h1,h2,h3,h4,span,div,input,select,option,p,li,strong,b')].filter(vis);
@@ -59,7 +60,7 @@
         else if(st[0]==='click'){const el=find(st[1]);if(el){el.scrollIntoView({block:'center'});el.click();}else window.__miss=(window.__miss||[]).concat(st[1]);await sleep(st[2]||600);}
         else if(st[0]==='type'){const el=document.querySelector(st[1]);if(el){const set=Object.getOwnPropertyDescriptor(el.tagName==='SELECT'?HTMLSelectElement.prototype:el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set;set.call(el,st[2]);el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}await sleep(300);}
         else if(st[0]==='scroll'){const el=find(st[1]);if(el)el.scrollIntoView({block:st[2]||'center'});await sleep(300);}
-        else if(st[0]==='js'){await (new Function('find','sleep',st[1]))(find,sleep);await sleep(300);}
+        else if(st[0]==='js'){await (new (Object.getPrototypeOf(async function(){}).constructor)('find','sleep',st[1]))(find,sleep);await sleep(300);}
       }catch(e){window.__miss=(window.__miss||[]).concat('ERR '+e.message);}
     }
     await sleep(500);
