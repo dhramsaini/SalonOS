@@ -96,9 +96,9 @@ function RecurringExpensesSheet({salon}={}){
   };
   const [billReading,setBillReading]=useState(false);
   const [registerItem,setRegisterItem]=useState(null); // accrual register (audit trail) for one item
-  const openEnterBill=(it)=>{
-    const today=localTodayIso();const p=defaultBillPeriod(it,today);
-    setBillForm({billNo:'',billDate:today,bookingDate:today,bookingTouched:false,periodFrom:p.from,periodTo:p.to,amount:'',gst:'',splitFirst:'',attachment:null,periodTouched:false});
+  const openEnterBill=(it,period)=>{
+    const today=localTodayIso();const p=period?{from:ymOf(period.first),to:ymOf(period.last)}:defaultBillPeriod(it,today);
+    setBillForm({billNo:'',billDate:today,bookingDate:today,bookingTouched:false,periodFrom:p.from,periodTo:p.to,amount:'',gst:'',splitFirst:'',attachment:null,periodTouched:!!period});
     setBillItem(it);
   };
   const saveBill=()=>{
@@ -133,7 +133,7 @@ function RecurringExpensesSheet({salon}={}){
   };
 
   const BLANK={id:'',expenseName:RECURRING_EXPENSE_TYPES[0],customName:'',payee:'',amount:'',frequency:'Monthly',dueDay:5,paymentMode:'Bank Transfer',startDate:'',endDate:'',status:'Active',notes:'',
-    amountType:'Fixed',billFor:'previous',billTiming:'',coverMonths:'',firstMonthAmt:'',
+    amountType:'Fixed',billFor:'previous',billTiming:'',coverMonths:'',firstMonthAmt:'',payUrl:'',consumerNo:'',
     gstApplicable:false,gstin:'',gstAmount:'',
     // Reverse Charge Mechanism only applies to specific categories of supply under Section
     // 9(3)/9(4) of the CGST Act — it's not automatic just because the payee doesn't charge GST.
@@ -256,7 +256,9 @@ function RecurringExpensesSheet({salon}={}){
     if(form.gstApplicable&&!form.gstin.trim()){toast('Enter the GSTIN, or uncheck GST Applicable','error');return;}
     const rec={...form,coverMonths:(Number(form.coverMonths)>0&&Number(form.coverMonths)<=24)?Math.round(Number(form.coverMonths)):'',firstMonthAmt:(form.frequency==='Bi-Monthly'&&Number(form.firstMonthAmt)>0&&Number(form.firstMonthAmt)<Number(form.amount))?Number(form.firstMonthAmt):'',amount:Math.round(Number(form.amount)),dueDay:Math.min(31,Math.max(1,Number(form.dueDay)||1)),
       gstAmount:form.gstApplicable?Math.round(Number(form.gstAmount)||0):'',
-      gstin:form.gstApplicable?form.gstin.trim():''};
+      gstin:form.gstApplicable?form.gstin.trim():'',
+      payUrl:(()=>{const u=String(form.payUrl||'').trim();return u?(/^https?:\/\//i.test(u)?u:'https://'+u):'';})(),
+      consumerNo:String(form.consumerNo||'').trim()};
     if(editId){setItems(prev=>prev.map(i=>i.id===editId?rec:i));}
     else{setItems(prev=>[...prev,rec]);}
     const{vendors:nextVendors,created}=ensureVendorForPayee(vendors,rec.payee,rec.expenseName,rec.gstin);
@@ -276,6 +278,9 @@ function RecurringExpensesSheet({salon}={}){
     else if(invCreated)toast((editId?'Recurring expense updated':'Recurring expense added')+' — invoice added in Vendor Sheet','success');
     else toast(editId?'Recurring expense updated — linked invoice kept in sync':'Recurring expense added','success');
     setShowModal(false);
+    // A Variable item's amount is only known from its bills — ask for the latest one straight away.
+    if(!editId&&rec.amountType==='Variable'&&rec.status==='Active')
+      setTimeout(()=>{if(window.confirm('“'+displayName(rec)+'” is a Variable expense — its P&L comes from the actual bills.\n\nEnter its latest bill (invoice) now?'))openEnterBill(rec);},200);
   };
   const remove=(id)=>{
     const linkNo='REC-'+id;
@@ -352,6 +357,14 @@ function RecurringExpensesSheet({salon}={}){
       )
     ),
 
+    (()=>{
+      const pend=items.map(it=>({it,miss:variableRecurringMissingPeriod(it,salonId)})).filter(x=>x.miss);
+      return pend.length>0&&React.createElement('div',{style:{background:'rgba(255,159,67,0.10)',border:'1px solid rgba(255,159,67,0.4)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:14,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',fontSize:12.5}},
+        React.createElement('b',{style:{color:'var(--orange)'}},'⚠ '+pend.length+' bill'+(pend.length===1?'':'s')+' pending — enter the invoice:'),
+        pend.map(({it,miss})=>React.createElement('button',{key:it.id,className:'btn btn-ghost btn-sm',onClick:()=>openEnterBill(it,miss)},
+          displayName(it)+' · '+monthLabelOfIndex(miss.first)+(miss.last>miss.first?'–'+monthLabelOfIndex(miss.last):'')+' ➕')),
+        React.createElement('span',{style:{fontSize:11.5,color:'var(--text3)'}},'Until then the P&L carries an estimate, adjusted when the bill is booked.'));
+    })(),
     React.createElement('div',{className:'grid4',style:{marginBottom:16}},
       React.createElement('div',{className:'metric-card blue'},React.createElement('div',{className:'metric-label'},'Active Recurring Items'),React.createElement('div',{className:'metric-value'},activeItems.length)),
       React.createElement('div',{className:'metric-card amber'},React.createElement('div',{className:'metric-label'},'Monthly Commitment'),React.createElement('div',{className:'metric-value'},'₹'+Math.round(totalMonthly).toLocaleString('en-IN'))),
@@ -408,7 +421,8 @@ function RecurringExpensesSheet({salon}={}){
                         return React.createElement('div',{style:{fontSize:10,marginTop:2,lineHeight:1.5}},
                           React.createElement('span',{className:'badge badge-purple',style:{fontSize:9,padding:'1px 6px'}},isVariableRecurring(it)?'Variable':'Bill split over '+(RECURRING_PERIOD_MONTHS[it.frequency]||1)+' months'),
                           last&&React.createElement('div',{style:{color:'var(--text3)'}},'Last bill ₹'+Math.round(last.amount).toLocaleString('en-IN')+' ('+monthLabelOfIndex(last.first)+(last.months>1?'–'+monthLabelOfIndex(last.last):'')+')'),
-                          miss&&React.createElement('div',{style:{color:'var(--orange)',fontWeight:600}},'⚠ '+monthLabelOfIndex(miss.first)+(miss.last>miss.first?'–'+monthLabelOfIndex(miss.last):'')+' bill not entered'));
+                          miss&&React.createElement('button',{className:'btn btn-sm',style:{marginTop:4,fontSize:10.5,padding:'2px 8px',background:'rgba(255,159,67,0.12)',border:'1px solid rgba(255,159,67,0.45)',color:'var(--orange)',fontWeight:700},
+                            title:'Enter the invoice for this period',onClick:()=>openEnterBill(it,miss)},'⚠ Bill pending: '+monthLabelOfIndex(miss.first)+(miss.last>miss.first?'–'+monthLabelOfIndex(miss.last):'')+' — ➕ Enter bill'));
                       })()
                     :(it.status==='Active'&&needsAmountUpdate(it)&&React.createElement('div',{style:{fontSize:10,color:'var(--orange)',fontWeight:600,marginTop:2}},'⚠ Update Amount'))
                 ),
@@ -425,6 +439,9 @@ function RecurringExpensesSheet({salon}={}){
                 React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:4}},
                   isSpreadRecurring(it)&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Month by month: previous bill, estimate, actual bill, amount already claimed, adjustment and net expense',onClick:()=>setRegisterItem(it)},'📒 Register'),
                   isSpreadRecurring(it)&&React.createElement('button',{className:'btn btn-primary btn-sm',title:'Record this period’s actual bill — the P&L spreads it over the months it covers',onClick:()=>openEnterBill(it)},'➕ Enter bill'),
+                  it.payUrl&&React.createElement('a',{className:'btn btn-ghost btn-sm',href:it.payUrl,target:'_blank',rel:'noopener noreferrer',
+                    title:'Open the payment website'+(it.consumerNo?' — consumer / account no. '+it.consumerNo:''),
+                    onClick:()=>{if(it.consumerNo&&navigator.clipboard)navigator.clipboard.writeText(it.consumerNo).then(()=>toast('Consumer no. '+it.consumerNo+' copied — paste it on the payment site','info'),()=>{});}},'💳 Pay online ↗'),
                   React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>openEdit(it)},'Edit'),
                   React.createElement('button',{'aria-label':'Delete',className:'btn btn-sm',style:{background:'rgba(255,107,107,0.1)',border:'1px solid rgba(255,107,107,0.3)',color:'var(--red)',padding:'4px 8px',borderRadius:'var(--r)',cursor:'pointer',fontSize:11},onClick:()=>setShowDelete(it)},React.createElement(IconTrash,{size:14}))
                 ))
@@ -480,6 +497,13 @@ function RecurringExpensesSheet({salon}={}){
                 bad?'The 1st-month amount must be less than the total.'
                   :'Leave the 1st-month amount blank to split equally. Actual bills are split in the same proportion (each bill can also give its own 1st-month amount in “➕ Enter bill”).'));
           })()),
+        /electric/i.test(String(form.expenseName||''))&&React.createElement('div',{className:'form-row cols2'},
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Payment website (link)'),
+            React.createElement('input',{className:'form-control',value:form.payUrl||'',onChange:fc('payUrl'),placeholder:'e.g. https://www.bsesdelhi.com/web/brpl/quick-pay-payment'}),
+            React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:3}},'Adds a “💳 Pay online” button on this item.')),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Consumer / account no.'),
+            React.createElement('input',{className:'form-control',value:form.consumerNo||'',onChange:fc('consumerNo'),placeholder:'CA / K-number on the bill'}),
+            React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:3}},'Copied automatically when you click “💳 Pay online”.'))),
         // ── Fixed vs Variable amount — Variable is for bills whose amount is only known when the bill
         // arrives (electricity, telephone, water…). See variableRecurringMonthAmt for the P&L rule. ──
         React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:14}},

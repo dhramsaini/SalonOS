@@ -419,6 +419,11 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
 · (v2026.10.01.42) Booking month = the bill's bookingDate (else invoiceDate). ➕ Enter bill has "Booking date (P&L month)"
   next to Bill Date (follows it until changed; Read bill sets both) — e.g. dated 28 Sep, booked 5 Oct → adjustments in
   Oct. Item form note explains the dates come from each bill. Tests 103.
+· (v2026.10.01.43) Variable items ask for their bill: saving a new Variable item offers ➕ Enter bill; a pending period
+  (variableRecurringMissingPeriod) is a "⚠ Bill pending: … — ➕ Enter bill" button on the row (opens Enter bill on that
+  period — openEnterBill(it,period)) and a banner listing all pending bills at the top of Recurring Expenses.
+  Electricity items: it.payUrl (https:// added if missing) + it.consumerNo; row button "💳 Pay online ↗" (new tab,
+  copies the consumer no.).
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.
