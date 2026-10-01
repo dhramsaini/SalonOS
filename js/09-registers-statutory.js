@@ -969,7 +969,7 @@ function tdsCellsForMonth(salonId,year,month,recurring,sectionCodes,salaryCol){
   sectionCodes.forEach(code=>{cells[code]=0;});
   if(!isMonthUpToNow(year,month)){cells[salaryCol]=0;return cells;} // hasn't happened yet — nothing deducted
   recurring.forEach(it=>{
-    const divisor=RECURRING_FREQ_DIVISOR[it.frequency]||1;
+    const divisor=recurringDivisorOf(it);
     cells[it.tdsSection]=(cells[it.tdsSection]||0)+tdsAmountOf(it)/divisor;
   });
   cells[salaryCol]=statutoryDeductionsFor(salonId,year,month).reduce((s,e)=>s+e.tdsAmt,0);
@@ -982,7 +982,7 @@ function tdsCellsForMonth(salonId,year,month,recurring,sectionCodes,salaryCol){
 function tdsPartyDetailForMonth(salonId,year,month,recurring){
   if(!isMonthUpToNow(year,month))return[];
   const fromRecurring=recurring.map(it=>{
-    const divisor=RECURRING_FREQ_DIVISOR[it.frequency]||1;
+    const divisor=recurringDivisorOf(it);
     return{key:'rec_'+it.id,party:it.payee||'(no payee set)',source:(it.expenseName==='Other'&&it.customName?it.customName:it.expenseName),section:it.tdsSection,amt:tdsAmountOf(it)/divisor};
   }).filter(r=>r.amt>0);
   const fromSalary=statutoryDeductionsFor(salonId,year,month).filter(e=>e.tdsAmt>0)

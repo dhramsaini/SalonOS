@@ -410,6 +410,12 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   trail (previous bill basis, estimate, actual bill, claimed, adjustment → booked in, net recognised); Recurring
   Expenses row button "📒 Register" (modal + CSV). P&L line text: "estimate from previous bill …", "adjustment for Aug
   (actual − already claimed = …)". Generic Vendor Sheet period bills keep the lock-based rule. Tests 99.
+· (v2026.10.01.41) **Prepaid / postpaid** for non-monthly (and Variable) recurring items: it.billTiming 'prepaid' (bill
+  covers its month + next N−1), 'postpaid' (its month + previous N−1), 'arrears' (N months before it; old Variable
+  billFor 'previous'); it.coverMonths overrides N ("Months covered by each bill", 1–24). Helpers recurringMonthsOf /
+  recurringDivisorOf / recurringBillTiming / recurringBillPeriodFor (js/04) used by bills, estimates, Enter bill default
+  period, registers/P&L divisors, and the automation function (redeployed). Form: "Billing:" radios + months field +
+  live "a bill dated this month covers …". Accrual rules (estimate → adjustment) unchanged. Tests 102.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

@@ -1685,9 +1685,26 @@ function effectiveTaxableAmountFor(it,year,month){
   }
   return base;
 }
+// ── Prepaid / postpaid bills for non-monthly items ──
+// Months one bill covers: "Months covered by each bill" on the item, else the frequency (Quarterly = 3).
+function recurringMonthsOf(it){const c=Number(it&&it.coverMonths);return c>0&&c<=24?Math.round(c):(RECURRING_PERIOD_MONTHS[it&&it.frequency]||1);}
+function recurringDivisorOf(it){const c=Number(it&&it.coverMonths);return c>0&&c<=24?Math.round(c):(RECURRING_FREQ_DIVISOR[it&&it.frequency]||1);}
+// 'prepaid' — the bill covers its own month and the next ones (advance);
+// 'postpaid' — its own month and the previous ones; 'arrears' — the months just before it (electricity).
+function recurringBillTiming(it){
+  if(it&&it.billTiming)return it.billTiming;
+  if(isVariableRecurring(it))return it.billFor==='current'?'postpaid':'arrears';
+  return'postpaid';
+}
+// The months a bill dated in month bm covers when it doesn't print its own period.
+function recurringBillPeriodFor(it,bm){
+  const N=recurringMonthsOf(it),tm=recurringBillTiming(it);
+  const last=tm==='prepaid'?bm+N-1:tm==='postpaid'?bm:bm-1;
+  return{first:last-N+1,last};
+}
 function recurringExpenseMonthlyAmt(it,year,month,salonId){
   const taxable=effectiveTaxableAmountFor(it,year,month);
-  const divisor=RECURRING_FREQ_DIVISOR[it.frequency]||1;
+  const divisor=recurringDivisorOf(it);
   // Supply of electrical energy is exempt from GST (Notification 2/2017-Central Tax (Rate)) — no
   // GST charged directly, and no Reverse Charge either, unlike every other expense type here.
   // GST/RCM always adds through to the Invoice Value here regardless of this outlet's GST Input
@@ -1737,7 +1754,7 @@ function isVariableRecurring(it){return !!it&&it.amountType==='Variable';}
 // in the bill's own month (a Bi-Monthly bill dated in September = August + September), and months no
 // bill covers yet carry the usual estimate (amount ÷ N) — so the earlier month is already on the P&L
 // and the bill only replaces the estimate, instead of the whole bill landing in one month on top of it.
-function isSpreadRecurring(it){return isVariableRecurring(it)||(RECURRING_PERIOD_MONTHS[it&&it.frequency]||1)>1;}
+function isSpreadRecurring(it){return isVariableRecurring(it)||recurringMonthsOf(it)>1;}
 function monthIndexOfIso(iso){const m=/^(\d{4})-(\d{2})/.exec(iso||'');return m?Number(m[1])*12+Number(m[2])-1:null;}
 // A bill's own period (YYYY-MM from / to) → {first,last,months} when it covers 2–24 months, else null.
 function billSplitMonths(periodFrom,periodTo){
@@ -1765,10 +1782,10 @@ function billSplitText(total,sp,first){
 // For a recurring item with an amount for the 1st month of each cycle: how much of the per-month
 // average this month carries (1st month of the cycle vs the others). 1 when split equally.
 function recurringSplitFactor(it,t){
-  const N=RECURRING_PERIOD_MONTHS[it&&it.frequency]||1,tot=Number(it&&it.amount)||0,f=Number(it&&it.firstMonthAmt)||0;
+  const N=recurringMonthsOf(it),tot=Number(it&&it.amount)||0,f=Number(it&&it.firstMonthAmt)||0;
   if(N<2||!(tot>0)||!(f>0)||f>=tot)return 1;
   const start=monthIndexOfIso(it.startDate);
-  const anchor=start!=null?start:(isVariableRecurring(it)&&it.billFor!=='current'?-1:0);
+  const anchor=start!=null?start:(recurringBillTiming(it)==='arrears'?-1:0);
   const pos=(((t-anchor)%N)+N)%N;
   return pos===0?N*f/tot:N*(tot-f)/(tot*(N-1));
 }
@@ -1777,7 +1794,6 @@ function variableRecurringBills(it,salonId){
   const payee=String(it.payee||'').trim().toLowerCase();
   const vendor=loadVendors(salonId).find(v=>String(v.name||'').trim().toLowerCase()===payee);
   if(!vendor)return[];
-  const N=RECURRING_PERIOD_MONTHS[it.frequency]||1;
   return loadVendorInvoices(salonId)
     .filter(inv=>inv.vendorId===vendor.id&&inv.docNature!=='Performa Invoice'&&!String(inv.invoiceNo||'').startsWith('REC-')&&(!inv.recurringId||inv.recurringId===it.id))
     .map(inv=>{
@@ -1785,7 +1801,7 @@ function variableRecurringBills(it,salonId){
       if(first==null||last==null||last<first){
         const bm=monthIndexOfIso(toISO(inv.invoiceDate));
         if(bm==null)return null;
-        last=(!isVariableRecurring(it)||it.billFor==='current')?bm:bm-1;first=last-N+1;
+        ({first,last}=recurringBillPeriodFor(it,bm));
       }
       const amount=Number(inv.amount)||0,months=last-first+1;
       const itTot=Number(it.amount)||0,itFirst=Number(it.firstMonthAmt)||0;
@@ -1878,7 +1894,7 @@ function variableRecurringMonthAmt(it,salonId,year,month){
 function variableRecurringMissingPeriod(it,salonId,asOf){
   if(!isVariableRecurring(it)||it.status!=='Active')return null;
   const d=asOf||new Date();
-  const N=RECURRING_PERIOD_MONTHS[it.frequency]||1;
+  const N=recurringMonthsOf(it);
   const bills=variableRecurringBills(it,salonId);
   const now=d.getFullYear()*12+d.getMonth();
   const lastCovered=bills.length?bills[bills.length-1].last:(monthIndexOfIso(it.startDate)!=null?monthIndexOfIso(it.startDate)-1:now-N-1);

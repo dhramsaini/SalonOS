@@ -608,7 +608,7 @@ function OutletPnLCore({salon,period}){
         const d=cal?operatingExpenseAnnexureFor(sid,cal.year,cal.month,l.name):null;
         if(!d)return;
         d.recurring.filter(it=>it.status==='Active').forEach(it=>{
-          const divisor=RECURRING_FREQ_DIVISOR[it.frequency]||1;
+          const divisor=recurringDivisorOf(it);
           const gstAmt=it.gstApplicable?(Number(it.gstAmount)||0):Number(it.amount)*0.18;
           const row=ws2.getRow(rr);
           row.values=[l.name,it.payee,it.frequency,Number(it.amount),it.gstApplicable?'Yes':'No (RCM)','','',divisor,''];

@@ -358,6 +358,22 @@
         eq('Audit trail — September: estimate from the August bill + reversal for August',[sep.estimated,sep.adjustmentsHere.map(a=>a.diff),sep.recognized],[110000,[10000],120000]);
       }catch(err){results.push({name:'Accrual register',ok:false,got:String(err&&err.message||err),want:'no error'});}
       try{
+        // Quarterly rent ₹30,000 (Fixed): prepaid vs postpaid, and a custom 11-month prepaid bill.
+        saveVendors([{id:'L1',name:'Landlord Q',cat:'Rent'},{id:'L2',name:'Landlord P',cat:'Rent'},{id:'L3',name:'AMC Co',cat:'Rent'}],911);
+        safeLocalSet(outletKey('salonos_recurring_expenses',911),JSON.stringify([
+          {id:'Q1',expenseName:'Rent',payee:'Landlord Q',amount:30000,frequency:'Quarterly',billTiming:'prepaid',dueDay:5,status:'Active',startDate:'2026-01-01',amountType:'Fixed'},
+          {id:'Q2',expenseName:'Rent',payee:'Landlord P',amount:30000,frequency:'Quarterly',billTiming:'postpaid',dueDay:5,status:'Active',startDate:'2026-01-01',amountType:'Fixed'},
+          {id:'Q3',expenseName:'Rent',payee:'AMC Co',amount:11000,frequency:'Yearly',coverMonths:11,billTiming:'prepaid',dueDay:5,status:'Active',startDate:'2026-01-01',amountType:'Fixed'}]));
+        saveVendorInvoices([{id:'P1',vendorId:'L1',invoiceNo:'PRE',invoiceDate:'05/09/2026',amount:30000,payments:[]},
+          {id:'P2',vendorId:'L2',invoiceNo:'POST',invoiceDate:'05/09/2026',amount:33000,payments:[]},
+          {id:'P3',vendorId:'L3',invoiceNo:'AMC',invoiceDate:'01/09/2026',amount:11000,payments:[]}],911);
+        const [q1,q2,q3]=loadRecurringExpenses(911);
+        const v=(it,mo)=>Math.round(variableRecurringMonthAmt(it,911,2026,mo).amt);
+        eq('Prepaid quarterly bill in Sep covers Sep–Nov',[v(q1,7),v(q1,8),v(q1,9),v(q1,10)],[10000,10000,10000,10000]);
+        eq('Postpaid quarterly bill in Sep covers Jul–Sep: Jul/Aug estimates, Sep = its share + both adjustments',[v(q2,6),v(q2,7),v(q2,8),v(q2,6)+v(q2,7)+v(q2,8)],[10000,10000,13000,33000]);
+        eq('Prepaid bill for 11 months (custom) — ₹1,000 a month Sep → Jul',[v(q3,8),v(q3,9),v(q3,12+6),recurringBillPeriodFor(q3,2026*12+8).last-(2026*12+8)],[1000,1000,1000,10]);
+      }catch(err){results.push({name:'Prepaid/postpaid',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
         const mod={};new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});

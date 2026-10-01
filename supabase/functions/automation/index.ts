@@ -147,7 +147,9 @@ export function computeAlerts(kv: KV, settings: typeof DEFAULTS, today: number) 
       for (const it of get("salonos_recurring_expenses", []) as any[]) {
         if (!it || it.status !== "Active") continue;
         const label = it.expenseName === "Other" && it.customName ? it.customName : it.expenseName;
-        const N = PERIOD_MONTHS[it.frequency] || 1;
+        const N = Number(it.coverMonths) > 0 && Number(it.coverMonths) <= 24 ? Math.round(Number(it.coverMonths)) : (PERIOD_MONTHS[it.frequency] || 1);
+        // Prepaid: a bill covers its month + the next ones; postpaid: its month + the previous; arrears: the months before it.
+        const timing = it.billTiming || (it.billFor === "current" ? "postpaid" : "arrears");
         const start = monthOfIso(it.startDate), end = monthOfIso(it.endDate);
         if ((start != null && thisMonth < start) || (end != null && thisMonth > end)) continue;
         if (it.amountType === "Variable") {
@@ -159,7 +161,7 @@ export function computeAlerts(kv: KV, settings: typeof DEFAULTS, today: number) 
               if (last == null || monthOfIso(inv.periodFrom) == null) {
                 const bd = parseDay(inv.invoiceDate); if (bd == null) return null;
                 const d = new Date(bd * 864e5); const bm = mIdx(d.getUTCFullYear(), d.getUTCMonth());
-                last = it.billFor === "current" ? bm : bm - 1;
+                last = timing === "prepaid" ? bm + N - 1 : timing === "postpaid" ? bm : bm - 1;
               }
               return last;
             }).filter((x): x is number => x != null).sort((a, b) => a - b);

@@ -89,10 +89,10 @@ function RecurringExpensesSheet({salon}={}){
   const [billForm,setBillForm]=useState({});
   const ymOf=(idx)=>Math.floor(idx/12)+'-'+String(idx%12+1).padStart(2,'0');
   const defaultBillPeriod=(it,billDateIso)=>{
-    const N=RECURRING_PERIOD_MONTHS[it.frequency]||1;const bm=monthIndexOfIso(billDateIso);
+    const bm=monthIndexOfIso(billDateIso);
     if(bm==null)return{from:'',to:''};
     // Fixed non-monthly items (rent billed every 2/3/6/12 months): the bill's period ends in its own month.
-    const last=(!isVariableRecurring(it)||it.billFor==='current')?bm:bm-1;return{from:ymOf(last-N+1),to:ymOf(last)};
+    const pp=recurringBillPeriodFor(it,bm);return{from:ymOf(pp.first),to:ymOf(pp.last)};
   };
   const [billReading,setBillReading]=useState(false);
   const [registerItem,setRegisterItem]=useState(null); // accrual register (audit trail) for one item
@@ -133,7 +133,7 @@ function RecurringExpensesSheet({salon}={}){
   };
 
   const BLANK={id:'',expenseName:RECURRING_EXPENSE_TYPES[0],customName:'',payee:'',amount:'',frequency:'Monthly',dueDay:5,paymentMode:'Bank Transfer',startDate:'',endDate:'',status:'Active',notes:'',
-    amountType:'Fixed',billFor:'previous',firstMonthAmt:'',
+    amountType:'Fixed',billFor:'previous',billTiming:'',coverMonths:'',firstMonthAmt:'',
     gstApplicable:false,gstin:'',gstAmount:'',
     // Reverse Charge Mechanism only applies to specific categories of supply under Section
     // 9(3)/9(4) of the CGST Act — it's not automatic just because the payee doesn't charge GST.
@@ -254,7 +254,7 @@ function RecurringExpensesSheet({salon}={}){
     if(!form.amount||Number(form.amount)<=0){toast('Enter a valid amount','error');return;}
     if(form.expenseName==='Other'&&!form.customName.trim()){toast('Enter a name for this "Other" expense','error');return;}
     if(form.gstApplicable&&!form.gstin.trim()){toast('Enter the GSTIN, or uncheck GST Applicable','error');return;}
-    const rec={...form,firstMonthAmt:(form.frequency==='Bi-Monthly'&&Number(form.firstMonthAmt)>0&&Number(form.firstMonthAmt)<Number(form.amount))?Number(form.firstMonthAmt):'',amount:Math.round(Number(form.amount)),dueDay:Math.min(31,Math.max(1,Number(form.dueDay)||1)),
+    const rec={...form,coverMonths:(Number(form.coverMonths)>0&&Number(form.coverMonths)<=24)?Math.round(Number(form.coverMonths)):'',firstMonthAmt:(form.frequency==='Bi-Monthly'&&Number(form.firstMonthAmt)>0&&Number(form.firstMonthAmt)<Number(form.amount))?Number(form.firstMonthAmt):'',amount:Math.round(Number(form.amount)),dueDay:Math.min(31,Math.max(1,Number(form.dueDay)||1)),
       gstAmount:form.gstApplicable?Math.round(Number(form.gstAmount)||0):'',
       gstin:form.gstApplicable?form.gstin.trim():''};
     if(editId){setItems(prev=>prev.map(i=>i.id===editId?rec:i));}
@@ -493,13 +493,27 @@ function RecurringExpensesSheet({salon}={}){
             (RECURRING_PERIOD_MONTHS[form.frequency]||1)>1
               ?'Each '+form.frequency+' bill is split equally over the months it covers'+(Number(form.amount)>0?' — e.g. '+billSplitText(Number(form.amount),{first:monthIndexOfIso(localTodayIso())-(RECURRING_PERIOD_MONTHS[form.frequency]||1)+1,last:monthIndexOfIso(localTodayIso()),months:RECURRING_PERIOD_MONTHS[form.frequency]||1}):'')+'. Enter each bill with “➕ Enter bill” → “📄 Read bill” reads the months from the bill.'
               :'Electricity billed every 2 months? Set Frequency to Bi-Monthly and Amount to Variable — each bill’s net payable is then split equally between its two months (“📄 Read bill” reads the period from the bill).'),
-          form.amountType==='Variable'&&React.createElement('div',{style:{marginTop:10}},
-            React.createElement('div',{style:{display:'flex',gap:16,flexWrap:'wrap',alignItems:'center',marginBottom:6}},
-              React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},'Each bill is for:'),
-              [['previous','the period just ended (usual for electricity)'],['current','the current period (billed in advance)']].map(([v,l])=>React.createElement('label',{key:v,style:{display:'flex',alignItems:'center',gap:6,fontSize:12,cursor:'pointer'}},
-                React.createElement('input',{type:'radio',name:'reBillFor',checked:(form.billFor||'previous')===v,onChange:()=>setForm(f=>({...f,billFor:v}))}),l))),
-            React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',lineHeight:1.6}},
-              'Record each actual bill with "➕ Enter bill" on this row (or as an invoice from this payee in Vendor Sheet). On the P&L, each bill is spread evenly over the months it covers — e.g. a '+(form.frequency||'Bi-Monthly')+' bill of ₹12,000 counts ₹'+Math.round(12000/(RECURRING_PERIOD_MONTHS[form.frequency]||1)).toLocaleString('en-IN')+' per month. Months whose bill hasn’t come yet use an estimate: the average of the last 3 bills (the amount above until there is a bill history).'))
+          (form.amountType==='Variable'||(RECURRING_PERIOD_MONTHS[form.frequency]||1)>1)&&(()=>{
+            const N=recurringMonthsOf(form),tm=recurringBillTiming(form),now=monthIndexOfIso(localTodayIso());
+            const pp=recurringBillPeriodFor(form,now);
+            const opts=[['prepaid','Prepaid — bill in advance','this month and the next '+(N-1)+' month'+(N===2?'':'s')],
+              ['postpaid','Postpaid — bill at the end','this month and the previous '+(N-1)+' month'+(N===2?'':'s')],
+              ['arrears','Postpaid — period just ended','the '+N+' month'+(N===1?'':'s')+' before the bill (usual for electricity)']];
+            return React.createElement('div',{style:{marginTop:10}},
+              React.createElement('div',{style:{fontSize:12,fontWeight:700,color:'var(--text)',marginBottom:6}},'Billing:'),
+              opts.map(([v,l,d])=>React.createElement('label',{key:v,style:{display:'flex',alignItems:'flex-start',gap:8,fontSize:12.5,cursor:'pointer',marginBottom:5}},
+                React.createElement('input',{type:'radio',name:'reBillTiming',style:{marginTop:3},checked:tm===v,onChange:()=>setForm(f=>({...f,billTiming:v,billFor:v==='arrears'?'previous':'current'}))}),
+                React.createElement('span',null,React.createElement('b',null,l),' — a bill covers '+d))),
+              React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginTop:6,fontSize:12,color:'var(--text2)'}},
+                'Months covered by each bill:',
+                React.createElement('input',{type:'number',min:1,max:24,className:'form-control',style:{width:80,display:'inline-block'},placeholder:String(RECURRING_PERIOD_MONTHS[form.frequency]||1),value:form.coverMonths||'',onChange:fc('coverMonths')}),
+                React.createElement('span',{style:{color:'var(--text3)'}},'(blank = '+(RECURRING_PERIOD_MONTHS[form.frequency]||1)+' from the frequency)')),
+              React.createElement('div',{className:'help-note',style:{marginTop:8}},
+                'A bill dated this month ('+monthLabelOfIndex(now)+') covers '+monthLabelOfIndex(pp.first)+(pp.last>pp.first?' – '+monthLabelOfIndex(pp.last):'')+'. ',
+                tm==='prepaid'
+                  ?'Its amount is split equally over those months (future months take their share as they come).'
+                  :'Months before the bill is booked carry an estimate (the monthly amount of the previous bill, or this item’s amount ÷ '+N+'); when the bill is booked, each earlier month’s actual minus the amount already claimed is adjusted in the bill’s month. Earlier months are never changed — see 📒 Register.'));
+          })()
         ),
 
         // ── Show More Details toggle — collapses GST/TDS/increment-schedule/agreement/
