@@ -416,6 +416,9 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   recurringDivisorOf / recurringBillTiming / recurringBillPeriodFor (js/04) used by bills, estimates, Enter bill default
   period, registers/P&L divisors, and the automation function (redeployed). Form: "Billing:" radios + months field +
   live "a bill dated this month covers …". Accrual rules (estimate → adjustment) unchanged. Tests 102.
+· (v2026.10.01.42) Booking month = the bill's bookingDate (else invoiceDate). ➕ Enter bill has "Booking date (P&L month)"
+  next to Bill Date (follows it until changed; Read bill sets both) — e.g. dated 28 Sep, booked 5 Oct → adjustments in
+  Oct. Item form note explains the dates come from each bill. Tests 103.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

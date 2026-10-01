@@ -374,6 +374,14 @@
         eq('Prepaid bill for 11 months (custom) — ₹1,000 a month Sep → Jul',[v(q3,8),v(q3,9),v(q3,12+6),recurringBillPeriodFor(q3,2026*12+8).last-(2026*12+8)],[1000,1000,1000,10]);
       }catch(err){results.push({name:'Prepaid/postpaid',ok:false,got:String(err&&err.message||err),want:'no error'});}
       try{
+        // Booking date decides the month: a bill dated 28 Sep, booked 5 Oct (Aug–Sep, ₹5,000; estimate ₹2,000/month).
+        saveVendors([{id:'V1',name:'BSES',cat:'Electricity Expenses'}],912);
+        safeLocalSet(outletKey('salonos_recurring_expenses',912),JSON.stringify([{id:'R1',expenseName:'Electricity Expenses',payee:'BSES',amount:4000,frequency:'Bi-Monthly',dueDay:10,status:'Active',startDate:'2026-01-01',amountType:'Variable',billTiming:'arrears'}]));
+        saveVendorInvoices([{id:'B1',vendorId:'V1',invoiceNo:'EB-1',invoiceDate:'28/09/2026',bookingDate:'05/10/2026',amount:5000,recurringId:'R1',periodFrom:'2026-08',periodTo:'2026-09',payments:[]}],912);
+        const it=loadRecurringExpenses(912)[0];const v=mo=>Math.round(variableRecurringMonthAmt(it,912,2026,mo).amt);
+        eq('Booked in October: Aug and Sep keep estimates, October carries both adjustments',[v(7),v(8),v(9)],[2000,2000,3500]);
+      }catch(err){results.push({name:'Booking month',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
         const mod={};new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});

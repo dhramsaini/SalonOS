@@ -98,7 +98,7 @@ function RecurringExpensesSheet({salon}={}){
   const [registerItem,setRegisterItem]=useState(null); // accrual register (audit trail) for one item
   const openEnterBill=(it)=>{
     const today=localTodayIso();const p=defaultBillPeriod(it,today);
-    setBillForm({billNo:'',billDate:today,periodFrom:p.from,periodTo:p.to,amount:'',gst:'',splitFirst:'',attachment:null,periodTouched:false});
+    setBillForm({billNo:'',billDate:today,bookingDate:today,bookingTouched:false,periodFrom:p.from,periodTo:p.to,amount:'',gst:'',splitFirst:'',attachment:null,periodTouched:false});
     setBillItem(it);
   };
   const saveBill=()=>{
@@ -116,10 +116,10 @@ function RecurringExpensesSheet({salon}={}){
     const taxable=Math.round(Number(f.amount)),gst=Math.round(Number(f.gst)||0);
     const tdsAmt=it.tdsApplicable?Math.round(taxable*(Number(it.tdsRate)||0)/100):0;
     const id=nextPrefixedId(vendorInvoices,'VI-',4);
-    const dmy=isoToDMY2(f.billDate);
+    const dmy=isoToDMY2(f.billDate),bookDmy=isoToDMY2(f.bookingDate||f.billDate);
     const months=(monthIndexOfIso(f.periodTo+'-01')-monthIndexOfIso(f.periodFrom+'-01'))+1;
     const periodText=monthLabelOfIndex(monthIndexOfIso(f.periodFrom+'-01'))+(months>1?' – '+monthLabelOfIndex(monthIndexOfIso(f.periodTo+'-01')):'');
-    const inv={id,vendorId:vendor.id,invoiceNo:f.billNo.trim(),docNature:'Tax Invoice',invoiceDate:dmy,bookingDate:dmy,dueDate:'',
+    const inv={id,vendorId:vendor.id,invoiceNo:f.billNo.trim(),docNature:'Tax Invoice',invoiceDate:dmy,bookingDate:bookDmy,dueDate:'',
       taxable,igst:'',cgst:gst?gst/2:'',sgst:gst?gst/2:'',roundOff:'',amount:taxable+gst,
       tdsAmt,tdsSection:it.tdsApplicable?it.tdsSection:'',tdsRate:it.tdsApplicable?it.tdsRate:'',
       category:vendorCategoryForExpenseType(it.expenseName),desc:displayName(it)+' bill for '+periodText,attachment:f.attachment,linkedPI:'',
@@ -509,7 +509,7 @@ function RecurringExpensesSheet({salon}={}){
                 React.createElement('input',{type:'number',min:1,max:24,className:'form-control',style:{width:80,display:'inline-block'},placeholder:String(RECURRING_PERIOD_MONTHS[form.frequency]||1),value:form.coverMonths||'',onChange:fc('coverMonths')}),
                 React.createElement('span',{style:{color:'var(--text3)'}},'(blank = '+(RECURRING_PERIOD_MONTHS[form.frequency]||1)+' from the frequency)')),
               React.createElement('div',{className:'help-note',style:{marginTop:8}},
-                'A bill dated this month ('+monthLabelOfIndex(now)+') covers '+monthLabelOfIndex(pp.first)+(pp.last>pp.first?' – '+monthLabelOfIndex(pp.last):'')+'. ',
+                'Example: a bill dated this month ('+monthLabelOfIndex(now)+') covers '+monthLabelOfIndex(pp.first)+(pp.last>pp.first?' – '+monthLabelOfIndex(pp.last):'')+'. The dates come from each bill when you enter it — “➕ Enter bill” (Bill Date + Booking date, or “📄 Read bill”) or the Booking Date in Vendor Sheet; until a bill is entered, months only carry estimates. ',
                 tm==='prepaid'
                   ?'Its amount is split equally over those months (future months take their share as they come).'
                   :'Months before the bill is booked carry an estimate (the monthly amount of the previous bill, or this item’s amount ÷ '+N+'); when the bill is booked, each earlier month’s actual minus the amount already claimed is adjusted in the bill’s month. Earlier months are never changed — see 📒 Register.'));
@@ -882,7 +882,7 @@ function RecurringExpensesSheet({salon}={}){
                 const gst=(Number(R.igst)||0)+(Number(R.cgst)||0)+(Number(R.sgst)||0);
                 const elec=billItem.expenseName==='Electricity Expenses';
                 const total=Number(R.amount)||0;
-                setBillForm(f=>({...f,billNo:R.invoiceNo||f.billNo,billDate:R.invoiceDate||f.billDate,
+                setBillForm(f=>({...f,billNo:R.invoiceNo||f.billNo,billDate:R.invoiceDate||f.billDate,...(f.bookingTouched?{}:{bookingDate:R.invoiceDate||f.billDate}),
                   amount:total?String(elec?total:Math.round((total-gst)*100)/100):f.amount,gst:elec?'':(gst?String(gst):f.gst),
                   ...(R.periodFrom&&R.periodTo?{periodFrom:R.periodFrom,periodTo:R.periodTo,periodTouched:true}:{})}));
                 toast('Bill read'+(R.periodFrom&&R.periodTo?' — covers '+R.periodFrom+' to '+R.periodTo:'')+'. Check the figures before saving.','success');
@@ -892,11 +892,14 @@ function RecurringExpensesSheet({salon}={}){
           }}),
           React.createElement('label',{htmlFor:'re-bill-read',className:'btn btn-primary btn-sm',style:{cursor:'pointer'}},billReading?'Reading…':'📄 Read bill (photo / PDF)'),
           React.createElement('span',{style:{fontSize:11.5,color:'var(--text2)'}},'Fills the bill no., date, net payable and the months it covers — a bill for 2 months is split equally, also for months still to come (advance bills).')),
-        React.createElement('div',{className:'form-row cols2'},
+        React.createElement('div',{className:'form-row cols3'},
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Bill / Invoice No. *'),
             React.createElement('input',{className:'form-control',autoFocus:true,value:billForm.billNo,onChange:e=>setBillForm(f=>({...f,billNo:e.target.value})),placeholder:'e.g. EB-2026-0915'})),
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Bill Date *'),
-            React.createElement('input',{type:'date',className:'form-control',value:billForm.billDate,onChange:e=>{const v=e.target.value;setBillForm(f=>{const p=f.periodTouched?{}:defaultBillPeriod(billItem,v);return{...f,billDate:v,...(f.periodTouched?{}:{periodFrom:p.from,periodTo:p.to})};});}}))
+            React.createElement('input',{type:'date',className:'form-control',value:billForm.billDate,onChange:e=>{const v=e.target.value;setBillForm(f=>{const p=f.periodTouched?{}:defaultBillPeriod(billItem,v);return{...f,billDate:v,...(f.bookingTouched?{}:{bookingDate:v}),...(f.periodTouched?{}:{periodFrom:p.from,periodTo:p.to})};});}})),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Booking date (P&L month) *'),
+            React.createElement('input',{type:'date',className:'form-control',value:billForm.bookingDate||billForm.billDate,onChange:e=>{const v=e.target.value;setBillForm(f=>({...f,bookingDate:v,bookingTouched:true}));}}),
+            React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:3}},'The month this bill is booked in — earlier months it covers are adjusted here. Same as the bill date unless the bill was received later.'))
         ),
         React.createElement('div',{className:'form-row cols2'},
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Covers from (month) *'),
