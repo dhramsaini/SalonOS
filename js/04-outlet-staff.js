@@ -1842,6 +1842,9 @@ function monthClosedBeforeBill(salonId,t,inv){
 function recurringEstimateFor(it,bills,t,salonId){
   const start=monthIndexOfIso(it.startDate),end=monthIndexOfIso(it.endDate);
   if((start!=null&&t<start)||(end!=null&&t>end))return{amt:0,basis:null};
+  const ym=Math.floor(t/12)+'-'+String(t%12+1).padStart(2,'0');
+  const ov=it.estimateOverrides&&it.estimateOverrides[ym];
+  if(ov!=null&&ov!=='')return{amt:Number(ov)||0,basis:null,manual:true}; // set by hand in 📒 Register
   const known=bills.filter(b=>b.bookIdx<=t&&b.last<t).sort((a,b)=>a.last-b.last||a.bookIdx-b.bookIdx);
   const prev=known[known.length-1]||null;
   const f=recurringSplitFactor(it,t);
@@ -1872,7 +1875,7 @@ function recurringAccrualRow(it,salonId,t,bills){
     }
   });
   const recognized=own+adjustmentsHere.reduce((x,a)=>x+a.diff,0);
-  return{month:t,basis:est.basis,estimated,actual,actualBills:covering,claimed,adjustmentLater,adjustmentsHere,recognized,
+  return{month:t,basis:est.basis,manual:!!est.manual,estimated,actual,actualBills:covering,claimed,adjustmentLater,adjustmentsHere,recognized,
     own,bookedByNow};
 }
 function recurringAccrualRegister(it,salonId,fromIdx,toIdx){

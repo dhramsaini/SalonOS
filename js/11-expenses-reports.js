@@ -101,6 +101,30 @@ function RecurringExpensesSheet({salon}={}){
     setBillForm({billNo:'',billDate:today,bookingDate:today,bookingTouched:false,periodFrom:p.from,periodTo:p.to,amount:'',gst:'',splitFirst:'',attachment:null,periodTouched:!!period});
     setBillItem(it);
   };
+  // Edit a bill already entered — same window as ➕ Enter bill, filled with the bill.
+  const openEditBill=(it,inv)=>{
+    const b=variableRecurringBills(it,salonId).find(x=>x.inv.id===inv.id);
+    const gst=(Number(inv.igst)||0)+(Number(inv.cgst)||0)+(Number(inv.sgst)||0);
+    setBillForm({editId:inv.id,billNo:inv.invoiceNo||'',billDate:toISO(inv.invoiceDate)||'',bookingDate:toISO(inv.bookingDate||inv.invoiceDate)||'',bookingTouched:true,
+      periodFrom:inv.periodFrom||(b?ymOf(b.first):''),periodTo:inv.periodTo||(b?ymOf(b.last):''),
+      amount:String(Number(inv.taxable)||Math.round(((Number(inv.amount)||0)-gst)*100)/100),gst:gst?String(gst):'',splitFirst:inv.splitFirst||'',
+      attachment:inv.attachment||null,periodTouched:true});
+    setBillItem(it);
+  };
+  const deleteBill=(it,inv)=>{
+    const paid=(inv.payments||[]).filter(p=>p.mode!=='TDS');
+    if(paid.length){alert('Bill '+(inv.invoiceNo||'')+' has '+paid.length+' payment'+(paid.length===1?'':'s')+' recorded against it in Vendor Sheet — remove those first, then delete the bill.');return;}
+    if(!window.confirm('Delete bill '+(inv.invoiceNo||'')+' ('+rupee(inv.amount)+')? It is removed from Vendor Sheet too, and the months it covered go back to estimates.'))return;
+    setVendorInvoices(prev=>prev.filter(i=>i.id!==inv.id));
+    toast('Bill '+(inv.invoiceNo||'')+' deleted','success');
+    // The register reads saved bills — reopen it once the change is saved so it shows the current state.
+    if(registerItem){const keep=registerItem;setRegisterItem(null);setTimeout(()=>setRegisterItem(keep),80);}
+  };
+  // Estimate for one month set by hand (null = automatic again; 0 = no provision that month).
+  const setEstimateOverride=(it,t,val)=>{
+    const ym=Math.floor(t/12)+'-'+String(t%12+1).padStart(2,'0');
+    setItems(prev=>prev.map(x=>{if(x.id!==it.id)return x;const o={...(x.estimateOverrides||{})};if(val==null)delete o[ym];else o[ym]=val;return{...x,estimateOverrides:o};}));
+  };
   const saveBill=()=>{
     const it=billItem,f=billForm;
     if(!f.billNo.trim()){toast('Enter the bill number','error');return;}
@@ -115,7 +139,8 @@ function RecurringExpensesSheet({salon}={}){
     if(!vendor){toast('Could not find or create a vendor for this payee','error');return;}
     const taxable=Math.round(Number(f.amount)),gst=Math.round(Number(f.gst)||0);
     const tdsAmt=it.tdsApplicable?Math.round(taxable*(Number(it.tdsRate)||0)/100):0;
-    const id=nextPrefixedId(vendorInvoices,'VI-',4);
+    const old=f.editId?vendorInvoices.find(i=>i.id===f.editId):null;
+    const id=old?old.id:nextPrefixedId(vendorInvoices,'VI-',4);
     const dmy=isoToDMY2(f.billDate),bookDmy=isoToDMY2(f.bookingDate||f.billDate);
     const months=(monthIndexOfIso(f.periodTo+'-01')-monthIndexOfIso(f.periodFrom+'-01'))+1;
     const periodText=monthLabelOfIndex(monthIndexOfIso(f.periodFrom+'-01'))+(months>1?' – '+monthLabelOfIndex(monthIndexOfIso(f.periodTo+'-01')):'');
@@ -123,12 +148,13 @@ function RecurringExpensesSheet({salon}={}){
       taxable,igst:'',cgst:gst?gst/2:'',sgst:gst?gst/2:'',roundOff:'',amount:taxable+gst,
       tdsAmt,tdsSection:it.tdsApplicable?it.tdsSection:'',tdsRate:it.tdsApplicable?it.tdsRate:'',
       category:vendorCategoryForExpenseType(it.expenseName),desc:displayName(it)+' bill for '+periodText,attachment:f.attachment,linkedPI:'',
-      recurringId:it.id,periodFrom:f.periodFrom,periodTo:f.periodTo,enteredAt:new Date().toISOString(),
+      recurringId:it.id,periodFrom:f.periodFrom,periodTo:f.periodTo,enteredAt:old&&old.enteredAt?old.enteredAt:new Date().toISOString(),
       splitFirst:Number(f.splitFirst)>0&&Number(f.splitFirst)<taxable+gst?Number(f.splitFirst):'',
-      payments:tdsAmt>0?[{id:'TDS-'+id,paidAmount:tdsAmt,paidDate:f.billDate,mode:'TDS',ref:'',note:'TDS deducted at source ('+(it.tdsSection||'—')+' @ '+(Number(it.tdsRate)||0)+'%)'}]:[]};
-    setVendorInvoices(prev=>[...prev,inv]);
+      payments:[...(old?(old.payments||[]).filter(p=>p.mode!=='TDS'):[]),...(tdsAmt>0?[{id:'TDS-'+id,paidAmount:tdsAmt,paidDate:f.billDate,mode:'TDS',ref:'',note:'TDS deducted at source ('+(it.tdsSection||'—')+' @ '+(Number(it.tdsRate)||0)+'%)'}]:[])]};
+    if(old)setVendorInvoices(prev=>prev.map(i=>i.id===old.id?{...old,...inv}:i));
+    else setVendorInvoices(prev=>[...prev,inv]);
     setItems(prev=>prev.map(x=>x.id===it.id?{...x,amountUpdatedOn:localTodayIso()}:x));
-    toast('Bill '+inv.invoiceNo+' saved — ₹'+inv.amount.toLocaleString('en-IN')+' for '+periodText+(months>1?' (₹'+Math.round(inv.amount/months).toLocaleString('en-IN')+' per month on the P&L)':'')+'. It is also in Vendor Sheet for payment.','success');
+    toast('Bill '+inv.invoiceNo+(old?' updated':' saved')+' — ₹'+inv.amount.toLocaleString('en-IN')+' for '+periodText+(months>1?' (₹'+Math.round(inv.amount/months).toLocaleString('en-IN')+' per month on the P&L)':'')+'. It is also in Vendor Sheet for payment.','success');
     setBillItem(null);
   };
 
@@ -847,7 +873,7 @@ function RecurringExpensesSheet({salon}={}){
 
     registerItem&&(()=>{
       // ── Accrual register (audit trail): estimate → actual → reversal, month by month ──
-      const it=registerItem;
+      const it=items.find(x=>x.id===registerItem.id)||registerItem;
       const now=monthIndexOfIso(localTodayIso());
       const bills=variableRecurringBills(it,salonId);
       const firstBill=bills.length?Math.min(...bills.map(b=>Math.min(b.first,b.bookIdx))):now-5;
@@ -874,7 +900,17 @@ function RecurringExpensesSheet({salon}={}){
             React.createElement('tbody',null,rows.map(r=>React.createElement('tr',{key:r.month,style:r.month===now?{background:'rgba(47,95,224,0.06)'}:undefined},
               React.createElement('td',{style:{fontWeight:700,whiteSpace:'nowrap'}},monthLabelOfIndex(r.month)),
               React.createElement('td',{style:{fontSize:12,color:'var(--text2)'}},r.estimated!=null?(r.basis?billRef(r.basis):'Item amount (no bill yet)'):'—'),
-              React.createElement('td',{style:{textAlign:'right',color:r.estimated!=null?'var(--orange)':'var(--text3)'}},r2(r.estimated)),
+              React.createElement('td',{style:{textAlign:'right',color:r.estimated!=null?'var(--orange)':'var(--text3)'}},r2(r.estimated),
+                r.manual&&React.createElement('div',{style:{fontSize:10,color:'var(--text3)'}},'set by hand'),
+                r.estimated!=null&&React.createElement('div',{style:{display:'flex',gap:4,justifyContent:'flex-end',marginTop:3}},
+                  React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:10.5,padding:'1px 7px'},title:'Change this month’s estimate',onClick:()=>{
+                    const v=window.prompt('Estimate for '+monthLabelOfIndex(r.month)+' (₹):',String(Math.round(r.estimated*100)/100));
+                    if(v==null)return;const n=Number(String(v).replace(/[₹,\s]/g,''));if(!(n>=0)){alert('Enter an amount (0 or more).');return;}
+                    setEstimateOverride(it,r.month,n);toast('Estimate for '+monthLabelOfIndex(r.month)+' set to '+rupee(n),'success');}},'✏'),
+                  React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:10.5,padding:'1px 7px',color:'var(--red)'},title:'Remove this month’s estimate (no provision)',onClick:()=>{
+                    if(!window.confirm('Remove the estimate for '+monthLabelOfIndex(r.month)+'? No expense is provided for that month until the bill is booked.'))return;
+                    setEstimateOverride(it,r.month,0);toast('Estimate for '+monthLabelOfIndex(r.month)+' removed','success');}},'🗑'),
+                  r.manual&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:10.5,padding:'1px 7px'},title:'Back to the automatic estimate',onClick:()=>{setEstimateOverride(it,r.month,null);toast('Automatic estimate restored','success');}},'↺'))),
               React.createElement('td',{style:{textAlign:'right'}},r.actual==null?'—':React.createElement(React.Fragment,null,r2(r.actual),
                 React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)'}},r.actualBills.map(b=>(b.inv.invoiceNo||'bill')+' · booked '+monthLabelOfIndex(b.bookIdx)).join(', ')))),
               React.createElement('td',{style:{textAlign:'right'}},r2(r.claimed)),
@@ -884,6 +920,25 @@ function RecurringExpensesSheet({salon}={}){
                 !r.adjustmentLater&&!r.adjustmentsHere.length?'—':null),
               React.createElement('td',{style:{textAlign:'right',fontWeight:700}},r2(r.recognized)))),
               React.createElement('tr',{style:{fontWeight:700}},React.createElement('td',{colSpan:6},'Total recognised ('+monthLabelOfIndex(from)+' – '+monthLabelOfIndex(to)+')'),React.createElement('td',{style:{textAlign:'right'}},r2(tot)))))),
+          React.createElement('div',{style:{marginTop:12}},
+            React.createElement('div',{style:{fontWeight:700,fontSize:13,marginBottom:6}},'Bills entered ('+bills.length+')'),
+            bills.length===0?React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},'No bill yet — use ➕ Enter bill.'):
+            React.createElement('div',{className:'table-wrap'},React.createElement('table',null,
+              React.createElement('thead',null,React.createElement('tr',null,['Bill no.','Bill date','Booked in','Covers','Amount','1st-month amount','Paid',''].map(t=>React.createElement('th',{key:t},t)))),
+              React.createElement('tbody',null,bills.slice().sort((a,b)=>b.last-a.last).map(b=>{
+                const paid=(b.inv.payments||[]).reduce((x,p)=>x+(Number(p.paidAmount)||0),0);
+                return React.createElement('tr',{key:b.inv.id},
+                  React.createElement('td',{style:{fontWeight:600}},b.inv.invoiceNo||'—'),
+                  React.createElement('td',null,b.inv.invoiceDate||'—'),
+                  React.createElement('td',null,monthLabelOfIndex(b.bookIdx)),
+                  React.createElement('td',null,monthLabelOfIndex(b.first)+(b.last>b.first?' – '+monthLabelOfIndex(b.last):'')),
+                  React.createElement('td',{style:{textAlign:'right',fontWeight:600}},rupee(b.amount)),
+                  React.createElement('td',{style:{textAlign:'right'}},b.months>1?rupee(Math.round(b.shares[0]*100)/100):'—'),
+                  React.createElement('td',{style:{textAlign:'right',color:paid>0?'var(--green)':'var(--text3)'}},paid>0?rupee(paid):'—'),
+                  React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:4}},
+                    React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setRegisterItem(null);openEditBill(it,b.inv);}},'✏ Edit'),
+                    React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,0.1)',border:'1px solid rgba(255,107,107,0.3)',color:'var(--red)'},onClick:()=>deleteBill(it,b.inv)},'🗑 Delete'))));
+              }))))),
           React.createElement('div',{className:'modal-actions'},
             React.createElement('button',{className:'btn btn-ghost',onClick:()=>{
               const csv=[hdr,...csvRows].map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
@@ -892,7 +947,7 @@ function RecurringExpensesSheet({salon}={}){
     })(),
     billItem&&React.createElement('div',{className:'modal-overlay',onClick:()=>setBillItem(null)},
       React.createElement('div',{className:'modal',style:{width:560,maxWidth:'96vw'},onClick:e=>e.stopPropagation()},
-        React.createElement('div',{className:'modal-title'},'Enter bill — '+displayName(billItem)),
+        React.createElement('div',{className:'modal-title'},(billForm.editId?'Edit bill — ':'Enter bill — ')+displayName(billItem)),
         React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:14,lineHeight:1.6}},billItem.payee+' · '+billItem.frequency+' · saved as this payee’s invoice in Vendor Sheet (for payment) and spread over the months it covers on the P&L.'),
         React.createElement('div',{style:{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',background:'var(--bg3)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12}},
           React.createElement('input',{type:'file',accept:'image/*,.pdf',id:'re-bill-read',style:{display:'none'},onChange:async e=>{
@@ -957,7 +1012,7 @@ function RecurringExpensesSheet({salon}={}){
             billForm.attachment&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setBillForm(f=>({...f,attachment:null}))},'✕'))),
         React.createElement('div',{className:'modal-actions'},
           React.createElement('button',{className:'btn btn-ghost',onClick:()=>setBillItem(null)},'Cancel'),
-          React.createElement('button',{className:'btn btn-primary',onClick:saveBill},'Save bill'))
+          React.createElement('button',{className:'btn btn-primary',onClick:saveBill},billForm.editId?'Save changes':'Save bill'))
       )
     ),
     showDelete&&(()=>{

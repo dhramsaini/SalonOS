@@ -424,6 +424,10 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
   period — openEnterBill(it,period)) and a banner listing all pending bills at the top of Recurring Expenses.
   Electricity items: it.payUrl (https:// added if missing) + it.consumerNo; row button "💳 Pay online ↗" (new tab,
   copies the consumer no.).
+· (v2026.10.01.44) 📒 Register: estimates ✏ (it.estimateOverrides {'YYYY-MM': ₹}, used by recurringEstimateFor →
+  claimed/adjustments follow), 🗑 (0 = no provision), ↺ (automatic). "Bills entered" list with ✏ Edit (openEditBill →
+  Enter bill window in edit mode, keeps id/enteredAt/non-TDS payments, TDS line recomputed) and 🗑 Delete (blocked if
+  payments other than TDS exist; also removes it from Vendor Sheet). Tests 105.
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

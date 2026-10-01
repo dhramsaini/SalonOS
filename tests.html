@@ -382,6 +382,14 @@
         eq('Booked in October: Aug and Sep keep estimates, October carries both adjustments',[v(7),v(8),v(9)],[2000,2000,3500]);
       }catch(err){results.push({name:'Booking month',ok:false,got:String(err&&err.message||err),want:'no error'});}
       try{
+        // Estimate set by hand in the register: August ₹1,05,000 instead of the July bill's ₹1,00,000.
+        const it={...loadRecurringExpenses(910)[0],estimateOverrides:{'2026-08':105000}};
+        const aug=recurringAccrualRow(it,910,2026*12+7),sep=recurringAccrualRow(it,910,2026*12+8);
+        eq('Manual estimate: August claims it, September adjusts against it',[aug.estimated,aug.manual,aug.recognized,sep.adjustmentsHere.map(x=>x.diff)],[105000,true,105000,[5000]]);
+        const it0={...it,estimateOverrides:{'2026-08':0}};
+        eq('Estimate removed (0): no provision in August, the full August bill is adjusted in September',[recurringAccrualRow(it0,910,2026*12+7).recognized,recurringAccrualRow(it0,910,2026*12+8).adjustmentsHere.map(x=>x.diff)],[0,[110000]]);
+      }catch(err){results.push({name:'Manual estimate',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
         const mod={};new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});
