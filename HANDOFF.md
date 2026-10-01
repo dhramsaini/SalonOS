@@ -438,6 +438,10 @@ WhatsApp Business API number (build now, switches on when Meta keys are added), 
 · (v2026.10.01.47) OT working moved to Incentive Rules & Settings → "Overtime (OT) Working" (Applicable, Normal Hrs/Day,
   OT Hrs, working, OT Amount, totals); the main sheet shows only "OT Inc" after Mgr Inc (header opens Settings). Exports
   (CSV/print/Excel) carry only OT Inc; Excel Total Incentive formula still includes it.
+· (v2026.10.01.48) Incentive Working "📤 Share Workings": picker — All / Selected employees (row ticks) and which
+  workings (summary, service, membership, product, manager, OT, deductions, employee-wise statement); builds sections
+  from incData (wkSections → HTML with h3 per section / sheet rows split by blank rows) into ShareReportButton
+  (PDF/Word/Excel/HTML, DRAFT/FINAL watermark).
 4 ☐ Billing/CRM as the sales source (Billing → Daily Sales), memberships/packages, win-back list, online booking page.
 5 ☐ Compliance: GSTR-2B reconciliation, TDS working/challan, Tally two-way check, audit-trail report.
 6 ☐ Foundation: Daily Sales → proper table (dual-write + parity), staging copy, backup file to Google Drive.

@@ -545,6 +545,46 @@ function IncentiveWorkingCore({period,salon,user}={}){
       }),
       iwTotalRaw];
   };
+  // ── 📤 Share Workings — all or selected employees, and any of the workings behind the incentive ──
+  const [shareWk,setShareWk]=useState(null); // null | {who:'all'|'selected', parts:{…}}
+  const WK_PARTS=[['summary','Incentive summary (main sheet)'],['service','Service incentive working'],['membership','Membership incentive working'],
+    ['product','Product incentive working'],['manager','Manager incentive'],['ot','Overtime (OT) working'],['deductions','Deductions (penalty, advance)'],['statement','Employee-wise statement']];
+  const wkPeople=()=>shareWk&&shareWk.who==='selected'&&iwSelectedIds.size?incData.filter(e=>iwSelectedIds.has(e.id)):incData;
+  const wkSections=()=>{
+    const P=(shareWk&&shareWk.parts)||{},list=wkPeople(),out=[];
+    const n=v=>Math.round(Number(v)||0);
+    const add=(title,head,rows,total)=>out.push({title,head,rows,total});
+    if(P.summary)add('Incentive summary',['Employee','Designation','Salary','Svc Inc','Mem Inc','Prod Inc','Mgr Inc',...(cols.ot?['OT Inc']:[]),'Penalty','Advance Adj.','Total Incentive'],
+      list.map(e=>[e.name,e.desig,n(e.salary),n(e.svcIncAmt),n(e.memIncAmt),n(e.prodIncAmt),n(e.mgrIncAmt),...(cols.ot?[n(e.otAmt)]:[]),n(e.penaltyAmt),n(e.advAdj),n(e.totalInc)]),
+      ['Total','',...['salary','svcIncAmt','memIncAmt','prodIncAmt','mgrIncAmt',...(cols.ot?['otAmt']:[]),'penaltyAmt','advAdj','totalInc'].map(k=>list.reduce((x,e)=>x+n(e[k]),0))]);
+    if(P.service)add('Service incentive working',['Employee','Salary','Service Target','Service Achieved','Achievement (× salary)','Rate %','Service Incentive'],
+      list.map(e=>[e.name,n(e.salary),n(e.svcTarget),n(e.svcActual),formatTimes(e.svcTimesRaw,timesFmt),e.svcRateUsed!=null?e.svcRateUsed:'',n(e.svcIncAmt)]),
+      ['Total','',list.reduce((x,e)=>x+n(e.svcTarget),0),list.reduce((x,e)=>x+n(e.svcActual),0),'','',list.reduce((x,e)=>x+n(e.svcIncAmt),0)]);
+    if(P.membership&&cols.membership)add('Membership incentive working',['Employee','Membership Target','Membership Achieved','Achievement (× salary)','Rate %','Membership Incentive'],
+      list.map(e=>[e.name,n(e.memTarget),n(e.memActual),formatTimes(e.memTimesRaw,timesFmt),e.memRateUsed!=null?e.memRateUsed:'',n(e.memIncAmt)]),
+      ['Total',list.reduce((x,e)=>x+n(e.memTarget),0),list.reduce((x,e)=>x+n(e.memActual),0),'','',list.reduce((x,e)=>x+n(e.memIncAmt),0)]);
+    if(P.product&&cols.product)add('Product incentive working',['Employee','Product Target','Product Achieved','Achievement (× salary)','Rate %','Product Incentive'],
+      list.map(e=>[e.name,n(e.prodTarget),n(e.prodActual),formatTimes(e.prodTimesRaw,timesFmt),e.prodRateUsed!=null?e.prodRateUsed:'',n(e.prodIncAmt)]),
+      ['Total',list.reduce((x,e)=>x+n(e.prodTarget),0),list.reduce((x,e)=>x+n(e.prodActual),0),'','',list.reduce((x,e)=>x+n(e.prodIncAmt),0)]);
+    if(P.manager){const m=list.filter(e=>n(e.mgrIncAmt)>0);add('Manager incentive',['Employee','Designation','Manager Incentive'],m.map(e=>[e.name,e.desig,n(e.mgrIncAmt)]),['Total','',m.reduce((x,e)=>x+n(e.mgrIncAmt),0)]);}
+    if(P.ot&&cols.ot){const o=list.filter(e=>e.otApplicable);add('Overtime (OT) working — Salary ÷ days ÷ normal hours × OT hours',['Employee','Salary','Days in Month','Normal Hrs/Day','OT Hrs','Working','OT Amount'],
+      o.map(e=>[e.name,n(e.salary),e.otDays,e.otNormalHours||'',e.otHours||'',e.otAmt>0?n(e.salary)+' ÷ '+e.otDays+' ÷ '+e.otNormalHours+' × '+e.otHours:'',n(e.otAmt)]),
+      ['Total','','','',o.reduce((x,e)=>x+(e.otAmt>0?Number(e.otHours)||0:0),0),'',o.reduce((x,e)=>x+n(e.otAmt),0)]);}
+    if(P.deductions)add('Deductions',['Employee','Non-Performance Penalty','Advance Adjustment','Total Deducted'],
+      list.map(e=>[e.name,n(e.penaltyAmt),n(e.advAdj),n(e.penaltyAmt)+n(e.advAdj)]),
+      ['Total',list.reduce((x,e)=>x+n(e.penaltyAmt),0),list.reduce((x,e)=>x+n(e.advAdj),0),list.reduce((x,e)=>x+n(e.penaltyAmt)+n(e.advAdj),0)]);
+    if(P.statement)list.forEach(e=>add('Statement — '+e.name+' ('+e.desig+')',['Component','Amount'],
+      [['Salary',n(e.salary)],['Service Incentive',n(e.svcIncAmt)],...(cols.membership?[['Membership Incentive',n(e.memIncAmt)]]:[]),...(cols.product?[['Product Incentive',n(e.prodIncAmt)]]:[]),
+       ...(n(e.mgrIncAmt)?[['Manager Incentive',n(e.mgrIncAmt)]]:[]),...(cols.ot&&n(e.otAmt)?[['Overtime ('+e.otHours+' hrs)',n(e.otAmt)]]:[]),
+       ...(n(e.penaltyAmt)?[['Less: Non-Performance Penalty',-n(e.penaltyAmt)]]:[]),...(n(e.advAdj)?[['Less: Advance Adjustment',-n(e.advAdj)]]:[])],
+      ['Net Incentive Payable',n(e.totalInc)]));
+    return out;
+  };
+  const wkTitle=()=>'Incentive Workings — '+MONTHS[selMonth]+' '+selYear+(salon?' — '+salon.name.split('—')[0].trim():'')+(shareWk&&shareWk.who==='selected'&&iwSelectedIds.size?' ('+iwSelectedIds.size+' selected)':'');
+  const wkBodyHtml=()=>wkSections().map(sec=>'<h3>'+sec.title+'</h3><table><thead><tr>'+sec.head.map((h,i)=>'<th'+(i?' class="num"':'')+'>'+h+'</th>').join('')+'</tr></thead><tbody>'
+    +sec.rows.map(r=>'<tr>'+r.map((c,i)=>'<td'+(i?' class="num"':'')+'>'+(typeof c==='number'?rupee(c):c)+'</td>').join('')+'</tr>').join('')
+    +(sec.total?'<tr class="total-row">'+sec.total.map((c,i)=>'<td'+(i?' class="num"':'')+'>'+(typeof c==='number'?rupee(c):c)+'</td>').join('')+'</tr>':'')+'</tbody></table>').join('');
+  const wkSheetRows=()=>{const out=[];wkSections().forEach((sec,i)=>{if(i)out.push([]);out.push([sec.title]);out.push(sec.head);sec.rows.forEach(r=>out.push(r));if(sec.total)out.push(sec.total);});return out;};
   const iwBuildExcelBlob=()=>buildIncentiveWorkingExcelBlob({title:iwReportTitle,incData:exportIncData,targetMult,includeBankDetails:cols.bankDetails,includeOT:cols.ot});
 
   // ── Generate Incentive — same explicit-action pattern as Salary Working's "Generate Salary"
@@ -576,6 +616,8 @@ function IncentiveWorkingCore({period,salon,user}={}){
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openIwGenerate},'🧮 Generate Incentive'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowSettings(true)},'⚙ Incentive Rules & Settings'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},onClick:exportExcel},iwSelectedIds.size>0?'⬇ Export Selected ('+iwSelectedIds.size+')':'⬇ Export Excel'),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Share the incentive workings — all or selected employees, and any of the workings',
+          onClick:()=>setShareWk({who:iwSelectedIds.size?'selected':'all',parts:{summary:true,service:true,membership:!!cols.membership,product:!!cols.product,manager:true,ot:!!cols.ot,deductions:true,statement:false}})},'📤 Share Workings'),
         React.createElement(ShareReportButton,{title:iwReportTitle,subtitle:'Incentive Working',getBodyHtml:iwReportBodyHtml,getSheetRows:iwReportSheetRows,buildExcelBlob:iwBuildExcelBlob,landscape:true,watermark:iwMonthLocked?'FINAL':'DRAFT'}),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:doRefresh},'⟳ Refresh'),
         !iwMonthLocked&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:lockIWMonth},'🔒 Lock Incentive Working'),
@@ -622,6 +664,27 @@ function IncentiveWorkingCore({period,salon,user}={}){
       React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto',whiteSpace:'nowrap'},onClick:unlockIWMonth},'🔓 Unlock Incentive Working')
     ),
 
+    shareWk&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShareWk(null)},
+      React.createElement('div',{className:'modal',style:{width:520,maxWidth:'96vw'},onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-title'},'Share incentive workings — '+MONTHS[selMonth]+' '+selYear),
+        React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6}},'Employees'),
+        React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:6,marginBottom:14}},
+          React.createElement('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:13,cursor:'pointer'}},React.createElement('input',{type:'radio',name:'wkWho',checked:shareWk.who==='all',onChange:()=>setShareWk(w=>({...w,who:'all'}))}),'All employees ('+incData.length+')'),
+          React.createElement('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:13,cursor:iwSelectedIds.size?'pointer':'not-allowed',color:iwSelectedIds.size?'var(--text)':'var(--text3)'}},
+            React.createElement('input',{type:'radio',name:'wkWho',disabled:!iwSelectedIds.size,checked:shareWk.who==='selected',onChange:()=>setShareWk(w=>({...w,who:'selected'}))}),
+            iwSelectedIds.size?'Selected employees ('+iwSelectedIds.size+')':'Selected employees — tick employees in the table first')),
+        React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:6}},
+          React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.05em'}},'Workings to include'),
+          React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:10.5,padding:'1px 8px',marginLeft:'auto'},onClick:()=>setShareWk(w=>({...w,parts:Object.fromEntries(WK_PARTS.map(([k])=>[k,true]))}))},'All'),
+          React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:10.5,padding:'1px 8px'},onClick:()=>setShareWk(w=>({...w,parts:{}}))},'None')),
+        React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:16}},
+          WK_PARTS.filter(([k])=>!((k==='membership'&&!cols.membership)||(k==='product'&&!cols.product)||(k==='ot'&&!cols.ot))).map(([k,l])=>React.createElement('label',{key:k,style:{display:'flex',gap:8,alignItems:'center',fontSize:12.5,cursor:'pointer'}},
+            React.createElement('input',{type:'checkbox',checked:!!shareWk.parts[k],onChange:e=>setShareWk(w=>({...w,parts:{...w.parts,[k]:e.target.checked}}))}),l))),
+        React.createElement('div',{className:'modal-actions'},
+          React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShareWk(null)},'Cancel'),
+          Object.values(shareWk.parts).some(Boolean)
+            ?React.createElement(ShareReportButton,{title:wkTitle(),subtitle:'Incentive Workings',getBodyHtml:wkBodyHtml,getSheetRows:wkSheetRows,landscape:true,watermark:iwMonthLocked?'FINAL':'DRAFT'})
+            :React.createElement('span',{style:{fontSize:12,color:'var(--text3)'}},'Tick at least one working')))),
     showSettings&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowSettings(false)},
       React.createElement('div',{className:'modal',style:{width:900,maxWidth:'95vw'},onClick:e=>e.stopPropagation()},
         React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}},
