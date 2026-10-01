@@ -4,6 +4,7 @@ function OutletDashboard({salon,period,onNavTab}){
   const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const MONTH_FULL=['January','February','March','April','May','June','July','August','September','October','November','December'];
   const today=new Date();
+  const isRest=isRestaurantOutlet(sid);
   const _initCal=periodToCalendar(period);
   const [view,setView]=useState('monthly'); // 'monthly' | 'compare' | 'pl'
   const [selMonth,setSelMonth]=useState(_initCal?_initCal.month:today.getMonth());
@@ -22,8 +23,9 @@ function OutletDashboard({salon,period,onNavTab}){
     const{fy,mi}=calToFYMI(y,m);
     const d=plBuild(sid,fy,mi);
     const cal=periodToCalendar({fy,mi});
-    const revLines=d.sections[0].lines; // Cash Sale, Card Sale, UPI Sale, Other Income
-    const cash=revLines[0].amt,card=revLines[1].amt,upi=revLines[2].amt,otherInc=revLines[3].amt;
+    const lineAmt=(si,name)=>{const l=d.sections[si].lines.find(x=>x.name===name);return l?l.amt:0;};
+    const cash=lineAmt(0,'Revenue from Operations - Cash Sale'),card=lineAmt(0,'Revenue from Operations - Card Sale'),
+      upi=lineAmt(0,'Revenue from Operations - UPI Sale'),otherInc=lineAmt(0,'Other Income');
     const emps=cal?getEmployeesForMonth(cal.year,cal.month,sid):[];
     const activeEmps=emps.filter(e=>e.status==='Active');
     const sw=cal?swWorkingsFor(sid,cal.year,cal.month):[];
@@ -38,7 +40,26 @@ function OutletDashboard({salon,period,onNavTab}){
     const totalRev=d.revenue;
     const totalExp=d.direct+d.opex;
     const netProfit=d.pbt;
-    return{cash,card,upi,otherInc,totalRev,salaries,rent,elec,cosmetics,mktg,rMaint,misc,incentives,totalExp,netProfit,
+    // Restaurant outlets: their own revenue and expense lines (Swiggy, Zomato, bar, service charge;
+    // food / liquor cost, packaging & gas, aggregator commission). "Other operating expenses" is
+    // whatever is left, so the items always add up to Total Expenses.
+    let revItems=null,expItems=null,mixItems=null;
+    if(isRest){
+      const ro=outletSettings(sid);
+      const swiggy=lineAmt(0,'Revenue from Operations - Swiggy'),zomato=lineAmt(0,'Revenue from Operations - Zomato'),
+        barSale=lineAmt(0,'Revenue from Operations - Bar Sale'),svc=lineAmt(0,'Service Charge Collected');
+      revItems=[['Cash Sale',cash,'var(--green)'],['Card Sale',card,'var(--blue)'],['UPI Sale',upi,'var(--purple)'],['Swiggy',swiggy,'var(--orange)'],['Zomato',zomato,'var(--red)'],
+        ...(ro.servesLiquor?[['Bar Sale',barSale,'var(--amber,var(--accent))']]:[]),...(ro.serviceChargeApplicable?[['Service Charge',svc,'var(--teal)']]:[]),['Other Income',otherInc,'var(--text3)']];
+      const svcStaff=lineAmt(2,'Service Charge to Staff');
+      const food=lineAmt(1,'Food Cost (Consumption)'),liquor=lineAmt(1,'Liquor Cost'),packGas=lineAmt(1,'Packaging Material')+lineAmt(1,'Gas / LPG');
+      const agg=findOpex('Aggregator Commission & Charges');
+      const listed=[['Staff Salaries',d.sections[2].tot-svcStaff,'var(--red)'],...(ro.serviceChargeApplicable?[['Service Charge to Staff',svcStaff,'var(--orange)']]:[]),
+        ['Food Cost',food,'var(--blue)'],...(ro.servesLiquor?[['Liquor Cost',liquor,'var(--purple)']]:[]),['Packaging & Gas',packGas,'var(--teal)'],
+        ['Rent',rent,'var(--purple)'],['Electricity',elec,'var(--amber,var(--accent))'],['Aggregator Commission',agg,'var(--orange)'],['Marketing',mktg,'var(--teal)']];
+      expItems=[...listed,['Other Operating Expenses',totalExp-listed.reduce((t,x)=>t+x[1],0),'var(--text3)']];
+      mixItems=[['Cash',cash,'var(--accent)'],['Card',card,'var(--blue)'],['UPI',upi,'var(--teal)'],['Swiggy',swiggy,'var(--orange)'],['Zomato',zomato,'var(--red)'],...(ro.servesLiquor?[['Bar',barSale,'var(--purple)']]:[])];
+    }
+    return{cash,card,upi,otherInc,totalRev,salaries,rent,elec,cosmetics,mktg,rMaint,misc,incentives,totalExp,netProfit,revItems,expItems,mixItems,
       cashColl:cash+card+upi,staff:activeEmps.length,attPct,gm:totalRev?Math.round((netProfit/totalRev)*100):0};
   };
 
@@ -46,7 +67,11 @@ function OutletDashboard({salon,period,onNavTab}){
   const prev=monthData((selMonth-1+12)%12,selMonth===0?selYear-1:selYear);
   const ytd12=Array.from({length:12},(_,i)=>{const m=(today.getMonth()-11+i+12)%12;const y=today.getFullYear()+(today.getMonth()-11+i<0?-1:0);return monthData(m,y);});
   const dashReportTitle='Outlet Dashboard — '+(salon?salon.name.split('—')[0].trim():'Outlet')+' — '+MONTH_FULL[selMonth]+' '+selYear;
-  const dashReportRows=[
+  const dashReportRows=isRest?[
+    ...cur.revItems.map(x=>[x[0],x[1]]),['Total Revenue',cur.totalRev],
+    ...cur.expItems.map(x=>[x[0],x[1]]),['Total Expenses',cur.totalExp],
+    ['Net Profit',cur.netProfit],['Net Margin %',cur.gm+'%'],['Active Staff',cur.staff],['Attendance %',cur.attPct+'%']
+  ]:[
     ['Cash Sale',cur.cash],['Card Sale',cur.card],['UPI Sale',cur.upi],['Other Income',cur.otherInc],['Total Revenue',cur.totalRev],
     ['Salaries',cur.salaries],['Rent',cur.rent],['Electricity',cur.elec],['Cosmetics/Backbar',cur.cosmetics],['Marketing',cur.mktg],['Repair & Maintenance',cur.rMaint],['Incentives',cur.incentives],['Miscellaneous',cur.misc],['Total Expenses',cur.totalExp],
     ['Net Profit',cur.netProfit],['Net Margin %',cur.gm+'%'],
@@ -170,10 +195,10 @@ function OutletDashboard({salon,period,onNavTab}){
         ),
         // Collection mix — animated donut
         React.createElement('div',{className:'card'},
-          React.createElement('div',{className:'card-title'},'Collection Mix — '+MONTH_FULL[selMonth]),
+          React.createElement('div',{className:'card-title'},(isRest?'Sales Mix — ':'Collection Mix — ')+MONTH_FULL[selMonth]),
           React.createElement(DynamicDonutChart,{
-            centerLabel:'Total Collected',
-            segments:[
+            centerLabel:isRest?'Total Sales':'Total Collected',
+            segments:isRest?cur.mixItems.map(x=>({label:x[0],value:x[1],color:x[2]})):[
               {label:'Cash',value:cur.cash,color:'var(--accent)'},
               {label:'Card',value:cur.card,color:'var(--blue)'},
               {label:'UPI',value:cur.upi,color:'var(--teal)'}
@@ -186,10 +211,11 @@ function OutletDashboard({salon,period,onNavTab}){
       React.createElement('div',{className:'grid2'},
         React.createElement('div',{className:'card'},
           React.createElement('div',{className:'card-title'},'Revenue Breakdown'),
-          React.createElement(SectionBar,{label:'Cash Sale',a:cur.cash,colorA:'var(--green)'}),
-          React.createElement(SectionBar,{label:'Card Sale',a:cur.card,colorA:'var(--blue)'}),
-          React.createElement(SectionBar,{label:'UPI Sale',a:cur.upi,colorA:'var(--purple)'}),
-          React.createElement(SectionBar,{label:'Other Income',a:cur.otherInc,colorA:'var(--teal)'}),
+          ...(isRest?cur.revItems.map(x=>React.createElement(SectionBar,{key:x[0],label:x[0],a:x[1],colorA:x[2]})):[
+          React.createElement(SectionBar,{key:'c',label:'Cash Sale',a:cur.cash,colorA:'var(--green)'}),
+          React.createElement(SectionBar,{key:'d',label:'Card Sale',a:cur.card,colorA:'var(--blue)'}),
+          React.createElement(SectionBar,{key:'u',label:'UPI Sale',a:cur.upi,colorA:'var(--purple)'}),
+          React.createElement(SectionBar,{key:'o',label:'Other Income',a:cur.otherInc,colorA:'var(--teal)'})]),
           React.createElement('div',{style:{borderTop:'2px solid var(--accent)',paddingTop:8,marginTop:8,display:'flex',justifyContent:'space-between'}},
             React.createElement('span',{style:{fontWeight:700,color:'var(--text)'}},'Total Revenue'),
             React.createElement('span',{style:{fontWeight:700,fontSize:15,color:'var(--green)'}},rupee(cur.totalRev))
@@ -197,13 +223,14 @@ function OutletDashboard({salon,period,onNavTab}){
         ),
         React.createElement('div',{className:'card'},
           React.createElement('div',{className:'card-title'},'Expense Breakdown'),
-          React.createElement(SectionBar,{label:'Staff Salaries',a:cur.salaries,colorA:'var(--red)'}),
-          React.createElement(SectionBar,{label:'Incentives',a:cur.incentives,colorA:'var(--orange)'}),
-          React.createElement(SectionBar,{label:'Rent',a:cur.rent,colorA:'var(--purple)'}),
-          React.createElement(SectionBar,{label:'Electricity',a:cur.elec,colorA:'var(--amber,var(--accent))'}),
-          React.createElement(SectionBar,{label:'Cosmetics / Products',a:cur.cosmetics,colorA:'var(--blue)'}),
-          React.createElement(SectionBar,{label:'Marketing',a:cur.mktg,colorA:'var(--teal)'}),
-          React.createElement(SectionBar,{label:'R&M + Misc',a:cur.rMaint+cur.misc,colorA:'var(--text3)'}),
+          ...(isRest?cur.expItems.map(x=>React.createElement(SectionBar,{key:x[0],label:x[0],a:x[1],colorA:x[2]})):[
+          React.createElement(SectionBar,{key:'s',label:'Staff Salaries',a:cur.salaries,colorA:'var(--red)'}),
+          React.createElement(SectionBar,{key:'i',label:'Incentives',a:cur.incentives,colorA:'var(--orange)'}),
+          React.createElement(SectionBar,{key:'r',label:'Rent',a:cur.rent,colorA:'var(--purple)'}),
+          React.createElement(SectionBar,{key:'e',label:'Electricity',a:cur.elec,colorA:'var(--amber,var(--accent))'}),
+          React.createElement(SectionBar,{key:'c',label:'Cosmetics / Products',a:cur.cosmetics,colorA:'var(--blue)'}),
+          React.createElement(SectionBar,{key:'m',label:'Marketing',a:cur.mktg,colorA:'var(--teal)'}),
+          React.createElement(SectionBar,{key:'x',label:'R&M + Misc',a:cur.rMaint+cur.misc,colorA:'var(--text3)'})]),
           React.createElement('div',{style:{borderTop:'2px solid var(--red)',paddingTop:8,marginTop:8,display:'flex',justifyContent:'space-between'}},
             React.createElement('span',{style:{fontWeight:700,color:'var(--text)'}},'Total Expenses'),
             React.createElement('span',{style:{fontWeight:700,fontSize:15,color:'var(--red)'}},rupee(cur.totalExp))
@@ -259,10 +286,11 @@ function OutletDashboard({salon,period,onNavTab}){
         ),
         React.createElement('div',{style:{marginBottom:8,paddingBottom:8,borderBottom:'1px solid var(--border)'}},
           React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--green)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}},'Revenue'),
-          React.createElement(CmpRow,{label:'Cash Sale',a:cmpA.cash,b:cmpB.cash}),
-          React.createElement(CmpRow,{label:'Card Sale',a:cmpA.card,b:cmpB.card}),
-          React.createElement(CmpRow,{label:'UPI Sale',a:cmpA.upi,b:cmpB.upi}),
-          React.createElement(CmpRow,{label:'Other Income',a:cmpA.otherInc,b:cmpB.otherInc}),
+          ...(isRest?cmpB.revItems.map((x,i)=>React.createElement(CmpRow,{key:x[0],label:x[0],a:(cmpA.revItems[i]||[])[1]||0,b:x[1]})):[
+          React.createElement(CmpRow,{key:'c',label:'Cash Sale',a:cmpA.cash,b:cmpB.cash}),
+          React.createElement(CmpRow,{key:'d',label:'Card Sale',a:cmpA.card,b:cmpB.card}),
+          React.createElement(CmpRow,{key:'u',label:'UPI Sale',a:cmpA.upi,b:cmpB.upi}),
+          React.createElement(CmpRow,{key:'o',label:'Other Income',a:cmpA.otherInc,b:cmpB.otherInc})]),
           React.createElement('div',{className:'stat-row',style:{fontWeight:700}},
             React.createElement('span',{style:{fontSize:13,color:'var(--text)',flex:1}},'Total Revenue'),
             React.createElement('span',{style:{color:'var(--green)',minWidth:110,textAlign:'right'}},rupee(cmpA.totalRev)),
@@ -272,13 +300,14 @@ function OutletDashboard({salon,period,onNavTab}){
         ),
         React.createElement('div',{style:{marginBottom:8,paddingBottom:8,borderBottom:'1px solid var(--border)'}},
           React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--red)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}},'Expenses'),
-          React.createElement(CmpRow,{label:'Staff Salaries',a:cmpA.salaries,b:cmpB.salaries,isExpense:true}),
-          React.createElement(CmpRow,{label:'Incentives',a:cmpA.incentives,b:cmpB.incentives,isExpense:true}),
-          React.createElement(CmpRow,{label:'Rent',a:cmpA.rent,b:cmpB.rent,isExpense:true}),
-          React.createElement(CmpRow,{label:'Electricity',a:cmpA.elec,b:cmpB.elec,isExpense:true}),
-          React.createElement(CmpRow,{label:'Products/Cosmetics',a:cmpA.cosmetics,b:cmpB.cosmetics,isExpense:true}),
-          React.createElement(CmpRow,{label:'Marketing',a:cmpA.mktg,b:cmpB.mktg,isExpense:true}),
-          React.createElement(CmpRow,{label:'Repair & Misc',a:cmpA.rMaint+cmpA.misc,b:cmpB.rMaint+cmpB.misc,isExpense:true}),
+          ...(isRest?cmpB.expItems.map((x,i)=>React.createElement(CmpRow,{key:x[0],label:x[0],a:(cmpA.expItems[i]||[])[1]||0,b:x[1],isExpense:true})):[
+          React.createElement(CmpRow,{key:'s',label:'Staff Salaries',a:cmpA.salaries,b:cmpB.salaries,isExpense:true}),
+          React.createElement(CmpRow,{key:'i',label:'Incentives',a:cmpA.incentives,b:cmpB.incentives,isExpense:true}),
+          React.createElement(CmpRow,{key:'r',label:'Rent',a:cmpA.rent,b:cmpB.rent,isExpense:true}),
+          React.createElement(CmpRow,{key:'e',label:'Electricity',a:cmpA.elec,b:cmpB.elec,isExpense:true}),
+          React.createElement(CmpRow,{key:'c',label:'Products/Cosmetics',a:cmpA.cosmetics,b:cmpB.cosmetics,isExpense:true}),
+          React.createElement(CmpRow,{key:'m',label:'Marketing',a:cmpA.mktg,b:cmpB.mktg,isExpense:true}),
+          React.createElement(CmpRow,{key:'x',label:'Repair & Misc',a:cmpA.rMaint+cmpA.misc,b:cmpB.rMaint+cmpB.misc,isExpense:true})]),
           React.createElement('div',{className:'stat-row',style:{fontWeight:700}},
             React.createElement('span',{style:{fontSize:13,color:'var(--text)',flex:1}},'Total Expenses'),
             React.createElement('span',{style:{color:'var(--red)',minWidth:110,textAlign:'right'}},rupee(cmpA.totalExp)),
@@ -306,7 +335,7 @@ function OutletDashboard({salon,period,onNavTab}){
       React.createElement('div',{className:'grid2'},
         React.createElement('div',{className:'card',style:{borderLeft:'3px solid var(--green)'}},
           React.createElement('div',{style:{fontWeight:700,fontSize:14,color:'var(--green)',marginBottom:12}},'INCOME — '+MONTH_FULL[selMonth]+' '+selYear),
-          [['Cash Sale',cur.cash],['Card Sale',cur.card],['UPI Sale',cur.upi],['Other Income',cur.otherInc]].map(([k,v])=>
+          (isRest?cur.revItems:[['Cash Sale',cur.cash],['Card Sale',cur.card],['UPI Sale',cur.upi],['Other Income',cur.otherInc]]).map(([k,v])=>
             React.createElement('div',{key:k,className:'stat-row'},
               React.createElement('span',{style:{fontSize:13,color:'var(--text2)'}},k),
               React.createElement('div',{style:{textAlign:'right'}},
@@ -322,7 +351,7 @@ function OutletDashboard({salon,period,onNavTab}){
         ),
         React.createElement('div',{className:'card',style:{borderLeft:'3px solid var(--red)'}},
           React.createElement('div',{style:{fontWeight:700,fontSize:14,color:'var(--red)',marginBottom:12}},'EXPENSES — '+MONTH_FULL[selMonth]+' '+selYear),
-          [['Staff Salaries',cur.salaries],['Incentive Payments',cur.incentives],['Rent',cur.rent],['Electricity',cur.elec],['Cosmetics/Products',cur.cosmetics],['Marketing',cur.mktg],['Repair & Maintenance',cur.rMaint],['Miscellaneous',cur.misc]].map(([k,v])=>
+          (isRest?cur.expItems:[['Staff Salaries',cur.salaries],['Incentive Payments',cur.incentives],['Rent',cur.rent],['Electricity',cur.elec],['Cosmetics/Products',cur.cosmetics],['Marketing',cur.mktg],['Repair & Maintenance',cur.rMaint],['Miscellaneous',cur.misc]]).map(([k,v])=>
             React.createElement('div',{key:k,className:'stat-row'},
               React.createElement('span',{style:{fontSize:13,color:'var(--text2)'}},k),
               React.createElement('div',{style:{textAlign:'right'}},
