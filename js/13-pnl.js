@@ -1628,6 +1628,22 @@ function CollectionComparisonSheet({salon,period}={}){
   },[period&&period.mi,period&&period.fy]);
   const [onlyDiff,setOnlyDiff]=useState(false);
   const sid=salon?.id;
+  // Reason for the difference, typed per day — saved per outlet. Read-only once the month's P&L
+  // is Final or the month is locked.
+  const reasonKey=()=>outletKey('salonos_collection_cmp_reasons',sid);
+  const [reasons,setReasons]=useState(()=>{try{return JSON.parse(cachedLocalGet(reasonKey())||'{}')||{};}catch(e){return{};}});
+  useEffect(()=>{try{setReasons(JSON.parse(cachedLocalGet(reasonKey())||'{}')||{});}catch(e){setReasons({});}
+    // eslint-disable-next-line
+  },[sid]);
+  const fymi=calToFYMI(cal.year,cal.month);
+  const reasonLocked=isPnlFinal(sid,fymi.fy,fymi.mi)||isMonthLockedFor(sid,cal.year,cal.month);
+  const saveReason=(iso,text)=>{
+    const v=String(text||'').trim();
+    if((reasons[iso]||'')===v)return;
+    if(reasonLocked){toast('This month is locked — the reason can\u2019t be changed.','error');return;}
+    const next={...reasons};if(v)next[iso]=v;else delete next[iso];
+    setReasons(next);safeLocalSet(reasonKey(),JSON.stringify(next));
+  };
   const all=collectionComparisonRowsFor(sid,cal.year,cal.month);
   const isDiff=r=>Math.abs(r.ct-r.et)>0.5||Math.abs(r.c.cash-r.e.cash)>0.5||Math.abs(r.c.card-r.e.card)>0.5||Math.abs(r.c.upi-r.e.upi)>0.5;
   const todayIso=localIsoOf(today);
@@ -1644,9 +1660,9 @@ function CollectionComparisonSheet({salon,period}={}){
   const withKeys=list=>list.map((x,i)=>React.cloneElement(x,{key:i}));
   const exportXlsx=async()=>{
     try{
-      const hdr=['Date','Cash – CRADLE','Cash – Daily Sales','Cash Diff','Card – CRADLE','Card – Daily Sales','Card Diff','UPI – CRADLE','UPI + Luzo – Daily Sales','UPI Diff','Total – CRADLE','Total – Daily Sales','Total Diff'];
-      const body=rows.map(r=>[fmtD(r.iso),r.c.cash,r.e.cash,r.e.cash-r.c.cash,r.c.card,r.e.card,r.e.card-r.c.card,r.c.upi,r.e.upi,r.e.upi-r.c.upi,r.ct,r.et,r.et-r.ct]);
-      const tot=['Total',T.cc,T.ec,T.ec-T.cc,T.cd,T.ed,T.ed-T.cd,T.cu,T.eu,T.eu-T.cu,T.ct,T.et,T.et-T.ct];
+      const hdr=['Date','Cash – CRADLE','Cash – Daily Sales','Cash Diff','Card – CRADLE','Card – Daily Sales','Card Diff','UPI – CRADLE','UPI + Luzo – Daily Sales','UPI Diff','Total – CRADLE','Total – Daily Sales','Total Diff','Reason for difference'];
+      const body=rows.map(r=>[fmtD(r.iso),r.c.cash,r.e.cash,r.e.cash-r.c.cash,r.c.card,r.e.card,r.e.card-r.c.card,r.c.upi,r.e.upi,r.e.upi-r.c.upi,r.ct,r.et,r.et-r.ct,reasons[r.iso]||'']);
+      const tot=['Total',T.cc,T.ec,T.ec-T.cc,T.cd,T.ed,T.ed-T.cd,T.cu,T.eu,T.eu-T.cu,T.ct,T.et,T.et-T.ct,''];
       const blob=await exportReportExcelBlob('Collection Comparison',[hdr,...body,tot]);
       const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;
       a.download='Collection_Comparison_'+(salon?salon.name.split('—')[0].trim().replace(/\s+/g,'_'):'Outlet')+'_'+MONTHS[cal.month]+'_'+cal.year+'.xlsx';a.click();URL.revokeObjectURL(url);
@@ -1675,17 +1691,26 @@ function CollectionComparisonSheet({salon,period}={}){
         h('table',null,
           h('thead',null,
             h('tr',null,h('th',{rowSpan:2},'Date'),
-              ...['Cash','Card','UPI (+ Luzo)','Total'].map(g=>h('th',{key:g,colSpan:3,style:{textAlign:'center'}},g))),
+              ...['Cash','Card','UPI (+ Luzo)','Total'].map(g=>h('th',{key:g,colSpan:3,style:{textAlign:'center'}},g)),
+              h('th',{key:'reason',rowSpan:2,style:{minWidth:220}},'Reason for difference')),
             h('tr',null,...withKeys([0,1,2,3].flatMap(()=>['CRADLE','Daily Sales','Diff'].map(t=>h('th',{style:{textAlign:'right',whiteSpace:'nowrap'}},t)))))),
           h('tbody',null,
-            rows.length===0?h('tr',null,h('td',{colSpan:13,style:{textAlign:'center',padding:28,color:'var(--text3)'}},onlyDiff?'Every day matches.':'Nothing imported or entered for this month yet.')):
+            rows.length===0?h('tr',null,h('td',{colSpan:14,style:{textAlign:'center',padding:28,color:'var(--text3)'}},onlyDiff?'Every day matches.':'Nothing imported or entered for this month yet.')):
             rows.map(r=>h('tr',{key:r.iso},
               h('td',{style:{whiteSpace:'nowrap'}},fmtD(r.iso),
                 !r.hasC&&r.hasD&&h('div',{style:{fontSize:10,color:'var(--orange)'}},'not in CRADLE import'),
                 r.hasC&&!r.hasD&&h('div',{style:{fontSize:10,color:'var(--orange)'}},'not entered in Daily Sales')),
-              ...withKeys([...group(r.c.cash,r.e.cash),...group(r.c.card,r.e.card,'rgba(47,95,224,0.04)'),...group(r.c.upi,r.e.upi),...group(r.ct,r.et,'rgba(47,95,224,0.07)')])))),
+              ...withKeys([...group(r.c.cash,r.e.cash),...group(r.c.card,r.e.card,'rgba(47,95,224,0.04)'),...group(r.c.upi,r.e.upi),...group(r.ct,r.et,'rgba(47,95,224,0.07)')]),
+              h('td',{style:{minWidth:220}},
+                reasonLocked?h('span',{style:{fontSize:12,color:reasons[r.iso]?'var(--text)':'var(--text3)'}},reasons[r.iso]||'—')
+                :h('input',{key:r.iso+'|'+(reasons[r.iso]||''),className:'form-control',defaultValue:reasons[r.iso]||'',
+                  placeholder:isDiff(r)?'Why is it different?':'',
+                  style:{fontSize:12,padding:'4px 8px',borderColor:isDiff(r)&&!reasons[r.iso]?'var(--orange)':undefined},
+                  onBlur:e=>saveReason(r.iso,e.target.value),
+                  onKeyDown:e=>{if(e.key==='Enter')e.target.blur();}}))))),
           h('tfoot',null,h('tr',{style:{fontWeight:700}},
-            h('td',null,'Total'),...withKeys([...group(T.cc,T.ec),...group(T.cd,T.ed),...group(T.cu,T.eu),...group(T.ct,T.et)])))))),
+            h('td',null,'Total'),...withKeys([...group(T.cc,T.ec),...group(T.cd,T.ed),...group(T.cu,T.eu),...group(T.ct,T.et)]),
+            h('td',{style:{fontSize:11.5,fontWeight:500,color:'var(--text3)'}},(()=>{const open=all.filter(r=>(r.hasC||r.hasD)&&isDiff(r)&&!reasons[r.iso]).length;return open?open+' difference'+(open===1?'':'s')+' without a reason':'All differences explained';})())))))),
     T.luzo>0&&h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'Daily Sales UPI includes Luzo Sale of '+m(T.luzo)+' for the month.'));
 }
 function OutletPnLSheet({salon,period}={}){
