@@ -436,6 +436,7 @@ function CollaborationReview({user,salons,submissions,setSubmissions}){
     setSubmissions(p=>[item,...p]);toast('Data submitted for review','success');
   };
   return React.createElement('div',{className:'fade-in'},
+    React.createElement(SummaryApprovalsPanel,{user,salons}),
     React.createElement('div',{className:'section-header'},React.createElement('div',null,React.createElement('div',{className:'page-title'},canReview?'Review Centre':'My Submissions'),React.createElement('div',{className:'page-sub'},canReview?'Review and approve data submitted by outlet users':'Submit outlet data and track review status')),!canReview&&React.createElement('button',{className:'btn btn-primary',onClick:createSubmission},'+ Submit Current Data')),
     React.createElement('div',{className:'grid4',style:{marginBottom:16}},['Submitted','Under Review','Approved','Returned'].map((st,i)=>React.createElement('div',{key:st,className:'metric-card '+['blue','amber','green','red'][i]},React.createElement('div',{className:'metric-label'},st),React.createElement('div',{className:'metric-value'},visible.filter(x=>x.status===st).length)))),
     React.createElement('div',{style:{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}},['All','Submitted','Under Review','Approved','Returned'].map(st=>React.createElement('button',{key:st,className:'btn '+(filter===st?'btn-primary':'btn-ghost')+' btn-sm',onClick:()=>setFilter(st)},st))),

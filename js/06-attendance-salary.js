@@ -2289,7 +2289,7 @@ function SalarySummaryApproval({salon,period,user}={}){
   const money=(n)=>'₹'+Math.round(n||0).toLocaleString('en-IN');
   const decide=(decision)=>{
     if(decision==='Returned'&&!remarks.trim()){toastErr('Add a remark explaining why this is being returned.');return;}
-    decideSummaryApproval(salon?.id,'salary',selYear,selMonth,decision,user?.name,remarks);
+    decideSummaryApproval(salon?.id,'salary',selYear,selMonth,decision,user?.name,remarks,user?.role);
     setTick(t=>t+1);setRemarks('');
     success(decision==='Approved'?'Salary Summary approved':'Salary Summary returned to sender');
   };
@@ -2317,6 +2317,7 @@ function SalarySummaryApproval({salon,period,user}={}){
         rec.status==='Approved'&&React.createElement('span',{style:{fontSize:11.5,color:'var(--text3)'}},'· Approved '+fmtDMY(rec.approvedAt.slice(0,10))+' by '+(rec.approvedBy||'—')),
         rec.status==='Returned'&&rec.remarks&&React.createElement('span',{style:{fontSize:11.5,color:'var(--red)'}},'· '+rec.remarks)
       ),
+      React.createElement('div',{style:{marginBottom:12}},React.createElement(SummaryReviewChips,{rec})),
       React.createElement('div',{className:'table-wrap'},
         React.createElement('table',null,
           React.createElement('thead',null,React.createElement('tr',null,
@@ -2368,7 +2369,7 @@ function IncentiveSummaryApproval({salon,period,user}={}){
   const money=(n)=>'₹'+Math.round(n||0).toLocaleString('en-IN');
   const decide=(decision)=>{
     if(decision==='Returned'&&!remarks.trim()){toastErr('Add a remark explaining why this is being returned.');return;}
-    decideSummaryApproval(salon?.id,'incentive',selYear,selMonth,decision,user?.name,remarks);
+    decideSummaryApproval(salon?.id,'incentive',selYear,selMonth,decision,user?.name,remarks,user?.role);
     setTick(t=>t+1);setRemarks('');
     success(decision==='Approved'?'Incentive Summary approved':'Incentive Summary returned to sender');
   };
@@ -2384,6 +2385,7 @@ function IncentiveSummaryApproval({salon,period,user}={}){
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y)))
       )
     ),
+    (()=>{const p=approvedIncPlanFor(salon?.id,selYear,selMonth);return p?React.createElement(IncPlanSummaryCard,{sid:salon?.id,y:selYear,m:selMonth,plan:p,title:'Approved Incentive Plan — '+MONTHS[selMonth]+' '+selYear}):React.createElement('div',{className:'help-note',style:{marginBottom:12}},'No approved Incentive Plan for '+MONTHS[selMonth]+' '+selYear+' yet.');})(),
     !rec&&React.createElement('div',{className:'card',style:{textAlign:'center',padding:40,color:'var(--text3)'}},
       React.createElement('div',{style:{fontSize:32,marginBottom:8}},'📭'),
       React.createElement('div',null,'No Incentive Summary has been sent for '+MONTHS[selMonth]+' '+selYear+' yet.')
@@ -2396,6 +2398,7 @@ function IncentiveSummaryApproval({salon,period,user}={}){
         rec.status==='Approved'&&React.createElement('span',{style:{fontSize:11.5,color:'var(--text3)'}},'· Approved '+fmtDMY(rec.approvedAt.slice(0,10))+' by '+(rec.approvedBy||'—')),
         rec.status==='Returned'&&rec.remarks&&React.createElement('span',{style:{fontSize:11.5,color:'var(--red)'}},'· '+rec.remarks)
       ),
+      React.createElement('div',{style:{marginBottom:12}},React.createElement(SummaryReviewChips,{rec})),
       React.createElement('div',{className:'table-wrap'},
         React.createElement('table',null,
           React.createElement('thead',null,React.createElement('tr',null,

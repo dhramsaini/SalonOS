@@ -589,6 +589,20 @@
         eq('Bank learning: a new line with the same narration pattern gets the earlier Nature (same side only)',
           [bankLearnedNatureFor(learned,{description:'NEFT-778899-RAZORPAY SOFTWARE-XYZ',credit:7000}),bankLearnedNatureFor(learned,{description:'NEFT-778899-RAZORPAY SOFTWARE-XYZ',debit:7000}),bankLearnedNatureFor(learned,{description:'IMPS 112233 RAJ KUMAR',debit:3100})],
           ['Card Settlement',null,'Salary']);
+        // Monthly Incentive Plan: approved snapshot used for its month only; live edits don't change it.
+        saveProductIncentiveRule(901,{rate:5});
+        submitIncPlan(901,2026,8,{name:'Owner One',role:'Salon Owner'});
+        const selfOk=canApproveIncPlan({name:'Owner One',role:'Salon Owner'},incPlanFor(901,2026,8));
+        const asmOk=canApproveIncPlan({name:'Asha ASM',role:'ASM'},incPlanFor(901,2026,8));
+        decideIncPlan(901,2026,8,'Approved',{name:'Asha ASM',role:'ASM'},'ok');
+        saveProductIncentiveRule(901,{rate:9});
+        eq('Incentive plan: preparer cannot approve own plan, ASM can; September uses its approved 5%, other months the live 9%',
+          [selfOk,asmOk,withIncPlan(901,2026,8,()=>loadProductIncentiveRule(901).rate),withIncPlan(901,2026,9,()=>loadProductIncentiveRule(901).rate),loadProductIncentiveRule(901).rate,Array.isArray(incWorkingsFor(901,2026,8))],
+          [false,true,5,9,9,true]);
+        sendSummaryForApproval(901,'salary',2026,8,[{empId:'E1',name:'A',net:100}],100,'Admin');
+        decideSummaryApproval(901,'salary',2026,8,'Approved','Mona','fine','Salon Manager');
+        const sr=decideSummaryApproval(901,'salary',2026,8,'Returned','Asha','fix PF','ASM');
+        eq('Summary approval: each role keeps its own status and remarks',[sr.reviews.Manager.status,sr.reviews.ASM.remarks,sr.status],['Approved','fix PF','Returned']);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.

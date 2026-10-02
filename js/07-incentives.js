@@ -10,9 +10,10 @@ function IncentiveWorkingSheet({period,salon,user}={}){
 }
 function IncentiveWorkingTabs({period,salon,user}={}){
   const [subTab,setSubTab]=useState('incentive');
+  const [rulesSignal,setRulesSignal]=useState(0);
   const approver=isSummaryApproverRole(user); // given Edit here — keeps Summary Approval as a tab
   const tabBar=React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
-    [{id:'incentive',label:'Incentive Working'},{id:'incentive-payment',label:'Incentive Payment'},{id:'comparative',label:'Comparative Sheet'},{id:'staff-report',label:'Staff Work Report'},...(approver?[{id:'summary',label:'Summary Approval'}]:[])].map(t=>
+    [{id:'incentive',label:'Incentive Working'},{id:'plan',label:'Monthly Plan'},{id:'incentive-payment',label:'Incentive Payment'},{id:'comparative',label:'Comparative Sheet'},{id:'staff-report',label:'Staff Work Report'},...(approver?[{id:'summary',label:'Summary Approval'}]:[])].map(t=>
       React.createElement('button',{key:t.id,className:`tab-btn ${subTab===t.id?'active':''}`,onClick:()=>setSubTab(t.id)},t.label)
     )
   );
@@ -21,14 +22,15 @@ function IncentiveWorkingTabs({period,salon,user}={}){
   // not-yet-loaded CSV, row selections, which Staff Work Report inner tab was open, etc.).
   return React.createElement('div',{className:'fade-in'},
     tabBar,
-    React.createElement('div',{style:{display:subTab==='incentive'?'block':'none'}},React.createElement(IncentiveWorkingCore,{period,salon,user})),
+    React.createElement('div',{style:{display:subTab==='incentive'?'block':'none'}},React.createElement(IncentiveWorkingCore,{period,salon,user,rulesSignal})),
+    subTab==='plan'&&React.createElement(MonthlyIncentivePlanSheet,{period,salon,user,onOpenRules:()=>{setSubTab('incentive');setRulesSignal(n=>n+1);}}),
     React.createElement('div',{style:{display:subTab==='incentive-payment'?'block':'none'}},React.createElement(IncentivePaymentSheet,{period,salon})),
     React.createElement('div',{style:{display:subTab==='comparative'?'block':'none'}},React.createElement(IncentiveComparativeSheet,{period,salon})),
     React.createElement('div',{style:{display:subTab==='staff-report'?'block':'none'}},React.createElement(StaffReportSheet,{period,salon})),
     approver&&React.createElement('div',{style:{display:subTab==='summary'?'block':'none'}},React.createElement(IncentiveSummaryApproval,{salon,period,user}))
   );
 }
-function IncentiveWorkingCore({period,salon,user}={}){
+function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
   const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
   const today=new Date();
   const initCal=periodToCalendar(period);
@@ -203,6 +205,7 @@ function IncentiveWorkingCore({period,salon,user}={}){
   // button instead of sitting open on the page — keeps the main screen to just the summary and
   // the employee table, with setup tucked away until it's actually needed.
   const [showSettings,setShowSettings]=useState(false);
+  useEffect(()=>{if(rulesSignal)setShowSettings(true);},[rulesSignal]);
   // Refs for the "🔗" column-header links (Svc/Mem/Prod/Mgr Inc) — clicking one opens the
   // settings modal and scrolls straight to that category's rule section inside it.
   const svcSectionRef=useRef(null);
@@ -616,6 +619,8 @@ function IncentiveWorkingCore({period,salon,user}={}){
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,
         React.createElement('div',{className:'page-title'},'Incentive Working Sheet'),
+        (()=>{const p=incPlanFor(salon?.id,selYear,selMonth);const ok=p&&p.status==='Approved';
+          return React.createElement('div',{style:{fontSize:11.5,marginTop:4,color:ok?'var(--green)':'var(--orange)'}},ok?'✓ Worked out from the approved '+MONTHS[selMonth]+' Incentive Plan (approved by '+(p.approvedBy||'—')+')':p&&p.status==='Pending'?'⏳ '+MONTHS[selMonth]+' plan waiting for approval — using current settings':'⚠ No approved Incentive Plan for '+MONTHS[selMonth]+' — using current settings (Monthly Plan tab)');})(),
         React.createElement('div',{className:'page-sub'},MONTHS[selMonth]+' '+selYear+' — enter each employee\'s Achieved figures below; Target and everything else calculates automatically · Excludes Helper & Housekeeper')
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},

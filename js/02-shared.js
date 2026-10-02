@@ -796,16 +796,20 @@ function sendSummaryForApproval(salonId,sheet,year,month,rows,total,by){
   const map=loadSummaryApprovals(salonId,sheet);
   const k=monthLockCode(year,month);
   map[k]={status:'Sent',rows,total,sentBy:by||'',sentAt:new Date().toISOString(),
-    approvedBy:'',approvedAt:'',remarks:''};
+    approvedBy:'',approvedAt:'',remarks:'',reviews:{}};
   saveSummaryApprovals(map,salonId,sheet);
   return map[k];
 }
-function decideSummaryApproval(salonId,sheet,year,month,decision,by,remarks){
+// Each of Manager / Owner / ASM (and Super Admin) records their own review — status, remarks, by,
+// when — shown in the Review Centre. The overall status follows the latest decision.
+function decideSummaryApproval(salonId,sheet,year,month,decision,by,remarks,role){
   const map=loadSummaryApprovals(salonId,sheet);
   const k=monthLockCode(year,month);
   const rec=map[k];
   if(!rec)return null;
-  map[k]={...rec,status:decision,approvedBy:decision==='Approved'?(by||''):'',approvedAt:decision==='Approved'?new Date().toISOString():'',remarks:remarks||''};
+  const tag=role==='Salon Manager'?'Manager':(role==='Salon Owner'||role==='Owner')?'Owner':(role||'Reviewer');
+  const reviews={...(rec.reviews||{}),[tag]:{status:decision,by:by||'',at:new Date().toISOString(),remarks:remarks||''}};
+  map[k]={...rec,reviews,status:decision,approvedBy:decision==='Approved'?(by||''):'',approvedAt:decision==='Approved'?new Date().toISOString():'',remarks:remarks||''};
   saveSummaryApprovals(map,salonId,sheet);
   return map[k];
 }
@@ -916,7 +920,9 @@ const SALON_SCOPED_KEY_BASES=[
   'salonos_staff_work_reports','salonos_tally_ledger_map','salonos_tally_synced_ledgers','salonos_tea_config',
   // Manager Final Month uses its own '<base>_<sheet>_outlet_<id>' pattern (see managerFinalKeyFor)
   // — passing these as bases still resolves to the exact same keys via outletKey below.
-  'salonos_manager_final_months_attendance','salonos_manager_final_months_dse'
+  'salonos_manager_final_months_attendance','salonos_manager_final_months_dse',
+  // Automation / approvals (js/16-18).
+  'salonos_incentive_monthly_plans','salonos_collection_cmp_reasons','salonos_due_snapshot','salonos_sent_payslip','salonos_sent_client','salonos_pl_revenue_source'
 ];
 function deleteAllSalonScopedData(salonId){
   SALON_SCOPED_KEY_BASES.forEach(base=>{cachedLocalRemove(outletKey(base,salonId));});
@@ -2920,7 +2926,11 @@ function formatTimes(n,fmt){
 }
 
 // ── Shared Incentive Working computation ──
+// Uses the month's approved Monthly Incentive Plan when there is one (js/18-approvals.js).
 function incWorkingsFor(salonId,year,month){
+  return typeof withIncPlan==='function'?withIncPlan(salonId,year,month,()=>incWorkingsForLive(salonId,year,month)):incWorkingsForLive(salonId,year,month);
+}
+function incWorkingsForLive(salonId,year,month){
   const EMPLOYEES=getEmployeesForMonth(year,month,salonId).filter(e=>e.desig!=='Helper'&&e.desig!=='Housekeeper');
   const actuals=loadIncentiveActuals(salonId);
   const rates=loadIncentiveRates(salonId);
