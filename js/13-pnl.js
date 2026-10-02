@@ -1600,10 +1600,98 @@ function askContextFor(user,salonId,asOf){
   if(can('bank-statement'))parts.push('BANK STATEMENT, LAST 150 ROWS (date, narration, debit, credit, nature):\n'+loadBankStatementRows(salonId).slice(-150).map(r=>[r.transactionDate,String(r.description||'').slice(0,60),r.debit||'',r.credit||'',r.nature||''].join(', ')).join('\n'));
   return parts.join('\n\n').slice(0,110000);
 }
+// ── Collection Comparison — day by day, what Collection Reco's CRADLE import says was collected
+// vs what the outlet entered in Daily Sales & Exp (Luzo Sale counted with UPI), with the
+// difference per mode, so a missed or mistyped day stands out. Gross amounts (incl. GST). ──
+function collectionComparisonRowsFor(sid,year,month){
+  const days=new Date(year,month+1,0).getDate();
+  const ym=year+'-'+String(month+1).padStart(2,'0');
+  const cr={},ds={};
+  (collectionRowsForMonth(sid,year,month)||[]).forEach(r=>{const iso=toISO(r.invoiceDate);if(!iso)return;const t=cr[iso]||(cr[iso]={cash:0,card:0,upi:0});
+    t.cash+=Number(r.cash)||0;t.card+=Number(r.card)||0;t.upi+=Number(r.upi)||0;});
+  dseSalesRowsForMonth(sid,year,month).forEach(r=>{ds[r.id]=r;});
+  const rows=[];
+  for(let d=1;d<=days;d++){
+    const iso=ym+'-'+String(d).padStart(2,'0');const c=cr[iso]||{cash:0,card:0,upi:0},e=ds[iso]||{cash:0,card:0,upi:0,luzo:0};
+    rows.push({iso,hasC:!!cr[iso],hasD:!!ds[iso],c,e,ct:c.cash+c.card+c.upi,et:e.cash+e.card+e.upi});
+  }
+  return rows;
+}
+function CollectionComparisonSheet({salon,period}={}){
+  const {toast}=useToast();
+  const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const today=new Date();
+  const init=periodToCalendar(period);
+  const [cal,setCal]=useState(init||{year:today.getFullYear(),month:today.getMonth()});
+  useEffect(()=>{const c=periodToCalendar(period);if(c)setCal(c);
+    // eslint-disable-next-line
+  },[period&&period.mi,period&&period.fy]);
+  const [onlyDiff,setOnlyDiff]=useState(false);
+  const sid=salon?.id;
+  const all=collectionComparisonRowsFor(sid,cal.year,cal.month);
+  const isDiff=r=>Math.abs(r.ct-r.et)>0.5||Math.abs(r.c.cash-r.e.cash)>0.5||Math.abs(r.c.card-r.e.card)>0.5||Math.abs(r.c.upi-r.e.upi)>0.5;
+  const todayIso=localIsoOf(today);
+  const rows=onlyDiff?all.filter(isDiff):all.filter(r=>r.hasC||r.hasD||r.iso<=todayIso);
+  const sum=f=>all.reduce((s,r)=>s+f(r),0);
+  const T={cc:sum(r=>r.c.cash),ec:sum(r=>r.e.cash),cd:sum(r=>r.c.card),ed:sum(r=>r.e.card),cu:sum(r=>r.c.upi),eu:sum(r=>r.e.upi),ct:sum(r=>r.ct),et:sum(r=>r.et),luzo:sum(r=>r.e.luzo||0)};
+  const m=n=>n?'₹'+Math.round(n).toLocaleString('en-IN'):'—';
+  const dm=n=>Math.abs(n)<0.5?'—':(n>0?'+':'−')+'₹'+Math.round(Math.abs(n)).toLocaleString('en-IN');
+  const dColor=n=>Math.abs(n)<0.5?'var(--text3)':n>0?'var(--green)':'var(--red)';
+  const shift=k=>{const d=new Date(cal.year,cal.month+k,1);setCal({year:d.getFullYear(),month:d.getMonth()});};
+  const fmtD=iso=>iso.split('-').reverse().join('/');
+  const td=(v,st)=>React.createElement('td',{style:{textAlign:'right',whiteSpace:'nowrap',...(st||{})}},v);
+  const group=(c,e,shade)=>[td(m(c),{background:shade}),td(m(e),{background:shade}),td(dm(e-c),{background:shade,color:dColor(e-c),fontWeight:600})];
+  const withKeys=list=>list.map((x,i)=>React.cloneElement(x,{key:i}));
+  const exportXlsx=async()=>{
+    try{
+      const hdr=['Date','Cash – CRADLE','Cash – Daily Sales','Cash Diff','Card – CRADLE','Card – Daily Sales','Card Diff','UPI – CRADLE','UPI + Luzo – Daily Sales','UPI Diff','Total – CRADLE','Total – Daily Sales','Total Diff'];
+      const body=rows.map(r=>[fmtD(r.iso),r.c.cash,r.e.cash,r.e.cash-r.c.cash,r.c.card,r.e.card,r.e.card-r.c.card,r.c.upi,r.e.upi,r.e.upi-r.c.upi,r.ct,r.et,r.et-r.ct]);
+      const tot=['Total',T.cc,T.ec,T.ec-T.cc,T.cd,T.ed,T.ed-T.cd,T.cu,T.eu,T.eu-T.cu,T.ct,T.et,T.et-T.ct];
+      const blob=await exportReportExcelBlob('Collection Comparison',[hdr,...body,tot]);
+      const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;
+      a.download='Collection_Comparison_'+(salon?salon.name.split('—')[0].trim().replace(/\s+/g,'_'):'Outlet')+'_'+MONTHS[cal.month]+'_'+cal.year+'.xlsx';a.click();URL.revokeObjectURL(url);
+    }catch(err){toast(err.message,'error');}
+  };
+  const mismatchDays=all.filter(r=>(r.hasC||r.hasD)&&isDiff(r)).length;
+  const h=React.createElement;
+  return h('div',null,
+    h('div',{className:'section-header'},
+      h('div',null,
+        h('div',{className:'page-title'},'Collection Comparison'),
+        h('div',{className:'page-sub'},'Day-wise: Collection Reco (imported from CRADLE) vs Daily Sales & Exp · amounts incl. GST · Luzo Sale counted with UPI · Diff = Daily Sales − CRADLE')),
+      h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+        h('div',{className:'fd-date'},
+          h('button',{onClick:()=>shift(-1)},'‹'),
+          h('span',{className:'lbl'},MONTHS[cal.month].slice(0,3)+' '+cal.year),
+          h('button',{onClick:()=>shift(1)},'›')),
+        h('label',{style:{display:'flex',gap:6,alignItems:'center',fontSize:12,cursor:'pointer'}},
+          h('input',{type:'checkbox',checked:onlyDiff,onChange:e=>setOnlyDiff(e.target.checked)}),'Only days with a difference'),
+        h('button',{className:'btn btn-ghost btn-sm',onClick:exportXlsx},'⬇ Export Excel'))),
+    h('div',{className:'grid4',style:{marginBottom:14}},
+      [['CRADLE (Collection Reco)',m(T.ct),'var(--blue)'],['Daily Sales & Exp',m(T.et),'var(--teal)'],['Difference',dm(T.et-T.ct),Math.abs(T.et-T.ct)<0.5?'var(--green)':'var(--red)'],['Days not matching',String(mismatchDays),mismatchDays?'var(--orange)':'var(--green)']].map(([l,v,c])=>
+        h('div',{key:l,className:'metric-card'},h('div',{className:'metric-label'},l),h('div',{className:'metric-value',style:{color:c,fontSize:22}},v)))),
+    h('div',{className:'card',style:{padding:0}},
+      h('div',{className:'table-wrap'},
+        h('table',null,
+          h('thead',null,
+            h('tr',null,h('th',{rowSpan:2},'Date'),
+              ...['Cash','Card','UPI (+ Luzo)','Total'].map(g=>h('th',{key:g,colSpan:3,style:{textAlign:'center'}},g))),
+            h('tr',null,...withKeys([0,1,2,3].flatMap(()=>['CRADLE','Daily Sales','Diff'].map(t=>h('th',{style:{textAlign:'right',whiteSpace:'nowrap'}},t)))))),
+          h('tbody',null,
+            rows.length===0?h('tr',null,h('td',{colSpan:13,style:{textAlign:'center',padding:28,color:'var(--text3)'}},onlyDiff?'Every day matches.':'Nothing imported or entered for this month yet.')):
+            rows.map(r=>h('tr',{key:r.iso},
+              h('td',{style:{whiteSpace:'nowrap'}},fmtD(r.iso),
+                !r.hasC&&r.hasD&&h('div',{style:{fontSize:10,color:'var(--orange)'}},'not in CRADLE import'),
+                r.hasC&&!r.hasD&&h('div',{style:{fontSize:10,color:'var(--orange)'}},'not entered in Daily Sales')),
+              ...withKeys([...group(r.c.cash,r.e.cash),...group(r.c.card,r.e.card,'rgba(47,95,224,0.04)'),...group(r.c.upi,r.e.upi),...group(r.ct,r.et,'rgba(47,95,224,0.07)')])))),
+          h('tfoot',null,h('tr',{style:{fontWeight:700}},
+            h('td',null,'Total'),...withKeys([...group(T.cc,T.ec),...group(T.cd,T.ed),...group(T.cu,T.eu),...group(T.ct,T.et)])))))),
+    T.luzo>0&&h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'Daily Sales UPI includes Luzo Sale of '+m(T.luzo)+' for the month.'));
+}
 function OutletPnLSheet({salon,period}={}){
   const [subTab,setSubTab]=useState('pnl');
   const tabBar=React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
-    [{id:'pnl',label:'P&L Statement'},{id:'variance',label:'Variance Analysis'},{id:'cashflow',label:'Cash Flow'},{id:'compare',label:'Compare'}].map(t=>
+    [{id:'pnl',label:'P&L Statement'},{id:'variance',label:'Variance Analysis'},{id:'cashflow',label:'Cash Flow'},{id:'compare',label:'Compare'},{id:'collcmp',label:'Collection Comparison'}].map(t=>
       React.createElement('button',{key:t.id,className:`tab-btn ${subTab===t.id?'active':''}`,onClick:()=>setSubTab(t.id)},t.label)
     )
   );
@@ -1622,7 +1710,8 @@ function OutletPnLSheet({salon,period}={}){
       React.createElement(PnLVarianceSection,{salonId:salon?.id,fy:curFyMi.fy,mi:curFyMi.mi})
     ),
     React.createElement('div',{style:{display:subTab==='cashflow'?'block':'none'}},React.createElement(CashFlowSheet,{salon,period})),
-    React.createElement('div',{style:{display:subTab==='compare'?'block':'none'}},React.createElement(PnLCompareSheet,{salon,period}))
+    React.createElement('div',{style:{display:subTab==='compare'?'block':'none'}},React.createElement(PnLCompareSheet,{salon,period})),
+    subTab==='collcmp'&&React.createElement(CollectionComparisonSheet,{salon,period})
   );
 }
 
