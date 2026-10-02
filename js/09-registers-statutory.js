@@ -1993,6 +1993,27 @@ function autoTdsDueItemsFor(salonId,monthsBack){
 // employee that month — an item only shows Paid here once every employee with an amount due that
 // month has actually been marked Paid on the sheet itself, so this can never say "done" while
 // someone's payment is still sitting outstanding.
+// Cash paid against a month's salary / incentive through Daily Sales & Exp's "Previous Month
+// Salary" / "Previous Month Incentive" rows — those entries are dated in the FOLLOWING month.
+// Returns {total, lastDate, names} so the Due Date Tracker can show when and how much was paid.
+function dsePrevMonthPaymentsFor(salonId,rowName,year,month){
+  const out={total:0,lastDate:'',names:new Set()};
+  try{
+    const ri=EXPENSE_ROWS.findIndex(r=>r.name===rowName);if(ri<0)return out;
+    const emp=JSON.parse(cachedLocalGet(outletKey('salonos_daily_sales_empdata',salonId))||'{}')||{};
+    const nx=month===11?{y:year+1,m:0}:{y:year,m:month+1};
+    const pre=nx.y+'-'+String(nx.m+1).padStart(2,'0')+'-';
+    Object.keys(emp).forEach(iso=>{if(!iso.startsWith(pre))return;const l=(emp[iso]||{})[ri];if(!Array.isArray(l))return;
+      l.forEach(e=>{const a=Number(e&&e.amount)||0;if(a<=0)return;out.total+=a;out.names.add(e.empName);if(iso>out.lastDate)out.lastDate=iso;});});
+  }catch(e){}
+  return out;
+}
+// Latest Paid date / summed paid amount recorded on Salary / Incentive Working meta for a month.
+function metaPaidInfo(meta,list,year,month){
+  let d='',amt=0,anyAmt=false;
+  list.forEach(e=>{const m=meta[attMonthKey(e.id,year,month)];if(!m||m.paymentStatus!=='Paid')return;if(m.paidDate&&m.paidDate>d)d=m.paidDate;if(m.paidAmount!==''&&m.paidAmount!=null){amt+=Number(m.paidAmount)||0;anyAmt=true;}});
+  return{date:d,amount:anyAmt?amt:0};
+}
 function autoSalaryIncentiveDueItemsFor(salonId,monthsBack){
   monthsBack=monthsBack||4;
   const salonRec=getSalonRecordById(salonId);
@@ -2018,9 +2039,13 @@ function autoSalaryIncentiveDueItemsFor(salonId,monthsBack){
       const metaPaid=workings.every(e=>{const m=swMeta[attMonthKey(e.id,cal.year,cal.month)];return m&&m.paymentStatus==='Paid';});
       const paid=metaPaid||!!ov.paid;
       const due=statutoryDueDateFor(cal.year,cal.month,salaryDueDay);
+      const dsePay=dsePrevMonthPaymentsFor(salonId,'Previous Month Salary',cal.year,cal.month);
+      const mInfo=metaPaidInfo(swMeta,workings,cal.year,cal.month);
       items.push({id:salaryId,auto:true,type:'Salary Disbursement',year:cal.year,month:cal.month,
         desc:'Salary for '+label+' — '+workings.length+' employee(s)',due,amount:Math.round(netTotal),
-        paid,paidAmount:paid?(ov.paidAmount||Math.round(netTotal)):'',paidDate:paid?(ov.paidDate||''):'',ref:ov.ref||'',bankRowId:ov.bankRowId!=null?ov.bankRowId:null,status:dueStatusFor(due,paid)});
+        paid,paidAmount:paid?(ov.paidAmount||Math.round(dsePay.total)||mInfo.amount||Math.round(netTotal)):(dsePay.total?Math.round(dsePay.total):''),
+        paidDate:paid?(ov.paidDate||dsePay.lastDate||mInfo.date||''):(dsePay.lastDate||''),
+        ref:ov.ref||(dsePay.total?'Cash — Daily Sales & Exp':''),bankRowId:ov.bankRowId!=null?ov.bankRowId:null,status:dueStatusFor(due,paid)});
     }
 
     const incData=incWorkingsFor(salonId,cal.year,cal.month).filter(e=>e.totalInc>0);
@@ -2031,9 +2056,13 @@ function autoSalaryIncentiveDueItemsFor(salonId,monthsBack){
       const metaPaid=incData.every(e=>{const m=iwMeta[attMonthKey(e.id,cal.year,cal.month)];return m&&m.paymentStatus==='Paid';});
       const paid=metaPaid||!!ov.paid;
       const due=statutoryDueDateFor(cal.year,cal.month,incentiveDueDay);
+      const dsePay=dsePrevMonthPaymentsFor(salonId,'Previous Month Incentive',cal.year,cal.month);
+      const mInfo=metaPaidInfo(iwMeta,incData,cal.year,cal.month);
       items.push({id:incId,auto:true,type:'Incentive Payment',year:cal.year,month:cal.month,
         desc:'Incentive for '+label+' — '+incData.length+' employee(s)',due,amount:Math.round(incTotal),
-        paid,paidAmount:paid?(ov.paidAmount||Math.round(incTotal)):'',paidDate:paid?(ov.paidDate||''):'',ref:ov.ref||'',bankRowId:ov.bankRowId!=null?ov.bankRowId:null,status:dueStatusFor(due,paid)});
+        paid,paidAmount:paid?(ov.paidAmount||Math.round(dsePay.total)||mInfo.amount||Math.round(incTotal)):(dsePay.total?Math.round(dsePay.total):''),
+        paidDate:paid?(ov.paidDate||dsePay.lastDate||mInfo.date||''):(dsePay.lastDate||''),
+        ref:ov.ref||(dsePay.total?'Cash — Daily Sales & Exp':''),bankRowId:ov.bankRowId!=null?ov.bankRowId:null,status:dueStatusFor(due,paid)});
     }
   }
   return items;

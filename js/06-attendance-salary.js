@@ -1,5 +1,39 @@
 
 
+// Cash entries typed directly on Daily Incentive Sheet are cash paid out of the drawer, so they
+// belong on Daily Sales & Exp too (and from there in Closing Cash and the P&L). Rebuilds the
+// mirrored copies (tagged fromDI) in Daily Sales & Exp's employee entries from scratch every
+// time, so edits, deletes and Cash→Bank changes on Daily Incentive follow through. Entries that
+// themselves came FROM Daily Sales & Exp (source:'dse') are skipped — no double counting.
+// Non-category service names go to Service Commission/Incentives with the name as a note.
+function syncDailyIncentiveToDSE(sid){
+  try{
+    let di=[];try{const r=JSON.parse(cachedLocalGet(outletKey('salonos_daily_incentive_entries',sid))||'[]');if(Array.isArray(r))di=r;}catch(e){}
+    const empKey=outletKey('salonos_daily_sales_empdata',sid),dataKey=outletKey('salonos_daily_sales_data',sid);
+    let emp={},data={};
+    try{emp=JSON.parse(cachedLocalGet(empKey)||'{}')||{};}catch(e){}
+    try{data=JSON.parse(cachedLocalGet(dataKey)||'{}')||{};}catch(e){}
+    const before=JSON.stringify(emp)+'|'+JSON.stringify(data);
+    const touched=new Set();
+    Object.keys(emp).forEach(iso=>{const day=emp[iso]||{};Object.keys(day).forEach(ri=>{const l=day[ri];
+      if(Array.isArray(l)&&l.some(e=>e&&e.fromDI)){touched.add(iso+'|'+ri);day[ri]=l.filter(e=>!(e&&e.fromDI));}});});
+    di.forEach(e=>{
+      if(!e||e.source==='dse'||(e.mode||'Cash')!=='Cash'||!e.date)return;
+      const amt=Number(e.incentive)||0;if(amt<=0)return;
+      const row=DAILY_INCENTIVE_CATEGORIES.includes(e.service)?e.service:'Service Commission/Incentives';
+      const ri=String(EXPENSE_ROWS.findIndex(r=>r.name===row));if(ri==='-1')return;
+      emp[e.date]=emp[e.date]||{};
+      const l=Array.isArray(emp[e.date][ri])?emp[e.date][ri]:[];
+      emp[e.date][ri]=[...l,{empName:e.emp,amount:amt,mode:'Cash',fromDI:true,note:e.service&&e.service!==row?e.service:''}];
+      touched.add(e.date+'|'+ri);
+    });
+    touched.forEach(k=>{const [iso,ri]=k.split('|');const l=(emp[iso]&&emp[iso][ri])||[];
+      if(!l.length&&emp[iso])delete emp[iso][ri];
+      const t=l.reduce((s,x)=>s+(Number(x&&x.amount)||0),0);
+      if(t>0)data[iso]={...(data[iso]||{}),[ri]:t};else if(data[iso]){data[iso]={...data[iso]};delete data[iso][ri];}});
+    if(JSON.stringify(emp)+'|'+JSON.stringify(data)!==before){safeLocalSet(empKey,JSON.stringify(emp));safeLocalSet(dataKey,JSON.stringify(data));}
+  }catch(e){}
+}
 function DailyIncentiveCore({period,salon}={}){
   const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
   const today=new Date();
@@ -23,7 +57,7 @@ function DailyIncentiveCore({period,salon}={}){
     try{const raw=JSON.parse(cachedLocalGet(diEntriesKey())||'[]');if(Array.isArray(raw))return raw;}catch(e){}
     return[];
   });
-  useEffect(()=>{safeLocalSet(diEntriesKey(),JSON.stringify(entries));},[entries,salon?.id]);
+  useEffect(()=>{safeLocalSet(diEntriesKey(),JSON.stringify(entries));if(salon?.id)syncDailyIncentiveToDSE(salon.id);},[entries,salon?.id]);
   const DI_FILTER_COLS=[
     {key:'date',label:'Date',get:r=>r.date||'(blank)'},
     {key:'emp',label:'Employee',get:r=>r.emp},

@@ -510,6 +510,26 @@
         eq('Salon P&L unchanged by restaurant lines',plBuild(901,'2026-27',5).sections[1].lines.map(l=>l.name),['Purchase of Cosmetic','Unregistered Purchase']);
       }catch(err){results.push({name:'Restaurant line of business',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
+        // Daily Incentive Sheet cash entries mirror into Daily Sales & Exp; salary paid there shows its date.
+        const K=k=>outletKey(k,905),ix=n=>String(EXPENSE_ROWS.findIndex(r=>r.name===n));
+        const rP=ix('Product Commission/Incentives'),rS=ix('Service Commission/Incentives'),rPMS=ix('Previous Month Salary');
+        const di=[{date:'2026-10-02',emp:'Payal',service:'Product Commission/Incentives',incentive:200,mode:'Cash'},
+          {date:'2026-10-02',emp:'Riya',service:'Product Commission/Incentives',incentive:150,mode:'Bank'},
+          {date:'2026-10-03',emp:'Neha',service:'Product Commission/Incentives',incentive:300,mode:'Cash',source:'dse',dseRow:'Product Commission/Incentives'},
+          {date:'2026-10-02',emp:'Payal',service:'Hair spa',incentive:50,mode:'Cash'}];
+        safeLocalSet(K('salonos_daily_incentive_entries'),JSON.stringify(di));
+        safeLocalSet(K('salonos_daily_sales_empdata'),JSON.stringify({'2026-10-03':{[rP]:[{empName:'Neha',amount:300}]},'2026-10-02':{[rPMS]:[{empName:'Payal',amount:3300}]}}));
+        safeLocalSet(K('salonos_daily_sales_data'),JSON.stringify({'2026-10-03':{[rP]:300},'2026-10-02':{[rPMS]:3300}}));
+        syncDailyIncentiveToDSE(905);syncDailyIncentiveToDSE(905);
+        let d=JSON.parse(cachedLocalGet(K('salonos_daily_sales_data')));
+        eq('Daily Incentive cash entries show in Daily Sales & Exp (Bank and DSE-made ones not doubled)',[d['2026-10-02'][rP],d['2026-10-02'][rS],d['2026-10-03'][rP],d['2026-10-02'][rPMS]],[200,50,300,3300]);
+        di[0].mode='Bank';safeLocalSet(K('salonos_daily_incentive_entries'),JSON.stringify(di));syncDailyIncentiveToDSE(905);
+        d=JSON.parse(cachedLocalGet(K('salonos_daily_sales_data')));
+        eq('Daily Incentive entry switched to Bank drops out of Daily Sales & Exp',[d['2026-10-02'][rP],d['2026-10-02'][rS]],[undefined,50]);
+        const pay=dsePrevMonthPaymentsFor(905,'Previous Month Salary',2026,8);
+        eq('September salary paid on 2 Oct in Daily Sales & Exp: amount and date found',[pay.total,pay.lastDate],[3300,'2026-10-02']);
+      }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
+      try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
         const js=window.ts.transpileModule(window.__AUTOMATION_TS,{compilerOptions:{module:window.ts.ModuleKind.CommonJS,target:window.ts.ScriptTarget.ES2020}}).outputText;
         const mod={};new Function('exports','require','Deno',js)(mod,()=>({createClient:()=>({})}),{env:{get:()=>''},serve:()=>{}});

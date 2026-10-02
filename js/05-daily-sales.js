@@ -13,7 +13,12 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   const buildDays=(anchor,count)=>{
     const days=[];
     for(let i=count-1;i>=0;i--){const d=new Date(anchor);d.setDate(d.getDate()-i);days.push({iso:toISO(d),label:toLabel(d)});}
-    return days;
+    // Only the month chosen in the Period selector is open here — a 5/10-day window early in the
+    // month no longer spills back into the previous month's last days.
+    const pc=periodToCalendar(period);
+    if(!pc)return days;
+    const pre=pc.year+'-'+String(pc.month+1).padStart(2,'0')+'-';
+    return days.filter(d=>d.iso.startsWith(pre));
   };
   // "Full Month" isn't a fixed count — it's a sentinel meaning "from the 1st of viewDate's month
   // through viewDate", so it always tracks whichever date is picked instead of freezing at
@@ -48,10 +53,11 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   // same pattern as every other sheet in the app, and starts genuinely blank.
   const dseDataKey=()=>outletKey('salonos_daily_sales_data',salonId);
   const dseEmpDataKey=()=>outletKey('salonos_daily_sales_empdata',salonId);
-  const initData=()=>{try{return JSON.parse(cachedLocalGet(dseDataKey())||'{}');}catch(e){return{};}};
+  const initData=()=>{syncDailyIncentiveToDSE(salonId);try{return JSON.parse(cachedLocalGet(dseDataKey())||'{}');}catch(e){return{};}};
   const [data,setData]=useState(initData);
   useEffect(()=>{safeLocalSet(dseDataKey(),JSON.stringify(data));},[data,salonId]);
   // empData: {iso: {ri: [{empName, amount}]}}  — for employee-linked rows
+  const [modalDI,setModalDI]=useState([]); // emp-modal entries that came from Daily Incentive Sheet (read-only here)
   const [empData,setEmpData]=useState(()=>{try{return JSON.parse(cachedLocalGet(dseEmpDataKey())||'{}');}catch(e){return{};}});
   useEffect(()=>{safeLocalSet(dseEmpDataKey(),JSON.stringify(empData));},[empData,salonId]);
   // descData: {iso: {ri: [{description, amount}]}}  — for rows requiring Description + allowing
@@ -941,7 +947,9 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   // Open emp modal
   const openEmpModal=(ri,iso)=>{
     if(dseBlockIfLocked(iso))return;
-    const existing=getEmpEntries(iso,ri);
+    const all=getEmpEntries(iso,ri);
+    const existing=all.filter(e=>!e.fromDI);
+    setModalDI(all.filter(e=>e.fromDI));
     setModalEntries(existing.length>0?existing.map(e=>({...e})):[blankModalEntry(ri)]);
     setModalSearch('');
     setEmpModal({ri,iso});
@@ -1006,7 +1014,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       let all=[];
       try{const raw=JSON.parse(cachedLocalGet(key)||'[]');if(Array.isArray(raw))all=raw;}catch(e){}
       const kept=all.filter(e=>!(e&&e.source==='dse'&&e.date===iso&&e.dseRow===rowName));
-      const fresh=(validEntries||[]).filter(v=>v.empName&&Number(v.amount)>0).map(v=>{
+      const fresh=(validEntries||[]).filter(v=>v.empName&&Number(v.amount)>0&&!v.fromDI).map(v=>{
         const emp=EMPLOYEES.find(e=>e.name===v.empName);
         const amt=Number(v.amount)||0;
         return{date:iso,empId:emp?emp.id:'',emp:v.empName,service:rowName,target:0,achieved:amt,rate:100,incentive:amt,mode:'Cash',status:'Computed',source:'dse',dseRow:rowName};
@@ -1092,7 +1100,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     // eslint-disable-next-line
   },[salonId]);
   const saveEmpModal=()=>{
-    const valid=modalEntries.filter(e=>e.empName&&Number(e.amount)>0);
+    const valid=[...modalEntries.filter(e=>e.empName&&Number(e.amount)>0&&!e.fromDI),...modalDI];
     const iso=empModal.iso;const ri=empModal.ri;
     const rowName=EXPENSE_ROWS[ri]?.name;
     const total=valid.reduce((s,e)=>s+Number(e.amount),0);
@@ -1127,9 +1135,10 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
         EMPLOYEES.forEach(e=>{
           const key=attMonthKey(e.id,pm.year,pm.month);
           if(newNames.has(e.name)){
-            nextMeta[key]={...(nextMeta[key]||{status:'Draft',paymentStatus:'Not Paid',mode:''}),paymentStatus:'Paid',mode:'Cash'};
+            const paidAmt=valid.filter(v=>v.empName===e.name).reduce((s,v)=>s+(Number(v.amount)||0),0);
+            nextMeta[key]={...(nextMeta[key]||{status:'Draft',paymentStatus:'Not Paid',mode:''}),paymentStatus:'Paid',mode:'Cash',paidDate:iso,paidAmount:paidAmt,paidVia:'Daily Sales & Exp'};
           }else if(oldNames.has(e.name)){
-            nextMeta[key]={...(nextMeta[key]||{status:'Draft',paymentStatus:'Not Paid',mode:''}),paymentStatus:'Not Paid',mode:''};
+            nextMeta[key]={...(nextMeta[key]||{status:'Draft',paymentStatus:'Not Paid',mode:''}),paymentStatus:'Not Paid',mode:'',paidDate:'',paidAmount:'',paidVia:''};
           }
         });
         saveMeta(nextMeta,salonId);
@@ -1332,7 +1341,12 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       // Grid-only controls — tucked away on phones unless the full grid is open.
       React.createElement('div',{className:phoneGrid?undefined:'hide-phone',style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
         React.createElement('label',{style:{fontSize:11,color:'var(--text3)',whiteSpace:'nowrap'}},'View up to date:'),
-        React.createElement('input',{type:'date',className:'form-control',style:{width:'auto'},value:viewDate,onChange:e=>setViewDate(e.target.value)}),
+        React.createElement('input',{type:'date',className:'form-control',style:{width:'auto'},value:viewDate,
+          min:periodCal?localDateToISO(new Date(periodCal.year,periodCal.month,1)):undefined,
+          max:periodCal?localDateToISO(new Date(periodCal.year,periodCal.month+1,0)):undefined,
+          onChange:e=>{let v=e.target.value;if(!v)return;
+            if(periodCal){const lo=localDateToISO(new Date(periodCal.year,periodCal.month,1)),hi=localDateToISO(new Date(periodCal.year,periodCal.month+1,0));if(v<lo)v=lo;if(v>hi)v=hi;}
+            setViewDate(v);}}),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:showCols,onChange:e=>setShowCols(e.target.value==='full'?'full':Number(e.target.value))},
           [5,10,15,20,25].map(n=>React.createElement('option',{key:n,value:n},n+' days')).concat([React.createElement('option',{key:'full',value:'full'},'Full Month')])
         ),
@@ -1922,6 +1936,10 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
           React.createElement('span',{style:{fontSize:11,color:'var(--accent)',background:'rgba(47,95,224,0.12)',padding:'3px 10px',borderRadius:20,border:'1px solid rgba(47,95,224,0.3)'}},empModal.iso)
         ),
 
+        modalDI.length>0&&React.createElement('div',{style:{marginBottom:12,padding:'8px 12px',borderRadius:'var(--r)',background:'rgba(47,95,224,0.08)',border:'1px solid rgba(47,95,224,0.25)',fontSize:12}},
+          React.createElement('div',{style:{fontWeight:600,marginBottom:4}},'From Daily Incentive Sheet (Cash) — change these on that sheet'),
+          modalDI.map((e,i)=>React.createElement('div',{key:i,style:{display:'flex',justifyContent:'space-between'}},
+            React.createElement('span',null,e.empName+(e.note?' — '+e.note:'')),React.createElement('b',null,'₹'+(Number(e.amount)||0).toLocaleString('en-IN'))))),
         // Entries list
         React.createElement('div',{style:{marginBottom:14}},
           modalEntries.map((entry,i)=>{
@@ -2089,8 +2107,11 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
           React.createElement('button',{
             className:'btn btn-danger btn-sm',
             onClick:()=>{
-              setEmpData(prev=>{const n={...prev};if(n[empModal.iso])delete n[empModal.iso][empModal.ri];return n;});
-              setValue(empModal.iso,empModal.ri,'');
+              // Clear removes only what was typed here — Daily Incentive Sheet cash entries stay
+              // (change those on that sheet).
+              const keepDI=modalDI;const keepTot=keepDI.reduce((s,e)=>s+(Number(e.amount)||0),0);
+              setEmpData(prev=>{const n={...prev};if(n[empModal.iso]){n[empModal.iso]={...n[empModal.iso]};if(keepDI.length)n[empModal.iso][empModal.ri]=keepDI;else delete n[empModal.iso][empModal.ri];}return n;});
+              setValue(empModal.iso,empModal.ri,keepTot>0?keepTot:'');
               syncDailyIncentiveEntries(empModal.iso,empModal.ri,[]);
               syncAdvancesFromDSE(empModal.iso,empModal.ri,[]);
               syncPenaltiesFromDSE(empModal.iso,empModal.ri,[]);
