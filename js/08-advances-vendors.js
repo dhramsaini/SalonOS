@@ -82,6 +82,7 @@ function AdvanceSheet({period,salon}={}){
   const submitRequest=()=>{
     if(advBlockIfLocked(requestForm.date))return;
     if(!requestForm.emp||!requestForm.amount||!requestForm.repayment||!requestForm.deductionStart){alert('Employee, amount, monthly salary deduction and deduction start date are required.');return;}
+    if(!advanceLimitGate(advSalonId,requestForm.emp,Number(requestForm.amount)))return;
     const item={id:nextId(),emp:requestForm.emp,date:requestForm.date,amount:Number(requestForm.amount),
       reason:requestForm.reason,approvedBy:'',repayment:Number(requestForm.repayment),
       mode:'Salary Deduction',bankRef:'',repaymentTerms:'Deduction from Salary',deductionStart:requestForm.deductionStart,
@@ -142,6 +143,7 @@ function AdvanceSheet({period,salon}={}){
     if(!form.emp||!form.amount){alert('Employee and amount are required.');return;}
     const isSynced=editItem&&editItem.source==='dse';
     if(!isSynced&&!form.bankRef){alert('Bank Reference is required — advances recorded here are always by Bank Transfer. Cash advances go through Daily Sales & Expenses instead.');return;}
+    if(!isSynced&&!advanceLimitGate(advSalonId,form.emp,Number(form.amount)-(editItem?Number(editItem.amount)||0:0),editItem?editItem.id:undefined))return;
     const outstanding=Number(form.amount)-Number(form.repayment||0);
     const item={...form,mode:isSynced?form.mode:'Bank Transfer',id:form.id||nextId(),amount:Number(form.amount),repayment:Number(form.repayment||0),
       schedule:(form.schedule||[]).map(r=>({month:r.month,amount:Number(r.amount)||0})),

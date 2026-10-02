@@ -437,6 +437,7 @@ function OutletPnLCore({salon,period}){
   const canFinalize=!!plUser&&(plUser.role==='Super Admin'||userCanEditSheet(plUser,sid,'outlet-pnl'));
   const toggleFinal=()=>{
     const label=PL_MONTHS[mi]+' '+(mi<9?fy.slice(0,4):'20'+fy.slice(5));
+    if(!plFinal){const cal0=periodToCalendar({fy,mi});const cm=cal0?collectionFinalBlockMessage(sid,cal0.year,cal0.month):'';if(cm){toast(cm,'error');return;}}
     if(!plFinal){if(!window.confirm('Mark the '+label+' P&L as FINAL? The whole month locks: nobody — Super Admin included — can change Daily Sales, Vendors, Attendance, Salary, Incentive, Advances, Penalties or the P&L for it. Only a Super Admin can un-finalize it, with a reason.'))return;}
     else if(!requestUnlock(sid,'the '+label+' P&L (it goes back to DRAFT and the month unlocks)'))return;
     setPnlFinal(sid,fy,mi,!plFinal);setFinalTick(t=>t+1);
@@ -1645,7 +1646,8 @@ function CollectionComparisonSheet({salon,period}={}){
     setReasons(next);safeLocalSet(reasonKey(),JSON.stringify(next));
   };
   const all=collectionComparisonRowsFor(sid,cal.year,cal.month);
-  const isDiff=r=>Math.abs(r.ct-r.et)>0.5||Math.abs(r.c.cash-r.e.cash)>0.5||Math.abs(r.c.card-r.e.card)>0.5||Math.abs(r.c.upi-r.e.upi)>0.5;
+  const cds=collectionDiffSettings(sid);
+  const isDiff=r=>collectionDayOverLimit(r,cds.limit);
   const todayIso=localIsoOf(today);
   const rows=onlyDiff?all.filter(isDiff):all.filter(r=>r.hasC||r.hasD||r.iso<=todayIso);
   const sum=f=>all.reduce((s,r)=>s+f(r),0);
@@ -1674,14 +1676,14 @@ function CollectionComparisonSheet({salon,period}={}){
     h('div',{className:'section-header'},
       h('div',null,
         h('div',{className:'page-title'},'Collection Comparison'),
-        h('div',{className:'page-sub'},'Day-wise: Collection Reco (imported from CRADLE) vs Daily Sales & Exp · amounts incl. GST · Luzo Sale counted with UPI · Diff = Daily Sales − CRADLE')),
+        h('div',{className:'page-sub'},'Day-wise: Collection Reco (imported from CRADLE) vs Daily Sales & Exp · amounts incl. GST · Luzo Sale counted with UPI · Diff = Daily Sales − CRADLE · flagged when over ₹'+cds.limit.toLocaleString('en-IN')+(cds.block?' (reasons needed before Final)':'')+' — set per outlet in Master Sheet')),
       h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
         h('div',{className:'fd-date'},
           h('button',{onClick:()=>shift(-1)},'‹'),
           h('span',{className:'lbl'},MONTHS[cal.month].slice(0,3)+' '+cal.year),
           h('button',{onClick:()=>shift(1)},'›')),
         h('label',{style:{display:'flex',gap:6,alignItems:'center',fontSize:12,cursor:'pointer'}},
-          h('input',{type:'checkbox',checked:onlyDiff,onChange:e=>setOnlyDiff(e.target.checked)}),'Only days with a difference'),
+          h('input',{type:'checkbox',checked:onlyDiff,onChange:e=>setOnlyDiff(e.target.checked)}),'Only flagged days'),
         h('button',{className:'btn btn-ghost btn-sm',onClick:exportXlsx},'⬇ Export Excel'))),
     h('div',{className:'grid4',style:{marginBottom:14}},
       [['CRADLE (Collection Reco)',m(T.ct),'var(--blue)'],['Daily Sales & Exp',m(T.et),'var(--teal)'],['Difference',dm(T.et-T.ct),Math.abs(T.et-T.ct)<0.5?'var(--green)':'var(--red)'],['Days not matching',String(mismatchDays),mismatchDays?'var(--orange)':'var(--green)']].map(([l,v,c])=>
@@ -1713,10 +1715,10 @@ function CollectionComparisonSheet({salon,period}={}){
             h('td',{style:{fontSize:11.5,fontWeight:500,color:'var(--text3)'}},(()=>{const open=all.filter(r=>(r.hasC||r.hasD)&&isDiff(r)&&!reasons[r.iso]).length;return open?open+' difference'+(open===1?'':'s')+' without a reason':'All differences explained';})())))))),
     T.luzo>0&&h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'Daily Sales UPI includes Luzo Sale of '+m(T.luzo)+' for the month.'));
 }
-function OutletPnLSheet({salon,period}={}){
+function OutletPnLSheet({salon,period,onNavTab}={}){
   const [subTab,setSubTab]=useState('pnl');
   const tabBar=React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
-    [{id:'pnl',label:'P&L Statement'},{id:'variance',label:'Variance Analysis'},{id:'cashflow',label:'Cash Flow'},{id:'compare',label:'Compare'},{id:'collcmp',label:'Collection Comparison'}].map(t=>
+    [{id:'pnl',label:'P&L Statement'},{id:'variance',label:'Variance Analysis'},{id:'cashflow',label:'Cash Flow'},{id:'compare',label:'Compare'},{id:'collcmp',label:'Collection Comparison'},{id:'close',label:'Month-End Close'}].map(t=>
       React.createElement('button',{key:t.id,className:`tab-btn ${subTab===t.id?'active':''}`,onClick:()=>setSubTab(t.id)},t.label)
     )
   );
@@ -1736,7 +1738,8 @@ function OutletPnLSheet({salon,period}={}){
     ),
     React.createElement('div',{style:{display:subTab==='cashflow'?'block':'none'}},React.createElement(CashFlowSheet,{salon,period})),
     React.createElement('div',{style:{display:subTab==='compare'?'block':'none'}},React.createElement(PnLCompareSheet,{salon,period})),
-    subTab==='collcmp'&&React.createElement(CollectionComparisonSheet,{salon,period})
+    subTab==='collcmp'&&React.createElement(CollectionComparisonSheet,{salon,period}),
+    subTab==='close'&&React.createElement(MonthCloseChecklist,{salon,period,onNavTab})
   );
 }
 

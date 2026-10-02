@@ -650,6 +650,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   };
   const {toast:dseLockToast}=useToast();
   const toggleMgrFinalMonth=()=>{
+    if(!mgrFinalMonthChecked){const cm=collectionFinalBlockMessage(salonId,mgrFinalSelYear,mgrFinalSelMonth);if(cm){dseLockToast(cm,'error');return;}}
     if(mgrFinalMonthChecked&&!requestUnlock(salonId,'Daily Sales & Exp — '+DSE_MONTHS[mgrFinalSelMonth]+' '+mgrFinalSelYear))return;
     setManagerFinalMonth(salonId,'dse',mgrFinalSelYear,mgrFinalSelMonth,!mgrFinalMonthChecked,user?.name);
     setMgrFinalTick(t=>t+1);
@@ -1115,6 +1116,11 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     const iso=empModal.iso;const ri=empModal.ri;
     const rowName=EXPENSE_ROWS[ri]?.name;
     const total=valid.reduce((s,e)=>s+Number(e.amount),0);
+    if(rowName===DAILY_ADVANCE_SYNC_ROW){
+      const before={};getEmpEntries(iso,ri).forEach(e=>{before[e.empName]=(before[e.empName]||0)+(Number(e.amount)||0);});
+      const now={};valid.forEach(e=>{now[e.empName]=(now[e.empName]||0)+(Number(e.amount)||0);});
+      for(const n of Object.keys(now)){const extra=now[n]-(before[n]||0);if(extra>0&&!advanceLimitGate(salonId,n,extra))return;}
+    }
     // Previous Month Salary / Incentive: never more than what's still due for that month.
     if(OUTSTANDING_ROWS.has(rowName)){
       const byName={};valid.forEach(v=>{byName[v.empName]=(byName[v.empName]||0)+(Number(v.amount)||0);});

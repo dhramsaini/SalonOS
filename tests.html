@@ -546,6 +546,23 @@
         setPlRevenueSource(907,2026,9,'dse');
         const g=plRevenueGrossFor(907,2026,9);
         eq('P&L revenue from Daily Sales & Exp: Cash, Card, UPI + Luzo for the month only',[srcBefore,g.cash,g.card,g.upi],['collection',8001,2400,5224]);
+        // Controls: collection difference limit / block Final, month-end close, advance limit.
+        SALONS.push({id:908,name:'Ctrl test',collDiffLimit:50,collDiffBlock:true});
+        safeLocalSet(outletKey('salonos_cradlee_collection_rows',908),JSON.stringify([
+          {id:1,invoiceDate:'01/09/2026',cash:1000,card:500,upi:700},{id:2,invoiceDate:'02/09/2026',cash:900,card:0,upi:0}]));
+        safeLocalSet(outletKey('salonos_daily_sales_collection_data',908),JSON.stringify({'2026-09-01':{0:1000,1:500,2:700},'2026-09-02':{0:800}}));
+        const cs=collectionDiffStatusFor(908,2026,8);
+        eq('Collection check: only the day over the outlet limit is flagged, and it blocks Final until explained',
+          [cs.flagged.map(r=>r.iso),cs.unexplained.length,!!collectionFinalBlockMessage(908,2026,8)],[['2026-09-02'],1,true]);
+        safeLocalSet(outletKey('salonos_collection_cmp_reasons',908),JSON.stringify({'2026-09-02':'Cash short, recovered next day'}));
+        eq('Collection check: a reason clears the block',collectionFinalBlockMessage(908,2026,8),'');
+        const mc=monthCloseStepsFor(908,2026,8);
+        eq('Month-End Close: steps tick from the data',[mc.find(x=>x.key==='cradle').done,mc.find(x=>x.key==='coll-diff').done,mc.find(x=>x.key==='pnl').done,mc.find(x=>x.key==='sales').done],[true,true,false,false]);
+        const o901=SALONS.find(x=>String(x.id)==='901');const keep=o901.advMaxPct;o901.advMaxPct=10;
+        const e901=getEmployeesForMonth(new Date().getFullYear(),new Date().getMonth(),901).find(e=>Number(e.gross)>0);
+        const advMsg=e901?advanceLimitMessage(901,e901.name,Number(e901.gross)):'no employee';
+        o901.advMaxPct=keep;
+        eq('Advance limit: an advance above the % of gross is caught',[!!advMsg&&advMsg!=='no employee',advanceLimitMessage(901,e901?e901.name:'',1)],[true,'']);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.

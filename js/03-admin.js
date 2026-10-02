@@ -341,7 +341,8 @@ function MasterDashboard({selFY,setSelFY,FYS,accessibleSalons,dashTab,setDashTab
   const tab=dashTab||ownTab,setTab=setDashTab||setOwnTab;
   return h('div',{className:'fade-in'},
     h('div',{className:'tab-bar',style:{marginBottom:16}},
-      [['overview','📊 Overview'],['compliance','📌 Due Date Compliance register']].map(([k,l])=>h('button',{key:k,type:'button',className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
+      [['overview','📊 Overview'],['compliance','📌 Due Date Compliance register'],['close','✅ Month-End Close']].map(([k,l])=>h('button',{key:k,type:'button',className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
+    tab==='close'?h(MonthCloseBoard,{accessibleSalons,onOpenOutletTab}):
     tab==='compliance'
       ?h('div',null,h('div',{className:'page-title'},'Due Date Compliance register'),
           h('div',{className:'page-sub'},'Payments and compliance across all your outlets — overdue, due this week, pending and paid'),
@@ -638,7 +639,9 @@ function MasterSheet({onSelect,salons,setSalons,user}){
     // long after the fact even before that month gets fully locked. Only applies while the
     // month itself isn't already locked (a locked month is already fully read-only regardless).
     // Past months are governed entirely by the existing Month Lock — this never affects them.
-    dseEditWindowEnabled:false,dseEditWindowDays:3};
+    dseEditWindowEnabled:false,dseEditWindowDays:3,
+    // Controls (js/16-automation.js): collection difference limit / block Final, advance limit.
+    collDiffLimit:100,collDiffBlock:false,advMaxPct:'',advBlock:false};
   const [showModal,setShowModal]=useState(false);
   // '', 'loading', 'found', 'notfound' — feedback for the IFSC → Branch auto-lookup below.
   const [ifscLookupStatus,setIfscLookupStatus]=useState('');
@@ -1223,6 +1226,18 @@ function MasterSheet({onSelect,salons,setSalons,user}){
             FG('Editable Window (days)',INP({type:'number',min:1,max:31,value:form.dseEditWindowDays,onChange:fc('dseEditWindowDays'),placeholder:'e.g. 3',style:{maxWidth:140}}))
           )
         ),
+
+        React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'18px 0 4px',paddingTop:14,borderTop:'1px solid var(--border)'}},'Controls'),
+        React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginBottom:10,lineHeight:1.5}},'Collection check compares Collection Reco (CRADLE) with Daily Sales & Exp day by day (P&L (Monthly) → Collection Comparison). Advance limit applies to new advances (Advances sheet and Daily Sales & Exp cash advances).'),
+        React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:14}},
+          React.createElement('div',{className:'form-row cols2',style:{marginBottom:6}},
+            FG('Collection difference limit per day (₹)',INP({type:'number',min:0,value:form.collDiffLimit,onChange:fc('collDiffLimit'),placeholder:'e.g. 100'})),
+            React.createElement('label',{style:{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:12.5,alignSelf:'end',paddingBottom:10}},
+              React.createElement('input',{type:'checkbox',checked:!!form.collDiffBlock,onChange:fcCheck('collDiffBlock')}),'Block Daily Sales Month Final & P&L Final until every flagged day has a reason')),
+          React.createElement('div',{className:'form-row cols2',style:{marginBottom:0}},
+            FG('Advance limit (% of monthly gross)',INP({type:'number',min:0,value:form.advMaxPct,onChange:fc('advMaxPct'),placeholder:'blank = no limit, e.g. 50'})),
+            React.createElement('label',{style:{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:12.5,alignSelf:'end',paddingBottom:10}},
+              React.createElement('input',{type:'checkbox',checked:!!form.advBlock,onChange:fcCheck('advBlock')}),'Block advances above the limit (otherwise warn)'))),
 
         React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'18px 0 4px',paddingTop:14,borderTop:'1px solid var(--border)'}},'GST Input Tax Credit'),
         React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginBottom:10,lineHeight:1.5}},'Separate from GST Applicable above — that\'s whether this outlet charges GST on sales; this is whether it\'s blocked from claiming credit for GST paid on purchases (\"Blocked Credit\" under Section 17(5) of the CGST Act). Salon/beauty services commonly are, so this defaults to Yes.'),
