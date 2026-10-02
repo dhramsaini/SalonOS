@@ -628,12 +628,12 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     if(p.length!==3)return false;
     const y=Number(p[0]),m=Number(p[1])-1;
     if(isMonthLockedFor(salonId,y,m))return true;
-    if(isManagerSide&&isMgrFinalMonthOf(y,m))return true;
+    if(isMgrFinalMonthOf(y,m))return true; // Month Final — nobody edits, Super Admin included
     return dseOutsideEditWindow(iso);
   };
   const {toast:dseLockToast}=useToast();
   const toggleMgrFinalMonth=()=>{
-    if(mgrFinalMonthChecked&&isManagerSide){dseLockToast('This month is marked Final — ask a Super Admin or Reviewer to un-finalize it before editing.','error');return;}
+    if(mgrFinalMonthChecked&&!requestUnlock(salonId,'Daily Sales & Exp — '+DSE_MONTHS[mgrFinalSelMonth]+' '+mgrFinalSelYear))return;
     setManagerFinalMonth(salonId,'dse',mgrFinalSelYear,mgrFinalSelMonth,!mgrFinalMonthChecked,user?.name);
     setMgrFinalTick(t=>t+1);
     dseLockToast(!mgrFinalMonthChecked?'Marked '+DSE_MONTHS[mgrFinalSelMonth]+' '+mgrFinalSelYear+' Final — Manager side is now locked for this month':DSE_MONTHS[mgrFinalSelMonth]+' '+mgrFinalSelYear+' un-finalized — editable again','success');
@@ -642,11 +642,11 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     const p=String(iso||'').split('-');
     const y=p.length===3?Number(p[0]):null,m=p.length===3?Number(p[1])-1:null;
     if(y!=null&&isMonthLockedFor(salonId,y,m)){
-      dseLockToast('That date falls in a locked month — unlock it from Master Sheet or Salary Working to make changes.','error');
+      dseLockToast('That month is locked — nobody can change it while it is locked. A Super Admin can unlock it, with a reason (Salary Working, Master Sheet → Months, or un-finalize the P&L).','error');
       return true;
     }
-    if(y!=null&&isManagerSide&&isMgrFinalMonthOf(y,m)){
-      dseLockToast('This month is marked Final — ask a Super Admin or Reviewer to un-finalize it before editing.','error');
+    if(y!=null&&isMgrFinalMonthOf(y,m)){
+      dseLockToast('This month is marked Final — nobody can change it. A Super Admin can un-finalize it, with a reason.','error');
       return true;
     }
     if(dseOutsideEditWindow(iso)){
@@ -847,6 +847,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     if(!invForm.docNature){dseToastErr('Select the Doc Nature');return;}
     if(!(invForm.invoiceNo||'').trim()){dseToastErr('Invoice / Voucher No. is required');return;}
     if(!invForm.invoiceDate){dseToastErr('Invoice Date is required');return;}
+    if(!canBookInvoiceInMonth(invoiceBookMonthOf(invForm))&&!(showInvoiceForm&&showInvoiceForm.invoiceId)){dseToastErr(invoiceMonthBlockMessage());return;}
     if(invFormTotal<=0){dseToastErr('Enter at least a Taxable Value');return;}
     if(outletSettings(salonId).attachmentRequired&&!invForm.attachment){dseToastErr('This outlet requires the invoice / voucher copy to be attached — please attach it before saving.');return;}
     if(!(Number(invForm.amountPaid)>0)){dseToastErr('Enter Amount Paid — an invoice can\'t be saved from Daily Sales & Exp without recording a payment against it.');return;}

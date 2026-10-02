@@ -167,7 +167,19 @@ function WatermarkOverlay({text,final}){
 // P&L (Monthly) "final" per outlet and month: {'<fy>|<mi>':{final:true,by,at}}.
 function loadPnlFinal(sid){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_pnl_final',sid))||'{}');return v&&typeof v==='object'?v:{};}catch(e){return{};}}
 function isPnlFinal(sid,fy,mi){return !!(loadPnlFinal(sid)[fy+'|'+mi]||{}).final;}
+// P&L Final also locks the month (source 'pnl-final') — Daily Sales & Exp, Vendors, Attendance,
+// Salary, Incentive, Advances, Penalties, recurring bills and P&L overrides of that month freeze.
+// Un-finalizing removes only that lock, never a lock someone set by hand.
+function pnlFinalMonthLock(sid,fy,mi,final){
+  try{
+    const c=periodToCalendar({fy,mi});if(!c)return;
+    const rec=monthLockRecordFor(sid,c.year,c.month);
+    if(final&&!(rec&&rec.locked))setMonthLockFor(sid,c.year,c.month,true,'pnl-final',(currentSessionUser()||{}).name||'');
+    if(!final&&rec&&rec.source==='pnl-final')setMonthLockFor(sid,c.year,c.month,false);
+  }catch(e){}
+}
 function setPnlFinal(sid,fy,mi,final){
+  pnlFinalMonthLock(sid,fy,mi,final);
   const all=loadPnlFinal(sid),u=currentSessionUser();
   if(final)all[fy+'|'+mi]={final:true,by:(u&&(u.name||u.email))||'',at:new Date().toISOString()};else delete all[fy+'|'+mi];
   safeLocalSet(outletKey('salonos_pnl_final',sid),JSON.stringify(all));
@@ -611,6 +623,17 @@ function isMonthLockedFor(salonId,year,month){
   const rec=loadMonthLocks(salonId)[monthLockCode(year,month)];
   return !!(rec&&rec.locked);
 }
+// Unlocking (a locked month, a Final month of Daily Sales & Exp, a Final P&L) — Super Admin only,
+// with a reason that goes to the Audit Log. While locked, nobody — Super Admin included — can edit.
+function requestUnlock(salonId,what){
+  const u=currentSessionUser();
+  if(!u||u.role!=='Super Admin'){window.alert('Only a Super Admin can unlock '+what+'. While it is locked nobody can change it.');return false;}
+  const reason=window.prompt('Unlock '+what+'?\n\nWhile it is locked nobody can change it. Type the reason for unlocking (kept in the Audit Log):','');
+  if(reason==null)return false;
+  if(!String(reason).trim()){window.alert('A reason is required to unlock.');return false;}
+  try{logAuditEvent(salonId,{entity:'Lock',entityId:what,action:'Unlocked',summary:what+' unlocked — reason: '+String(reason).trim()});}catch(e){}
+  return true;
+}
 function monthLockRecordFor(salonId,year,month){
   return loadMonthLocks(salonId)[monthLockCode(year,month)]||null;
 }
@@ -700,7 +723,7 @@ function iwEffectiveLockRecordFor(salonId,year,month){
 }
 function isIWEffectiveLockedFor(salonId,year,month){
   const manual=monthLockRecordFor(salonId,year,month);
-  if(manual&&manual.locked&&manual.source==='manual')return true;
+  if(manual&&manual.locked&&(manual.source==='manual'||manual.source==='pnl-final'))return true;
   return isIWAutoLockedFor(salonId,year,month);
 }
 // ── Manager Final Month — a lighter, per-month (not whole-team Month Lock) self-lock that the
@@ -1106,8 +1129,44 @@ function loadVendorInvoices(salonId){
   try{const raw=JSON.parse(cachedLocalGet(outletKey('salonos_vendor_invoices',salonId))||'[]');if(Array.isArray(raw))return ensureVendorInvoiceIds(raw);}catch(e){}
   return [];
 }
-function saveVendorInvoices(invoices,salonId){
-  safeLocalSet(outletKey('salonos_vendor_invoices',salonId),JSON.stringify(invoices));
+// Booking month of an invoice ('YYYY-MM') — booking date, else invoice date.
+function invoiceBookMonthOf(inv){const p=parseInvoiceDateFlexible((inv&&(inv.bookingDate||inv.invoiceDate))||'');return p?p.y+'-'+String(p.m).padStart(2,'0'):'';}
+// Only a Super Admin or an Accountant may add (or move) an invoice into a month other than the current one.
+const INVOICE_ANY_MONTH_ROLES=['Super Admin','Accountant'];
+function canBookInvoiceInMonth(ym,user){
+  const u=user||currentSessionUser();
+  if(u&&INVOICE_ANY_MONTH_ROLES.includes(u.role))return true;
+  return !ym||ym===localTodayIso().slice(0,7);
+}
+function invoiceMonthBlockMessage(){
+  return 'Only a Super Admin or Accountant can add an invoice outside the current month. Use a booking date in '+new Date().toLocaleString('en-IN',{month:'long',year:'numeric'})+', or ask your Accountant.';
+}
+// Safety net under every screen that writes vendor bills: a new (or re-dated) invoice is refused
+// when its booking month isn't allowed for this user, and nothing about an invoice booked in a
+// locked month may change (except recording payments against it) — the earlier version is kept.
+// opts.system — the app's own automatic writes (recurring bills it creates on schedule): no month-by-role check.
+function saveVendorInvoices(invoices,salonId,opts){
+  const prev=loadVendorInvoices(salonId);const byId={};prev.forEach(i=>{if(i&&i.id!=null)byId[i.id]=i;});
+  const u=currentSessionUser();const refused=[];
+  const lockedYm=ym=>{if(!ym)return false;const p=ym.split('-').map(Number);return isMonthLockedFor(salonId,p[0],p[1]-1);};
+  const strip=i=>{const c={...i};delete c.payments;delete c.approval;return JSON.stringify(c);};
+  const seen=new Set();
+  let out=(invoices||[]).map(inv=>{
+    if(!inv)return inv;
+    const old=inv.id!=null?byId[inv.id]:null;if(old)seen.add(inv.id);
+    const ym=invoiceBookMonthOf(inv),oldYm=old?invoiceBookMonthOf(old):null;
+    if(old&&lockedYm(oldYm)&&strip(old)!==strip(inv)){refused.push('locked');return old;}
+    if(!old||ym!==oldYm){
+      if(u&&!(opts&&opts.system)&&!canBookInvoiceInMonth(ym,u)){refused.push('month');return old||null;}
+      if(lockedYm(ym)){refused.push('locked');return old||null;}
+    }
+    return inv;
+  }).filter(Boolean);
+  // an invoice of a locked month can't be deleted either
+  prev.forEach(o=>{if(o&&o.id!=null&&!seen.has(o.id)&&lockedYm(invoiceBookMonthOf(o))){out.push(o);refused.push('locked');}});
+  safeLocalSet(outletKey('salonos_vendor_invoices',salonId),JSON.stringify(out));
+  if(refused.length){try{window.alert(refused.includes('month')?invoiceMonthBlockMessage():"That bill belongs to a locked month — it can’t be added, changed or deleted while the month is locked.");}catch(e){}}
+  return !refused.length;
 }
 // ── Advances (salonos_advances) read/write helpers — same store the Advances sheet itself
 // reads/writes via its own advKey()/setAdvances, exposed here as plain functions so Bank

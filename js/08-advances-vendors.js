@@ -14,7 +14,7 @@ function AdvanceSheet({period,salon}={}){
   };
   const advBlockIfLocked=(dateStr)=>{
     if(!advIsLocked(dateStr))return false;
-    advError('That date falls in a locked month — unlock it from Master Sheet or Salary Working to make changes.');
+    advError('That month is locked — nobody can change it while it is locked. A Super Admin can unlock it, with a reason (Salary Working, Master Sheet → Months, or un-finalize the P&L).');
     return true;
   };
   const EMPLOYEES=getEmployeesForMonth(attYear,attMonth,salon?.id);
@@ -631,7 +631,7 @@ function PenaltySheet({period,salon}={}){
   };
   const penBlockIfLocked=(dateStr)=>{
     if(!penIsLocked(dateStr))return false;
-    penError('That date falls in a locked month — unlock it from Master Sheet or Salary Working to make changes.');
+    penError('That month is locked — nobody can change it while it is locked. A Super Admin can unlock it, with a reason (Salary Working, Master Sheet → Months, or un-finalize the P&L).');
     return true;
   };
   const EMPLOYEES=getEmployeesForMonth(attYear,attMonth,salon?.id);
@@ -852,7 +852,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
   };
   const vendBlockIfLocked=(dateStr)=>{
     if(!vendIsLocked(dateStr))return false;
-    toastError('That date falls in a locked month — unlock it from Master Sheet or Salary Working to make changes.');
+    toastError('That month is locked — nobody can change it while it is locked. A Super Admin can unlock it, with a reason (Salary Working, Master Sheet → Months, or un-finalize the P&L).');
     return true;
   };
 
@@ -1026,6 +1026,9 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
           amount,category,desc:String(row['Description']||''),attachment:null,linkedPI:'',payments:[]
         });
       });
+      {const blocked=toAdd.filter(r=>!canBookInvoiceInMonth(invoiceBookMonthOf(r)));
+       blocked.forEach(r=>failed.push((r.invoiceNo||'Invoice')+': '+invoiceMonthBlockMessage()));
+       const okRows=toAdd.filter(r=>!blocked.includes(r));toAdd.length=0;toAdd.push(...okRows);}
       if(toAdd.length)setInvoices(prev=>[...prev,...toAdd]);
       setBulkImportResult({added:toAdd.length,failed,totalRows:json.length});
       if(toAdd.length&&!failed.length)toastSuccess(toAdd.length+' invoice'+(toAdd.length===1?'':'s')+' imported');
@@ -1040,6 +1043,8 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
     if(!invForm.docNature){alert('Select the Doc Nature.');return;}
     if(!(invForm.invoiceNo||'').trim()){alert((invForm.docNature==='Performa Invoice'?'PI':'Invoice / Voucher')+' No. is required.');return;}
     if(!invForm.invoiceDate){alert((invForm.docNature==='Performa Invoice'?'PI':'Invoice')+' Date is required.');return;}
+    {const orig=editInvoiceId?invoices.find(i=>i.id===editInvoiceId):null;const ym=invoiceBookMonthOf(invForm);
+     if((!orig||invoiceBookMonthOf(orig)!==ym)&&!canBookInvoiceInMonth(ym)){alert(invoiceMonthBlockMessage());return;}}
     if(!computedTotal){alert('Enter at least a Taxable Value.');return;}
     if(outletSettings(salonId).attachmentRequired&&!invForm.attachment){alert('This outlet requires the document to be attached for every '+invForm.docNature+' — please attach it (📎 below) before saving.');return;}
     if(!invForm.category){alert('Please select a Category before saving.');return;}

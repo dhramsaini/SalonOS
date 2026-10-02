@@ -550,6 +550,8 @@ function SalonMonthLockPanel({salon,onClose}){
     const rec=monthLockRecordFor(salon?.id,year,monthCal);
     const currentlyManual=!!(rec&&rec.locked&&rec.source==='manual');
     const nowLocked=!currentlyManual;
+    if(rec&&rec.locked&&rec.source==='pnl-final'){window.alert('The P&L (Monthly) for '+PG_LONG[monthCal]+' '+year+' is Final — un-finalize the P&L first.');return;}
+    if(!nowLocked&&!requestUnlock(salon?.id,PG_LONG[monthCal]+' '+year))return;
     setMonthLockFor(salon?.id,year,monthCal,nowLocked,'manual');
     setTick(t=>t+1);
     toast((nowLocked?'Locked ':'Unlocked ')+PG_LONG[monthCal]+' '+year,'success');

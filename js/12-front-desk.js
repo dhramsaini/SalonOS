@@ -1046,6 +1046,7 @@ function loadPLManualOverrides(salonId){
   return{};
 }
 function savePLManualOverride(salonId,year,month,field,value){
+  if(isMonthLockedFor(salonId,year,month)){try{window.alert('That month is locked — the P&L can’t be changed.');}catch(e){}return false;}
   const all=loadPLManualOverrides(salonId);
   const key=year+'-'+month;
   all[key]={...(all[key]||{}),[field]:value};

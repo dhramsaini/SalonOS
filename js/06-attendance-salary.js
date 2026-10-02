@@ -892,7 +892,8 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     const msg=(monthLockRec&&monthLockRec.source==='manual')
       ?'Unlock '+MONTHS[selMonth]+' '+selYear+' for this outlet? Attendance, Salary Working and Incentive Working will all become editable again.'
       :'Unlock '+MONTHS[selMonth]+' '+selYear+' Salary Working (and Attendance) for this outlet? It will become editable again — Incentive Working is unaffected.';
-    if(!window.confirm(msg))return;
+    if(monthLockRec&&monthLockRec.source==='pnl-final'){window.alert('The P&L (Monthly) for '+MONTHS[selMonth]+' '+selYear+' is Final — un-finalize the P&L first.');return;}
+    if(!requestUnlock(salon?.id,MONTHS[selMonth]+' '+selYear+' Salary Working'))return;
     setMonthLockFor(salon?.id,selYear,selMonth,false);
     setMonthLockTick(t=>t+1);
     success(MONTHS[selMonth]+' '+selYear+' unlocked');

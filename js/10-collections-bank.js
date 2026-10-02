@@ -3769,6 +3769,7 @@ function BankStatement({salon,onNavTab}={}){
     const{row,vendor}=addInvoiceRow;
     if(!addInvoiceForm.invoiceNo.trim()){faError('Enter an invoice number.');return;}
     if(!(Number(addInvoiceForm.amount)>0)){faError('Enter a valid invoice amount.');return;}
+    if(!canBookInvoiceInMonth(invoiceBookMonthOf({invoiceDate:addInvoiceForm.invoiceDate||row.transactionDate}))){faError(invoiceMonthBlockMessage());return;}
     const freshInvoices=loadVendorInvoices(salonId);
     const invoiceDateDmy=addInvoiceForm.invoiceDate?fmtDate(addInvoiceForm.invoiceDate):row.transactionDate;
     const linkId='bank-'+row.id;

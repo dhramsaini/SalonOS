@@ -2041,7 +2041,7 @@ const MONTH_NAMES_SHORT_=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep',
 // Creates what autoRecurringInvoicesDue finds. Returns the invoices created.
 function autoCreateRecurringInvoices(salonId,asOf){
   const due=autoRecurringInvoicesDue(salonId,asOf);
-  if(due.create.length)saveVendorInvoices([...loadVendorInvoices(salonId),...due.create],salonId);
+  if(due.create.length)saveVendorInvoices([...loadVendorInvoices(salonId),...due.create],salonId,{system:true});
   return due;
 }
 function operatingExpensesFor(salonId,year,month){

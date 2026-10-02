@@ -339,6 +339,7 @@
         const v=mo=>Math.round(variableRecurringMonthAmt(it,908,2026,mo).amt);
         saveVendorInvoices([{...bill,enteredAt:'2026-09-15T10:00:00.000Z'}],908);
         eq('Closed August keeps its provision; September gets its half + the true-up',[v(7),v(8),v(7)+v(8)],[2000,3000,5000]);
+        saveMonthLocks({},908); // a bill can't be booked into a locked month any more — unlock August first
         saveVendorInvoices([{...bill,invoiceDate:'20/08/2026'}],908);
         eq('Bill booked in August (in advance for Aug–Sep): each month gets its half',[v(7),v(8)],[2500,2500]);
         // Advance bill (Sep–Nov, dated Sep) and a bill whose first month was closed before it was entered.
@@ -442,6 +443,29 @@
           [userCanEditSheet(so,901,'daily-sales'),userCanEditSheet(so,901,'attendance'),userCanEditSheet(so,902,'daily-sales'),userCanViewSheet(so,902,'daily-sales'),userCanEditSheet(ow,901,'daily-sales')],
           [true,false,false,true,false]);
       }catch(err){results.push({name:'Salon Owner access',ok:false,got:String(err&&err.message||err),want:'no error'});}
+      try{
+        // Invoice month rule and month locks (P&L Final locks the whole month for everyone).
+        const keepU=sessionStorage.getItem('salonos_user'),keepA=window.alert;window.alert=()=>{};
+        const setU=role=>sessionStorage.setItem('salonos_user',JSON.stringify({id:9,name:'Tester',role}));
+        const cur=localTodayIso().slice(0,7);
+        setU('Salon Manager');
+        eq('Invoice month: manager only the current month; Accountant / Super Admin any month',
+          [canBookInvoiceInMonth(cur),canBookInvoiceInMonth('2025-01'),canBookInvoiceInMonth('2025-01',{role:'Accountant'}),canBookInvoiceInMonth('2025-01',{role:'Super Admin'})],[true,false,true,true]);
+        const inv={id:'LX1',vendorId:'V1',invoiceNo:'OLD-1',invoiceDate:'2025-01-05',bookingDate:'2025-01-05',amount:100,payments:[]};
+        saveVendorInvoices([inv],905);
+        const a1=loadVendorInvoices(905).length;
+        setU('Accountant');saveVendorInvoices([inv],905);
+        const a2=loadVendorInvoices(905).length;
+        setPnlFinal(905,'2024-25',9,true);
+        const lockedNow=isMonthLockedFor(905,2025,0);
+        saveVendorInvoices([{...inv,amount:999}],905);const a3=loadVendorInvoices(905)[0].amount;
+        saveVendorInvoices([{...inv,payments:[{paidAmount:50,paidDate:cur+'-01'}]}],905);const a4=loadVendorInvoices(905)[0].payments.length;
+        saveVendorInvoices([],905);const a5=loadVendorInvoices(905).length;
+        setPnlFinal(905,'2024-25',9,false);
+        eq('Locks: manager can’t back-date a bill; Accountant can; P&L Final locks the month — no edit or delete, payments still recorded; un-finalize unlocks',
+          [a1,a2,lockedNow,a3,a4,a5,isMonthLockedFor(905,2025,0)],[0,1,true,100,1,1,false]);
+        if(keepU!=null)sessionStorage.setItem('salonos_user',keepU);else sessionStorage.removeItem('salonos_user');window.alert=keepA;
+      }catch(err){results.push({name:'Locks and invoice month',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Due Date Compliance register statuses.
         const dd=n=>{const d=new Date(localTodayIso()+'T00:00:00');d.setDate(d.getDate()+n);return localIsoOf(d);};

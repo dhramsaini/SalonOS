@@ -162,7 +162,9 @@ function IncentiveWorkingCore({period,salon,user}={}){
     const msg=isMasterLocked
       ?'Unlock the ENTIRE month of '+MONTHS[selMonth]+' '+selYear+' for this outlet? Attendance, Salary Working and Incentive Working will all become editable again.'
       :'Unlock '+MONTHS[selMonth]+' '+selYear+' Incentive Working for this outlet? It will become editable again — Attendance and Salary Working are unaffected.';
-    if(!window.confirm(msg))return;
+    const lr=monthLockRecordFor(salon?.id,selYear,selMonth);
+    if(lr&&lr.locked&&lr.source==='pnl-final'){window.alert('The P&L (Monthly) for '+MONTHS[selMonth]+' '+selYear+' is Final — un-finalize the P&L first.');return;}
+    if(!requestUnlock(salon?.id,MONTHS[selMonth]+' '+selYear+' Incentive Working'))return;
     if(isMasterLocked)setMonthLockFor(salon?.id,selYear,selMonth,false);
     else setIWAutoLockFor(salon?.id,selYear,selMonth,false);
     success(MONTHS[selMonth]+' '+selYear+(isMasterLocked?' unlocked':' Incentive Working unlocked'));
