@@ -3294,7 +3294,7 @@ function isPasswordRecoveryLink(){
 // (alertFixedLocally) — the next run closes it for good. ──
 const AUTOMATION_SETTINGS_KEY='salonos_secret_automation_settings';
 const AUTOMATION_DEFAULTS={enabled:true,salesCheck:true,attendanceCheck:true,dueReminders:true,dueDaysAhead:3,
-  recurringReminders:true,monthEndChecklist:true,autoLock:false,autoLockDay:10,digest:false,anomalyChecks:true,loginWatch:true,backupReminder:true,errorWatch:true,collectionCheck:true,auditWatch:true};
+  recurringReminders:true,monthEndChecklist:true,autoLock:false,autoLockDay:10,digest:false,anomalyChecks:true,loginWatch:true,backupReminder:true,errorWatch:true,collectionCheck:true,auditWatch:true,cashDepositCheck:true};
 async function loadOpenAlerts(){
   const supa=await getSupabaseClient();
   const{data,error}=await supa.from('alerts').select('id,akey,outlet_id,kind,severity,title,body,tab,due_date,auto,created_at')

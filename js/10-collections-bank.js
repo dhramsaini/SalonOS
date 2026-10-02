@@ -3275,12 +3275,14 @@ function BankStatement({salon,onNavTab}={}){
     if(findVendorMatch(desc,vendors))return'Vendor Payment';
     return null;
   };
-  const applyAutoClassification=(list,force)=>list.map(r=>{
+  const applyAutoClassification=(list,force)=>{const learned=bankLearnedNatures(rows);return list.map(r=>{
     let cls=classifyNatureAndDate(r.description,r.credit,r.valueDate,r.transactionDate);
     if(!cls){
       const debitNature=classifyDebitNature(r.description,r.debit,vendors);
       if(debitNature)cls={nature:debitNature,cradleeDate:''};
     }
+    // No rule matched — use the Nature given earlier to lines with the same narration pattern.
+    if(!cls&&!r.nature){const ln=bankLearnedNatureFor(learned,r);if(ln)return{...r,nature:ln,natureLearned:true};}
     if(!cls)return r;
     // Default (force=false, used on fresh import): only fill in blanks.
     // Force mode (used by the Re-classify button): overwrite with whatever the rules produce —
@@ -3290,7 +3292,7 @@ function BankStatement({salon,onNavTab}={}){
       nature:force?(cls.nature||r.nature):(r.nature||cls.nature),
       cradleeDate:force?(cls.cradleeDate||r.cradleeDate):(r.cradleeDate||cls.cradleeDate)
     };
-  });
+  });};
   // Re-apply the classification rules to whatever's already in the table — covers data that was
   // imported before these rules existed, or where a rule has since changed, or rows that were
   // classified wrong and need a redo. This OVERWRITES existing Nature and Date as per Cradlee

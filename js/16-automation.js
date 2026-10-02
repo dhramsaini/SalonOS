@@ -186,3 +186,25 @@ function writeDueSnapshots(salons){
     }catch(e){}
   });
 }
+
+// ── Bank statement learning — a narration's "signature" (lower-case words, digits / reference
+// numbers dropped), so a new bank line with no matching rule gets the Nature you gave earlier
+// lines with the same signature. Only used when every earlier line with that signature has the
+// same Nature, and only for the same side (credit / debit). ──
+function bankNarrationSig(desc){
+  return String(desc||'').toLowerCase().replace(/[0-9]+/g,' ').replace(/[^a-z]+/g,' ').trim().split(/\s+/).filter(w=>w.length>2).slice(0,5).join(' ');
+}
+function bankLearnedNatures(rows){
+  const seen={};
+  (rows||[]).forEach(r=>{
+    if(!r||!r.nature)return;
+    const sig=bankNarrationSig(r.description);if(sig.length<6)return;
+    const k=(Number(r.credit)>0?'C|':'D|')+sig;
+    if(seen[k]===undefined)seen[k]=r.nature;else if(seen[k]!==r.nature)seen[k]=null; // conflicting → don't guess
+  });
+  return seen;
+}
+function bankLearnedNatureFor(learned,r){
+  const sig=bankNarrationSig(r&&r.description);if(sig.length<6)return null;
+  return learned[(Number(r.credit)>0?'C|':'D|')+sig]||null;
+}

@@ -222,6 +222,11 @@
           const col=ra.find(x=>x.kind==='collection'),comp=ra.filter(x=>x.kind==='compliance').map(x=>x.akey),aud=ra.find(x=>x.kind==='audit');
           eq('Automation: CRADLE vs Daily Sales alert lists only unexplained days over the limit; dues from the snapshot within 3 days; weekly unlocks',
             [col?/2 Oct/.test(col.body)&&!/3 Oct/.test(col.body)&&!/1 Oct/.test(col.body):false,comp,!!aud],[true,['compliance:910:auto-tds-2026-8'],true]);}
+        {const kv3=new Map();kv3.set('salonos_salons',[{id:911,name:'Cash — Y',status:'Active'}]);
+          const ds={};for(let d=1;d<=4;d++)ds['2026-10-0'+d]={0:1000};ds['2026-09-20']={0:500,11:4000};
+          kv3.set('salonos_daily_sales_collection_data_outlet_911',ds);
+          const ca=mod.computeAlerts(kv3,mod.DEFAULTS,day(2026,10,5)).alerts.find(x=>x.kind==='cash');
+          eq('Automation: cash not deposited for over 7 days is flagged with the cash taken since',[!!ca,ca?/4,000/.test(ca.body):false],[true,true]);}
         eq('Automation: a September bank statement (transactionDate) counts as imported',/bank statement/.test((mod.computeAlerts(kv,mod.DEFAULTS,day(2026,10,5)).alerts.find(x=>x.akey==='month_end:901:2026-09')||{}).body||''),false);
         kv.delete('salonos_bank_statement_rows_outlet_901');
         const r2=mod.computeAlerts(kv,Object.assign({},mod.DEFAULTS,{autoLock:true,autoLockDay:4}),day(2026,10,5));
@@ -580,6 +585,10 @@
         eq('GST summary: sales incl. GST, taxable (÷1.05), CGST = SGST',[Math.round(gs.gross),Math.round(gs.taxable),Math.round(gs.cgst),Math.round(gs.sgst)],[15625,14881,372,372]);
         const ecr=pfEcrFor(901,2026,8);
         eq('PF ECR: one #~# line per PF employee with 11 fields',[ecr.rows.length===ecr.text.split('\\n').filter(Boolean).length,(ecr.text.split('\\n')[0]||'').split('#~#').length===11||ecr.rows.length===0],[true,true]);
+        const learned=bankLearnedNatures([{description:'NEFT-123456-RAZORPAY SOFTWARE-XYZ',credit:5000,nature:'Card Settlement'},{description:'IMPS 998877 RAJ KUMAR',debit:3000,nature:'Salary'}]);
+        eq('Bank learning: a new line with the same narration pattern gets the earlier Nature (same side only)',
+          [bankLearnedNatureFor(learned,{description:'NEFT-778899-RAZORPAY SOFTWARE-XYZ',credit:7000}),bankLearnedNatureFor(learned,{description:'NEFT-778899-RAZORPAY SOFTWARE-XYZ',debit:7000}),bankLearnedNatureFor(learned,{description:'IMPS 112233 RAJ KUMAR',debit:3100})],
+          ['Card Settlement',null,'Salary']);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.

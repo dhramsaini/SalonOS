@@ -21,6 +21,7 @@
 //   compliance      PF / ESIC / PT / TDS / salary / incentive / licence dues within N days or overdue,
 //                   from the snapshot the app saves when an owner / admin opens it (salonos_due_snapshot)
 //   audit           months unlocked in the last 7 days, with the reasons given (weekly, Super Admin)
+//   cash            cash sales coming in but no Cash Deposit entered for over 7 days
 //
 // Settings: Master Settings → Automation (kv salonos_secret_automation_settings, Super Admin only).
 // Optional digest of new alerts by email / WhatsApp to the "Automatic reports" recipients, using the
@@ -53,7 +54,7 @@ const json = (body: unknown, status = 200) =>
 export const DEFAULTS = {
   enabled: true, salesCheck: true, attendanceCheck: true, dueReminders: true, dueDaysAhead: 3,
   recurringReminders: true, monthEndChecklist: true, autoLock: false, autoLockDay: 10, digest: false, anomalyChecks: true,
-  loginWatch: true, backupReminder: true, errorWatch: true, collectionCheck: true, auditWatch: true,
+  loginWatch: true, backupReminder: true, errorWatch: true, collectionCheck: true, auditWatch: true, cashDepositCheck: true,
 };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -295,6 +296,17 @@ export function computeAlerts(kv: KV, settings: typeof DEFAULTS, today: number) 
           title: `${name}: ${it.type} ${left < 0 ? `overdue by ${-left} day${left === -1 ? "" : "s"}` : left === 0 ? "due today" : `due in ${left} day${left === 1 ? "" : "s"}`}`,
           body: `${it.desc || it.type} — ${inr(num(it.amount))}, due ${nice(dn)}. Mark it paid in Due Dates once done.`, tab: "due-dates", due_date: isoOfDay(dn), auto: true });
       }
+    }
+    // 12 · Cash not deposited: cash sales keep coming in but no Cash Deposit (Daily Sales row 11) for over 7 days.
+    if (settings.cashDepositCheck && inUse) {
+      let lastDep: number | null = null, cashSince = 0;
+      for (let i = 0; i <= 60; i++) { const r = sales[isoOfDay(today - i)]; if (r && num(r[11]) > 0) { lastDep = today - i; break; } }
+      for (let dn = (lastDep ?? today - 60) + 1; dn < today; dn++) { const r = sales[isoOfDay(dn)]; if (r) cashSince += num(r[0]); }
+      const gap = lastDep == null ? 61 : today - lastDep;
+      // Only for outlets that record deposits in Daily Sales at all (some deposit another way).
+      if (lastDep != null && gap > 7 && cashSince > 0) out.push({ akey: `cash_deposit:${sid}:${lastDep == null ? "none" : isoOfDay(lastDep)}`, outlet_id: sid, kind: "cash", severity: gap > 14 ? "urgent" : "warn",
+        title: `${name}: no cash deposit for ${gap > 60 ? "over 60" : gap} days`,
+        body: `${inr(cashSince)} cash sales since ${lastDep == null ? "the last 60 days began" : "the last deposit on " + nice(lastDep)}. Deposit the cash and enter it under Cash Deposit in Daily Sales & Exp.`, tab: "daily-sales", due_date: null, auto: true });
     }
     // 11 · Months unlocked in the last 7 days, with the reasons (weekly digest for the Super Admin).
     if (settings.auditWatch) {

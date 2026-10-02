@@ -1794,6 +1794,7 @@ function AutomationSettingsCard(){
           React.createElement('span',{style:{display:'block',fontSize:11.5,color:'var(--text3)'}},'Unpaid vendor bills with a due date (closes once paid). The same days-ahead applies to fixed recurring items below. Overdue ones turn red.'))),
       box('recurringReminders','Recurring expenses','Fixed items on their due day; variable bills (electricity, water…) once their period is over and no bill is entered.'),
       box('collectionCheck','CRADLE vs Daily Sales','Days in the last 45 where Collection Reco and Daily Sales differ by more than the outlet’s limit (Master Sheet → Controls) and no reason is entered.'),
+      box('cashDepositCheck','Cash not deposited','Cash sales keep coming in but no Cash Deposit has been entered in Daily Sales & Exp for over 7 days.'),
       box('auditWatch','Unlocks this week (Super Admin)','Every month unlocked in the last 7 days, who did it and the reason given.'),
       box('anomalyChecks','Unusual activity','A sales day far below that weekday’s usual, a day’s expenses 3× the 30-day average, a vendor bill that looks entered twice.'),
       box('monthEndChecklist','Month-end checklist','From the 1st: last month\'s days without sales, unmarked attendance, salary not approved, bank statement not imported.'),
