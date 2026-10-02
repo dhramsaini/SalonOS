@@ -3189,8 +3189,19 @@ const PL_ROLE_MAP=[
   {dept:'Bar',salaryLabel:'Bar Staff Salary',incLabel:null,biz:'restaurant'},
   {dept:'Accounts / Admin',salaryLabel:'Accounts & Admin Salary',incLabel:null,biz:'restaurant'},
 ];
+// Salary is worked out only from FINAL attendance: true once the month's Attendance is marked
+// "Month Final", or the month is locked. Until then Salary Working, Salary Payment, the Bank
+// Payment salary file, the P&L's salary / PF / ESIC lines and the Due Date salary & statutory
+// items all wait.
+function salaryAttendanceReady(sid,year,month){
+  return isManagerFinalMonth(sid,'attendance',year,month)||isMonthLockedFor(sid,year,month);
+}
+function swWorkingsFinalFor(sid,year,month){return salaryAttendanceReady(sid,year,month)?swWorkingsFor(sid,year,month):[];}
 function employeeCostFor(salonId,year,month){
-  const sw=swWorkingsFor(salonId,year,month);
+  // Salary, Tea and PF/ESIC employer share count only once attendance is final; the employee list
+  // itself is still used to place monthly incentives under the right role.
+  const swReady=salaryAttendanceReady(salonId,year,month);
+  const sw=swWorkingsFor(salonId,year,month).map(e=>swReady?e:{...e,grossAfterLop:0,tea:0,pfEr:0,esicEr:0});
   const inc=incWorkingsFor(salonId,year,month);
   const incByEmp={};inc.forEach(e=>{incByEmp[e.id]=e.totalInc;});
   // "Salary" here is Gross Salary + Tea, matching Salary Working's own "Gross Salary" and "Tea"

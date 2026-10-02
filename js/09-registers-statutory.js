@@ -1358,7 +1358,7 @@ function fundPositionAsOf(salonId,asOfIso,monthsBack){
   let salaryPayable=0,incentivePayable=0,tdsPayable=0,esicPayable=0,pfPayable=0,ptPayable=0;
   for(let i=0;i<monthsBack;i++){
     const cal=addMonths(asOfYear,asOfMonth,-i);
-    const workings=swWorkingsFor(salonId,cal.year,cal.month).filter(e=>e.net>0);
+    const workings=swWorkingsFinalFor(salonId,cal.year,cal.month).filter(e=>e.net>0);
     workings.forEach(e=>{
       const m=swMeta[attMonthKey(e.id,cal.year,cal.month)];
       if(!(m&&m.paymentStatus==='Paid'))salaryPayable+=e.net;
@@ -1373,7 +1373,7 @@ function fundPositionAsOf(salonId,asOfIso,monthsBack){
       const paidKeys=(dueOverrides['auto-tds-'+cal.year+'-'+cal.month]||{}).paidKeys||{};
       partyDetail.forEach(p=>{if(!paidKeys[p.key])tdsPayable+=p.amt;});
     }
-    const swW=swWorkingsFor(salonId,cal.year,cal.month);
+    const swW=swWorkingsFinalFor(salonId,cal.year,cal.month);
     const pfEmps=swW.filter(e=>e.pf&&((e.pfEmp||0)+(e.pfEr||0))>0);
     if(pfEmps.length){
       const paidKeys=(dueOverrides['auto-pf-'+cal.year+'-'+cal.month]||{}).paidKeys||{};
@@ -1453,7 +1453,7 @@ function fundPositionExpectedOutgo(salonId,asOfIso){
   let proxy=null;
   for(let i=0;i<12&&!proxy;i++){
     const cal=addMonths(todayD.getFullYear(),todayD.getMonth(),-i);
-    const sw=swWorkingsFor(salonId,cal.year,cal.month).filter(e=>e.net>0);
+    const sw=swWorkingsFinalFor(salonId,cal.year,cal.month).filter(e=>e.net>0);
     if(sw.length){
       const iw=incWorkingsFor(salonId,cal.year,cal.month).filter(e=>e.totalInc>0);
       proxy={year:cal.year,month:cal.month,
@@ -1475,7 +1475,7 @@ function fundPositionExpectedOutgo(salonId,asOfIso){
   let salary=0,incentive=0,pf=0,esic=0,pt=0,recurring=0;
   const recurringBreakup={};
   months.forEach(m=>{
-    const swActual=swWorkingsFor(salonId,m.year,m.month).filter(e=>e.net>0);
+    const swActual=swWorkingsFinalFor(salonId,m.year,m.month).filter(e=>e.net>0);
     if(!swActual.length&&proxy){salary+=proxy.salary;incentive+=proxy.incentive;pf+=proxy.pf;esic+=proxy.esic;pt+=proxy.pt;}
     const monthStartIso=localIsoOf(new Date(m.year,m.month,1));
     const monthEndIso=localIsoOf(new Date(m.year,m.month+1,0));
@@ -1904,7 +1904,7 @@ function autoStatutoryDueItemsFor(salonId,monthsBack){
   const items=[];
   for(let i=monthsBack-1;i>=0;i--){
     const cal=addMonths(today.getFullYear(),today.getMonth(),-i);
-    const workings=swWorkingsFor(salonId,cal.year,cal.month);
+    const workings=swWorkingsFinalFor(salonId,cal.year,cal.month);
     if(!workings.length)continue;
     const label=new Date(cal.year,cal.month,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
     const pfEmps=workings.filter(e=>e.pf&&((e.pfEmp||0)+(e.pfEr||0))>0);
@@ -2028,7 +2028,7 @@ function autoSalaryIncentiveDueItemsFor(salonId,monthsBack){
     const cal=addMonths(today.getFullYear(),today.getMonth(),-i);
     const label=new Date(cal.year,cal.month,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
 
-    const workings=swWorkingsFor(salonId,cal.year,cal.month).filter(e=>e.net>0);
+    const workings=swWorkingsFinalFor(salonId,cal.year,cal.month).filter(e=>e.net>0);
     if(workings.length){
       const netTotal=workings.reduce((s,e)=>s+e.net,0);
       const salaryId='auto-salary-'+cal.year+'-'+cal.month;

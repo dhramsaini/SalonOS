@@ -49,15 +49,15 @@ function DueDateSheet({salon,onNavTab}={}){
       }).filter(i=>i.amount>0);
     }
     if(d.year==null||d.month==null)return[];
-    if(d.type==='Salary Disbursement')return swWorkingsFor(salonId,d.year,d.month).filter(e=>e.net>0).map(e=>({id:e.id,name:e.name,desig:e.desig,amount:e.net}));
+    if(d.type==='Salary Disbursement')return swWorkingsFinalFor(salonId,d.year,d.month).filter(e=>e.net>0).map(e=>({id:e.id,name:e.name,desig:e.desig,amount:e.net}));
     if(d.type==='Incentive Payment')return incWorkingsFor(salonId,d.year,d.month).filter(e=>e.totalInc>0).map(e=>({id:e.id,name:e.name,desig:e.desig,amount:e.totalInc}));
     if(d.type==='TDS Payment'){
       const recurring=loadRecurringExpenses(salonId).filter(it=>it.status==='Active'&&it.tdsApplicable&&it.tdsSection);
       return tdsPartyDetailForMonth(salonId,d.year,d.month,recurring).map(p=>({id:p.key,name:p.party,desig:p.source+' · '+p.section,amount:p.amt}));
     }
-    if(d.type==='PF Challan')return swWorkingsFor(salonId,d.year,d.month).filter(e=>e.pf&&((e.pfEmp||0)+(e.pfEr||0))>0).map(e=>({id:e.id,name:e.name,desig:e.desig,amount:(e.pfEmp||0)+(e.pfEr||0)}));
-    if(d.type==='ESIC Challan')return swWorkingsFor(salonId,d.year,d.month).filter(e=>e.esic&&e.gross<=21000&&((e.esicEmp||0)+(e.esicEr||0))>0).map(e=>({id:e.id,name:e.name,desig:e.desig,amount:(e.esicEmp||0)+(e.esicEr||0)}));
-    if(d.type==='PT Payment')return swWorkingsFor(salonId,d.year,d.month).filter(e=>(e.ptAmt||0)>0).map(e=>({id:e.id,name:e.name,desig:e.desig,amount:e.ptAmt}));
+    if(d.type==='PF Challan')return swWorkingsFinalFor(salonId,d.year,d.month).filter(e=>e.pf&&((e.pfEmp||0)+(e.pfEr||0))>0).map(e=>({id:e.id,name:e.name,desig:e.desig,amount:(e.pfEmp||0)+(e.pfEr||0)}));
+    if(d.type==='ESIC Challan')return swWorkingsFinalFor(salonId,d.year,d.month).filter(e=>e.esic&&e.gross<=21000&&((e.esicEmp||0)+(e.esicEr||0))>0).map(e=>({id:e.id,name:e.name,desig:e.desig,amount:(e.esicEmp||0)+(e.esicEr||0)}));
+    if(d.type==='PT Payment')return swWorkingsFinalFor(salonId,d.year,d.month).filter(e=>(e.ptAmt||0)>0).map(e=>({id:e.id,name:e.name,desig:e.desig,amount:e.ptAmt}));
     return[];
   };
   const empPaidNow=(d,empId)=>{

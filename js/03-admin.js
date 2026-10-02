@@ -372,7 +372,7 @@ function MasterDashboardOverview({selFY,setSelFY,FYS,accessibleSalons}){
       const incentives=d.sections[2].lines.filter(l=>l.group==='Employee Monthly Incentive'||l.group==='Employee Daily Incentive').reduce((s,l)=>s+l.amt,0);
       salaries+=d.sections[2].tot-incentives;
       const year=Number(pgYear(selFY,mi)),month=(mi+3)%12;
-      const sw=swWorkingsFor(sid,year,month);
+      const sw=swWorkingsFinalFor(sid,year,month);
       sw.forEach(w=>{netDisbursed+=w.net;lopDays+=w.lop;});
       if(sw.length){attSum+=sw.reduce((s,w)=>s+(w.daysInMonth?w.totalDays/w.daysInMonth*100:0),0);attCount+=sw.length;}
       statutoryDeductionsFor(sid,year,month).forEach(x=>{pfEr+=x.pfEr;esicEr+=x.esicEr;});

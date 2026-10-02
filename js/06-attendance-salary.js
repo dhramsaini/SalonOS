@@ -37,9 +37,6 @@ function syncDailyIncentiveToDSE(sid){
 // Salary is worked out only from FINAL attendance — until the month's Attendance is marked
 // "Month Final" (or the month is already locked), Salary Working / Salary Payment / the Bank
 // Payment salary file show this instead of figures that could still change.
-function salaryAttendanceReady(sid,year,month){
-  return isManagerFinalMonth(sid,'attendance',year,month)||isMonthLockedFor(sid,year,month);
-}
 function AttendanceNotFinalNotice({monthLabel,title,onNavTab}){
   return React.createElement('div',{className:'fade-in'},
     title&&React.createElement('div',{className:'section-header'},React.createElement('div',null,React.createElement('div',{className:'page-title'},title))),

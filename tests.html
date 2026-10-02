@@ -482,6 +482,10 @@
         eq('Restaurant: row 41 is the first restaurant expense row',EXPENSE_ROWS[41].name,'Vegetables & Fruits');
         const fc=foodCostFor(904,2026,8),bc=barCostFor(904,2026,8);
         eq('Restaurant: food = opening 10,000 + purchases 55,000 − closing 12,000; liquor = 4,000 + 20,000 − 6,000',[fc.opening,fc.purchases,fc.consumption,bc.consumption],[10000,55000,53000,18000]);
+        const kitchenBefore=(plBuild(904,'2026-27',5).sections[2].lines.find(l=>l.name==='Kitchen Staff Salary')||{}).amt;
+        const dueBefore=autoSalaryIncentiveDueItemsFor(904,12).filter(x=>x.type==='Salary Disbursement'&&x.month===8).length;
+        setManagerFinalMonth(904,'attendance',2026,8,true,'test');
+        eq('Salary waits for Attendance Month Final: no salary in P&L or Due Dates before it',[kitchenBefore,dueBefore,autoSalaryIncentiveDueItemsFor(904,12).filter(x=>x.type==='Salary Disbursement'&&x.month===8).length>0],[0,0,true]);
         const pl=plBuild(904,'2026-27',5);
         const rev=Object.fromEntries(pl.sections[0].lines.map(l=>[l.name,l.amt]));
         eq('Restaurant P&L revenue: counter ÷1.05, Swiggy, Zomato, bar, service charge',

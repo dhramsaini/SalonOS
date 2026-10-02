@@ -169,7 +169,7 @@ function insMonthPackRows(salon,y,m,today,canSee){
     rows.push([]);
   }
   if(canSee('salary-working')){
-    const sw=swWorkingsFor(sid,y,m);
+    const sw=swWorkingsFinalFor(sid,y,m);
     if(sw.length){
       rows.push(['Salary'],['Employee','Days payable','Gross','Deductions','Net pay']);
       let g=0,n=0;
