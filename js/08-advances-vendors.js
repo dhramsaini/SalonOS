@@ -2331,7 +2331,8 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
   const [refreshTick,setRefreshTick]=useState(0);
   const doRefresh=()=>setRefreshTick(t=>t+1);
 
-  const swData=useMemo(()=>swWorkingsFor(salonId,selYear,selMonth),[salonId,selYear,selMonth,refreshTick]);
+  const swReady=salaryAttendanceReady(salonId,selYear,selMonth);
+  const swData=useMemo(()=>swReady?swWorkingsFor(salonId,selYear,selMonth):[],[salonId,selYear,selMonth,refreshTick,swReady]);
   const incData=useMemo(()=>incWorkingsFor(salonId,selYear,selMonth),[salonId,selYear,selMonth,refreshTick]);
   const vendors=useMemo(()=>loadVendors(salonId),[salonId,refreshTick]);
   const invoices=useMemo(()=>loadVendorInvoices(salonId).filter(inv=>inv.docNature!=='Performa Invoice'),[salonId,refreshTick]);
@@ -2491,7 +2492,7 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
 
     eligible.length===0
       ?React.createElement('div',{className:'card',style:{textAlign:'center',padding:32,color:'var(--text3)'}},
-          subTab==='vendor'?'No outstanding vendor invoices right now.':'No '+(subTab==='salary'?'active employees with net pay':'employees with a payable incentive')+' for '+MONTHS[selMonth]+' '+selYear+'.')
+          subTab==='vendor'?'No outstanding vendor invoices right now.':(subTab==='salary'&&!swReady?'Attendance for '+MONTHS[selMonth]+' '+selYear+' is not marked Month Final yet — salary is worked out only after that.':'No '+(subTab==='salary'?'active employees with net pay':'employees with a payable incentive')+' for '+MONTHS[selMonth]+' '+selYear+'.'))
       :React.createElement('div',{className:'card',style:{padding:0,overflow:'hidden'}},
           React.createElement('div',{style:{overflowX:'auto'}},
             React.createElement('table',null,

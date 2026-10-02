@@ -34,6 +34,22 @@ function syncDailyIncentiveToDSE(sid){
     if(JSON.stringify(emp)+'|'+JSON.stringify(data)!==before){safeLocalSet(empKey,JSON.stringify(emp));safeLocalSet(dataKey,JSON.stringify(data));}
   }catch(e){}
 }
+// Salary is worked out only from FINAL attendance — until the month's Attendance is marked
+// "Month Final" (or the month is already locked), Salary Working / Salary Payment / the Bank
+// Payment salary file show this instead of figures that could still change.
+function salaryAttendanceReady(sid,year,month){
+  return isManagerFinalMonth(sid,'attendance',year,month)||isMonthLockedFor(sid,year,month);
+}
+function AttendanceNotFinalNotice({monthLabel,title,onNavTab}){
+  return React.createElement('div',{className:'fade-in'},
+    title&&React.createElement('div',{className:'section-header'},React.createElement('div',null,React.createElement('div',{className:'page-title'},title))),
+    React.createElement('div',{className:'card',style:{textAlign:'center',padding:'40px 24px'}},
+      React.createElement('div',{style:{fontSize:34,marginBottom:10}},'🔒'),
+      React.createElement('div',{style:{fontSize:16,fontWeight:700,marginBottom:6}},'Attendance for '+monthLabel+' is not marked Final yet'),
+      React.createElement('div',{style:{fontSize:13,color:'var(--text3)',maxWidth:520,margin:'0 auto 16px'}},
+        'Salary is calculated only from final attendance. Finish marking every employee’s days in Attendance, then tick “Mark Month Final” there — Salary Working will then be worked out.'),
+      onNavTab&&React.createElement('button',{className:'btn btn-primary',onClick:()=>onNavTab('attendance')},'Go to Attendance →')));
+}
 function DailyIncentiveCore({period,salon}={}){
   const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
   const today=new Date();
@@ -1545,6 +1561,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     React.createElement('input',{type:'checkbox',checked:cols[k],onChange:()=>toggleCol(k)}),label
   );
 
+  if(!salaryAttendanceReady(salon?.id,selYear,selMonth))return React.createElement(AttendanceNotFinalNotice,{monthLabel:MONTHS[selMonth]+' '+selYear,title:'Salary Working Sheet',onNavTab});
   return React.createElement('div',{className:'fade-in',style:{position:'relative'}},
     React.createElement(WatermarkOverlay,{text:monthLocked?'FINAL':'DRAFT',final:monthLocked}),
     React.createElement('div',{className:'section-header'},
@@ -2189,6 +2206,7 @@ function SalaryPaymentSheet({period,salon}={}){
   const spReportBodyHtml=()=>'<table><thead><tr>'+COLS.map((h,i)=>'<th'+(i<2||i>2?'':' class="num"')+'>'+h+'</th>').join('')+'</tr></thead><tbody>'
     +exportRows.map(e=>'<tr><td>'+e.name+'</td><td>'+e.desig+'</td><td class="num" style="background:#eff6ff">'+fmt(e.net)+'</td><td style="background:#f5f3ff">'+(e.bankName||'—')+'</td><td style="background:#f5f3ff">'+(e.accountNo||'—')+'</td><td style="background:#f5f3ff">'+(e.ifsc||'—')+'</td></tr>').join('')+'</tbody></table>';
 
+  if(!salaryAttendanceReady(salon?.id,selYear,selMonth))return React.createElement(AttendanceNotFinalNotice,{monthLabel:MONTHS[selMonth]+' '+selYear,title:'Salary Payment'});
   return React.createElement('div',{className:'fade-in'},
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,
