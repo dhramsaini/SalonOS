@@ -698,6 +698,7 @@ function ClientCRM({salon}){
   const [seg,setSeg]=useState('All');
   const [sel,setSel]=useState(null);
   const [wa,setWa]=useState(null);
+  const [msgOpen,setMsgOpen]=useState(false);
 
   const list=clients.filter(c=>(seg==='All'||segOf(c)===seg)&&
     (c.name.toLowerCase().includes(q.toLowerCase())||c.phone.includes(q)))
@@ -723,7 +724,9 @@ function ClientCRM({salon}){
   return h('div',{className:'fade-in'},
     h('div',{className:'section-header'},
       h('div',null,h('div',{className:'page-title'},'Clients'),
-        h('div',{className:'page-sub'},'Who they are, what they spend, and who has stopped coming back.'))),
+        h('div',{className:'page-sub'},'Who they are, what they spend, and who has stopped coming back.')),
+      h('button',{className:'btn btn-primary btn-sm',onClick:()=>setMsgOpen(true)},'📣 Messages to send')),
+    msgOpen&&h(ClientMessagesModal,{salon,clients,onClose:()=>setMsgOpen(false)}),
     h('div',{className:'grid4',style:{marginBottom:16}},
       stat('Clients on file',String(clients.length),members+' on membership or package'),
       stat('Active',String(active),'visited in the last 90 days','var(--green)'),
@@ -775,7 +778,8 @@ function ClientCRM({salon}){
         Object.entries(templates(wa)).map(([k,t])=>h('div',{key:k,style:{marginBottom:14}},
           h('div',{style:{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:5}},k),
           h('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 12px',fontSize:12.5,color:'var(--text2)',lineHeight:1.55}},t),
-          h('button',{className:'btn btn-ghost btn-sm',style:{marginTop:6},onClick:()=>copy(t)},'Copy'))),
+          h('div',{style:{display:'flex',gap:6,marginTop:6}},h('button',{className:'btn btn-ghost btn-sm',onClick:()=>copy(t)},'Copy'),
+            waPhoneOk(wa.phone)&&h('button',{className:'btn btn-primary btn-sm',onClick:()=>window.open(waLink(wa.phone,t),'_blank')},'📤 Send on WhatsApp')))),
         h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:()=>setWa(null)},'Close'))))
   );
 }

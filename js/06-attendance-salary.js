@@ -2440,7 +2440,7 @@ function SalaryWorkingTabs({period,salon,onNavTab,user}={}){
   const [subTab,setSubTab]=useState('salary');
   const approver=isSummaryApproverRole(user); // given Edit here — keeps Summary Approval as a tab
   const tabBar=React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
-    [{id:'salary',label:'Salary Working'},{id:'salary-payment',label:'Salary Payment'},...(approver?[{id:'summary',label:'Summary Approval'}]:[])].map(t=>
+    [{id:'salary',label:'Salary Working'},{id:'salary-payment',label:'Salary Payment'},{id:'send-payslips',label:'Send Payslips'},{id:'statutory',label:'Statutory Files'},...(approver?[{id:'summary',label:'Summary Approval'}]:[])].map(t=>
       React.createElement('button',{key:t.id,className:`tab-btn ${subTab===t.id?'active':''}`,onClick:()=>setSubTab(t.id)},t.label)
     )
   );
@@ -2448,6 +2448,8 @@ function SalaryWorkingTabs({period,salon,onNavTab,user}={}){
     tabBar,
     React.createElement('div',{style:{display:subTab==='salary'?'block':'none'}},React.createElement(SalaryWorkingCore,{period,salon,onNavTab,user})),
     React.createElement('div',{style:{display:subTab==='salary-payment'?'block':'none'}},React.createElement(SalaryPaymentSheet,{period,salon})),
+    subTab==='send-payslips'&&React.createElement(SendPayslipsSheet,{period,salon}),
+    subTab==='statutory'&&React.createElement(StatutoryFilesSheet,{period,salon}),
     approver&&React.createElement('div',{style:{display:subTab==='summary'?'block':'none'}},React.createElement(SalarySummaryApproval,{salon,period,user}))
   );
 }

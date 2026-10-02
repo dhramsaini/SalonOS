@@ -442,6 +442,8 @@ function OutletPnLCore({salon,period}){
     else if(!requestUnlock(sid,'the '+label+' P&L (it goes back to DRAFT and the month unlocks)'))return;
     setPnlFinal(sid,fy,mi,!plFinal);setFinalTick(t=>t+1);
     toast(plFinal?label+' P&L is back to Draft':label+' P&L marked Final','success');
+    if(!plFinal&&salon&&window.confirm('Email the final '+label+' P&L to the Automatic-reports recipients (and you)?'))
+      emailFinalPnl(salon,fy,mi).then(r=>toast('Final P&L emailed to '+((r&&r.sentTo)||[]).join(', '),'success')).catch(e=>toast('Could not email the P&L: '+(e.message||e),'error'));
   };
   const plReportTitle='Monthly P&L — '+(salon?salon.name.split('—')[0].trim():'Outlet')+' — '+PL_MONTHS[mi]+' '+(mi<9?fy.slice(0,4):'20'+fy.slice(5));
   // ── P&L Excel export with LIVE FORMULAS — not pasted numbers. Totals are real SUM() formulas,
@@ -1718,7 +1720,7 @@ function CollectionComparisonSheet({salon,period}={}){
 function OutletPnLSheet({salon,period,onNavTab}={}){
   const [subTab,setSubTab]=useState('pnl');
   const tabBar=React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
-    [{id:'pnl',label:'P&L Statement'},{id:'variance',label:'Variance Analysis'},{id:'cashflow',label:'Cash Flow'},{id:'compare',label:'Compare'},{id:'collcmp',label:'Collection Comparison'},{id:'close',label:'Month-End Close'}].map(t=>
+    [{id:'pnl',label:'P&L Statement'},{id:'variance',label:'Variance Analysis'},{id:'cashflow',label:'Cash Flow'},{id:'compare',label:'Compare'},{id:'collcmp',label:'Collection Comparison'},{id:'gst',label:'GST Summary'},{id:'close',label:'Month-End Close'}].map(t=>
       React.createElement('button',{key:t.id,className:`tab-btn ${subTab===t.id?'active':''}`,onClick:()=>setSubTab(t.id)},t.label)
     )
   );
@@ -1739,6 +1741,7 @@ function OutletPnLSheet({salon,period,onNavTab}={}){
     React.createElement('div',{style:{display:subTab==='cashflow'?'block':'none'}},React.createElement(CashFlowSheet,{salon,period})),
     React.createElement('div',{style:{display:subTab==='compare'?'block':'none'}},React.createElement(PnLCompareSheet,{salon,period})),
     subTab==='collcmp'&&React.createElement(CollectionComparisonSheet,{salon,period}),
+    subTab==='gst'&&React.createElement(GstSummarySheet,{salon,period}),
     subTab==='close'&&React.createElement(MonthCloseChecklist,{salon,period,onNavTab})
   );
 }

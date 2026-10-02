@@ -563,6 +563,12 @@
         const advMsg=e901?advanceLimitMessage(901,e901.name,Number(e901.gross)):'no employee';
         o901.advMaxPct=keep;
         eq('Advance limit: an advance above the % of gross is caught',[!!advMsg&&advMsg!=='no employee',advanceLimitMessage(901,e901?e901.name:'',1)],[true,'']);
+        // Phase 2: WhatsApp links, GST working, PF ECR line format.
+        eq('WhatsApp link: 10-digit number gets +91 and the text is encoded',waLink('98100 12345','Hi & bye'),'https://wa.me/919810012345?text=Hi%20%26%20bye');
+        const gs=gstSummaryFor(907,2026,9);
+        eq('GST summary: sales incl. GST, taxable (÷1.05), CGST = SGST',[Math.round(gs.gross),Math.round(gs.taxable),Math.round(gs.cgst),Math.round(gs.sgst)],[15625,14881,372,372]);
+        const ecr=pfEcrFor(901,2026,8);
+        eq('PF ECR: one #~# line per PF employee with 11 fields',[ecr.rows.length===ecr.text.split('\\n').filter(Boolean).length,(ecr.text.split('\\n')[0]||'').split('#~#').length===11||ecr.rows.length===0],[true,true]);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
