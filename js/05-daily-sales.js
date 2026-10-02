@@ -564,6 +564,17 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     }
     return Number(e.gross)||0;
   };
+  // Already paid to this employee for the same previous month through this row on OTHER dates
+  // (e.g. part on the 2nd, the rest on the 5th) — so the balance, not the full figure, is payable.
+  const prevMonthPaidElsewhere=(rowName,iso,empName)=>{
+    const pm=prevMonthOfIso(iso);if(!pm)return 0;
+    const ri=EXPENSE_ROWS.findIndex(r=>r.name===rowName);if(ri<0)return 0;
+    let t=0;
+    Object.keys(empData).forEach(d=>{if(d===iso)return;const p=prevMonthOfIso(d);if(!p||p.year!==pm.year||p.month!==pm.month)return;
+      ((empData[d]||{})[ri]||[]).forEach(e=>{if(e&&e.empName===empName)t+=Number(e.amount)||0;});});
+    return t;
+  };
+  const prevMonthBalanceFor=(e,rowName,iso)=>Math.max(0,Math.round(referenceAmountFor(e,rowName,iso)-prevMonthPaidElsewhere(rowName,iso,e.name)));
   const getOutstandingEmployees=(rowName,iso)=>{
     if(!OUTSTANDING_ROWS.has(rowName))return EMPLOYEES.filter(e=>e.status==='Active');
     const pm=prevMonthOfIso(iso);
@@ -1104,6 +1115,19 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     const iso=empModal.iso;const ri=empModal.ri;
     const rowName=EXPENSE_ROWS[ri]?.name;
     const total=valid.reduce((s,e)=>s+Number(e.amount),0);
+    // Previous Month Salary / Incentive: never more than what's still due for that month.
+    if(OUTSTANDING_ROWS.has(rowName)){
+      const byName={};valid.forEach(v=>{byName[v.empName]=(byName[v.empName]||0)+(Number(v.amount)||0);});
+      for(const name of Object.keys(byName)){
+        const emp=EMPLOYEES.find(e=>e.name===name);if(!emp)continue;
+        const bal=prevMonthBalanceFor(emp,rowName,iso);
+        if(byName[name]>bal+0.5){
+          const due=Math.round(referenceAmountFor(emp,rowName,iso)),paid=prevMonthPaidElsewhere(rowName,iso,name);
+          dseToastErr(name+': ₹'+byName[name].toLocaleString('en-IN')+' is more than the '+(rowName==='Previous Month Salary'?'salary':'incentive')+' due — ₹'+due.toLocaleString('en-IN')+' due'+(paid?', ₹'+paid.toLocaleString('en-IN')+' already paid on other days':'')+', so at most ₹'+bal.toLocaleString('en-IN')+' can be paid.');
+          return;
+        }
+      }
+    }
     if(blockIfExpenseGoesNegative(iso,ri,total))return;
     const prevEntries=getEmpEntries(iso,ri); // before this save, for the Paid/Not-Paid diff below
     setEmpData(prev=>{
@@ -1135,10 +1159,12 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
         EMPLOYEES.forEach(e=>{
           const key=attMonthKey(e.id,pm.year,pm.month);
           if(newNames.has(e.name)){
-            const paidAmt=valid.filter(v=>v.empName===e.name).reduce((s,v)=>s+(Number(v.amount)||0),0);
-            nextMeta[key]={...(nextMeta[key]||{status:'Draft',paymentStatus:'Not Paid',mode:''}),paymentStatus:'Paid',mode:'Cash',paidDate:iso,paidAmount:paidAmt,paidVia:'Daily Sales & Exp'};
+            const paidAmt=valid.filter(v=>v.empName===e.name).reduce((s,v)=>s+(Number(v.amount)||0),0)+prevMonthPaidElsewhere(rowName,iso,e.name);
+            const full=paidAmt>=Math.round(referenceAmountFor(e,rowName,iso))-0.5;
+            nextMeta[key]={...(nextMeta[key]||{status:'Draft',paymentStatus:'Not Paid',mode:''}),paymentStatus:full?'Paid':'Not Paid',mode:full?'Cash':'',paidDate:iso,paidAmount:paidAmt,paidVia:'Daily Sales & Exp'};
           }else if(oldNames.has(e.name)){
-            nextMeta[key]={...(nextMeta[key]||{status:'Draft',paymentStatus:'Not Paid',mode:''}),paymentStatus:'Not Paid',mode:'',paidDate:'',paidAmount:'',paidVia:''};
+            const other=prevMonthPaidElsewhere(rowName,iso,e.name);
+            nextMeta[key]={...(nextMeta[key]||{status:'Draft',paymentStatus:'Not Paid',mode:''}),paymentStatus:'Not Paid',mode:'',paidDate:other?nextMeta[key]&&nextMeta[key].paidDate||'':'',paidAmount:other||'',paidVia:other?'Daily Sales & Exp':''};
           }
         });
         saveMeta(nextMeta,salonId);
@@ -1972,7 +1998,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                   },
                     React.createElement('option',{value:''},'— Select Employee —'),
                     empOptions.map(e=>React.createElement('option',{key:e.id,value:e.name},
-                      e.name+(e.status!=='Active'?' — Left':'')+(isOutstandingRow(empModal.ri)?' (₹'+referenceAmountFor(e,EXPENSE_ROWS[empModal.ri]?.name,empModal.iso).toLocaleString('en-IN')+' ref.)':'')
+                      e.name+(e.status!=='Active'?' — Left':'')+(isOutstandingRow(empModal.ri)?' (₹'+prevMonthBalanceFor(e,EXPENSE_ROWS[empModal.ri]?.name,empModal.iso).toLocaleString('en-IN')+' due)':'')
                     ))
                   )
                 ),

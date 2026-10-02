@@ -37,6 +37,7 @@ function AdvanceSheet({period,salon}={}){
     return cleaned.length!==list.length?cleaned:list;
   };
   const [advances,setAdvances]=useState(()=>{
+    reconcileAdvanceRecoveries(advSalonId);
     try{const raw=cachedLocalGet(advKey());if(raw!==null){const p=JSON.parse(raw);if(Array.isArray(p))return stripSeedAdvances(p);}}catch(e){}
     return[];
   });

@@ -645,6 +645,7 @@ function setMonthLockFor(salonId,year,month,locked,source,by){
   if(locked)map[k]={locked:true,source:source||'manual',by:by||'',at:new Date().toISOString()};
   else delete map[k];
   saveMonthLocks(map,salonId);
+  if(locked)reconcileAdvanceRecoveries(salonId);
   return map;
 }
 // Called after any Salary Working status change — if every employee on the outlet now has this
@@ -694,6 +695,7 @@ function setIWLockFor(salonId,year,month,locked,source,by){
   if(locked)map[k]={locked:true,source:source||'manual',by:by||'',at:new Date().toISOString()};
   else delete map[k];
   saveIWLocks(map,salonId);
+  if(locked)reconcileAdvanceRecoveries(salonId);
   return map;
 }
 function setIWAutoLockFor(salonId,year,month,locked,by){
@@ -1738,6 +1740,56 @@ function advanceDeductionFor(salonId,empName,source,year,month){
 // that date — once "Adjust now" has picked a cutoff for pulling a Next Month Advance forward, the
 // column shows the amount that cutoff actually covers, rather than the whole month's balance
 // regardless of what's genuinely being adjusted.
+// Advance recovery for months that are FINAL — a month's installment comes off the advance's
+// outstanding balance once that month's Salary Working (or Incentive Working, for advances
+// recovered from incentive) is locked, or the employee's row is Approved. Before this, only
+// flipping a row to Approved reduced the balance, so a month locked without approving each row
+// (or an installment planned after approval) left the full advance outstanding forever.
+// What each month already took is kept on the advance (settled: {'2026-09': 1500}); rows approved
+// by older versions recorded it on the Salary/Incentive Working row instead (breakdown without
+// ym), so that is counted too — nothing is ever taken twice. Safe to run any number of times.
+function reconcileAdvanceRecoveries(sid){
+  try{
+    if(sid==null)return false;
+    const key=outletKey('salonos_advances',sid);
+    let all=[];try{const r=JSON.parse(cachedLocalGet(key)||'[]');if(Array.isArray(r))all=r;}catch(e){}
+    if(!all.length)return false;
+    const sw=loadSWMeta(sid),iw=loadIWMeta(sid);
+    const now=new Date(),curYm=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    const empCache={};
+    const empIdFor=(name,y,m)=>{const k=y+'-'+m;if(!empCache[k]){try{empCache[k]=getEmployeesForMonth(y,m,sid)||[];}catch(e){empCache[k]=[];}}const e=empCache[k].find(x=>x.name===name);return e?e.id:null;};
+    let changed=false;
+    const next=all.map(a=>{
+      if(!a||a.status!=='Active'||!(Number(a.outstanding)>0))return a;
+      const src=a.deductFrom||'Salary';
+      const hasSched=Array.isArray(a.schedule)&&a.schedule.length>0;
+      let months=[];
+      if(hasSched)months=a.schedule.filter(s=>Number(s.amount)>0).map(s=>s.month);
+      else if(a.date&&Number(a.repayment)>0){let y=+a.date.slice(0,4),m=+a.date.slice(5,7)-1;for(let i=0;i<36;i++){const ym=y+'-'+String(m+1).padStart(2,'0');if(ym>curYm)break;months.push(ym);m++;if(m>11){m=0;y++;}}}
+      months=[...new Set(months)].filter(ym=>/^\d{4}-\d{2}$/.test(ym)&&ym<=curYm).sort();
+      let a2=a;
+      months.forEach(ym=>{
+        if(!(Number(a2.outstanding)>0))return;
+        const y=+ym.slice(0,4),m=+ym.slice(5,7)-1;
+        const id=empIdFor(a.emp,y,m);
+        const rec=id?(src==='Salary'?sw:iw)[attMonthKey(id,y,m)]:null;
+        const final=(src==='Salary'?isMonthLockedFor(sid,y,m):isIWEffectiveLockedFor(sid,y,m))||!!(rec&&rec.status==='Approved');
+        if(!final)return;
+        const planned=hasSched?(scheduledAmountFor(a2,y,m)||0):(Number(a2.repayment)||0);
+        let done=Number((a2.settled||{})[ym])||0;
+        if(rec&&Array.isArray(rec.advanceSettledBreakdown)){const b=rec.advanceSettledBreakdown.find(x=>x.id===a.id&&!x.ym);if(b)done+=Number(b.amount)||0;}
+        const take=Math.min(Math.max(0,planned-done),Number(a2.outstanding)||0);
+        if(take<=0)return;
+        const out=Math.max(0,(Number(a2.outstanding)||0)-take);
+        a2={...a2,outstanding:out,settled:{...(a2.settled||{}),[ym]:(Number((a2.settled||{})[ym])||0)+take},status:out<=0?'Recovered':a2.status};
+        changed=true;
+      });
+      return a2;
+    });
+    if(changed)safeLocalSet(key,JSON.stringify(next));
+    return changed;
+  }catch(e){return false;}
+}
 function advanceBalanceSplitFor(salonId,empName,source,year,month,nextCutoffDate){
   let list=[];
   try{list=JSON.parse(cachedLocalGet(outletKey('salonos_advances',salonId))||'[]');}catch(e){}

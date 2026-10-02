@@ -912,6 +912,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
   const EMPLOYEES=getEmployeesForMonth(selYear,selMonth,salon?.id);
   const {success,error:swError}=useToast();
   // Row meta: Status / Payment Status / Mode — persisted per outlet, keyed like attendance
+  useState(()=>reconcileAdvanceRecoveries(salon?.id)); // settle installments of months already locked
   const [meta,setMeta]=useState(()=>loadSWMeta(salon?.id));
   useEffect(()=>{saveSWMeta(meta,salon?.id);},[meta]);
   const metaKey=attMonthKey;
@@ -972,11 +973,13 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
       if(a.emp!==empName||a.status!=='Active'||(a.deductFrom||'Salary')!=='Salary')return a;
       const scheduled=scheduledAmountFor(a,year,month);
       const planned=scheduled!==null?scheduled:(Number(a.repayment)||0);
-      const take=Math.min(Math.max(0,planned),Math.max(0,Number(a.outstanding)||0));
+      const ym=year+'-'+String(month+1).padStart(2,'0');
+      const done=Number((a.settled||{})[ym])||0; // already recovered for this month (e.g. when the month was locked)
+      const take=Math.min(Math.max(0,planned-done),Math.max(0,Number(a.outstanding)||0));
       if(take<=0)return a;
-      breakdown.push({id:a.id,amount:take});
+      breakdown.push({id:a.id,amount:take,ym});
       const newOutstanding=Math.max(0,(Number(a.outstanding)||0)-take);
-      return{...a,outstanding:newOutstanding,status:newOutstanding<=0?'Recovered':a.status};
+      return{...a,outstanding:newOutstanding,settled:{...(a.settled||{}),[ym]:done+take},status:newOutstanding<=0?'Recovered':a.status};
     });
     safeLocalSet(key,JSON.stringify(next));
     return breakdown;
@@ -990,7 +993,10 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     const next=all.map(a=>{
       if(!(a.id in byId))return a;
       const restored=(Number(a.outstanding)||0)+byId[a.id];
-      return{...a,outstanding:restored,status:restored>0?'Active':a.status};
+      const bym=(breakdown.find(b=>b.id===a.id)||{}).ym;
+      const settled={...(a.settled||{})};
+      if(bym){settled[bym]=Math.max(0,(Number(settled[bym])||0)-byId[a.id]);if(!settled[bym])delete settled[bym];}
+      return{...a,outstanding:restored,settled,status:restored>0?'Active':a.status};
     });
     safeLocalSet(key,JSON.stringify(next));
   };

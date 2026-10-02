@@ -528,6 +528,14 @@
         eq('Daily Incentive entry switched to Bank drops out of Daily Sales & Exp',[d['2026-10-02'][rP],d['2026-10-02'][rS]],[undefined,50]);
         const pay=dsePrevMonthPaymentsFor(905,'Previous Month Salary',2026,8);
         eq('September salary paid on 2 Oct in Daily Sales & Exp: amount and date found',[pay.total,pay.lastDate],[3300,'2026-10-02']);
+        // Advance installment comes off once the month's salary is locked (not only on Approve).
+        safeLocalSet(outletKey('salonos_advances',906),JSON.stringify([{id:'A1',emp:'Payal',date:'2026-10-01',amount:10000,repayment:1500,outstanding:10000,status:'Active',deductFrom:'Salary',
+          schedule:[{month:'2026-09',amount:1500},{month:'2026-10',amount:1500}]}]));
+        const advOut=()=>JSON.parse(cachedLocalGet(outletKey('salonos_advances',906)))[0];
+        const before=advOut().outstanding;
+        setMonthLockFor(906,2026,8,true,'manual');
+        reconcileAdvanceRecoveries(906);reconcileAdvanceRecoveries(906);
+        eq('Advance: September installment recovered once September salary is locked, never twice',[before,advOut().outstanding,advOut().settled['2026-09']],[10000,8500,1500]);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
