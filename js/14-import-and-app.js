@@ -1274,13 +1274,22 @@ if('serviceWorker' in navigator){
       return[...row.children].filter(c=>!frozenLeft(c)).map(c=>Math.round(c.getBoundingClientRect().left-base));
     }
     // One column at a time: the next / previous column lines up just right of the frozen columns.
+    // Clicks made while the previous smooth scroll is still moving count from where THAT scroll is
+    // heading, not from the half-way position — otherwise quick clicks got lost or even stepped
+    // back. The pending target is forgotten shortly after the last click.
+    let pendingWrap=null,pendingLeft=null,pendingTimer=null;
     function step(dir){
       const w=activeWrap;if(!w)return;
-      const sw=stickyWidth(w),starts=columnStarts(w),edge=w.scrollLeft+sw;
+      const from=(pendingWrap===w&&pendingLeft!=null)?pendingLeft:w.scrollLeft;
+      const sw=stickyWidth(w),starts=columnStarts(w),edge=from+sw;
+      const max=w.scrollWidth-w.clientWidth;
       let target=null;
-      if(dir>0){const next=starts.find(x=>x>edge+4);target=next!=null?next-sw:w.scrollLeft+w.clientWidth*0.6;}
+      if(dir>0){const next=starts.find(x=>x>edge+4);target=next!=null?next-sw:from+w.clientWidth*0.6;}
       else{const prev=starts.filter(x=>x<edge-4).pop();target=prev!=null?prev-sw:0;}
-      w.scrollTo({left:Math.max(0,Math.min(target,w.scrollWidth-w.clientWidth)),behavior:'smooth'});
+      target=Math.max(0,Math.min(target,max));
+      pendingWrap=w;pendingLeft=target;
+      clearTimeout(pendingTimer);pendingTimer=setTimeout(()=>{pendingWrap=null;pendingLeft=null;},700);
+      w.scrollTo({left:target,behavior:'smooth'});
     }
 
     function position(){
@@ -1294,8 +1303,9 @@ if('serviceWorker' in navigator){
       const sw=stickyWidth(activeWrap);
       leftBtn.style.top=midY+'px';leftBtn.style.left=(r.left+sw+6)+'px';
       rightBtn.style.top=midY+'px';rightBtn.style.left=(r.right-40)+'px';
-      const atStart=activeWrap.scrollLeft<=2;
-      const atEnd=activeWrap.scrollLeft>=activeWrap.scrollWidth-activeWrap.clientWidth-2;
+      const cur=(pendingWrap===activeWrap&&pendingLeft!=null)?pendingLeft:activeWrap.scrollLeft;
+      const atStart=cur<=2;
+      const atEnd=cur>=activeWrap.scrollWidth-activeWrap.clientWidth-2;
       leftBtn.classList.toggle('visible',!atStart);
       rightBtn.classList.toggle('visible',!atEnd);
     }
