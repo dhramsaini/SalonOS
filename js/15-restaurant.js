@@ -279,7 +279,7 @@ function AggregatorsSheet({salon,period}={}){
           return h('tr',{key:pl},h('td',null,h('b',null,pl)),h('td',{style:{textAlign:'right'}},money(d)),h('td',{style:{textAlign:'right'}},money(g)),
             h('td',{style:{textAlign:'right',color:Math.abs(df)>1?'var(--orange)':'var(--text3)'}},(df>0?'+':'')+money(df)),
             h('td',{style:{fontSize:11.5,color:'var(--text3)'}},!d&&!g?'—':!g?'no payout entered yet':!d?'no daily entries':Math.abs(df)<=Math.max(50,g*0.01)?'matches':'check — GST or a missed day?'));})))),
-      h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Daily entries are what the manager typed each day; the payout figure is the platform’s food value excluding GST. The P&L uses the payouts.')),
+      h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Managers enter each app’s day sale excluding GST (the food value on the app’s order report), so it compares directly with the payout’s food value. The P&L uses the payouts.')),
     h('div',{className:'help-note',style:{marginBottom:12}},'Enter each payout from the Swiggy / Zomato / EazyDiner payout statement, or import many with the template. Gross food sales go to P&L revenue (GST on these orders is paid by the platform), commission, gateway, ads and other deductions go to "Aggregator Commission & Charges", and TDS is a tax credit. A payout spanning two months is split by days. Each payout is matched to its bank credit within 7 days.'),
     h('div',{className:'card'},inMonth.length===0
       ?h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'🛵'),h('div',{className:'empty-title'},'No payouts for this month'),h('div',{className:'empty-sub'},'Add a payout from the statement, or import the template.'))

@@ -175,9 +175,9 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     {name:'Closing Cash Balance',type:'computed'},
     // Restaurant outlets only — stored after the rest (rows are saved by position) and shown right
     // after UPI Sale. Delivery / booking-app sales, settled later by the platform's payout.
-    {name:'Swiggy Sale',type:'input',biz:'restaurant'},
-    {name:'Zomato Sale',type:'input',biz:'restaurant'},
-    {name:'EazyDiner Sale',type:'input',biz:'restaurant'},
+    {name:'Swiggy Sale',type:'input',biz:'restaurant',note:'excl. GST — food value from the app’s order report'},
+    {name:'Zomato Sale',type:'input',biz:'restaurant',note:'excl. GST — food value from the app’s order report'},
+    {name:'EazyDiner Sale',type:'input',biz:'restaurant',note:'excl. GST — food value from the app’s order report'},
   ];
   const IDX_CASH=0,IDX_CARD=1,IDX_UPI=2,IDX_LUZO=3,IDX_OSALE=4,IDX_OREC=5,IDX_TDS=6,IDX_TCOLL=7,IDX_OPENING=8,IDX_PACKET=9,IDX_HANDOVER=10,IDX_DEPOSIT=11,IDX_RECEIVED=12,IDX_DRAWER=13,IDX_SWIGGY=14,IDX_ZOMATO=15,IDX_EAZY=16;
   // Display order — restaurants: the three app rows after UPI Sale, no Luzo; salons: as before.
@@ -1290,7 +1290,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
           ?tapBtn(getSalesEntryTotal(iso,sri),()=>openSalesEntryModal(sri,iso))
           :numInput(getSalesValue(iso,sri),v=>guardedSetSalesValue(iso,sri,v),false);
       return React.createElement('div',{key:'s'+sri,style:{...rowStyle,background:readOnly?'rgba(47,95,224,0.06)':undefined}},
-        React.createElement('div',{style:{fontSize:14,fontWeight:readOnly?700:500,color:readOnly?'var(--accent2)':'var(--text)'}},row.name),right);
+        React.createElement('div',null,React.createElement('div',{style:{fontSize:14,fontWeight:readOnly?700:500,color:readOnly?'var(--accent2)':'var(--text)'}},row.name),
+          row.note?React.createElement('div',{style:{fontSize:10.5,color:'var(--orange)'}},row.note):null),right);
     });
     const expRows=EXPENSE_ROWS.map((row,ri)=>{if(!expenseRowVisibleFor(row,salonId))return null;
       if(!row.name)return null;
@@ -1632,7 +1633,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                   React.createElement('div',null,row.name,
                     sri===IDX_CASH?React.createElement('span',{style:{fontSize:9,color:'var(--text3)',fontWeight:400,marginLeft:6}},'🔗 feeds Collection Reco'):null
                   ),
-                  isOpening?React.createElement('div',{style:{fontSize:9,color:'var(--text3)',fontWeight:400,marginTop:2}},'auto-carried from previous day'):null),
+                  isOpening?React.createElement('div',{style:{fontSize:9,color:'var(--text3)',fontWeight:400,marginTop:2}},'auto-carried from previous day'):null,
+                  row.note?React.createElement('div',{style:{fontSize:9.5,color:'var(--orange)',fontWeight:500,marginTop:2}},row.note):null),
                 React.createElement('td',{style:{padding:'7px 12px',borderRight:'1px solid var(--border2)',borderBottom:'1px solid var(--border)',fontSize:11,color:'var(--text3)'}},'Sales & Collection'),
                 React.createElement('td',{style:{padding:'7px 12px',textAlign:'right',fontWeight:700,color:(isComputed||isOpening)?'var(--accent2)':'var(--text)',borderRight:'2px solid var(--accent)',borderBottom:'1px solid var(--border)'}},salesRowTotal(sri)>0?salesRowTotal(sri).toLocaleString('en-IN'):'-'),
                 ...days.map((d,ci)=>{
