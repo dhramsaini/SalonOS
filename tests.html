@@ -211,6 +211,17 @@
           ['Ravi','urgent','Test Outlet A: Loreal bill A-3 overdue by 5 days','Test Outlet A: Electricity bill for Aug 2026 – Sep 2026 not entered','Test Outlet A: sales for 4 Oct not entered']);
         eq('Automation: month-end checklist items',by('month_end:901:2026-09').body.split(String.fromCharCode(10)).map(s=>s.split(' (')[0]),['• 30 days without sales','• attendance incomplete for 3 staff','• salary not approved for 3 of 3 staff','• bank statement not imported']);
         kv.set('salonos_bank_statement_rows_outlet_901',[{id:1,transactionDate:'15/09/2026',description:'X',debit:10}]);
+        {const kv2=new Map();
+          kv2.set('salonos_salons',[{id:910,name:'Ctrl — X',status:'Active',collDiffLimit:100}]);
+          kv2.set('salonos_cradlee_collection_rows_outlet_910',[{invoiceDate:'01/10/2026',cash:1000,card:0,upi:0},{invoiceDate:'02/10/2026',cash:500,card:0,upi:0},{invoiceDate:'03/10/2026',cash:700,card:0,upi:0}]);
+          kv2.set('salonos_daily_sales_collection_data_outlet_910',{'2026-10-01':{0:1000},'2026-10-02':{0:200},'2026-10-03':{0:400}});
+          kv2.set('salonos_collection_cmp_reasons_outlet_910',{'2026-10-03':'explained'});
+          kv2.set('salonos_due_snapshot_outlet_910',{at:'2026-10-04T10:00:00Z',items:[{id:'auto-pf-2026-8',type:'PF Challan',desc:'PF for September',due:'2026-10-15',amount:7200},{id:'auto-tds-2026-8',type:'TDS Payment',desc:'TDS',due:'2026-10-07',amount:500}]});
+          kv2.set('salonos_audit_log_outlet_910',[{ts:'2026-10-03T08:00:00Z',user:'Admin',action:'Unlocked',summary:'September unlocked — reason: fix'}]);
+          const ra=mod.computeAlerts(kv2,mod.DEFAULTS,day(2026,10,5)).alerts;
+          const col=ra.find(x=>x.kind==='collection'),comp=ra.filter(x=>x.kind==='compliance').map(x=>x.akey),aud=ra.find(x=>x.kind==='audit');
+          eq('Automation: CRADLE vs Daily Sales alert lists only unexplained days over the limit; dues from the snapshot within 3 days; weekly unlocks',
+            [col?/2 Oct/.test(col.body)&&!/3 Oct/.test(col.body)&&!/1 Oct/.test(col.body):false,comp,!!aud],[true,['compliance:910:auto-tds-2026-8'],true]);}
         eq('Automation: a September bank statement (transactionDate) counts as imported',/bank statement/.test((mod.computeAlerts(kv,mod.DEFAULTS,day(2026,10,5)).alerts.find(x=>x.akey==='month_end:901:2026-09')||{}).body||''),false);
         kv.delete('salonos_bank_statement_rows_outlet_901');
         const r2=mod.computeAlerts(kv,Object.assign({},mod.DEFAULTS,{autoLock:true,autoLockDay:4}),day(2026,10,5));

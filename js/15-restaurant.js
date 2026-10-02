@@ -361,6 +361,9 @@ function FoodCostSheet({salon,period}={}){
       h('div',{className:'page-sub'},'What the kitchen consumed against what it sold — '+rMonthLabel(cal.year,cal.month)))),
     h('div',{className:'tab-bar',style:{marginBottom:16}},tabs.map(([k,l])=>h('button',{key:k,className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
     tab==='month'&&h('div',null,
+      sales>0&&Number(st.foodTarget)>0&&pct>Number(st.foodTarget)&&h('div',{style:{background:'rgba(224,82,82,0.1)',border:'1px solid rgba(224,82,82,0.35)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:12,fontSize:12.5}},
+        h('b',{style:{color:'var(--red)'}},'⚠ Food cost '+pct+'% is above the '+st.foodTarget+'% target'),
+        ' — about '+money(fc.consumption-sales*Number(st.foodTarget)/100)+' more than target this month. Check wastage in the Stock register, portion sizes and the highest-cost dishes in Recipe costing.'),
       h('div',{className:'grid4',style:{marginBottom:16}},
         h(RCard,{label:'Food sales (excl. GST)',val:money(sales),sub:'counter + Swiggy + Zomato',color:'blue'}),
         h(RCard,{label:'Food consumption',val:money(fc.consumption),sub:fc.hasClosing?'opening + purchases − closing':'purchases only — enter the closing stock',color:'amber'}),
@@ -552,6 +555,7 @@ function StockRegister({sid,cal,ings,setIngs,editable,bar,onApply}){
   useEffect(()=>{setTxns(loadStockTxns(sid));},[sid]);
   const [form,setForm]=useState(null);
   const [grp,setGrp]=useState('All');
+  const [po,setPo]=useState(null); // draft purchase order text
   const ym=rYm(cal.year,cal.month);
   const me=ym+'-'+String(new Date(cal.year,cal.month+1,0).getDate()).padStart(2,'0');
   const persist=next=>{setTxns(next);saveStockTxns(sid,next);};
@@ -587,6 +591,13 @@ function StockRegister({sid,cal,ings,setIngs,editable,bar,onApply}){
   const counted=L.filter(x=>x.count!=null).length;
   const reg=stockRegisterTotals(sid,cal.year,cal.month);
   return h('div',null,
+    po&&h('div',{className:'modal-overlay',onClick:()=>setPo(null)},h('div',{className:'modal',style:{width:480},onClick:e=>e.stopPropagation()},
+      h('div',{className:'modal-title'},'🛒 Draft purchase order'),
+      h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:8}},'Items at or below their reorder level, ordering up to twice that level. Edit before sending — Send opens WhatsApp so you pick the supplier.'),
+      h('textarea',{className:'form-control',rows:10,value:po,onChange:e=>setPo(e.target.value),style:{fontSize:12.5,fontFamily:'inherit'}}),
+      h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:()=>setPo(null)},'Close'),
+        h('button',{className:'btn btn-ghost',onClick:()=>{try{navigator.clipboard.writeText(po);toast('Copied','success');}catch(e){}}},'Copy'),
+        h('button',{className:'btn btn-primary',onClick:()=>window.open('https://wa.me/?text='+encodeURIComponent(po),'_blank')},'📤 Send on WhatsApp')))),
     h('div',{className:'grid4',style:{marginBottom:14}},
       h(RCard,{label:'Closing stock value',val:money(tot('closingValue')),sub:counted+' of '+L.length+' items counted',color:'blue'}),
       h(RCard,{label:'Received this month',val:money(rows.reduce((t,x)=>t+x.received*x.price,0)),sub:'at current prices',color:'green'}),
@@ -597,6 +608,10 @@ function StockRegister({sid,cal,ings,setIngs,editable,bar,onApply}){
       h('div',{style:{flex:1}}),
       editable&&['receive','issue','waste'].map(t=>h('button',{key:t,className:'btn btn-sm '+(t==='receive'?'btn-primary':'btn-ghost'),onClick:()=>setForm({type:t,date:localTodayIso().startsWith(ym)?localTodayIso():me,ingId:'',qty:'',rate:'',note:''})},'+ '+STOCK_TX[t].label)),
       h('button',{className:'btn btn-ghost btn-sm',onClick:exportXlsx},'⬇ Export Excel'),
+      L.some(x=>x.low)&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{
+        // Order up to twice the reorder level for every item at or below it.
+        const low=L.filter(x=>x.low);const lines=low.map(x=>{const lvl=rNum(x.ing.reorderLevel);const q=Math.max(lvl,Math.ceil(lvl*2-x.closing));return '• '+x.ing.name+' — '+q+' '+x.ing.unit;});
+        setPo('Purchase order — '+String(outletSettings(sid).name||'').split('—')[0].trim()+' ('+localTodayIso().split('-').reverse().join('/')+')\n'+lines.join('\n')+'\nPlease confirm the rates and delivery date.');}},'🛒 Draft purchase order'),
       editable&&counted>0&&h('button',{className:'btn btn-success btn-sm',onClick:()=>onApply(reg.food,reg.bar)},'Use closing value in Food Cost')),
     h('div',{className:'help-note',style:{marginBottom:10}},'Record what comes in (Receive — the item price updates to the latest rate), what goes to the kitchen (Issue) and what is thrown away (Wastage). On the last day of the month enter the physical count — the variance shows any shortage against the book. "Use closing value in Food Cost" puts the counted value into the month’s closing stock. Add items in Recipe costing → + Ingredient.'),
     h('div',{className:'card',style:{marginBottom:14}},ings.length===0

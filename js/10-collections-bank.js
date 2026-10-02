@@ -5345,6 +5345,7 @@ function DueReminderPopup({user,accessibleSalons,onOpenRegister}){
   const [rows,setRows]=useState([]);
   useEffect(()=>{
     if(!user||!DUE_POPUP_ROLES.includes(user.role))return;
+    try{writeDueSnapshots((accessibleSalons||[]).filter(s=>s.status!=='Inactive'));}catch(e){}
     try{if(sessionStorage.getItem(KEY))return;}catch(e){}
     const list=complianceRowsFor((accessibleSalons||[]).filter(s=>s.status!=='Inactive'))
       .filter(r=>r.status4==='Overdue'||(r.status4!=='Paid'&&r.days!=null&&r.days>=0&&r.days<=DUE_POPUP_DAYS));

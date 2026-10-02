@@ -3294,7 +3294,7 @@ function isPasswordRecoveryLink(){
 // (alertFixedLocally) — the next run closes it for good. ──
 const AUTOMATION_SETTINGS_KEY='salonos_secret_automation_settings';
 const AUTOMATION_DEFAULTS={enabled:true,salesCheck:true,attendanceCheck:true,dueReminders:true,dueDaysAhead:3,
-  recurringReminders:true,monthEndChecklist:true,autoLock:false,autoLockDay:10,digest:false,anomalyChecks:true,loginWatch:true,backupReminder:true,errorWatch:true};
+  recurringReminders:true,monthEndChecklist:true,autoLock:false,autoLockDay:10,digest:false,anomalyChecks:true,loginWatch:true,backupReminder:true,errorWatch:true,collectionCheck:true,auditWatch:true};
 async function loadOpenAlerts(){
   const supa=await getSupabaseClient();
   const{data,error}=await supa.from('alerts').select('id,akey,outlet_id,kind,severity,title,body,tab,due_date,auto,created_at')
@@ -3320,6 +3320,14 @@ function alertFixedLocally(a){
       const att=JSON.parse(cachedLocalGet(outletKey('salonos_attendance',sid))||'{}');
       const emps=JSON.parse(cachedLocalGet(outletKey('salonos_master_employees',sid))||'[]').filter(e=>e&&e.status==='Active'&&e.weeklyOff!==dow);
       return emps.length>0&&emps.every(e=>{const r=att[e.id+'_'+y+'_'+(m-1)];return !!(r&&r.days&&r.days[d-1]);});
+    }
+    if(a.kind==='compliance'&&typeof allDueItemsFor==='function'){
+      const id=p.slice(2).join(':');const it=allDueItemsFor(sid).find(x=>String(x.id)===id);
+      return !it||!!it.paid||it.status==='done';
+    }
+    if(a.kind==='collection'&&typeof collectionDiffStatusFor==='function'){
+      const now=new Date(),pm=new Date(now.getFullYear(),now.getMonth()-1,1);
+      return collectionDiffStatusFor(sid,now.getFullYear(),now.getMonth()).unexplained.length===0&&collectionDiffStatusFor(sid,pm.getFullYear(),pm.getMonth()).unexplained.length===0;
     }
     if(a.kind==='due'){
       const inv=loadVendorInvoices(sid).find(x=>x.id===p[2]);

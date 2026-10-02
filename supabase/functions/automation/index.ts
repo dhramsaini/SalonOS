@@ -16,6 +16,11 @@
 //   anomaly         unusual activity: a sales day far below that weekday's usual, a day's expenses 3x the
 //                   30-day average, a vendor bill that looks entered twice
 //   errors          app errors users hit in the last 24 hours, most frequent first (Super Admin)
+//   collection      days (last 45) where Collection Reco (CRADLE) and Daily Sales differ by more than
+//                   the outlet's limit and no reason is entered (closes itself once explained)
+//   compliance      PF / ESIC / PT / TDS / salary / incentive / licence dues within N days or overdue,
+//                   from the snapshot the app saves when an owner / admin opens it (salonos_due_snapshot)
+//   audit           months unlocked in the last 7 days, with the reasons given (weekly, Super Admin)
 //
 // Settings: Master Settings → Automation (kv salonos_secret_automation_settings, Super Admin only).
 // Optional digest of new alerts by email / WhatsApp to the "Automatic reports" recipients, using the
@@ -48,7 +53,7 @@ const json = (body: unknown, status = 200) =>
 export const DEFAULTS = {
   enabled: true, salesCheck: true, attendanceCheck: true, dueReminders: true, dueDaysAhead: 3,
   recurringReminders: true, monthEndChecklist: true, autoLock: false, autoLockDay: 10, digest: false, anomalyChecks: true,
-  loginWatch: true, backupReminder: true, errorWatch: true,
+  loginWatch: true, backupReminder: true, errorWatch: true, collectionCheck: true, auditWatch: true,
 };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -251,6 +256,55 @@ export function computeAlerts(kv: KV, settings: typeof DEFAULTS, today: number) 
       title: `${name}: ${pending.length} vendor bill${pending.length === 1 ? "" : "s"} waiting for approval`,
       body: pending.slice(0, 6).map((i) => `• ${vName(i.vendorId)} ${i.invoiceNo || ""} — ${inr(num(i.amount))}`).join("\n") + (pending.length > 6 ? `\n… and ${pending.length - 6} more` : "") +
         "\nA Super Admin approves them in Vendors; they can't be paid until then.", tab: "vendors", due_date: null, auto: true });
+    // 9 · CRADLE vs Daily Sales: days over the outlet's limit with no reason (last 45 days).
+    if (settings.collectionCheck && o.businessType !== "Restaurant") {
+      const lim = o.collDiffLimit === "" || o.collDiffLimit == null || isNaN(Number(o.collDiffLimit)) ? 100 : Math.max(0, Number(o.collDiffLimit));
+      const L = Math.max(0.5, lim);
+      const reasons = get("salonos_collection_cmp_reasons", {}) || {};
+      const byDay = new Map<number, { cash: number; card: number; upi: number }>();
+      for (const r of (get("salonos_cradlee_collection_rows", []) as any[])) {
+        const dn = parseDay(r && r.invoiceDate);
+        if (dn == null || dn < today - 45 || dn >= today) continue;
+        const t = byDay.get(dn) || { cash: 0, card: 0, upi: 0 };
+        t.cash += num(r.cash); t.card += num(r.card); t.upi += num(r.upi); byDay.set(dn, t);
+      }
+      const flagged: number[] = [];
+      for (const [dn, c] of byDay) {
+        const d = sales[isoOfDay(dn)] || {};
+        const e = { cash: num(d[0]), card: num(d[1]), upi: num(d[2]) + num(d[3]) };
+        const over = Math.abs(c.cash - e.cash) > L || Math.abs(c.card - e.card) > L || Math.abs(c.upi - e.upi) > L ||
+          Math.abs(c.cash + c.card + c.upi - e.cash - e.card - e.upi) > L;
+        if (over && !String(reasons[isoOfDay(dn)] ?? "").trim()) flagged.push(dn);
+      }
+      flagged.sort((a, b) => a - b);
+      if (flagged.length) out.push({ akey: `collection:${sid}`, outlet_id: sid, kind: "collection", severity: flagged.length > 3 ? "urgent" : "warn",
+        title: `${name}: ${flagged.length} day${flagged.length === 1 ? "" : "s"} where CRADLE and Daily Sales don't match`,
+        body: `Difference over ${inr(lim)} with no reason: ${flagged.slice(0, 8).map(nice).join(", ")}${flagged.length > 8 ? ", …" : ""}. Add the reason in P&L (Monthly) → Collection Comparison.`,
+        tab: "outlet-pnl", due_date: null, auto: true });
+    }
+    // 10 · Statutory / salary / licence dues — from the snapshot the app saves (ignored if over 10 days old).
+    if (settings.dueReminders) {
+      const snap = get("salonos_due_snapshot", null);
+      const at = snap && snap.at ? Math.floor(Date.parse(snap.at) / 864e5) : null;
+      if (at != null && today - at <= 10) for (const it of (snap.items || []) as any[]) {
+        const dn = parseDay(it && it.due);
+        if (dn == null) continue;
+        const left = dn - today;
+        if (left > settings.dueDaysAhead) continue;
+        out.push({ akey: `compliance:${sid}:${it.id}`, outlet_id: sid, kind: "compliance", severity: left < 0 ? "urgent" : "warn",
+          title: `${name}: ${it.type} ${left < 0 ? `overdue by ${-left} day${left === -1 ? "" : "s"}` : left === 0 ? "due today" : `due in ${left} day${left === 1 ? "" : "s"}`}`,
+          body: `${it.desc || it.type} — ${inr(num(it.amount))}, due ${nice(dn)}. Mark it paid in Due Dates once done.`, tab: "due-dates", due_date: isoOfDay(dn), auto: true });
+      }
+    }
+    // 11 · Months unlocked in the last 7 days, with the reasons (weekly digest for the Super Admin).
+    if (settings.auditWatch) {
+      const since = (today - 7) * 864e5;
+      const unl = (get("salonos_audit_log", []) as any[]).filter((x) => x && x.action === "Unlocked" && Date.parse(x.ts) >= since);
+      const monday = today - (((today + 4) % 7) + 6) % 7;
+      if (unl.length) out.push({ akey: `audit:${sid}:${isoOfDay(monday)}`, outlet_id: sid, kind: "audit", severity: "info",
+        title: `${name}: ${unl.length} unlock${unl.length === 1 ? "" : "s"} this week`,
+        body: unl.slice(0, 6).map((x) => `• ${String(x.ts).slice(0, 10)} ${x.user || ""}: ${x.summary || x.entityId || ""}`).join("\n"), tab: "audit-log", due_date: null, auto: true });
+    }
   }
   // 8 · Weekly backup file: remind the Super Admins until this week's copy is downloaded.
   if (settings.backupReminder) {

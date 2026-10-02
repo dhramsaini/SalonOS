@@ -167,3 +167,22 @@ function advanceLimitGate(sid,empName,newAmount,excludeId){
   if(outletSettings(sid).advBlock){window.alert(msg+'\n\nThis outlet blocks advances above the limit.');return false;}
   return window.confirm(msg+'\n\nGo ahead anyway?');
 }
+
+// ── Due snapshot for the nightly reminders — the unpaid statutory / salary / incentive / licence
+// dues of each outlet (vendor bills are checked by the server itself), saved when an owner or admin
+// opens the app, so the 9 PM check can remind by email / WhatsApp. Written only when it changed
+// (or once a day, so the server knows it's current). ──
+function writeDueSnapshots(salons){
+  (salons||[]).forEach(s=>{
+    try{
+      const sid=s.id;
+      const items=allDueItemsFor(sid).filter(d=>d&&!d.paid&&d.status!=='done'&&d.due&&!/vendor/i.test(String(d.type||'')))
+        .map(d=>({id:String(d.id),type:d.type,desc:d.desc||'',due:d.due,amount:Math.round(Number(d.amount)||0)}));
+      const key=outletKey('salonos_due_snapshot',sid);
+      let prev=null;try{prev=JSON.parse(cachedLocalGet(key)||'null');}catch(e){}
+      const today=localIsoOf(new Date());
+      if(prev&&JSON.stringify(prev.items)===JSON.stringify(items)&&String(prev.at||'').slice(0,10)===today)return;
+      safeLocalSet(key,JSON.stringify({at:new Date().toISOString(),items}));
+    }catch(e){}
+  });
+}
