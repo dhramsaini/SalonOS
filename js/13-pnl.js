@@ -358,6 +358,7 @@ function OutletPnLCore({salon,period}){
   const [open,setOpen]=useState({});
   const [openGroups,setOpenGroups]=useState({});
   const [empCostModal,setEmpCostModal]=useState(null); // holds the Employee cost section for the "Summary of working" drill-down
+  const [revSrcTick,setRevSrcTick]=useState(0); // re-render after the Revenue source is changed
   const [revDrilldown,setRevDrilldown]=useState(null); // 'cash' | 'card' | 'upi' | null — which Revenue line's source rows to show
   const [opexAnnexure,setOpexAnnexure]=useState(null); // Operating Expenses line name, or null — which line's annexure to show
   const [costBreakup,setCostBreakup]=useState(null); // Direct Cost of Service line name, or null — which line's invoice-wise breakup to show
@@ -453,7 +454,7 @@ function OutletPnLCore({salon,period}){
     try{
       await loadExcelJS();
       const cal=periodToCalendar({fy,mi});
-      const coll=cal?collectionSalesSumFor(sid,cal.year,cal.month):{cash:0,card:0,upi:0};
+      const coll=cal?plRevenueGrossFor(sid,cal.year,cal.month):{cash:0,card:0,upi:0};
       const revSection=cur.sections[0],directSection=cur.sections[1],empSection=cur.sections[2],opexSection=cur.sections[3];
       const otherIncome=(revSection.lines.find(l=>l.name==='Other Income')||{amt:0}).amt;
 
@@ -727,11 +728,12 @@ function OutletPnLCore({salon,period}){
   const plWorkingNotesFor=()=>{
     const cal=periodToCalendar({fy,mi});
     if(!cal)return{revenueNotes:[],opexNotes:[]};
-    const coll=collectionSalesSumFor(sid,cal.year,cal.month);
+    const coll=plRevenueGrossFor(sid,cal.year,cal.month);
+    const srcName=plRevenueSourceFor(sid,cal.year,cal.month)==='dse'?'Daily Sales & Exp':'Collection Reco';
     const revenueNotes=[
-      {label:'Revenue from Operations - Cash Sale',formula:'Cash collected per Collection Reco ÷ 1.05',raw:coll.cash,result:coll.cash/1.05},
-      {label:'Revenue from Operations - Card Sale',formula:'Card collected per Collection Reco ÷ 1.05',raw:coll.card,result:coll.card/1.05},
-      {label:'Revenue from Operations - UPI Sale',formula:'UPI collected per Collection Reco ÷ 1.05',raw:coll.upi,result:coll.upi/1.05}
+      {label:'Revenue from Operations - Cash Sale',formula:'Cash Sale per '+srcName+' ÷ 1.05',raw:coll.cash,result:coll.cash/1.05},
+      {label:'Revenue from Operations - Card Sale',formula:'Card Sale per '+srcName+' ÷ 1.05',raw:coll.card,result:coll.card/1.05},
+      {label:'Revenue from Operations - UPI Sale',formula:(srcName==='Daily Sales & Exp'?'UPI Sale + Luzo Sale':'UPI collected')+' per '+srcName+' ÷ 1.05',raw:coll.upi,result:coll.upi/1.05}
     ];
     const opexNotes=PL_OPEX_LINES.map(l=>{
       const d=operatingExpenseAnnexureFor(sid,cal.year,cal.month,l.name);
@@ -831,6 +833,16 @@ function OutletPnLCore({salon,period}){
         h('button',{onClick:()=>{if(mi===11){const i=FYS.indexOf(fy);if(i<FYS.length-1){setFy(FYS[i+1]);setMi(0)}}else setMi(mi+1)}},'›')),
       h('select',{className:'form-control',style:{width:'auto',fontSize:12,padding:'6px 10px'},value:fy,onChange:e=>setFy(e.target.value)},
         FYS.map(f=>h('option',{key:f},f))),
+      !isRestaurantOutlet(sid)&&(()=>{const c=periodToCalendar({fy,mi});if(!c)return null;
+        const src=plRevenueSourceFor(sid,c.year,c.month);
+        return h(React.Fragment,null,
+          h('span',{style:{fontSize:11,color:'var(--text3)'}},'Revenue from'),
+          h('select',{className:'form-control',style:{width:'auto',fontSize:12,padding:'6px 10px'},value:src,
+            title:'Where Cash / Card / UPI Sale come from for this month (Luzo Sale is added to UPI Sale when using Daily Sales & Exp)',
+            onChange:e=>{if(isPnlFinal(sid,fy,mi)){toast('This month\u2019s P&L is Final — un-finalize it to change the revenue source.','error');return;}
+              setPlRevenueSource(sid,c.year,c.month,e.target.value);setRevSrcTick(t=>t+1);toast('Revenue now taken from '+(e.target.value==='dse'?'Daily Sales & Exp':'Collection Reco')+' for '+PL_MONTHS[mi]+' (and new months)','success');}},
+            h('option',{value:'collection'},'Collection Reco (CRADLE)'),
+            h('option',{value:'dse'},'Daily Sales & Exp')));})(),
       h('span',{style:{fontSize:11,color:'var(--text3)'}},'Compare with'),
       h('select',{className:'form-control',style:{width:'auto',fontSize:12,padding:'6px 10px'},value:cmp,onChange:e=>setCmp(e.target.value)},
         ['Previous month','Same month last year','Budget'].map(c=>h('option',{key:c},c))),
@@ -1053,7 +1065,8 @@ function OutletPnLCore({salon,period}){
     ),
     revDrilldown&&(()=>{
       const cal=periodToCalendar({fy,mi});
-      const monthRows=cal?collectionRowsForMonth(sid,cal.year,cal.month):[];
+      const fromDse=!!cal&&plRevenueSourceFor(sid,cal.year,cal.month)==='dse';
+      const monthRows=!cal?[]:fromDse?dseSalesRowsForMonth(sid,cal.year,cal.month):collectionRowsForMonth(sid,cal.year,cal.month);
       const fieldFor={cash:'cash',card:'card',upi:'upi'}[revDrilldown];
       const labelFor={cash:'Cash Sale',card:'Card Sale',upi:'UPI Sale'}[revDrilldown];
       const grossTotal=monthRows.reduce((s,r)=>s+(Number(r[fieldFor])||0),0);
@@ -1061,9 +1074,9 @@ function OutletPnLCore({salon,period}){
         h('div',{className:'modal',style:{width:640,maxHeight:'82vh',overflowY:'auto'},onClick:e=>e.stopPropagation()},
           h('div',{className:'modal-title'},'Revenue from Operations - '+labelFor+' — source rows'),
           h('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:14}},
-            PL_MONTHS[mi]+' '+(mi<9?fy.slice(0,4):'20'+fy.slice(5))+' · '+(salon?salon.name:'Outlet')+' · from Collection Reco\'s Imported Data Preview'),
+            PL_MONTHS[mi]+' '+(mi<9?fy.slice(0,4):'20'+fy.slice(5))+' · '+(salon?salon.name:'Outlet')+(fromDse?' · from Daily Sales & Exp'+(revDrilldown==='upi'?' (UPI Sale + Luzo Sale)':''):' · from Collection Reco\'s Imported Data Preview')),
           monthRows.length===0
-            ?h('div',{style:{textAlign:'center',padding:32,color:'var(--text3)',fontSize:12.5}},'No Collection Reco data imported for this month yet — that\'s why this line reads ₹0.')
+            ?h('div',{style:{textAlign:'center',padding:32,color:'var(--text3)',fontSize:12.5}},fromDse?'No sales entered in Daily Sales & Exp for this month yet — that\'s why this line reads ₹0.':'No Collection Reco data imported for this month yet — that\'s why this line reads ₹0.')
             :h('div',{className:'table-wrap'},
                 h('table',null,
                   h('thead',null,h('tr',null,['Date','Centre',labelFor].map(hh=>h('th',{key:hh},hh)))),

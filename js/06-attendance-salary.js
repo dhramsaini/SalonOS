@@ -778,6 +778,8 @@ function AttendanceSheet({period,salon,user}={}){
             ['M','T','W','T','F','S','S'].map((d,i)=>React.createElement('div',{key:i,style:{textAlign:'center',fontSize:9,color:'var(--text3)',fontWeight:700,padding:'2px 0'}},d))
           ),
           React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3}},
+            // Empty cells before the 1st so every date sits under its real weekday (Mon-first).
+            Array.from({length:(new Date(selYear,selMonth,1).getDay()+6)%7},(_,i)=>React.createElement('div',{key:'pad'+i,'aria-hidden':true})),
             Array.from({length:daysInMonth},(_,i)=>{
               const status=empDays[i];
               const dayLocked=isMonthLockedForRole||attMonthLocked;

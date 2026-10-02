@@ -1552,6 +1552,37 @@ function collectionSalesSumFor(salonId,year,month){
   });
   return{cash,card,upi};
 }
+// Where a salon's P&L takes Cash / Card / UPI Sale from: 'collection' (Collection Reco's imported
+// CRADLE data, the original source) or 'dse' (Daily Sales & Exp — Luzo Sale is added to UPI Sale).
+// Chosen per month on the P&L; the last choice becomes the default for months not yet chosen.
+// Months already P&L Final are pinned to the source they were finalised with before a new
+// default is saved, so changing it never alters a finalised month.
+function loadPlRevenueSource(sid){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_pl_revenue_source',sid))||'{}');return v&&typeof v==='object'?v:{};}catch(e){return{};}}
+function plRevenueSourceFor(sid,year,month){
+  const m=loadPlRevenueSource(sid);const v=m[year+'-'+month]||m.default;
+  return v==='dse'?'dse':'collection';
+}
+function setPlRevenueSource(sid,year,month,src){
+  const m=loadPlRevenueSource(sid);
+  try{Object.entries(loadPnlFinal(sid)).forEach(([k,v])=>{if(!v||!v.final)return;const [fy,mi]=k.split('|');const c=periodToCalendar({fy,mi:Number(mi)});
+    if(c&&!m[c.year+'-'+c.month])m[c.year+'-'+c.month]=plRevenueSourceFor(sid,c.year,c.month);});}catch(e){}
+  m[year+'-'+month]=src;m.default=src;
+  safeLocalSet(outletKey('salonos_pl_revenue_source',sid),JSON.stringify(m));
+}
+// Daily Sales & Exp sale rows for a month, per day: Cash (row 0), Card (1), UPI (2) + Luzo (3).
+function dseSalesRowsForMonth(sid,year,month){
+  let ds={};try{ds=JSON.parse(cachedLocalGet(outletKey('salonos_daily_sales_collection_data',sid))||'{}')||{};}catch(e){}
+  const pre=year+'-'+String(month+1).padStart(2,'0')+'-';
+  const n=v=>Number(v)||0;
+  return Object.keys(ds).filter(iso=>iso.startsWith(pre)).sort().map(iso=>{const d=ds[iso]||{};
+    return{id:iso,invoiceDate:iso.split('-').reverse().join('/'),centerName:'Daily Sales & Exp',cash:n(d[0]),card:n(d[1]),upi:n(d[2])+n(d[3]),luzo:n(d[3])};})
+    .filter(r=>r.cash||r.card||r.upi);
+}
+// Gross (incl. GST) Cash / Card / UPI for the P&L, from whichever source the month uses.
+function plRevenueGrossFor(sid,year,month){
+  if(plRevenueSourceFor(sid,year,month)!=='dse')return collectionSalesSumFor(sid,year,month);
+  return dseSalesRowsForMonth(sid,year,month).reduce((t,r)=>({cash:t.cash+r.cash,card:t.card+r.card,upi:t.upi+r.upi,luzo:t.luzo+r.luzo}),{cash:0,card:0,upi:0,luzo:0});
+}
 // The individual Collection Reco rows behind a month's Cash/Card/UPI Sale figure — used by the
 // P&L's "🔗" drill-down on those three Revenue lines, so a person can see exactly which imported
 // rows add up to the number instead of just trusting a total.

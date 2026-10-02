@@ -1539,7 +1539,7 @@ function plBuild(sid,fy,mi){
   }
   // Real revenue for the month, straight from Collection Reco's Imported Data Preview — the
   // /1.05 backs GST out of the gross collected amount to arrive at the revenue figure.
-  const coll=cal?collectionSalesSumFor(sid,cal.year,cal.month):{cash:0,card:0,upi:0};
+  const coll=cal?plRevenueGrossFor(sid,cal.year,cal.month):{cash:0,card:0,upi:0};
   const realCash=coll.cash/1.05,realCard=coll.card/1.05,realUpi=coll.upi/1.05;
   const overrides=cal?(loadPLManualOverrides(sid)[cal.year+'-'+cal.month]||{}):{};
   const otherIncome=Number(overrides.otherIncome)||0;

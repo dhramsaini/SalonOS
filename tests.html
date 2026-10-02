@@ -536,6 +536,12 @@
         setMonthLockFor(906,2026,8,true,'manual');
         reconcileAdvanceRecoveries(906);reconcileAdvanceRecoveries(906);
         eq('Advance: September installment recovered once September salary is locked, never twice',[before,advOut().outstanding,advOut().settled['2026-09']],[10000,8500,1500]);
+        // P&L revenue from Daily Sales & Exp: Luzo added to UPI; default stays Collection Reco.
+        safeLocalSet(outletKey('salonos_daily_sales_collection_data',907),JSON.stringify({'2026-10-01':{0:6930,1:2400,2:4724,3:500},'2026-10-02':{0:1071},'2026-09-30':{0:999}}));
+        const srcBefore=plRevenueSourceFor(907,2026,9);
+        setPlRevenueSource(907,2026,9,'dse');
+        const g=plRevenueGrossFor(907,2026,9);
+        eq('P&L revenue from Daily Sales & Exp: Cash, Card, UPI + Luzo for the month only',[srcBefore,g.cash,g.card,g.upi],['collection',8001,2400,5224]);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
