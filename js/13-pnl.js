@@ -1720,7 +1720,7 @@ function CollectionComparisonSheet({salon,period}={}){
 function OutletPnLSheet({salon,period,onNavTab}={}){
   const [subTab,setSubTab]=useState('pnl');
   const tabBar=React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
-    [{id:'pnl',label:'P&L Statement'},{id:'variance',label:'Variance Analysis'},{id:'cashflow',label:'Cash Flow'},{id:'compare',label:'Compare'},{id:'collcmp',label:'Collection Comparison'},{id:'gst',label:'GST Summary'},{id:'close',label:'Month-End Close'}].map(t=>
+    [{id:'pnl',label:'P&L Statement'},{id:'mtd',label:'MTD P&L'},{id:'variance',label:'Variance Analysis'},{id:'cashflow',label:'Cash Flow'},{id:'compare',label:'Compare'},{id:'collcmp',label:'Collection Comparison'},{id:'gst',label:'GST Summary'},{id:'close',label:'Month-End Close'}].map(t=>
       React.createElement('button',{key:t.id,className:`tab-btn ${subTab===t.id?'active':''}`,onClick:()=>setSubTab(t.id)},t.label)
     )
   );
@@ -1741,6 +1741,7 @@ function OutletPnLSheet({salon,period,onNavTab}={}){
     React.createElement('div',{style:{display:subTab==='cashflow'?'block':'none'}},React.createElement(CashFlowSheet,{salon,period})),
     React.createElement('div',{style:{display:subTab==='compare'?'block':'none'}},React.createElement(PnLCompareSheet,{salon,period})),
     subTab==='collcmp'&&React.createElement(CollectionComparisonSheet,{salon,period}),
+    subTab==='mtd'&&React.createElement(MtdPnlSheet,{salon,period}),
     subTab==='gst'&&React.createElement(GstSummarySheet,{salon,period}),
     subTab==='close'&&React.createElement(MonthCloseChecklist,{salon,period,onNavTab})
   );

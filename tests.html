@@ -603,6 +603,8 @@
         decideSummaryApproval(901,'salary',2026,8,'Approved','Mona','fine','Salon Manager');
         const sr=decideSummaryApproval(901,'salary',2026,8,'Returned','Asha','fix PF','ASM');
         eq('Summary approval: each role keeps its own status and remarks',[sr.reviews.Manager.status,sr.reviews.ASM.remarks,sr.status],['Approved','fix PF','Returned']);
+        const mt=mtdPnlFor(907,2026,9);
+        eq('MTD P&L: revenue to the last Daily Sales day (÷1.05), totals add up',[Math.round(mt.mtd.revenue),Math.round(mt.mtd.revenue-mt.sections.filter(x=>x.sec!=='Revenue').reduce((t,x)=>t+x.mtd,0)-mt.below.reduce((t,l)=>t+l.mtd,0))===Math.round(mt.mtd.pbt)],[14881,true]);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
