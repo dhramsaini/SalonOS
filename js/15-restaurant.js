@@ -4,7 +4,9 @@
 // P&L, Due Dates and Daily Sales & Exp use for restaurant outlets. Salon outlets never see any of it.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 
-const AGG_PLATFORMS=['Swiggy','Zomato'];
+const AGG_PLATFORMS=['Swiggy','Zomato','EazyDiner'];
+// Daily Sales & Exp row (by stored position) where each platform's day sale is entered.
+const AGG_DSE_ROW={Swiggy:14,Zomato:15,EazyDiner:16};
 const rYm=(y,m)=>y+'-'+String(m+1).padStart(2,'0');
 const rMonthLabel=(y,m)=>new Date(y,m,1).toLocaleString('en-IN',{month:'long',year:'numeric'});
 const rNum=v=>{const n=Number(String(v==null?'':v).replace(/[₹,\s]/g,''));return isFinite(n)?n:0;};
@@ -54,6 +56,12 @@ function aggregatorMonthFor(sid,year,month,platform){
   Object.keys(out).forEach(x=>out[x]=Math.round(out[x]));
   return out;
 }
+function aggDailyEntriesFor(sid,year,month,platform){
+  let ds={};try{ds=JSON.parse(cachedLocalGet(outletKey('salonos_daily_sales_collection_data',sid))||'{}');}catch(e){}
+  const pre=rYm(year,month),ri=AGG_DSE_ROW[platform];let t=0;
+  Object.keys(ds).forEach(iso=>{if(iso.startsWith(pre))t+=rNum((ds[iso]||{})[ri]);});
+  return Math.round(t);
+}
 function aggregatorSalesFor(sid,year,month,platform){return aggregatorMonthFor(sid,year,month,platform).gross;}
 function aggregatorChargesFor(sid,year,month){return aggregatorMonthFor(sid,year,month).charges;}
 // Bank match — a credit on Bank Statement for this platform within 7 days of the payout date and
@@ -61,7 +69,7 @@ function aggregatorChargesFor(sid,year,month){return aggregatorMonthFor(sid,year
 function aggBankMatch(sid,p){
   let rows=[];try{rows=JSON.parse(cachedLocalGet(outletKey('salonos_bank_statement_rows',sid))||'[]');}catch(e){}
   const pd=rIsoOf(p.payoutDate);if(!pd||!(rNum(p.netPayout)>0))return null;
-  const word=p.platform==='Swiggy'?/swiggy|bundl/i:/zomato/i;
+  const word=p.platform==='Swiggy'?/swiggy|bundl/i:p.platform==='EazyDiner'?/eazy\s?diner/i:/zomato/i;
   const t0=new Date(pd+'T00:00:00').getTime();
   return rows.find(r=>{
     if(!(Number(r.credit)>0)||Math.abs(Number(r.credit)-rNum(p.netPayout))>1)return false;
@@ -249,7 +257,7 @@ function AggregatorsSheet({salon,period}={}){
   const money=v=>rupee(Math.round(v));
   return h('div',{className:'fade-in'},
     h('div',{className:'section-header'},
-      h('div',null,h('div',{className:'page-title'},'Swiggy & Zomato'),
+      h('div',null,h('div',{className:'page-title'},'Swiggy, Zomato & EazyDiner'),
         h('div',{className:'page-sub'},'Delivery-app payouts for '+rMonthLabel(cal.year,cal.month)+' — sales, commission and charges, and whether each payout reached the bank')),
       h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         h('button',{className:'btn btn-ghost btn-sm',onClick:template},'⬇ Template'),
@@ -263,7 +271,16 @@ function AggregatorsSheet({salon,period}={}){
       h(RCard,{label:'Net payout',val:money(m.net),sub:'TDS credit '+money(m.tds),color:'green'}),
       h(RCard,{label:'Not found in bank',val:String(unmatched),sub:unmatched?'import the bank statement or check the payout':'all payouts matched',color:unmatched?'red':'green'})),
     h('div',{style:{display:'flex',gap:6,marginBottom:10}},['All',...AGG_PLATFORMS].map(x=>h('button',{key:x,className:'btn btn-sm '+(plat===x?'btn-primary':'btn-ghost'),onClick:()=>setPlat(x)},x))),
-    h('div',{className:'help-note',style:{marginBottom:12}},'Enter each payout from the Swiggy / Zomato payout statement, or import many with the template. Gross food sales go to P&L revenue (GST on these orders is paid by the platform), commission, gateway, ads and other deductions go to "Aggregator Commission & Charges", and TDS is a tax credit. A payout spanning two months is split by days. Each payout is matched to its bank credit within 7 days.'),
+    h('div',{className:'card',style:{marginBottom:12}},
+      h('div',{className:'card-title'},'Daily entries vs payouts — '+rMonthLabel(cal.year,cal.month)),
+      h('div',{className:'table-wrap'},h('table',{style:{maxWidth:820}},
+        h('thead',null,h('tr',null,['Platform','Entered daily (Daily Sales & Exp)','Payout gross food sales','Difference',''].map((t,i)=>h('th',{key:i},t)))),
+        h('tbody',null,AGG_PLATFORMS.map(pl=>{const d=aggDailyEntriesFor(sid,cal.year,cal.month,pl),g=aggregatorSalesFor(sid,cal.year,cal.month,pl),df=d-g;
+          return h('tr',{key:pl},h('td',null,h('b',null,pl)),h('td',{style:{textAlign:'right'}},money(d)),h('td',{style:{textAlign:'right'}},money(g)),
+            h('td',{style:{textAlign:'right',color:Math.abs(df)>1?'var(--orange)':'var(--text3)'}},(df>0?'+':'')+money(df)),
+            h('td',{style:{fontSize:11.5,color:'var(--text3)'}},!d&&!g?'—':!g?'no payout entered yet':!d?'no daily entries':Math.abs(df)<=Math.max(50,g*0.01)?'matches':'check — GST or a missed day?'));})))),
+      h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Daily entries are what the manager typed each day; the payout figure is the platform’s food value excluding GST. The P&L uses the payouts.')),
+    h('div',{className:'help-note',style:{marginBottom:12}},'Enter each payout from the Swiggy / Zomato / EazyDiner payout statement, or import many with the template. Gross food sales go to P&L revenue (GST on these orders is paid by the platform), commission, gateway, ads and other deductions go to "Aggregator Commission & Charges", and TDS is a tax credit. A payout spanning two months is split by days. Each payout is matched to its bank credit within 7 days.'),
     h('div',{className:'card'},inMonth.length===0
       ?h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'🛵'),h('div',{className:'empty-title'},'No payouts for this month'),h('div',{className:'empty-sub'},'Add a payout from the statement, or import the template.'))
       :h('div',{className:'table-wrap'},h('table',null,

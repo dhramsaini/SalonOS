@@ -1507,6 +1507,7 @@ const TALLY_NATURE_LEDGERS={
   'UPI Settlement':['UPI Settlement Receivable','Current Assets'],
   'Swiggy Settlement':['Swiggy Receivable','Current Assets'],
   'Zomato Settlement':['Zomato Receivable','Current Assets'],
+  'EazyDiner Settlement':['EazyDiner Receivable','Current Assets'],
   'Bank Charges':['Bank Charges','Indirect Expenses'],
   'Interest':['Bank Interest','Indirect Incomes'],
   'Salary':['Salaries & Wages','Indirect Expenses'],

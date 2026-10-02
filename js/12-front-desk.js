@@ -1557,6 +1557,7 @@ function plBuild(sid,fy,mi){
         {name:'Revenue from Operations - UPI Sale',amt:rc.upi},
         {name:'Revenue from Operations - Swiggy',amt:aggregatorSalesFor(sid,cal.year,cal.month,'Swiggy')},
         {name:'Revenue from Operations - Zomato',amt:aggregatorSalesFor(sid,cal.year,cal.month,'Zomato')},
+        {name:'Revenue from Operations - EazyDiner',amt:aggregatorSalesFor(sid,cal.year,cal.month,'EazyDiner')},
         ...(ro.servesLiquor?[{name:'Revenue from Operations - Bar Sale',amt:barSalesFor(sid,cal.year,cal.month)}]:[]),
         ...(ro.serviceChargeApplicable?[{name:'Service Charge Collected',amt:serviceChargeCollectedFor(sid,cal.year,cal.month)}]:[]),
         {name:'Other Income',amt:otherIncome}

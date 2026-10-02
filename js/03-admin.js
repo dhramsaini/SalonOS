@@ -1033,7 +1033,8 @@ function MasterSheet({onSelect,salons,setSalons,user}){
           React.createElement('div',{style:{display:'flex',gap:18,flexWrap:'wrap',fontSize:13,margin:'4px 0 6px'}},
             React.createElement('span',{style:{color:'var(--text3)'}},'Delivery apps:'),
             React.createElement('label',{style:{display:'flex',gap:6,alignItems:'center',cursor:'pointer'}},React.createElement('input',{type:'checkbox',checked:!!form.aggSwiggy,onChange:fcCheck('aggSwiggy')}),'Swiggy'),
-            React.createElement('label',{style:{display:'flex',gap:6,alignItems:'center',cursor:'pointer'}},React.createElement('input',{type:'checkbox',checked:!!form.aggZomato,onChange:fcCheck('aggZomato')}),'Zomato')),
+            React.createElement('label',{style:{display:'flex',gap:6,alignItems:'center',cursor:'pointer'}},React.createElement('input',{type:'checkbox',checked:!!form.aggZomato,onChange:fcCheck('aggZomato')}),'Zomato'),
+            React.createElement('label',{style:{display:'flex',gap:6,alignItems:'center',cursor:'pointer'}},React.createElement('input',{type:'checkbox',checked:!!form.aggEazyDiner,onChange:fcCheck('aggEazyDiner')}),'EazyDiner')),
           React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)'}},'Licence expiry dates appear in Due Dates as renewal reminders.')
         ),
         (form.typeHistory&&form.typeHistory.length>0)&&React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:14}},
@@ -2186,7 +2187,7 @@ function UserManagement(){
     {id:'outlet-pnl',label:'P&L (Monthly)'},{id:'collection',label:'Collection Summary'},{id:'collection-sheet',label:'Collection Reco'},{id:'bank-statement',label:'Bank Statement'},
     {id:'bank-payment',label:'Bank Payment'},{id:'tally-export',label:'Tally Export'},{id:'reports',label:'Reports'},{id:'recurring-expenses',label:'Recurring Expenses'},
     {id:'previous-pnl',label:'Previous Months P&L'},{id:'fixed-assets',label:'Fixed Assets'},{id:'audit-log',label:'Audit Log'},{id:'import-center',label:'Import Center'},
-    {id:'aggregators',label:'Swiggy & Zomato (restaurant)'},{id:'food-cost',label:'Food Cost (restaurant)'},{id:'service-charge',label:'Service Charge (restaurant)'}
+    {id:'aggregators',label:'Swiggy, Zomato & EazyDiner (restaurant)'},{id:'food-cost',label:'Food Cost (restaurant)'},{id:'service-charge',label:'Service Charge (restaurant)'}
   ];
   const PERMISSION_LEVELS=['No Access','View Only','Edit'];
   const OUTLET_ACCESS_LEVELS=['No Access','View Only','View and Edit'];

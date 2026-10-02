@@ -173,8 +173,16 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     {name:'Bank Deposit',type:'input'},
     {name:'Cash Received',type:'input'},
     {name:'Closing Cash Balance',type:'computed'},
+    // Restaurant outlets only — stored after the rest (rows are saved by position) and shown right
+    // after UPI Sale. Delivery / booking-app sales, settled later by the platform's payout.
+    {name:'Swiggy Sale',type:'input',biz:'restaurant'},
+    {name:'Zomato Sale',type:'input',biz:'restaurant'},
+    {name:'EazyDiner Sale',type:'input',biz:'restaurant'},
   ];
-  const IDX_CASH=0,IDX_CARD=1,IDX_UPI=2,IDX_LUZO=3,IDX_OSALE=4,IDX_OREC=5,IDX_TDS=6,IDX_TCOLL=7,IDX_OPENING=8,IDX_PACKET=9,IDX_HANDOVER=10,IDX_DEPOSIT=11,IDX_RECEIVED=12,IDX_DRAWER=13;
+  const IDX_CASH=0,IDX_CARD=1,IDX_UPI=2,IDX_LUZO=3,IDX_OSALE=4,IDX_OREC=5,IDX_TDS=6,IDX_TCOLL=7,IDX_OPENING=8,IDX_PACKET=9,IDX_HANDOVER=10,IDX_DEPOSIT=11,IDX_RECEIVED=12,IDX_DRAWER=13,IDX_SWIGGY=14,IDX_ZOMATO=15,IDX_EAZY=16;
+  // Display order — restaurants: the three app rows after UPI Sale, no Luzo; salons: as before.
+  const SALES_ORDER=isRestaurantOutlet(salonId)?[0,1,2,IDX_SWIGGY,IDX_ZOMATO,IDX_EAZY,4,5,6,7,8,9,10,11,12,13]:SALES_ROWS.map((r,i)=>i).filter(i=>!SALES_ROWS[i].biz);
+  const appSalesAt=iso=>numSalesAt(iso,IDX_SWIGGY)+numSalesAt(iso,IDX_ZOMATO)+numSalesAt(iso,IDX_EAZY);
   // Rows that always require specific fields per entry (not just an amount), and allow more than
   // one entry per day — same "click cell → modal → list of lines" pattern used elsewhere in this
   // sheet, keyed here by row index since Daily Sales & Collection's rows are fixed and indexed.
@@ -310,8 +318,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     return numSalesAt(iso,IDX_OPENING); // very first recorded day — manually entered starting float
   };
   const computedSalesValue=(iso,ri)=>{
-    if(ri===IDX_TDS)return numSalesAt(iso,IDX_CASH)+numSalesAt(iso,IDX_CARD)+numSalesAt(iso,IDX_UPI)+numSalesAt(iso,IDX_LUZO)+numSalesAt(iso,IDX_OSALE);
-    if(ri===IDX_TCOLL)return numSalesAt(iso,IDX_CASH)+numSalesAt(iso,IDX_CARD)+numSalesAt(iso,IDX_UPI)+numSalesAt(iso,IDX_LUZO)+numSalesAt(iso,IDX_OREC);
+    if(ri===IDX_TDS)return numSalesAt(iso,IDX_CASH)+numSalesAt(iso,IDX_CARD)+numSalesAt(iso,IDX_UPI)+numSalesAt(iso,IDX_LUZO)+appSalesAt(iso)+numSalesAt(iso,IDX_OSALE);
+    if(ri===IDX_TCOLL)return numSalesAt(iso,IDX_CASH)+numSalesAt(iso,IDX_CARD)+numSalesAt(iso,IDX_UPI)+numSalesAt(iso,IDX_LUZO)+appSalesAt(iso)+numSalesAt(iso,IDX_OREC);
     if(ri===IDX_DRAWER)return closingBalanceFor(iso);
     return 0;
   };
@@ -1272,7 +1280,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       total>0?'₹'+fmt(total)+' ✎':'+ Add');
     const heading=(text,right)=>React.createElement('div',{style:{padding:'10px 12px',display:'flex',justifyContent:'space-between',gap:8,fontWeight:700,fontSize:12,letterSpacing:'.06em',textTransform:'uppercase',color:'var(--accent2)',background:'rgba(47,95,224,0.1)'}},
       React.createElement('span',null,text),right?React.createElement('span',null,right):null);
-    const salesRows=SALES_ROWS.map((row,sri)=>{if(sri===IDX_LUZO&&isRestaurantOutlet(salonId))return null;
+    const salesRows=SALES_ORDER.map(sri=>{const row=SALES_ROWS[sri];
       const isComputed=row.type==='computed',isOpening=sri===IDX_OPENING;
       const readOnly=isComputed||(isOpening&&!isFirstEverCashDay(iso));
       const val=salesValueAt(iso,sri);
@@ -1614,7 +1622,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
             React.createElement('tr',{key:'sales-section-header'},
               React.createElement('td',{colSpan:3+days.length,style:{padding:'10px 12px',background:'rgba(47,95,224,0.12)',fontSize:11,fontWeight:700,color:'var(--accent2)',textTransform:'uppercase',letterSpacing:'0.06em',borderTop:'2px solid var(--accent)',borderBottom:'1px solid var(--border)'}},'Daily Sales & Collection')
             ),
-            ...SALES_ROWS.map((row,sri)=>{if(sri===IDX_LUZO&&isRestaurantOutlet(salonId))return null;
+            ...SALES_ORDER.map(sri=>{const row=SALES_ROWS[sri];
               const isComputed=row.type==='computed';
               const isOpening=sri===IDX_OPENING;
               const globalRi=EXPENSE_ROWS.length+sri;

@@ -58,7 +58,7 @@
         {id:904,name:'Test Restaurant',state:'Delhi',status:'Active',businessType:'Restaurant',servesLiquor:true,serviceChargeApplicable:true,fssaiValidTill:'2026-12-31'}]);
       // Restaurant outlet 904 — counter sales, food & liquor bills, a local vegetable purchase (row 41),
       // stock counts, Swiggy/Zomato payouts and service charge for September 2026.
-      put('salonos_daily_sales_collection_data_outlet_904',{'2026-09-10':{0:10500,1:21000,2:0}});
+      put('salonos_daily_sales_collection_data_outlet_904',{'2026-09-10':{0:10500,1:21000,2:0,14:2100,16:800}});
       put('salonos_daily_sales_data_outlet_904',{'2026-09-12':{41:5000}});
       put('salonos_vendors_outlet_904',[{id:'V1',name:'Fresh Foods',status:'Active'}]);
       put('salonos_vendor_invoices_outlet_904',[
@@ -472,6 +472,8 @@
           [expenseRowVisibleFor(EXPENSE_ROWS.find(r=>r.name==='Cosmetics & Stock Local'),904),expenseRowVisibleFor(EXPENSE_ROWS[41],904),expenseRowVisibleFor(EXPENSE_ROWS[41],901),
            salonTabsFor({businessType:'Restaurant'}).some(t=>t.id==='appointments'),salonTabsFor({businessType:'Restaurant'}).some(t=>t.id==='food-cost'),salonTabsFor({id:901}).some(t=>t.id==='food-cost')],
           [false,true,false,false,true,false]);
+        eq('Restaurant: Swiggy / EazyDiner day sales from Daily Sales & Exp, kept out of counter revenue',
+          [aggDailyEntriesFor(904,2026,8,'Swiggy'),aggDailyEntriesFor(904,2026,8,'EazyDiner'),restaurantCounterSalesFor(904,2026,8).cash+restaurantCounterSalesFor(904,2026,8).card],[2100,800,30000]);
         eq('Restaurant: FSSAI renewal shows in Due Dates',autoLicenceDueItemsFor(904).map(x=>x.due),['2026-12-31']);
         eq('Salon P&L unchanged by restaurant lines',plBuild(901,'2026-27',5).sections[1].lines.map(l=>l.name),['Purchase of Cosmetic','Unregistered Purchase']);
       }catch(err){results.push({name:'Restaurant line of business',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}

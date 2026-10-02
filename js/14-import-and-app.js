@@ -251,7 +251,7 @@ const SALON_TABS=[
   {id:'inventory',label:'Inventory',icon:'📦',group:'Front Desk',biz:'salon'},
   {id:'master-salary',label:'Master Salary',icon:'💰',group:'Payroll & HR'},
   {id:'daily-sales',label:'Daily Sales & Exp.',icon:'💵',group:'Money'},
-  {id:'aggregators',label:'Swiggy & Zomato',icon:'🛵',group:'Money',biz:'restaurant'},
+  {id:'aggregators',label:'Swiggy, Zomato & EazyDiner',icon:'🛵',group:'Money',biz:'restaurant'},
   {id:'food-cost',label:'Food Cost',icon:'🍳',group:'Money',biz:'restaurant'},
   {id:'service-charge',label:'Service Charge',icon:'🍽',group:'Payroll & HR',biz:'restaurant'},
   {id:'attendance',label:'Attendance',icon:'✅',group:'Payroll & HR'},
