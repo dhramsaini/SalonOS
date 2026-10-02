@@ -68,6 +68,9 @@
       put('salonos_aggregator_payouts_outlet_904',[
         {id:'a1',platform:'Swiggy',periodFrom:'2026-09-29',periodTo:'2026-10-05',payoutDate:'2026-10-08',grossSales:7000,commission:1400,netPayout:5600},
         {id:'a2',platform:'Zomato',periodFrom:'2026-09-01',periodTo:'2026-09-07',payoutDate:'2026-09-10',grossSales:10000,commission:2000,pgCharges:200,tds:100,netPayout:7700}]);
+      put('salonos_ingredients_outlet_904',[{id:'g1',name:'Paneer',unit:'kg',price:300,openingQty:10,category:'Kitchen'},{id:'g2',name:'Whisky',unit:'l',price:1000,openingQty:2,category:'Bar'}]);
+      put('salonos_stock_txns_outlet_904',[{id:'t1',date:'2026-08-20',ingId:'g1',type:'receive',qty:5,rate:300},{id:'t2',date:'2026-09-03',ingId:'g1',type:'receive',qty:20,rate:300},
+        {id:'t3',date:'2026-09-10',ingId:'g1',type:'issue',qty:25},{id:'t4',date:'2026-09-15',ingId:'g1',type:'waste',qty:2},{id:'t5',date:'2026-09-30',ingId:'g1',type:'count',qty:7}]);
       put('salonos_service_charge_outlet_904',{settings:{housePct:10,method:'equal'},months:{'2026-09':{collected:10000}}});
       put('salonos_master_employees_outlet_904',['K1','K2','S1'].map(id=>({id,name:'Staff '+id,desig:id[0]==='K'?'Commis':'Steward',dept:id[0]==='K'?'Kitchen':'Service',doj:'2024-01-01',dol:'',weeklyOff:'',status:'Active',gross:20000,basic:10000,hra:0,conv:0,special:10000,pf:false,esic:false,pt:false,tds:false})));
       const emp=(id,gross,basic,extra)=>Object.assign({id,name:'Emp '+id,desig:'Unisex Hairdresser',dept:'Hairdresser',doj:'2024-01-01',dol:'',weeklyOff:'',status:'Active',gross,basic,hra:0,conv:0,special:0,pf:true,pfOnActualBasic:false,esic:true,pt:false,tds:false},extra||{});
@@ -474,6 +477,11 @@
           [false,true,false,false,true,false]);
         eq('Restaurant: Swiggy / EazyDiner day sales from Daily Sales & Exp, kept out of counter revenue',
           [aggDailyEntriesFor(904,2026,8,'Swiggy'),aggDailyEntriesFor(904,2026,8,'EazyDiner'),restaurantCounterSalesFor(904,2026,8).cash+restaurantCounterSalesFor(904,2026,8).card],[2100,800,30000]);
+        const sl=stockLedgerFor(904,2026,8).find(x=>x.ing.id==='g1');
+        eq('Stock register: opening 15, +20 received, −25 issued, −2 wasted, book 8, counted 7 (variance −1), used 28, value ₹2,100',
+          [sl.opening,sl.received,sl.issued,sl.wasted,sl.book,sl.count,sl.variance,sl.used,sl.closingValue],[15,20,25,2,8,7,-1,28,2100]);
+        eq('Stock register: closing value split kitchen / bar; next month opens at the count',
+          [stockRegisterTotals(904,2026,8).food,stockRegisterTotals(904,2026,8).bar,stockLedgerFor(904,2026,9).find(x=>x.ing.id==='g1').opening],[2100,2000,7]);
         eq('Restaurant: FSSAI renewal shows in Due Dates',autoLicenceDueItemsFor(904).map(x=>x.due),['2026-12-31']);
         eq('Salon P&L unchanged by restaurant lines',plBuild(901,'2026-27',5).sections[1].lines.map(l=>l.name),['Purchase of Cosmetic','Unregistered Purchase']);
       }catch(err){results.push({name:'Restaurant line of business',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}

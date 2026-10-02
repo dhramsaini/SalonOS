@@ -2719,7 +2719,7 @@ const CONF_BADGE={high:['badge-green','Verified'],medium:['badge-amber','Likely'
 // ── AI bill reading (the "ai" cloud function, using the AI key(s) from Master Settings → AI
 // Assistant). Returns the same shape parseInvoice gives, or null when AI isn't set up — callers
 // then fall back to reading the bill in the browser. Throws on a real AI error.
-const AI_BILL_CATEGORIES=['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Fixed Assets','Other'];
+const AI_BILL_CATEGORIES=['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Fixed Assets','Food & Raw Material Purchase','Liquor Purchase','Packaging Material','Gas / LPG','Pest Control','Licences & Fees','Other'];
 // Any other AI action (automation phase 4: tag_bank, explain_pnl, ask). Resolves with the answer;
 // throws a readable error, or one with .notConfigured when no AI key has been saved yet.
 async function aiCall(action,payload){

@@ -29,7 +29,8 @@ const BILLS_PER_SENDER_PER_DAY = 40;
 // Same list as AI_BILL_CATEGORIES in js/13-pnl.js (tests.html checks they match).
 export const BILL_CATEGORIES = ["Purchase of Cosmetic", "Housekeeping", "Equipment", "Utilities", "Rent", "DG Rent", "Drycleaning Expenses",
   "Professional Fee", "Staff Room Rent", "Royalty", "Electricity Expenses", "Uniform Expenses", "Telephone & Internet Expenses",
-  "Maintenance Expenses", "Marketing", "Fixed Assets", "Other"];
+  "Maintenance Expenses", "Marketing", "Fixed Assets", "Food & Raw Material Purchase", "Liquor Purchase", "Packaging Material",
+  "Gas / LPG", "Pest Control", "Licences & Fees", "Other"];
 const TYPES: Record<string, string> = { "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 
 const CORS = {

@@ -353,7 +353,9 @@ function FoodCostSheet({salon,period}={}){
   const delRec=r=>{if(!confirm('Delete '+r.name+'?'))return;const next=recs.filter(x=>x.id!==r.id);setRecs(next);saveRecipes(sid,next);};
   const recRows=recs.map(r=>{const c=recipeCost(r,ings);const p=rNum(r.price);return{r,cost:c,pct:p?Math.round(c/p*1000)/10:0,margin:p-c};}).sort((a,b)=>b.pct-a.pct);
   const bc=barCostFor(sid,cal.year,cal.month);const bs=barSalesFor(sid,cal.year,cal.month);const bpct=bs?Math.round(bc.consumption/bs*1000)/10:0;
-  const tabs=[['month','📅 Monthly food cost'],['recipes','🍲 Recipe costing'],...(bar?[['bar','🍷 Bar']]:[])];
+  const tabs=[['month','📅 Monthly food cost'],['stock','📦 Stock register'],['recipes','🍲 Recipe costing'],...(bar?[['bar','🍷 Bar']]:[])];
+  const applyRegister=(food,barVal)=>{const next={...stock,[ym]:{...(stock[ym]||{}),closingFood:String(Math.round(food)),...(bar?{closingBar:String(Math.round(barVal))}:{})}};setStock(next);saveFoodStock(sid,next);toast('Closing stock taken from the stock register','success');};
+  const regTot=stockRegisterTotals(sid,cal.year,cal.month);
   return h('div',{className:'fade-in'},
     h('div',{className:'section-header'},h('div',null,h('div',{className:'page-title'},'Food Cost'),
       h('div',{className:'page-sub'},'What the kitchen consumed against what it sold — '+rMonthLabel(cal.year,cal.month)))),
@@ -370,6 +372,8 @@ function FoodCostSheet({salon,period}={}){
           h('tr',null,h('td',null,'Opening food stock (₹)'),h('td',null,numIn('openingFood',fc.opening?String(fc.opening)+' = last closing':'0'))),
           h('tr',null,h('td',null,'Purchases — vendor bills (Food & Raw Material Purchase) + local purchases in Daily Sales & Exp'),h('td',{style:{fontWeight:700}},money(fc.purchases))),
           h('tr',null,h('td',null,'Closing food stock (₹) — value of the month-end stock count'),h('td',null,numIn('closingFood','enter after the count'))),
+          regTot.counted>0&&h('tr',null,h('td',{style:{fontSize:12,color:'var(--text2)'}},'Stock register — counted closing value of kitchen items: '+money(regTot.food)+(bar?' · bar items: '+money(regTot.bar):'')),
+            h('td',null,editable&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>applyRegister(regTot.food,regTot.bar)},'Use register value'))),
           h('tr',null,h('td',null,h('b',null,'Consumption')),h('td',{style:{fontWeight:700}},money(fc.consumption))),
           h('tr',null,h('td',null,'Target food cost %'),h('td',null,h('input',{type:'number',className:'form-control',style:{width:100},disabled:!editable,value:st.foodTarget,onChange:e=>setSetting('foodTarget',e.target.value)})))))),
       h('div',{className:'card'},h('div',{className:'card-title'},'Last 6 months'),
@@ -378,11 +382,12 @@ function FoodCostSheet({salon,period}={}){
           h('tbody',null,trend.map(t=>h('tr',{key:t.label},h('td',null,t.label),h('td',{style:{textAlign:'right'}},money(t.sales)),h('td',{style:{textAlign:'right'}},money(t.cost)),
             h('td',{style:{textAlign:'right'}},h('span',{className:'badge badge-'+(t.sales?(col(t.pct)==='amber'?'amber':col(t.pct)==='red'?'red':'green'):'gray')},t.sales?t.pct+'%':'—')),
             h('td',null,t.counted?'✓':'—')))))))),
+    tab==='stock'&&h(StockRegister,{sid,cal,ings,setIngs,editable,bar,onApply:applyRegister}),
     tab==='recipes'&&h('div',null,
       h('div',{className:'grid2',style:{alignItems:'start'}},
         h('div',{className:'card'},
           h('div',{style:{display:'flex',alignItems:'center',marginBottom:8}},h('div',{className:'card-title',style:{margin:0,flex:1}},'Ingredients ('+ings.length+')'),
-            editable&&h('button',{className:'btn btn-primary btn-sm',onClick:()=>setIngForm({id:'',name:'',unit:'kg',price:'',yieldPct:100})},'+ Ingredient')),
+            editable&&h('button',{className:'btn btn-primary btn-sm',onClick:()=>setIngForm({id:'',name:'',unit:'kg',price:'',yieldPct:100,category:'Kitchen',reorderLevel:'',openingQty:''})},'+ Ingredient')),
           h('div',{className:'help-note',style:{marginBottom:8}},'Price per purchase unit, and yield % — the usable part after cleaning or trimming (e.g. onions 90%).'),
           ings.length===0?h('div',{style:{color:'var(--text3)',fontSize:12.5}},'No ingredients yet.'):
           h('div',{className:'table-wrap'},h('table',null,h('thead',null,h('tr',null,['Ingredient','Unit','Price','Yield','Usable cost',''].map(t=>h('th',{key:t},t)))),
@@ -421,6 +426,10 @@ function FoodCostSheet({salon,period}={}){
         h('div',{className:'form-group'},h('label',null,'Unit'),h('select',{className:'form-control',value:ingForm.unit,onChange:e=>setIngForm(f=>({...f,unit:e.target.value}))},['kg','g','l','ml','pc','dozen','pack'].map(u=>h('option',{key:u},u)))),
         h('div',{className:'form-group'},h('label',null,'Price per unit (₹)'),h('input',{type:'number',className:'form-control',value:ingForm.price,onChange:e=>setIngForm(f=>({...f,price:e.target.value}))})),
         h('div',{className:'form-group'},h('label',null,'Yield %'),h('input',{type:'number',className:'form-control',value:ingForm.yieldPct,onChange:e=>setIngForm(f=>({...f,yieldPct:e.target.value}))}))),
+      h('div',{className:'form-row cols3'},
+        h('div',{className:'form-group'},h('label',null,'Stock group'),h('select',{className:'form-control',value:ingForm.category||'Kitchen',onChange:e=>setIngForm(f=>({...f,category:e.target.value}))},['Kitchen','Bar'].map(u=>h('option',{key:u},u)))),
+        h('div',{className:'form-group'},h('label',null,'Reorder level (qty)'),h('input',{type:'number',className:'form-control',value:ingForm.reorderLevel||'',onChange:e=>setIngForm(f=>({...f,reorderLevel:e.target.value}))})),
+        h('div',{className:'form-group'},h('label',null,'Opening stock (qty)'),h('input',{type:'number',className:'form-control',value:ingForm.openingQty||'',onChange:e=>setIngForm(f=>({...f,openingQty:e.target.value})),title:'Stock in hand when you start using the stock register'}))),
       h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:()=>setIngForm(null)},'Cancel'),h('button',{className:'btn btn-primary',onClick:saveIng},'Save')))),
     recForm&&h('div',{className:'modal-overlay',onClick:()=>setRecForm(null)},h('div',{className:'modal',style:{width:620},onClick:e=>e.stopPropagation()},
       h('div',{className:'modal-title'},recForm.id?'Edit recipe':'Add recipe'),
@@ -501,4 +510,126 @@ function ServiceChargeSheet({salon,period}={}){
         h('div',{className:'table-wrap'},h('table',null,h('thead',null,h('tr',null,['Employee','Designation','Points','Days','Share'].map(t=>h('th',{key:t},t)))),
           h('tbody',null,split.rows.map(r=>h('tr',{key:r.id},h('td',null,r.name),h('td',null,r.desig),h('td',{style:{textAlign:'right'}},r.points),h('td',{style:{textAlign:'right'}},r.days),h('td',{style:{textAlign:'right',fontWeight:600}},money(r.amount)))),
             h('tr',{style:{fontWeight:700}},h('td',{colSpan:4},'Total'),h('td',{style:{textAlign:'right'}},money(split.rows.reduce((s,r)=>s+r.amount,0))))))))));
+}
+
+// ── Kitchen / bar stock register (Food Cost → Stock register) ───────────────────────────────
+// Items are the same ingredients as Recipe costing (+ stock group Kitchen/Bar, reorder level and
+// opening quantity). Movements: receive (with rate — the item's price follows the latest receipt),
+// issue to the kitchen, wastage, and the month-end physical count (dated the last day of the month).
+// A count resets the running balance, so next month opens with the counted quantity.
+function loadStockTxns(sid){const v=rLoad('salonos_stock_txns',sid,[]);return Array.isArray(v)?v:[];}
+function saveStockTxns(sid,v){rSave('salonos_stock_txns',sid,v);}
+const STOCK_TX={receive:{label:'Receive',sign:1},issue:{label:'Issue to kitchen',sign:-1},waste:{label:'Wastage',sign:-1}};
+function stockLedgerFor(sid,year,month){
+  const ings=loadIngredients(sid);
+  const ms=rYm(year,month)+'-01',me=rYm(year,month)+'-'+String(new Date(year,month+1,0).getDate()).padStart(2,'0');
+  const tx=loadStockTxns(sid).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))||((a.type==='count')-(b.type==='count')));
+  return ings.map(i=>{
+    let bal=rNum(i.openingQty);
+    const mine=tx.filter(x=>x.ingId===i.id);
+    mine.filter(x=>x.date<ms).forEach(x=>{bal=x.type==='count'?rNum(x.qty):bal+(STOCK_TX[x.type]?STOCK_TX[x.type].sign*rNum(x.qty):0);});
+    const opening=bal;let rec=0,iss=0,wst=0,count=null;
+    mine.filter(x=>x.date>=ms&&x.date<=me).forEach(x=>{
+      if(x.type==='receive')rec+=rNum(x.qty);else if(x.type==='issue')iss+=rNum(x.qty);else if(x.type==='waste')wst+=rNum(x.qty);else if(x.type==='count')count=rNum(x.qty);});
+    const book=opening+rec-iss-wst;
+    const closing=count!=null?count:book;
+    const price=rNum(i.price);
+    const r2=n=>Math.round(n*1000)/1000;
+    return{ing:i,group:i.category||'Kitchen',price,opening:r2(opening),received:r2(rec),issued:r2(iss),wasted:r2(wst),book:r2(book),count,closing:r2(closing),
+      variance:count!=null?r2(count-book):null,used:r2(opening+rec-closing),closingValue:closing*price,wasteValue:wst*price,
+      low:rNum(i.reorderLevel)>0&&closing<=rNum(i.reorderLevel)};
+  });
+}
+function stockRegisterTotals(sid,year,month){
+  const L=stockLedgerFor(sid,year,month);
+  const sum=(g)=>L.filter(x=>x.group===g).reduce((t,x)=>t+x.closingValue,0);
+  return{food:Math.round(sum('Kitchen')),bar:Math.round(sum('Bar')),counted:L.filter(x=>x.count!=null).length,items:L.length};
+}
+function StockRegister({sid,cal,ings,setIngs,editable,bar,onApply}){
+  const h=React.createElement;
+  const {toast,error:toastError}=useToast();
+  const [txns,setTxns]=useState(()=>loadStockTxns(sid));
+  useEffect(()=>{setTxns(loadStockTxns(sid));},[sid]);
+  const [form,setForm]=useState(null);
+  const [grp,setGrp]=useState('All');
+  const ym=rYm(cal.year,cal.month);
+  const me=ym+'-'+String(new Date(cal.year,cal.month+1,0).getDate()).padStart(2,'0');
+  const persist=next=>{setTxns(next);saveStockTxns(sid,next);};
+  const L=useMemo(()=>stockLedgerFor(sid,cal.year,cal.month),[sid,ym,txns,ings]);
+  const rows=L.filter(x=>grp==='All'||x.group===grp);
+  const money=v=>rupee(Math.round(v));
+  const q=n=>n==null?'—':(Math.round(n*100)/100).toLocaleString('en-IN');
+  const tot=k=>rows.reduce((t,x)=>t+x[k],0);
+  const setCount=(ingId,val)=>{
+    const rest=txns.filter(x=>!(x.type==='count'&&x.ingId===ingId&&x.date===me));
+    persist(val===''?rest:[...rest,{id:'ST'+Date.now(),date:me,ingId,type:'count',qty:val}]);
+  };
+  const save=()=>{
+    if(!form.ingId)return toastError('Choose the item');
+    if(!(rNum(form.qty)>0))return toastError('Enter the quantity');
+    if(!form.date)return toastError('Enter the date');
+    const rec={...form,id:'ST'+Date.now()};
+    persist([...txns,rec]);
+    if(form.type==='receive'&&rNum(form.rate)>0){const next=ings.map(i=>i.id===form.ingId?{...i,price:String(form.rate)}:i);setIngs(next);saveIngredients(sid,next);}
+    setForm(null);toast(STOCK_TX[form.type].label+' recorded','success');
+  };
+  const monthTx=txns.filter(x=>x.type!=='count'&&String(x.date).startsWith(ym)).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  const ingName=id=>{const i=ings.find(x=>x.id===id);return i?i.name+' ('+i.unit+')':'—';};
+  const exportXlsx=async()=>{
+    try{
+      const sheet=[['Stock register — '+rMonthLabel(cal.year,cal.month)],[],['Item','Group','Unit','Price','Opening','Received','Issued','Wasted','Book balance','Physical count','Variance','Closing value','Used'],
+        ...rows.map(x=>[x.ing.name,x.group,x.ing.unit,x.price,x.opening,x.received,x.issued,x.wasted,x.book,x.count==null?'':x.count,x.variance==null?'':x.variance,Math.round(x.closingValue),x.used]),
+        ['Total','','','','','','','','','','',Math.round(tot('closingValue')),'']];
+      const blob=await exportReportExcelBlob('Stock register',sheet);
+      rDownloadBlob(blob,'Stock_Register_'+ym+'.xlsx');
+    }catch(e){toastError('Could not build the Excel file');}
+  };
+  const counted=L.filter(x=>x.count!=null).length;
+  const reg=stockRegisterTotals(sid,cal.year,cal.month);
+  return h('div',null,
+    h('div',{className:'grid4',style:{marginBottom:14}},
+      h(RCard,{label:'Closing stock value',val:money(tot('closingValue')),sub:counted+' of '+L.length+' items counted',color:'blue'}),
+      h(RCard,{label:'Received this month',val:money(rows.reduce((t,x)=>t+x.received*x.price,0)),sub:'at current prices',color:'green'}),
+      h(RCard,{label:'Wastage',val:money(tot('wasteValue')),sub:monthTx.filter(x=>x.type==='waste').length+' entries',color:'red'}),
+      h(RCard,{label:'Below reorder level',val:String(rows.filter(x=>x.low).length),sub:'items to order',color:rows.some(x=>x.low)?'amber':'green'})),
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:10}},
+      ['All','Kitchen',...(bar?['Bar']:[])].map(g=>h('button',{key:g,className:'btn btn-sm '+(grp===g?'btn-primary':'btn-ghost'),onClick:()=>setGrp(g)},g)),
+      h('div',{style:{flex:1}}),
+      editable&&['receive','issue','waste'].map(t=>h('button',{key:t,className:'btn btn-sm '+(t==='receive'?'btn-primary':'btn-ghost'),onClick:()=>setForm({type:t,date:localTodayIso().startsWith(ym)?localTodayIso():me,ingId:'',qty:'',rate:'',note:''})},'+ '+STOCK_TX[t].label)),
+      h('button',{className:'btn btn-ghost btn-sm',onClick:exportXlsx},'⬇ Export Excel'),
+      editable&&counted>0&&h('button',{className:'btn btn-success btn-sm',onClick:()=>onApply(reg.food,reg.bar)},'Use closing value in Food Cost')),
+    h('div',{className:'help-note',style:{marginBottom:10}},'Record what comes in (Receive — the item price updates to the latest rate), what goes to the kitchen (Issue) and what is thrown away (Wastage). On the last day of the month enter the physical count — the variance shows any shortage against the book. "Use closing value in Food Cost" puts the counted value into the month’s closing stock. Add items in Recipe costing → + Ingredient.'),
+    h('div',{className:'card',style:{marginBottom:14}},ings.length===0
+      ?h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'📦'),h('div',{className:'empty-title'},'No stock items yet'),h('div',{className:'empty-sub'},'Add ingredients in Recipe costing → + Ingredient, with their opening stock.'))
+      :h('div',{className:'table-wrap'},h('table',null,
+        h('thead',null,h('tr',null,['Item','Group','Price','Opening','Received','Issued','Wasted','Book balance','Physical count ('+compDate(me)+')','Variance','Closing value'].map((t,i)=>h('th',{key:i},t)))),
+        h('tbody',null,rows.map(x=>h('tr',{key:x.ing.id,style:x.low?{background:'rgba(255,159,67,0.08)'}:undefined},
+          h('td',null,h('div',{style:{fontWeight:600}},x.ing.name),h('div',{style:{fontSize:11,color:'var(--text3)'}},x.ing.unit+(x.low?' · below reorder level':''))),
+          h('td',null,x.group),h('td',{style:{textAlign:'right'}},'₹'+x.price.toLocaleString('en-IN')),
+          ...['opening','received','issued','wasted','book'].map(k=>h('td',{key:k,style:{textAlign:'right'}},q(x[k]))),
+          h('td',null,h('input',{type:'number',className:'form-control',style:{width:100},disabled:!editable,placeholder:q(x.book),value:x.count==null?'':x.count,onChange:e=>setCount(x.ing.id,e.target.value)})),
+          h('td',{style:{textAlign:'right',color:x.variance==null?'var(--text3)':x.variance<0?'var(--red)':x.variance>0?'var(--green)':'var(--text3)'}},x.variance==null?'—':(x.variance>0?'+':'')+q(x.variance)),
+          h('td',{style:{textAlign:'right',fontWeight:600}},money(x.closingValue)))),
+          h('tr',{style:{fontWeight:700}},h('td',{colSpan:10},'Total'),h('td',{style:{textAlign:'right'}},money(tot('closingValue')))))))),
+    h('div',{className:'card'},h('div',{className:'card-title'},'Movements — '+rMonthLabel(cal.year,cal.month)),
+      monthTx.length===0?h('div',{style:{fontSize:12.5,color:'var(--text3)'}},'No receipts, issues or wastage recorded this month.'):
+      h('div',{className:'table-wrap'},h('table',null,
+        h('thead',null,h('tr',null,['Date','Type','Item','Qty','Rate','Value','Note',''].map((t,i)=>h('th',{key:i},t)))),
+        h('tbody',null,monthTx.map(x=>{const i=ings.find(g=>g.id===x.ingId);const rate=rNum(x.rate)||rNum(i&&i.price);
+          return h('tr',{key:x.id},h('td',null,compDate(x.date)),h('td',null,h('span',{className:'badge '+(x.type==='receive'?'badge-green':x.type==='waste'?'badge-red':'badge-blue')},STOCK_TX[x.type].label)),
+            h('td',null,ingName(x.ingId)),h('td',{style:{textAlign:'right'}},q(rNum(x.qty))),h('td',{style:{textAlign:'right'}},rate?'₹'+rate:'—'),h('td',{style:{textAlign:'right'}},money(rNum(x.qty)*rate)),
+            h('td',{style:{fontSize:12,color:'var(--text2)'}},x.note||''),
+            h('td',null,editable&&h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>{if(confirm('Delete this entry?'))persist(txns.filter(t=>t.id!==x.id));}},'✕')));}))))),
+    form&&h('div',{className:'modal-overlay',onClick:()=>setForm(null)},h('div',{className:'modal',style:{width:520},onClick:e=>e.stopPropagation()},
+      h('div',{className:'modal-title'},STOCK_TX[form.type].label),
+      h('div',{className:'form-row cols2'},
+        h('div',{className:'form-group'},h('label',null,'Item *'),h('select',{className:'form-control',value:form.ingId,onChange:e=>{const i=ings.find(g=>g.id===e.target.value);setForm(f=>({...f,ingId:e.target.value,rate:f.type==='receive'&&i?String(i.price||''):f.rate}));}},
+          h('option',{value:''},'— Item —'),ings.map(i=>h('option',{key:i.id,value:i.id},i.name+' ('+i.unit+')')))),
+        h('div',{className:'form-group'},h('label',null,'Date *'),h('input',{type:'date',className:'form-control',value:form.date,onChange:e=>setForm(f=>({...f,date:e.target.value}))}))),
+      h('div',{className:'form-row cols2'},
+        h('div',{className:'form-group'},h('label',null,'Quantity *'),h('input',{type:'number',className:'form-control',value:form.qty,onChange:e=>setForm(f=>({...f,qty:e.target.value}))})),
+        form.type==='receive'?h('div',{className:'form-group'},h('label',null,'Rate per unit (₹)'),h('input',{type:'number',className:'form-control',value:form.rate,onChange:e=>setForm(f=>({...f,rate:e.target.value}))})):h('div',null)),
+      h('div',{className:'form-group'},h('label',null,form.type==='receive'?'Bill / supplier':form.type==='waste'?'Reason':'Note'),h('input',{className:'form-control',value:form.note,onChange:e=>setForm(f=>({...f,note:e.target.value})),placeholder:form.type==='waste'?'e.g. spoiled, expired, returned dish':''})),
+      h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:()=>setForm(null)},'Cancel'),h('button',{className:'btn btn-primary',onClick:save},'Save'))))
+  );
 }
