@@ -4101,6 +4101,8 @@ function BankStatement({salon,onNavTab}={}){
     {const blocked=loadVendorInvoices(salonId).filter(inv=>allocations.some(a=>a.id===inv.id)&&invoiceNeedsApproval(inv,salonId));if(blocked.length){faError('Not approved yet: '+blocked.map(i=>i.invoiceNo||i.id).join(', ')+' — a Super Admin has to approve '+(blocked.length===1?'this bill':'these bills')+' in Vendors before payment.');return;}}
     const linkId='bank-'+linkRow.id;
     const freshInvoices=loadVendorInvoices(salonId);
+    for(const inv of freshInvoices){const alloc=allocations.find(a=>a.id===inv.id);
+      if(alloc&&!confirmNoDuplicatePayment(inv,{...inv,payments:[...(inv.payments||[]),{id:'__new',paidAmount:alloc.amount,paidDate:toISO(linkRow.transactionDate),mode:'Bank Transfer'}]}))return;}
     const linkedNos=[];
     const linkedKeys=[];
     const updated=freshInvoices.map(inv=>{

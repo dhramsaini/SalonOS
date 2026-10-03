@@ -33,8 +33,7 @@ function recordCashCount(sid,iso,count,closing){
 const BANK_PAY_MODES=['NEFT','RTGS','IMPS','UPI','Cheque','Bank Transfer','Card','Net Banking'];
 function bankRecoFor(sid,year,month){
   const pre=year+'-'+String(month+1).padStart(2,'0');
-  const rows=(loadBankStatementRows(sid)||[]).map(r=>({...r,iso:toISO(r.transactionDate||r.date)})).filter(r=>r.iso&&r.iso.startsWith(pre));
-  const unrecorded=rows.filter(r=>(Number(r.debit)>0||Number(r.credit)>0)&&!r.nature&&!r.linkedInvoice);
+  const rows=(loadBankStatementRows(sid)||[]).map((r,i)=>({...r,_i:i,iso:toISO(r.transactionDate||r.date)})).filter(r=>r.iso&&r.iso.startsWith(pre));
   const vendors=loadVendors(sid)||[];const vName=id=>(vendors.find(v=>v.id===id)||{}).name||id||'—';
   const pays=[];
   (loadVendorInvoices(sid)||[]).forEach(inv=>(inv.payments||[]).forEach(p=>{const iso=toISO(p.paidDate);if(iso&&iso.startsWith(pre)&&BANK_PAY_MODES.includes(p.mode))pays.push({inv,p,iso,amt:Number(p.paidAmount)||0});}));
@@ -45,6 +44,8 @@ function bankRecoFor(sid,year,month){
     const hit=allDebits.find(b=>!used.has(b.i)&&Math.abs(b.amt-x.amt)<1&&Math.abs(dayN(b.iso)-dayN(x.iso))<=5);
     if(hit){used.add(hit.i);return false;}return true;
   }).map(x=>({...x,vendor:vName(x.inv.vendorId)}));
+  // A debit matched to a recorded vendor payment is in SalonOS even without a Nature.
+  const unrecorded=rows.filter(r=>(Number(r.debit)>0||Number(r.credit)>0)&&!r.nature&&!r.linkedInvoice&&!used.has(r._i));
   return{rows,unrecorded,notInBank};
 }
 function BankRecoSheet({salon,period}={}){
@@ -126,6 +127,9 @@ function duplicatePaymentWarning(oldInv,newInv){
     if(twin)return lab+' already has a payment of '+opsMoney(twin.paidAmount)+' on '+String(twin.paidDate)+' ('+(twin.mode||'')+'). This looks like the same payment again — save anyway?';}
   return'';
 }
+
+// true = go ahead (no warning, or the person confirmed).
+function confirmNoDuplicatePayment(oldInv,newInv){const w=duplicatePaymentWarning(oldInv,newInv);if(!w)return true;try{return window.confirm(w);}catch(e){return true;}}
 
 // ── 5 · Absence watch ──
 function absenceCountsFor(sid,year,month){

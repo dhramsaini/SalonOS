@@ -171,7 +171,7 @@ function cashForecastFor(sid,opening){
   for(let i=0;i<30;i++){const d=new Date(today.getTime()+i*864e5);days.push({iso:opsIso(d),inflow:avgIn(d.getDay()),outflow:avgOut(d.getDay()),items:[]});}
   const last=days[29].iso;const put=(iso,amt,label)=>{const t=iso<days[0].iso?days[0]:days.find(x=>x.iso===iso);if(t&&amt>0){t.items.push({label,amt});}};
   // Scheduled payments: unpaid dues (salary, incentive, PF / ESIC / PT / TDS, vendor bills, licences).
-  (allDueItemsFor(sid)||[]).forEach(d=>{if(!d||d.paid||d.status==='done'||!d.due)return;const iso=toISO(d.due)||d.due;if(iso>last)return;put(iso,Number(d.amount)-(Number(d.paidAmount)||0)||Number(d.amount)||0,(d.type||'Due')+(d.desc?' — '+String(d.desc).slice(0,40):''));});
+  (allDueItemsFor(sid)||[]).forEach(d=>{if(!d||d.paid||d.status==='done'||!d.due)return;const iso=toISO(d.due)||d.due;if(iso>last)return;put(iso,Math.max(0,(Number(d.amount)||0)-(Number(d.paidAmount)||0)),(d.type||'Due')+(d.desc?' — '+String(d.desc).slice(0,40):''));});
   // This month's salary (not final yet, so not in the dues) on next month's salary due day.
   const s=outletSettings(sid);const dueDay=Number(s.salaryDueDay)||7;
   const sd=new Date(today.getFullYear(),today.getMonth()+1,dueDay);const sdIso=opsIso(sd);

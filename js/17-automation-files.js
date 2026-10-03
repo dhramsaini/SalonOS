@@ -159,9 +159,12 @@ function SendPayslipsSheet({salon,period}={}){
     try{
       const blob=await buildPayslipsPdf(salon,cal.year,cal.month,[e],locked?'':'DRAFT');
       const file=new File([blob],'Payslip_'+String(e.name).replace(/[^\w]+/g,'_')+'_'+AF_MONTHS[cal.month]+'_'+cal.year+'.pdf',{type:'application/pdf'});
+      let shared=false;
       if(navigator.canShare&&navigator.canShare({files:[file]})){
-        await navigator.share({files:[file],text:msg(e),title:'Payslip '+label});
-      }else{
+        try{await navigator.share({files:[file],text:msg(e),title:'Payslip '+label});shared=true;}
+        catch(se){if(se&&se.name==='AbortError')throw se;}
+      }
+      if(!shared){
         const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=file.name;a.click();URL.revokeObjectURL(url);
         window.open(waLink(e.mobile||e.phone,msg(e)),'_blank');
         toast('Payslip downloaded — attach it in the WhatsApp chat that just opened','info');

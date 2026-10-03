@@ -1169,14 +1169,12 @@ function saveVendorInvoices(invoices,salonId,opts){
       if(u&&!(opts&&opts.system)&&!canBookInvoiceInMonth(ym,u)){refused.push('month');return old||null;}
       if(lockedYm(ym)){refused.push('locked');return old||null;}
     }
-    // Paying the same bill twice (cash in Daily Sales and again by bank, or the same payment entered twice).
-    if(old&&u&&!(opts&&opts.system)&&typeof duplicatePaymentWarning==='function'){const w=duplicatePaymentWarning(old,inv);if(w){let ok=false;try{ok=window.confirm(w);}catch(e){}if(!ok){refused.push('dup');return old;}}}
     return inv;
   }).filter(Boolean);
   // an invoice of a locked month can't be deleted either
   prev.forEach(o=>{if(o&&o.id!=null&&!seen.has(o.id)&&lockedYm(invoiceBookMonthOf(o))){out.push(o);refused.push('locked');}});
   safeLocalSet(outletKey('salonos_vendor_invoices',salonId),JSON.stringify(out));
-  if(refused.some(x=>x!=='dup')){try{window.alert(refused.includes('month')?invoiceMonthBlockMessage():"That bill belongs to a locked month — it can’t be added, changed or deleted while the month is locked.");}catch(e){}}
+  if(refused.length){try{window.alert(refused.includes('month')?invoiceMonthBlockMessage():"That bill belongs to a locked month — it can’t be added, changed or deleted while the month is locked.");}catch(e){}}
   return !refused.length;
 }
 // ── Advances (salonos_advances) read/write helpers — same store the Advances sheet itself

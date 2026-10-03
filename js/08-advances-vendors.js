@@ -1214,6 +1214,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
     if(payForm.editingPaymentId!==null){
       setInvoices(prev=>prev.map(inv=>inv.id===payForm.invoiceId?{...inv,payments:inv.payments.map(p=>p.id===payForm.editingPaymentId?{...entry,id:p.id}:p)}:inv));
     }else{
+      {const tgt=invoices.find(i=>i.id===payForm.invoiceId);if(tgt&&!confirmNoDuplicatePayment(tgt,{...tgt,payments:[...(tgt.payments||[]),{...entry,id:'__new'}]}))return;}
       setInvoices(prev=>prev.map(inv=>inv.id===payForm.invoiceId?{...inv,payments:[...inv.payments,{...entry,id:nextPrefixedId(inv.payments,'PMT-',3)}]}:inv));
       // Cash payment, recorded here rather than via Daily Sales & Exp's own invoice/payment
       // popups — write it back into that sheet's cash register too, so a cash payment is always

@@ -912,6 +912,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       const paymentId=nextPrefixedId(inv.payments||[],'PMT-',3);
       const nextPayments=[...(inv.payments||[]),{id:paymentId,paidAmount:paid,paidDate:payDate,mode:'Cash',ref:'',note:'Auto-recorded from Daily Sales & Exp'}];
       const nextInvoices=[...invoices];nextInvoices[idx]={...inv,...invFields,linkedPI:inv.linkedPI||'',payments:nextPayments};
+      if(!confirmNoDuplicatePayment(inv,nextInvoices[idx]))return;
       const entryId=nextPrefixedId(getInvEntries(payDate,payload.ri),'IE-',3);
       const ok=commitInvEntries(payDate,payload.ri,[...getInvEntries(payDate,payload.ri),{id:entryId,invoiceId:inv.id,paymentId,amount:paid}]);
       if(!ok)return;

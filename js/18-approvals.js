@@ -39,7 +39,7 @@ function captureIncPlanSettings(sid){
 }
 // Puts a plan's settings back into ⚙ Incentive Rules & Settings (copy from previous month / revise).
 function applyIncPlanToLive(sid,settings){
-  lsAllKeys().forEach(k=>{if(incPlanKeyMatch(sid,k)&&!(k in settings))cachedLocalRemove(k);});
+  lsAllKeys().forEach(k=>{if(incPlanKeyMatch(sid,k)&&!(k in settings)&&cachedLocalGet(k)!=null&&cachedLocalGet(k)!=='null')safeLocalSet(k,'null');});
   Object.entries(settings||{}).forEach(([k,v])=>{if(incPlanKeyMatch(sid,k))safeLocalSet(k,v);});
 }
 const incPlanYm=(y,m)=>y+'-'+String(m+1).padStart(2,'0');

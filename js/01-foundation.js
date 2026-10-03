@@ -478,6 +478,9 @@ function opaqueStickyBg(rgba,base){
   return(!rgba||rgba==='transparent')?base:'linear-gradient('+rgba+','+rgba+'), '+base;
 }
 function safeLocalSet(key,value){
+  // While a calculation reads a saved snapshot (an approved Monthly Incentive Plan), writes to the
+  // keys it covers are dropped — they would overwrite the live settings with the snapshot.
+  if(_lsOverlay&&_lsOverlay.match(key))return true;
   try{
     // Many screens save their whole state straight back on mount (useEffect on [state]), even when
     // nothing was edited. Pushing those unchanged copies to the cloud overwrote other users' newer
@@ -544,7 +547,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.10.03.78';
+const APP_VERSION='2026.10.03.79';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);

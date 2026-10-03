@@ -636,6 +636,15 @@
         const cl=closeChecklistStatus(908,2026,8);const flat=cl.flatMap(p=>p.items);
         eq('Full month-end checklist: nine phases, automatic items follow the data, manual ones start unticked',
           [cl.length,flat.find(i=>i.id==='s-cradle').done,flat.find(i=>i.id==='s-diff').isAuto,flat.find(i=>i.id==='f-pack').done,flat.some(i=>i.id==='s-apps')],[9,true,true,false,false]);
+        // Bug fixes: bank reco lists a matched debit once; a snapshot read never writes over live settings.
+        safeLocalSet(outletKey('salonos_bank_statement_rows',914),JSON.stringify([{id:'r1',transactionDate:'05/09/2026',description:'NEFT ABC TRADERS',debit:4000,credit:0},{id:'r2',transactionDate:'06/09/2026',description:'IMPS XYZ',debit:900,credit:0}]));
+        safeLocalSet(outletKey('salonos_vendor_invoices',914),JSON.stringify([{id:'V1',vendorId:'x',invoiceNo:'A1',invoiceDate:'01/09/2026',amount:4000,payments:[{id:'p',paidAmount:4000,paidDate:'2026-09-05',mode:'NEFT'}]}]));
+        const brk=bankRecoFor(914,2026,8);
+        eq('Bank reco: a debit matched to a recorded payment is not also listed as unrecorded',[brk.unrecorded.map(r=>r.id),brk.notInBank.length],[['r2'],0]);
+        const liveKey=outletKey('salonos_manager_incentive_inputs',914);
+        safeLocalSet(liveKey,JSON.stringify({live:true}));
+        withIncSettings(914,{[liveKey]:JSON.stringify({snap:true})},()=>{safeLocalSet(liveKey,JSON.stringify({snap:true,written:true}));});
+        eq('Incentive plan snapshot: writes during a snapshot read are dropped, live settings untouched',JSON.parse(cachedLocalGet(liveKey)),{live:true});
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
