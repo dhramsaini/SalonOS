@@ -542,6 +542,14 @@ function App(){
   const [dataVersion,setDataVersion]=useState(0);
   const _viewRef=useRef({page:null,sid:null});
   _viewRef.current={page:activePage,sid:selectedSalon?selectedSalon.id:null};
+  const _lastRemountRef=useRef(0);
+  // Does a changed key affect the screen open now? Inside an outlet: that outlet's data or shared
+  // settings — not another outlet's, and never background logs.
+  const _keyShownNow=k=>{
+    if(/^salonos_(audit_log|due_snapshot|period_default|sent_)/.test(k))return false;
+    const pg=_viewRef.current,m=/_outlet_(\d+)$/.exec(k);
+    return !m||!(pg.page==='salon'&&pg.sid!=null)||String(pg.sid)===m[1];
+  };
   const [cloudUpdateWaiting,setCloudUpdateWaiting]=useState(false);
   // New-version check: version.json is tiny and fetched uncached; if it names a different
   // version than the one running, offer a one-tap update (held back while edits are still saving).
@@ -582,32 +590,40 @@ function App(){
       // inside an outlet, that outlet's data or shared settings - not another outlet's saves, and
       // never background logs (audit log, due snapshot, a default period, sent-message logs). The
       // data itself is already in this browser, so other screens show it when they next open.
-      const pg=_viewRef.current;
-      const shown=applied.filter(k=>!/^salonos_(audit_log|due_snapshot|period_default|sent_)/.test(k))
-        .filter(k=>{const m=/_outlet_(\d+)$/.exec(k);return !m||!(pg.page==='salon'&&pg.sid!=null)||String(pg.sid)===m[1];});
+      const shown=applied.filter(_keyShownNow);
       if(!shown.length)return;
+      _lastRemountRef.current=Date.now();
       setDataVersion(v=>v+1);
       setTimeout(()=>{const el=document.querySelector('.content');if(el)el.scrollTop=top;},60);
     }catch(e){}
   },[reloadAppLevelData]);
   useEffect(()=>{
     if(!CLOUD_SYNC_ENABLED)return;
-    let lastActivity=0,waiting=false;
-    const mark=()=>{lastActivity=Date.now();};
-    // Only genuine typing or an open form holds updates back. Scrolling, tapping, or a dropdown
-    // that simply kept focus after a pick used to block them indefinitely, so other IDs' changes
-    // never appeared until a manual refresh. (Inline edits are saved as they're typed, so a
-    // refresh after a pause can't lose them — unsaved keys are never overwritten.)
-    const evs=['keydown','input'];
-    evs.forEach(ev=>window.addEventListener(ev,mark,true));
-    const busy=()=>Date.now()-lastActivity<3000||!!document.querySelector('.modal-overlay');
-    const onUpdates=()=>{
-      if(busy()){waiting=true;setCloudUpdateWaiting(true);}
+    let lastActivity=0,lastTyping=0,waiting=false,waitingSince=0;
+    const mark=(e)=>{lastActivity=Date.now();if(e&&(e.type==='keydown'||e.type==='input'))lastTyping=lastActivity;};
+    // Another user's saves on the outlet open here wait while this person is using the screen
+    // (typing, clicking or scrolling in the last 20 s, or a form open), and the screen re-loads at
+    // most once a minute — a colleague working through a sheet used to re-load it on every save, so
+    // the screen kept flickering. After 3 minutes of waiting they load at the next 5 s without
+    // typing (no form open). Changes to other outlets go in quietly, with no re-load. Nothing is
+    // lost while waiting: saves made meanwhile are merged with them.
+    const evs=['keydown','input','pointerdown','wheel','touchstart','scroll'];
+    evs.forEach(ev=>window.addEventListener(ev,mark,{capture:true,passive:true}));
+    const busy=()=>{
+      const now=Date.now();
+      if(document.querySelector('.modal-overlay'))return true;
+      if(waiting&&now-waitingSince>180000)return now-lastTyping<5000;
+      return now-lastActivity<20000||now-_lastRemountRef.current<60000;
+    };
+    const onUpdates=(e)=>{
+      const keys=(e&&e.detail&&e.detail.keys)||[];
+      if(keys.length&&!keys.some(_keyShownNow)&&!waiting){applyCloudUpdatesNow();return;}
+      if(busy()){if(!waiting){waiting=true;waitingSince=Date.now();}setCloudUpdateWaiting(true);}
       else{waiting=false;applyCloudUpdatesNow();}
     };
     const t=setInterval(()=>{if(waiting&&!busy()){waiting=false;applyCloudUpdatesNow();}},1000);
     window.addEventListener('salonos-cloud-data',onUpdates);
-    return()=>{evs.forEach(ev=>window.removeEventListener(ev,mark,true));clearInterval(t);window.removeEventListener('salonos-cloud-data',onUpdates);};
+    return()=>{evs.forEach(ev=>window.removeEventListener(ev,mark,{capture:true}));clearInterval(t);window.removeEventListener('salonos-cloud-data',onUpdates);};
   },[applyCloudUpdatesNow]);
   const removeToast=(id)=>{
     setToasts(p=>p.map(t=>t.id===id?{...t,leaving:true}:t));
@@ -1160,9 +1176,10 @@ function App(){
         React.createElement('div',null,'✨ A new version of SalonOS is available.'),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:updateNow},'Update now')
       ),
-      CLOUD_SYNC_ENABLED&&cloudUpdateWaiting&&React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'8px 20px',background:'rgba(76,125,255,0.12)',borderBottom:'1px solid rgba(76,125,255,0.35)',fontSize:12.5,color:'var(--text)'}},
-        React.createElement('div',null,'↻ Other users have saved new changes. They\'ll appear as soon as you pause — or load them now (finish or close any open form first).'),
-        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:applyCloudUpdatesNow},'Show latest')
+      // Floating, so it never pushes the page down when it appears or goes away.
+      CLOUD_SYNC_ENABLED&&cloudUpdateWaiting&&React.createElement('div',{title:'Other users saved changes to this outlet. They load by themselves when you pause — or load them now (finish or close any open form first).',style:{position:'fixed',right:16,bottom:76,zIndex:60,display:'flex',alignItems:'center',gap:10,padding:'6px 8px 6px 14px',background:'var(--bg2)',border:'1px solid var(--accent)',borderRadius:999,boxShadow:'0 4px 16px rgba(0,0,0,0.15)',fontSize:12.5,color:'var(--text)',maxWidth:'calc(100vw - 32px)'}},
+        React.createElement('span',null,'↻ New changes from another user'),
+        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{_lastRemountRef.current=0;applyCloudUpdatesNow();}},'Show latest')
       ),
       React.createElement('div',{className:'content'},React.createElement('div',{key:activePage+'_'+(selectedSalon?.id||'')+'_'+dataVersion,className:'content-frame'},renderPage())),
       // ── Phone bottom tab bar inside an outlet: the four everyday sheets (only those this user
