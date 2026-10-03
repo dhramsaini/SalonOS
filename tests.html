@@ -664,6 +664,21 @@
         const gm=gstr2bMatchFor(915,2026,8);
         eq('GSTR-2B: matched by invoice no. (ignoring / and -), credit at risk, missing bill',[gm.matched.length,gm.missing2b.map(b=>b.i.invoiceNo),gm.itcAtRisk,gm.notInBooks.map(r=>r.invNo)],[1,['INV-12'],90,['INV-9']]);
         eq('Staff productivity: one row per stylist',Array.isArray(staffProductivityFor(901,2026,8)),true);
+        // Batch 5: discounts, ticket size, price check, consumption, purchase rate, vendor price watch.
+        const bills5=[{date:'2026-09-02',staff:'Meera',status:'Paid',discount:300,items:[{name:'Hair Spa',type:'Service',qty:1,rate:1500},{name:'Hair Serum',type:'Product',qty:1,rate:1200}]},
+          {date:'2026-09-03',staff:'Meera',status:'Paid',discount:0,items:[{name:'Haircut & Styling',type:'Service',qty:1,rate:600}]},
+          {date:'2026-09-03',staff:'Arjun',status:'Cancelled',discount:900,items:[{name:'Hair Spa',type:'Service',qty:1,rate:1500}]}];
+        const dw5=discountWatch(bills5,'2026-09-01','2026-09-30',10);
+        eq('Discount watch: per stylist, cancelled bills ignored',[dw5.staff.length,Math.round(dw5.staff[0].pct*10)/10,dw5.days.map(d=>d.date)],[1,9.1,['2026-09-02']]);
+        const ts5=ticketStats(bills5.slice(0,2));
+        eq('Ticket size: average bill excl. GST, services per bill, product attach',[ts5.avg,ts5.svcPer,ts5.attach],[1500,1,50]);
+        safeLocalSet(outletKey('salonos_inventory_items',916),JSON.stringify([{id:'it1',name:'Colour tube',unit:'tube',qty:10,min:4,rate:400},{id:'it2',name:'Developer',unit:'bottle',qty:2,min:3,rate:600}]));
+        safeLocalSet(outletKey('salonos_std_usage',916),JSON.stringify({'Hair Colour (Global)':[{itemId:'it1',qty:1},{itemId:'it2',qty:0.25}]}));
+        const pc5=priceCheckRows(916,[{date:'2026-09-02',status:'Paid',items:[{name:'Hair Colour (Global)',type:'Service',qty:1,rate:3000}]}]).find(x=>x.name==='Hair Colour (Global)');
+        eq('Price check: product cost from standard usage, margin after commission',[pc5.rate,pc5.prod,pc5.sold],[3000,550,1]);
+        eq('Purchase rate: a rise over 5% is caught, a small one is not',[!!checkPurchaseRate(916,{id:'it1',name:'Colour tube',rate:400},440),checkPurchaseRate(916,{id:'it1',name:'Colour tube',rate:400},410)],[true,'']);
+        safeLocalSet(outletKey('salonos_vendor_invoices',916),JSON.stringify([{id:'a',vendorId:'v',category:'Housekeeping',invoiceDate:new Date(Date.now()-40*864e5).toISOString().slice(0,10),amount:10000},{id:'b',vendorId:'v',category:'Housekeeping',invoiceDate:new Date(Date.now()-10*864e5).toISOString().slice(0,10),amount:11500}]));
+        eq('Vendor price watch: same vendor and category up more than 5%',vendorPriceWatch(916).map(x=>Math.round(x.ch)),[15]);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.

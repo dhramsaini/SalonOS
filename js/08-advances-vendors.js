@@ -1569,7 +1569,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
     // ══════════════════════════════════
     // TAB 3 — OUTSTANDING INVOICES (payment not yet made, in full)
     // ══════════════════════════════════
-    tab==='messages'&&React.createElement(VendorMessagesPanel,{salonId,salon}),
+    tab==='messages'&&React.createElement(React.Fragment,null,React.createElement(VendorPriceWatchCard,{salonId}),React.createElement(VendorMessagesPanel,{salonId,salon})),
     tab==='outstanding'&&(()=>{
       const outstandingInv=outstandingInvBase;
       const shown=outFilters.filteredRows;

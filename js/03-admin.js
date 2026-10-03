@@ -644,7 +644,7 @@ function MasterSheet({onSelect,salons,setSalons,user}){
     dseEditWindowEnabled:false,dseEditWindowDays:3,
     // Controls (js/16-automation.js): collection difference limit / block Final, advance limit.
     collDiffLimit:100,collDiffBlock:false,advMaxPct:'',advBlock:false,
-    cashDiffLimit:100,ownerPhone:'',accountantPhone:'',accountantEmail:'',renewals:[]};
+    cashDiffLimit:100,ownerPhone:'',accountantPhone:'',accountantEmail:'',renewals:[],discLimitPct:10,marginTargetPct:55};
   const [showModal,setShowModal]=useState(false);
   // '', 'loading', 'found', 'notfound' — feedback for the IFSC → Branch auto-lookup below.
   const [ifscLookupStatus,setIfscLookupStatus]=useState('');
@@ -1246,7 +1246,10 @@ function MasterSheet({onSelect,salons,setSalons,user}){
             FG('Owner’s WhatsApp (daily summary)',INP({value:form.ownerPhone||'',onChange:fc('ownerPhone'),placeholder:'98xxxxxxxx'}))),
           React.createElement('div',{className:'form-row cols2',style:{marginBottom:0}},
             FG('Accountant’s WhatsApp',INP({value:form.accountantPhone||'',onChange:fc('accountantPhone'),placeholder:'98xxxxxxxx'})),
-            FG('Accountant’s email',INP({value:form.accountantEmail||'',onChange:fc('accountantEmail'),placeholder:'accounts@…'})))),
+            FG('Accountant’s email',INP({value:form.accountantEmail||'',onChange:fc('accountantEmail'),placeholder:'accounts@…'}))),
+          React.createElement('div',{className:'form-row cols2',style:{marginBottom:0}},
+            FG('Discount flagged above (% of billing)',INP({type:'number',min:0,value:form.discLimitPct,onChange:fc('discLimitPct'),placeholder:'e.g. 10'})),
+            FG('Target service margin (%)',INP({type:'number',min:0,value:form.marginTargetPct,onChange:fc('marginTargetPct'),placeholder:'e.g. 55'})))),
 
         React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'18px 0 4px',paddingTop:14,borderTop:'1px solid var(--border)'}},'Licences & renewals'),
         React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginBottom:10,lineHeight:1.5}},'Renewal dates appear in Due Dates and the compliance register, with reminders 30 days ahead.'),

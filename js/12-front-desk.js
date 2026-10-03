@@ -53,6 +53,7 @@ function BillingSheet({salon}){
   const [search,setSearch]=useState('');
   const [fMode,setFMode]=useState('All');
   const [fStatus,setFStatus]=useState('All');
+  const [insOpen,setInsOpen]=useState(false); // 📊 Insights (js/23-sales-stock.js)
   const [showModal,setShowModal]=useState(false);
   const [showDelete,setShowDelete]=useState(null);
   const [viewInv,setViewInv]=useState(null);
@@ -224,6 +225,8 @@ function BillingSheet({salon}){
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},onClick:()=>exportListPDF(filtered)},'⬇ Export PDF'),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setInsOpen(true)},'📊 Insights'),
+        insOpen&&React.createElement(SalesInsightsModal,{salon,invoices,onClose:()=>setInsOpen(false)}),
         React.createElement('button',{className:'btn btn-primary',onClick:openNew},'+ New Bill')
       )
     ),
@@ -845,11 +848,14 @@ function InventorySheet({salon}){
   const dead=items.filter(i=>i.moved<5);
   const reorderCost=low.reduce((t,i)=>t+(i.min*2-i.qty)*i.rate,0);
 
-  const consume=(id)=>{setItems(l=>l.map(i=>i.id===id?{...i,qty:Math.max(0,i.qty-1),moved:i.moved+1}:i));toast('One unit issued to backbar','info')};
+  const consume=(id)=>{const it=items.find(i=>i.id===id);if(it&&Number(it.qty)>0)logInvMove(sid,it,'issue',1);setItems(l=>l.map(i=>i.id===id?{...i,qty:Math.max(0,i.qty-1),moved:i.moved+1}:i));toast('One unit issued to backbar','info')};
   const receive=()=>{
     const n=Number(rec.qty);
     if(!n||n<=0)return toast('Enter a quantity','error');
-    setItems(l=>l.map(i=>i.id===rec.id?{...i,qty:i.qty+n}:i));
+    const it=items.find(i=>i.id===rec.id);const newRate=Number(rec.newRate)||Number(rec.rate)||0;
+    const up=it?checkPurchaseRate(sid,it,newRate):'';if(up)toast('⚠ '+up,'error');
+    if(it)logInvMove(sid,it,'receive',n,newRate);
+    setItems(l=>l.map(i=>i.id===rec.id?{...i,qty:i.qty+n,rate:newRate||i.rate}:i));
     toast(n+' '+rec.unit+' of '+rec.name+' received');setRec(null);
   };
   const stat=(l,v,s,col)=>h('div',{className:'metric-card'},h('div',{className:'metric-label'},l),
@@ -859,7 +865,7 @@ function InventorySheet({salon}){
     h('div',{className:'section-header'},
       h('div',null,h('div',{className:'page-title'},'Inventory'),
         h('div',{className:'page-sub'},'Backbar consumption, retail stock and what needs reordering.')),
-      h('button',{className:'btn btn-ghost btn-sm',onClick:()=>toast(low.length?'Purchase order drafted for '+low.length+' items — '+inr(reorderCost):'Nothing below reorder level',low.length?'success':'info')},'Draft purchase order')),
+      h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{const el=document.getElementById('inv-tools');if(el)el.scrollIntoView({behavior:'smooth'});}},'Draft purchase order')),
     h('div',{className:'grid4',style:{marginBottom:16}},
       stat('Stock value',inr(value),items.length+' SKUs'),
       stat('Below reorder',String(low.length),low.length?inr(reorderCost)+' to restock':'All healthy',low.length?'var(--red)':'var(--green)'),
@@ -899,13 +905,16 @@ function InventorySheet({salon}){
       ),
       invItemFilters.Portal(),
       invItemCellRange.Toolbar()),
+    h('div',{id:'inv-tools'},h(InventoryTools,{sid,items})),
     rec&&h('div',{className:'modal-overlay',onClick:()=>setRec(null)},
       h('div',{className:'modal',style:{width:420},onClick:e=>e.stopPropagation()},
         h('div',{className:'modal-title'},'Receive stock — '+rec.name),
         h('div',{className:'form-group'},h('label',null,'Quantity in '+rec.unit),
           h('input',{className:'form-control',type:'number',autoFocus:true,value:rec.qty,
             onChange:e=>setRec({...rec,qty:e.target.value}),onKeyDown:e=>e.key==='Enter'&&receive()})),
-        h('div',{className:'help-note'},'Landed cost at '+inr(rec.rate)+' per '+rec.unit+' = '+inr((Number(rec.qty)||0)*rec.rate)),
+        h('div',{className:'form-group'},h('label',null,'Purchase rate per '+rec.unit+' (last '+inr(rec.rate)+')'),
+          h('input',{className:'form-control',type:'number',value:rec.newRate??rec.rate,onChange:e=>setRec({...rec,newRate:e.target.value})})),
+        h('div',{className:'help-note'},'Landed cost '+inr((Number(rec.qty)||0)*(Number(rec.newRate??rec.rate)||0))+(Number(rec.newRate)>Number(rec.rate)*1.05?' — rate is more than 5% above the last one':'')),
         h('div',{className:'modal-actions'},
           h('button',{className:'btn btn-ghost',onClick:()=>setRec(null)},'Cancel'),
           h('button',{className:'btn btn-primary',onClick:receive},'Add to stock'))))
