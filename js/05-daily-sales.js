@@ -1033,6 +1033,26 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   // untouched, since this only ever replaces entries it tagged with source:'dse' for this same
   // date+row. ──
   const DAILY_INCENTIVE_SYNC_ROWS=new Set(['Membership Commission/Incentives','Product Commission/Incentives','Service Commission/Incentives','Target Commission/Incentives']);
+  // Replaces one date+row's mirrored copies (isOld) with `fresh`, keeping each existing copy that
+  // still matches (same employee and amount) as it is — its id, and for an advance what has
+  // already been recovered — and keeping the group where it was in the list. Returns null when
+  // nothing changed, so opening this screen no longer re-saves (and renumbers, and resets the
+  // outstanding of) every mirrored entry — which made other IDs' screens re-load in a loop.
+  const replaceDseGroup=(all,isOld,fresh,carry)=>{
+    const old=all.filter(isOld),pool=[...old];
+    const amtOf=x=>Number(x&&(x.amount!=null?x.amount:x.incentive))||0;
+    const next=fresh.map(f=>{
+      const i=pool.findIndex(o=>o.emp===f.emp&&amtOf(o)===amtOf(f));
+      if(i<0)return f;
+      const o=pool.splice(i,1)[0];
+      return carry(o,f);
+    });
+    if(JSON.stringify(old)===JSON.stringify(next))return null;
+    const at=all.findIndex(isOld);
+    const rest=all.filter(x=>!isOld(x));
+    const pos=at<0?rest.length:all.slice(0,at).filter(x=>!isOld(x)).length;
+    return[...rest.slice(0,pos),...next,...rest.slice(pos)];
+  };
   const syncDailyIncentiveEntries=(iso,ri,validEntries)=>{
     const rowName=EXPENSE_ROWS[ri]?.name;
     if(!DAILY_INCENTIVE_SYNC_ROWS.has(rowName))return;
@@ -1040,13 +1060,14 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       const key=outletKey('salonos_daily_incentive_entries',salonId);
       let all=[];
       try{const raw=JSON.parse(cachedLocalGet(key)||'[]');if(Array.isArray(raw))all=raw;}catch(e){}
-      const kept=all.filter(e=>!(e&&e.source==='dse'&&e.date===iso&&e.dseRow===rowName));
+      const isOld=e=>!!(e&&e.source==='dse'&&e.date===iso&&e.dseRow===rowName);
       const fresh=(validEntries||[]).filter(v=>v.empName&&Number(v.amount)>0&&!v.fromDI).map(v=>{
         const emp=EMPLOYEES.find(e=>e.name===v.empName);
         const amt=Number(v.amount)||0;
         return{date:iso,empId:emp?emp.id:'',emp:v.empName,service:rowName,target:0,achieved:amt,rate:100,incentive:amt,mode:'Cash',status:'Computed',source:'dse',dseRow:rowName};
       });
-      safeLocalSet(key,JSON.stringify([...kept,...fresh]));
+      const next=replaceDseGroup(all,isOld,fresh,(o,f)=>({...o,...f}));
+      if(next)safeLocalSet(key,JSON.stringify(next));
     }catch(e){}
   };
 
@@ -1063,8 +1084,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       const key=outletKey('salonos_advances',salonId);
       let all=[];
       try{const raw=JSON.parse(cachedLocalGet(key)||'[]');if(Array.isArray(raw))all=raw;}catch(e){}
-      const kept=all.filter(a=>!(a&&a.source==='dse'&&a.date===iso&&a.dseRow===rowName));
-      let n=Math.max(0,...kept.map(a=>Number(String(a.id||'').replace(/\D/g,''))||0));
+      const isOld=a=>!!(a&&a.source==='dse'&&a.date===iso&&a.dseRow===rowName);
+      let n=Math.max(0,...all.map(a=>Number(String(a.id||'').replace(/\D/g,''))||0));
       const fresh=(validEntries||[]).filter(v=>v.empName&&Number(v.amount)>0).map(v=>{
         const amt=Number(v.amount)||0;
         n+=1;
@@ -1074,7 +1095,9 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
           deductionStart:v.deductionStart||'',schedule:Array.isArray(v.schedule)?v.schedule:[],
           outstanding:amt,status:'Active',source:'dse',dseRow:rowName};
       });
-      safeLocalSet(key,JSON.stringify([...kept,...fresh]));
+      // An advance already on the Advances sheet keeps its number and what has been recovered.
+      const next=replaceDseGroup(all,isOld,fresh,(o,f)=>{const r={...o,...f,id:o.id,outstanding:o.outstanding,status:o.status};if(o.settled!==undefined)r.settled=o.settled;return r;});
+      if(next)safeLocalSet(key,JSON.stringify(next));
     }catch(e){}
   };
   // ── Penalties sheet sync — same idea as Advances above, for the "Penalties" employee-linked
@@ -1091,15 +1114,16 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       const key=outletKey('salonos_penalties',salonId);
       let all=[];
       try{const raw=JSON.parse(cachedLocalGet(key)||'[]');if(Array.isArray(raw))all=raw;}catch(e){}
-      const kept=all.filter(p=>!(p&&p.source==='dse'&&p.date===iso&&p.dseRow===rowName));
-      let n=Math.max(0,...kept.map(p=>Number(String(p.id||'').replace(/\D/g,''))||0));
+      const isOld=p=>!!(p&&p.source==='dse'&&p.date===iso&&p.dseRow===rowName);
+      let n=Math.max(0,...all.map(p=>Number(String(p.id||'').replace(/\D/g,''))||0));
       const monthLabel=(()=>{const d=new Date(iso+'T00:00:00');return isNaN(d)?'':d.toLocaleString('en-IN',{month:'long',year:'numeric'});})();
       const fresh=(validEntries||[]).filter(v=>v.empName&&Number(v.amount)>0).map(v=>{
         n+=1;
         return{id:'P'+String(n).padStart(3,'0'),emp:v.empName,date:iso,type:'Other',otherType:'Entered via Daily Sales & Exp',amount:Number(v.amount)||0,
           approvedBy:'',recoveryMode:'Salary',month:monthLabel,remarks:'Entered via Daily Sales & Exp',source:'dse',dseRow:rowName};
       });
-      safeLocalSet(key,JSON.stringify([...kept,...fresh]));
+      const next=replaceDseGroup(all,isOld,fresh,(o,f)=>({...o,...f,id:o.id}));
+      if(next)safeLocalSet(key,JSON.stringify(next));
     }catch(e){}
   };
   // One-time-per-outlet-view backfill: the sync functions above only fire when an entry is saved
