@@ -427,7 +427,14 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     if(ri===IDX_OPENING)return openingBalanceFor(iso);
     return numSalesAt(iso,ri);
   };
-  const salesRowTotal=(ri)=>days.reduce((s,d)=>s+salesValueAt(d.iso,ri),0);
+  // Balances aren't summed: Opening Cash Balance shows the first visible day's opening, Closing
+  // Cash Balance the last visible day's closing.
+  const salesRowTotal=(ri)=>{
+    if(!days.length)return 0;
+    if(ri===IDX_OPENING)return salesValueAt(days[0].iso,ri);
+    if(SALES_ROWS[ri].name==='Closing Cash Balance')return salesValueAt(days[days.length-1].iso,ri);
+    return days.reduce((s,d)=>s+salesValueAt(d.iso,ri),0);
+  };
   const [saveMsg,setSaveMsg]=useState('');
   // Monthly & Comparative Summary modal — same ExpensesSummaryReport used under Reports and the
   // Dashboard, opened inline here since this screen's actual data is what it's summarizing.
