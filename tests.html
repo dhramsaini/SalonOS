@@ -227,6 +227,12 @@
           kv3.set('salonos_daily_sales_collection_data_outlet_911',ds);
           const ca=mod.computeAlerts(kv3,mod.DEFAULTS,day(2026,10,5)).alerts.find(x=>x.kind==='cash');
           eq('Automation: cash not deposited for over 7 days is flagged with the cash taken since',[!!ca,ca?/4,000/.test(ca.body):false],[true,true]);}
+        {const kv4=new Map();kv4.set('salonos_salons',[{id:913,name:'Count — W',status:'Active',cashDiffLimit:100}]);
+          kv4.set('salonos_cash_counts_outlet_913',{'2026-10-03':{count:900,closing:1200,diff:-300,reason:''},'2026-10-04':{count:1000,closing:1050,diff:-50,reason:''}});
+          kv4.set('salonos_master_employees_outlet_913',[{id:'E1',name:'Asha',status:'Active',weeklyOff:''}]);
+          kv4.set('salonos_attendance_outlet_913',{E1_2026_9:{days:['absent','absent','absent','half','absent']}});
+          const al=mod.computeAlerts(kv4,mod.DEFAULTS,day(2026,10,6)).alerts;
+          eq('Automation: cash count over the limit without a reason, and staff with more than 3 absences',[al.some(x=>x.akey==='cash_count:913'&&/3 Oct/.test(x.body)&&!/4 Oct/.test(x.body)),al.some(x=>/^absence:913/.test(x.akey))],[true,true]);}
         eq('Automation: a September bank statement (transactionDate) counts as imported',/bank statement/.test((mod.computeAlerts(kv,mod.DEFAULTS,day(2026,10,5)).alerts.find(x=>x.akey==='month_end:901:2026-09')||{}).body||''),false);
         kv.delete('salonos_bank_statement_rows_outlet_901');
         const r2=mod.computeAlerts(kv,Object.assign({},mod.DEFAULTS,{autoLock:true,autoLockDay:4}),day(2026,10,5));
@@ -605,6 +611,28 @@
         eq('Summary approval: each role keeps its own status and remarks',[sr.reviews.Manager.status,sr.reviews.ASM.remarks,sr.status],['Approved','fix PF','Returned']);
         const mt=mtdPnlFor(907,2026,9);
         eq('MTD P&L: revenue to the last Daily Sales day (÷1.05), totals add up',[Math.round(mt.mtd.revenue),Math.round(mt.mtd.revenue-mt.sections.filter(x=>x.sec!=='Revenue').reduce((t,x)=>t+x.mtd,0)-mt.below.reduce((t,l)=>t+l.mtd,0))===Math.round(mt.mtd.pbt)],[14881,true]);
+        // Batch 3 — money, staff, owner.
+        const oldInv={id:'B1',invoiceNo:'X-1',amount:1000,payments:[{id:'p1',paidAmount:1000,paidDate:'2026-10-01',mode:'Cash'}]};
+        const w1=duplicatePaymentWarning(oldInv,{...oldInv,payments:[...oldInv.payments,{id:'p2',paidAmount:1000,paidDate:'2026-10-02',mode:'NEFT'}]});
+        const half={id:'B2',invoiceNo:'X-2',amount:2000,payments:[{id:'q1',paidAmount:500,paidDate:'2026-10-01',mode:'Cash'}]};
+        const w2=duplicatePaymentWarning(half,{...half,payments:[...half.payments,{id:'q2',paidAmount:500,paidDate:'2026-10-03',mode:'NEFT'}]});
+        const w3=duplicatePaymentWarning(half,{...half,payments:[...half.payments,{id:'q3',paidAmount:900,paidDate:'2026-10-03',mode:'NEFT'}]});
+        eq('Duplicate payment guard: fully paid bill, same amount within 7 days, normal part payment',[/already fully paid/.test(w1),/same payment again/.test(w2),w3],[true,true,'']);
+        SALONS.push({id:912,name:'Ops — Z',salaryDueDay:7,shopLicenceValidTill:'2026-11-10',renewals:[{name:'AC AMC',date:'2026-10-20'}]});
+        eq('Licence renewals now for salons too, including custom renewals',autoLicenceDueItemsFor(912).map(x=>x.desc.split(' (')[0]).sort(),['AC AMC renewal','Shop & establishment licence renewal']);
+        safeLocalSet(outletKey('salonos_daily_sales_collection_data',912),JSON.stringify({'2026-09-24':{0:3000,1:2000},'2026-10-01':{0:5000,1:1000,2:2500,3:500}}));
+        safeLocalSet(outletKey('salonos_daily_sales_data',912),JSON.stringify({'2026-10-01':{0:300,1:200}}));
+        const ost=ownerSummaryText(912,'2026-10-01');
+        eq('Owner summary: sales by mode, vs same day last week, expenses',[/Sales: ₹9,000/.test(ost),/₹5,000/.test(ost),/Expenses: ₹500/.test(ost)],[true,true,true]);
+        const bp=budgetPlFor(912,'2026-27',plBuild(912,'2026-27',6));
+        savePlBudget(912,{'2026-27':{'Revenue from Operations - Cash Sale':100000,'Rent':50000}});
+        const bp2=budgetPlFor(912,'2026-27',plBuild(912,'2026-27',6));
+        eq('Budget: none set = no budget; set = P&L-shaped with totals',[bp,bp2.revenue,bp2.sections.find(x=>x.sec==='Operating expenses').tot],[null,100000,50000]);
+        const cf=cashForecastFor(912,1000);
+        eq('30-day forecast: 30 days, running balance starts from the opening',[cf.days.length,typeof cf.days[0].balance],[30,'number']);
+        safeLocalSet(outletKey('salonos_billing_invoices',912),JSON.stringify([{customer:'Riya',phone:'9810000001',date:new Date(Date.now()-50*864e5).toISOString().slice(0,10),items:[{name:'Global Hair Colour'}],status:'Paid'}]));
+        const cr=clientReminderLists(912,[{id:'c1',name:'Mira',phone:'9810000002',tier:'Gold membership',tierValidTill:new Date(Date.now()+5*864e5).toISOString().slice(0,10)}]);
+        eq('Client reminders: membership expiring, repeat hair colour due after 45 days',[cr.expiring.length,cr.repeat.map(x=>x.svc)],[1,['Hair colour']]);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.

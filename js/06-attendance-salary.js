@@ -719,7 +719,7 @@ function AttendanceSheet({period,salon,user}={}){
           mgrFinalMonth?'🔒 Month Final':'Mark Month Final'
         ),
         React.createElement('div',{className:'tab-bar',style:{marginBottom:0,padding:2}},
-          [{id:'grid',label:'Individual'},{id:'register',label:'Full Register'}].map(t=>React.createElement('button',{key:t.id,className:`tab-btn ${viewMode===t.id?'active':''}`,onClick:()=>setViewMode(t.id)},t.label))
+          [{id:'grid',label:'Individual'},{id:'register',label:'Full Register'},{id:'offplan',label:'Weekly-off Planner'}].map(t=>React.createElement('button',{key:t.id,className:`tab-btn ${viewMode===t.id?'active':''}`,onClick:()=>setViewMode(t.id)},t.label))
         ),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:downloadAttendanceTemplate},'⬇ Template'),
         React.createElement('input',{ref:bulkFileRef,type:'file',accept:'.xlsx,.xls',style:{display:'none'},onChange:handleBulkAttendanceFile}),
@@ -750,6 +750,8 @@ function AttendanceSheet({period,salon,user}={}){
     ),
 
     // ── Individual view ──
+    React.createElement(AbsenceWatchBanner,{sid:salon?.id,year:selYear,month:selMonth}),
+    viewMode==='offplan'&&React.createElement(WeeklyOffPlanner,{sid:salon?.id,year:selYear,month:selMonth}),
     viewMode==='grid'&&React.createElement('div',{className:'two-col'},
       React.createElement('div',{className:'card'},
         React.createElement('div',{className:'card-title'},'Employees'),

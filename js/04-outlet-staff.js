@@ -902,6 +902,7 @@ function MasterSalarySheet({salon}={}){
   const MODAL_TABS=[{id:'personal',label:'👤 Personal'},{id:'employment',label:'💼 Employment & Salary'},{id:'bank',label:'🏦 Bank Details'}];
 
   return React.createElement('div',{className:'fade-in'},
+    React.createElement(ExitChecklistCard,{sid:salon?.id}),
     // ── Header ──
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,React.createElement('div',{className:'page-title'},'Master Salary Sheet'),React.createElement('div',{className:'page-sub'},'Employee roster with CTC, bank & document details'+(salon?.name?' · '+salon.name:''))),

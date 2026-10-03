@@ -341,8 +341,10 @@ function MasterDashboard({selFY,setSelFY,FYS,accessibleSalons,dashTab,setDashTab
   const tab=dashTab||ownTab,setTab=setDashTab||setOwnTab;
   return h('div',{className:'fade-in'},
     h('div',{className:'tab-bar',style:{marginBottom:16}},
-      [['overview','📊 Overview'],['compliance','📌 Due Date Compliance register'],['close','✅ Month-End Close']].map(([k,l])=>h('button',{key:k,type:'button',className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
+      [['overview','📊 Overview'],['compliance','📌 Due Date Compliance register'],['close','✅ Month-End Close'],['summary','📤 Daily Summary'],['ranking','🏆 Outlet Ranking']].map(([k,l])=>h('button',{key:k,type:'button',className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
     tab==='close'?h(MonthCloseBoard,{accessibleSalons,onOpenOutletTab}):
+    tab==='summary'?h(DailyOwnerSummaryBoard,{accessibleSalons}):
+    tab==='ranking'?h(OutletRankingBoard,{accessibleSalons}):
     tab==='compliance'
       ?h('div',null,h('div',{className:'page-title'},'Due Date Compliance register'),
           h('div',{className:'page-sub'},'Payments and compliance across all your outlets — overdue, due this week, pending and paid'),
@@ -641,7 +643,8 @@ function MasterSheet({onSelect,salons,setSalons,user}){
     // Past months are governed entirely by the existing Month Lock — this never affects them.
     dseEditWindowEnabled:false,dseEditWindowDays:3,
     // Controls (js/16-automation.js): collection difference limit / block Final, advance limit.
-    collDiffLimit:100,collDiffBlock:false,advMaxPct:'',advBlock:false};
+    collDiffLimit:100,collDiffBlock:false,advMaxPct:'',advBlock:false,
+    cashDiffLimit:100,ownerPhone:'',accountantPhone:'',accountantEmail:'',renewals:[]};
   const [showModal,setShowModal]=useState(false);
   // '', 'loading', 'found', 'notfound' — feedback for the IFSC → Branch auto-lookup below.
   const [ifscLookupStatus,setIfscLookupStatus]=useState('');
@@ -1237,7 +1240,28 @@ function MasterSheet({onSelect,salons,setSalons,user}){
           React.createElement('div',{className:'form-row cols2',style:{marginBottom:0}},
             FG('Advance limit (% of monthly gross)',INP({type:'number',min:0,value:form.advMaxPct,onChange:fc('advMaxPct'),placeholder:'blank = no limit, e.g. 50'})),
             React.createElement('label',{style:{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:12.5,alignSelf:'end',paddingBottom:10}},
-              React.createElement('input',{type:'checkbox',checked:!!form.advBlock,onChange:fcCheck('advBlock')}),'Block advances above the limit (otherwise warn)'))),
+              React.createElement('input',{type:'checkbox',checked:!!form.advBlock,onChange:fcCheck('advBlock')}),'Block advances above the limit (otherwise warn)')),
+          React.createElement('div',{className:'form-row cols2',style:{marginBottom:0,marginTop:6}},
+            FG('Cash count difference allowed (₹)',INP({type:'number',min:0,value:form.cashDiffLimit,onChange:fc('cashDiffLimit'),placeholder:'e.g. 100'})),
+            FG('Owner’s WhatsApp (daily summary)',INP({value:form.ownerPhone||'',onChange:fc('ownerPhone'),placeholder:'98xxxxxxxx'}))),
+          React.createElement('div',{className:'form-row cols2',style:{marginBottom:0}},
+            FG('Accountant’s WhatsApp',INP({value:form.accountantPhone||'',onChange:fc('accountantPhone'),placeholder:'98xxxxxxxx'})),
+            FG('Accountant’s email',INP({value:form.accountantEmail||'',onChange:fc('accountantEmail'),placeholder:'accounts@…'})))),
+
+        React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'18px 0 4px',paddingTop:14,borderTop:'1px solid var(--border)'}},'Licences & renewals'),
+        React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginBottom:10,lineHeight:1.5}},'Renewal dates appear in Due Dates and the compliance register, with reminders 30 days ahead.'),
+        React.createElement('div',{className:'form-row cols3'},
+          FG('Shop & establishment valid till',INP({type:'date',value:form.shopLicenceValidTill||'',onChange:fc('shopLicenceValidTill')})),
+          FG('Shop insurance valid till',INP({type:'date',value:form.insuranceValidTill||'',onChange:fc('insuranceValidTill')})),
+          FG('Signage / pollution permit till',INP({type:'date',value:form.signageValidTill||'',onChange:fc('signageValidTill')}))),
+        form.businessType!=='Restaurant'&&React.createElement('div',{className:'form-row cols2'},
+          FG('Trade licence valid till',INP({type:'date',value:form.tradeLicenceValidTill||'',onChange:fc('tradeLicenceValidTill')})),
+          FG('Fire NOC valid till',INP({type:'date',value:form.fireNocValidTill||'',onChange:fc('fireNocValidTill')}))),
+        (form.renewals||[]).map((rw,i)=>React.createElement('div',{key:i,className:'form-row cols3',style:{alignItems:'end'}},
+          FG('Other renewal',INP({value:rw.name||'',onChange:e=>{const v=e.target.value;setForm(f=>({...f,renewals:(f.renewals||[]).map((x,j)=>j===i?{...x,name:v}:x)}));},placeholder:'e.g. AC AMC, music licence'})),
+          FG('Valid till',INP({type:'date',value:rw.date||'',onChange:e=>{const v=e.target.value;setForm(f=>({...f,renewals:(f.renewals||[]).map((x,j)=>j===i?{...x,date:v}:x)}));}})),
+          React.createElement('button',{type:'button',className:'btn btn-ghost btn-sm',style:{marginBottom:14},onClick:()=>setForm(f=>({...f,renewals:(f.renewals||[]).filter((_,j)=>j!==i)}))},'Remove'))),
+        React.createElement('button',{type:'button',className:'btn btn-ghost btn-sm',style:{marginBottom:14},onClick:()=>setForm(f=>({...f,renewals:[...(f.renewals||[]),{name:'',date:''}]}))},'+ Add another renewal'),
 
         React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'18px 0 4px',paddingTop:14,borderTop:'1px solid var(--border)'}},'GST Input Tax Credit'),
         React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginBottom:10,lineHeight:1.5}},'Separate from GST Applicable above — that\'s whether this outlet charges GST on sales; this is whether it\'s blocked from claiming credit for GST paid on purchases (\"Blocked Credit\" under Section 17(5) of the CGST Act). Salon/beauty services commonly are, so this defaults to Yes.'),
@@ -1794,6 +1818,8 @@ function AutomationSettingsCard(){
           React.createElement('span',{style:{display:'block',fontSize:11.5,color:'var(--text3)'}},'Unpaid vendor bills with a due date (closes once paid). The same days-ahead applies to fixed recurring items below. Overdue ones turn red.'))),
       box('recurringReminders','Recurring expenses','Fixed items on their due day; variable bills (electricity, water…) once their period is over and no bill is entered.'),
       box('collectionCheck','CRADLE vs Daily Sales','Days in the last 45 where Collection Reco and Daily Sales differ by more than the outlet’s limit (Master Sheet → Controls) and no reason is entered.'),
+      box('cashCountCheck','Cash count differences','Days where the physical cash counted differs from the book closing by more than the outlet’s limit and no reason is entered.'),
+      box('absenceCheck','Frequent absences','Staff with more than 3 absences this month.'),
       box('cashDepositCheck','Cash not deposited','Cash sales keep coming in but no Cash Deposit has been entered in Daily Sales & Exp for over 7 days.'),
       box('auditWatch','Unlocks this week (Super Admin)','Every month unlocked in the last 7 days, who did it and the reason given.'),
       box('anomalyChecks','Unusual activity','A sales day far below that weekday’s usual, a day’s expenses 3× the 30-day average, a vendor bill that looks entered twice.'),

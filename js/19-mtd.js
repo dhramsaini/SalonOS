@@ -95,6 +95,7 @@ function MtdPnlSheet({salon,period}={}){
     // eslint-disable-next-line
   },[period&&period.mi,period&&period.fy]);
   const [open,setOpen]=useState({});
+  const [tTick,setTTick]=useState(0);
   const sid=salon?.id;
   const M=['January','February','March','April','May','June','July','August','September','October','November','December'];
   const r=mtdPnlFor(sid,cal.year,cal.month);
@@ -132,6 +133,14 @@ function MtdPnlSheet({salon,period}={}){
       metric('EBITDA MTD',money(r.mtd.ebitda),pctOf(r.mtd.ebitda,r.mtd.revenue)+' margin',r.mtd.ebitda>=0?'var(--green)':'var(--red)'),
       metric('Profit before tax MTD',money(r.mtd.pbt),pctOf(r.mtd.pbt,r.mtd.revenue)+' net margin',r.mtd.pbt>=0?'var(--green)':'var(--red)'),
       metric('Projected PBT (full month)',money(r.proj.pbt),'previous month '+money(prev.pbt),r.proj.pbt>=0?'var(--green)':'var(--red)')),
+    (()=>{const tgt=salesTargetFor(sid,cal.year,cal.month);const iso=cal.year+'-'+String(cal.month+1).padStart(2,'0')+'-'+String(r.day).padStart(2,'0');const got=mtdGrossSales(sid,iso);
+      const need=tgt?Math.max(0,(tgt-got)/Math.max(1,r.days-r.day)):0;
+      return h('div',{className:'card',style:{marginBottom:12,display:'flex',gap:14,alignItems:'center',flexWrap:'wrap'}},
+        h('b',null,'🎯 Sales target'),h('input',{type:'number',className:'form-control',style:{width:140},defaultValue:tgt||'',key:'t'+cal.year+cal.month+tTick,placeholder:'monthly, incl. GST',onBlur:e=>{setSalesTarget(sid,cal.year,cal.month,e.target.value);setTTick(x=>x+1);}}),
+        tgt?h('span',{style:{fontSize:12.5}},'Sales so far '+money(got)+' = '+Math.round(got/tgt*100)+'% of target · needed '+money(need)+'/day for the remaining '+(r.days-r.day)+' days'+(got/tgt<r.f?' — behind pace':' — on pace')):h('span',{style:{fontSize:12,color:'var(--text3)'}},'Set a target to track the run-rate (shown on the Daily Summary and Outlet Ranking too).'));})(),
+    (()=>{const ov=budgetOverruns(sid,r,calToFYMI(cal.year,cal.month).fy);if(!ov.length)return null;
+      return h('div',{style:{background:'rgba(224,82,82,0.08)',border:'1px solid rgba(224,82,82,0.3)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:12,fontSize:12.5}},
+        h('b',{style:{color:'var(--red)'}},'⚠ Against budget (pro-rata for '+r.day+' days):'),ov.map(o=>h('div',{key:o.name},'• '+o.name+': '+money(o.mtd)+' vs '+money(o.pace)+(o.rev?' — behind budget':' — '+Math.round((o.mtd/o.pace-1)*100)+'% over'))));})(),
     !r.salaryFinal&&!r.isPast&&h('div',{className:'help-note',style:{marginBottom:12}},'Salary, PF / ESIC, recurring commitments and depreciation are counted pro-rata for '+r.day+' of '+r.days+' days (salary from Master Salary gross — marked est.) until '+label+'’s attendance is final. Revenue and daily costs are actuals to date.'),
     h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,
       h('thead',null,h('tr',null,h('th',null,'Particulars'),h('th',{style:{textAlign:'right'}},'MTD (1–'+r.day+' '+shortM+')'),h('th',{style:{textAlign:'right'}},'% of rev'),h('th',{style:{textAlign:'right'}},'Projected month'),h('th',{style:{textAlign:'right'}},M[pd.getMonth()].slice(0,3)+' (full)'))),

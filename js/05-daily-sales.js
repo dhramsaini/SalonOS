@@ -184,10 +184,14 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     {name:'Swiggy Sale',type:'input',biz:'restaurant',note:'excl. GST — food value from the app’s order report'},
     {name:'Zomato Sale',type:'input',biz:'restaurant',note:'excl. GST — food value from the app’s order report'},
     {name:'EazyDiner Sale',type:'input',biz:'restaurant',note:'excl. GST — food value from the app’s order report'},
+    // Cash actually counted at closing, and its difference from the book Closing Cash Balance —
+    // a difference over the outlet's limit asks for a reason (js/20-ops.js recordCashCount).
+    {name:'Physical Cash Count',type:'input',note:'cash counted in the drawer at closing'},
+    {name:'Cash Difference',type:'computed',note:'counted − Closing Cash Balance'},
   ];
-  const IDX_CASH=0,IDX_CARD=1,IDX_UPI=2,IDX_LUZO=3,IDX_OSALE=4,IDX_OREC=5,IDX_TDS=6,IDX_TCOLL=7,IDX_OPENING=8,IDX_PACKET=9,IDX_HANDOVER=10,IDX_DEPOSIT=11,IDX_RECEIVED=12,IDX_DRAWER=13,IDX_SWIGGY=14,IDX_ZOMATO=15,IDX_EAZY=16;
+  const IDX_CASH=0,IDX_CARD=1,IDX_UPI=2,IDX_LUZO=3,IDX_OSALE=4,IDX_OREC=5,IDX_TDS=6,IDX_TCOLL=7,IDX_OPENING=8,IDX_PACKET=9,IDX_HANDOVER=10,IDX_DEPOSIT=11,IDX_RECEIVED=12,IDX_DRAWER=13,IDX_SWIGGY=14,IDX_ZOMATO=15,IDX_EAZY=16,IDX_COUNT=17,IDX_CASHDIFF=18;
   // Display order — restaurants: the three app rows after UPI Sale, no Luzo; salons: as before.
-  const SALES_ORDER=isRestaurantOutlet(salonId)?[0,1,2,IDX_SWIGGY,IDX_ZOMATO,IDX_EAZY,4,5,6,7,8,9,10,11,12,13]:SALES_ROWS.map((r,i)=>i).filter(i=>!SALES_ROWS[i].biz);
+  const SALES_ORDER=isRestaurantOutlet(salonId)?[0,1,2,IDX_SWIGGY,IDX_ZOMATO,IDX_EAZY,4,5,6,7,8,9,10,11,12,13,IDX_COUNT,IDX_CASHDIFF]:SALES_ROWS.map((r,i)=>i).filter(i=>!SALES_ROWS[i].biz);
   const appSalesAt=iso=>numSalesAt(iso,IDX_SWIGGY)+numSalesAt(iso,IDX_ZOMATO)+numSalesAt(iso,IDX_EAZY);
   // Rows that always require specific fields per entry (not just an amount), and allow more than
   // one entry per day — same "click cell → modal → list of lines" pattern used elsewhere in this
@@ -235,6 +239,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       else next[iso]={...next[iso],[ri]:isNaN(n)?0:n};
       return next;
     });
+    if(ri===IDX_COUNT){const closing=closingBalanceFor(iso);setTimeout(()=>recordCashCount(salonId,iso,val===''||val===null?'':Number(val),closing),0);}
   };
   const numSalesAt=(iso,ri)=>Number(getSalesValue(iso,ri))||0;
   // Entry breakdown helpers for the four required-field rows above.
@@ -327,6 +332,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     if(ri===IDX_TDS)return numSalesAt(iso,IDX_CASH)+numSalesAt(iso,IDX_CARD)+numSalesAt(iso,IDX_UPI)+numSalesAt(iso,IDX_LUZO)+appSalesAt(iso)+numSalesAt(iso,IDX_OSALE);
     if(ri===IDX_TCOLL)return numSalesAt(iso,IDX_CASH)+numSalesAt(iso,IDX_CARD)+numSalesAt(iso,IDX_UPI)+numSalesAt(iso,IDX_LUZO)+appSalesAt(iso)+numSalesAt(iso,IDX_OREC);
     if(ri===IDX_DRAWER)return closingBalanceFor(iso);
+    if(ri===IDX_CASHDIFF){const c=getSalesValue(iso,IDX_COUNT);return c===''?0:Number(c)-closingBalanceFor(iso);}
     return 0;
   };
   // ── Hard rule: no entry may ever push Closing Cash Balance negative, on the day it's entered
@@ -1379,6 +1385,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
           onChange:e=>{let v=e.target.value;if(!v)return;
             if(periodCal){const lo=localDateToISO(new Date(periodCal.year,periodCal.month,1)),hi=localDateToISO(new Date(periodCal.year,periodCal.month+1,0));if(v<lo)v=lo;if(v>hi)v=hi;}
             setViewDate(v);}}),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Today’s summary for the owner — opens WhatsApp with it ready',onClick:()=>{const t=ownerSummaryText(salonId,viewDate);const ph=outletSettings(salonId).ownerPhone;window.open(waPhoneOk(ph)?waLink(ph,t):'https://wa.me/?text='+encodeURIComponent(t),'_blank');}},'📤 Owner summary'),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:showCols,onChange:e=>setShowCols(e.target.value==='full'?'full':Number(e.target.value))},
           [5,10,15,20,25].map(n=>React.createElement('option',{key:n,value:n},n+' days')).concat([React.createElement('option',{key:'full',value:'full'},'Full Month')])
         ),

@@ -86,7 +86,9 @@ function StatutoryFilesSheet({salon,period}={}){
   return h('div',null,
     h('div',{className:'section-header'},
       h('div',null,h('div',{className:'page-title'},'Statutory Files'),h('div',{className:'page-sub'},'Ready-to-upload files for '+label+', made from Salary Working')),
-      afMonthPicker(cal,setCal)),
+      h('div',{style:{display:'flex',gap:8,alignItems:'center'}},afMonthPicker(cal,setCal),
+        h('button',{className:'btn btn-ghost btn-sm',title:'PF / ESIC / PT / TDS / GST amounts and due dates for the accountant',onClick:()=>{const t=accountantChallanText(sid,cal.year,cal.month);const ph=outletSettings(sid).accountantPhone;window.open(waPhoneOk(ph)?waLink(ph,t):'https://wa.me/?text='+encodeURIComponent(t),'_blank');}},'📤 To accountant (WhatsApp)'),
+        outletSettings(sid).accountantEmail&&h('a',{className:'btn btn-ghost btn-sm',href:'mailto:'+outletSettings(sid).accountantEmail+'?subject='+encodeURIComponent('Statutory payments — '+label)+'&body='+encodeURIComponent(accountantChallanText(sid,cal.year,cal.month))},'📧 Email'))),
     card('PF — ECR file (EPFO portal)','Text file in the EPFO ECR format: UAN, name, gross / EPF / EPS / EDLI wages, EE share, EPS, ER share, NCP (LOP) days.',
       ecr.rows.length+' employee(s) · EE '+afMoney(sum(ecr.rows,'pfEmp'))+' · ER '+afMoney(sum(ecr.rows,'pfEr')),
       h('button',{className:'btn btn-primary btn-sm',disabled:!ecr.rows.length,onClick:()=>{downloadTextFile(ecr.text,'PF_ECR_'+short+'_'+tag+'.txt','text/plain;charset=utf-8');}},'⬇ ECR .txt'),
@@ -216,6 +218,19 @@ function ClientMessagesModal({salon,clients,onClose}){
       lapsed.length?lapsed.map(c=>item('win|'+c.id+'|'+today.slice(0,7),c.name,c.since+' days since last visit · spent '+afMoney(c.spend),c.phone,
         'Hi '+String(c.name).split(' ')[0]+', we have missed you at '+short+'! It has been '+c.since+' days since your last '+(c.fav||'visit')+'. Reply BOOK for a slot this week.'))
         :h('div',{style:{fontSize:12,color:'var(--text3)'}},'Nobody in that range.'),
+      (()=>{const L=clientReminderLists(sid,clients);return h(React.Fragment,null,
+        h('div',{style:{fontWeight:700,fontSize:12.5,margin:'16px 0 6px'}},'Membership / package expiring in 15 days ('+L.expiring.length+')'),
+        L.expiring.length?L.expiring.map(({c,left})=>item('exp|'+c.id+'|'+c.tierValidTill+'|'+(left<=3?'3':'15'),c.name,c.tier+' — expires '+String(c.tierValidTill).split('-').reverse().join('/')+(left?' (in '+left+' days)':' (today)'),c.phone,
+          'Hi '+String(c.name).split(' ')[0]+', your '+c.tier+' at '+short+' expires on '+String(c.tierValidTill).split('-').reverse().join('/')+'. Renew now to keep your benefits — reply RENEW and we’ll set it up.'))
+          :h('div',{style:{fontSize:12,color:'var(--text3)'}},'None — add “valid till” dates on each member’s client card.'),
+        h('div',{style:{fontWeight:700,fontSize:12.5,margin:'16px 0 6px'}},'Birthdays in the next 7 days ('+L.bdays.length+')'),
+        L.bdays.length?L.bdays.map(({c,left})=>item('bday|'+c.id+'|'+new Date().getFullYear(),c.name,'Birthday '+c.birthday+(left?' (in '+left+' days)':' — today'),c.phone,
+          'Happy birthday '+String(c.name).split(' ')[0]+'! 🎉 A treat from '+short+': a complimentary add-on with any service this month. See you soon!'))
+          :h('div',{style:{fontSize:12,color:'var(--text3)'}},'No birthdays this week.'),
+        h('div',{style:{fontWeight:700,fontSize:12.5,margin:'16px 0 6px'}},'Due for a repeat service ('+L.repeat.length+')'),
+        L.repeat.length?L.repeat.map(x=>item('rep|'+String(x.phone).slice(-10)+'|'+x.svc+'|'+x.iso,x.name,x.svc+' — last '+String(x.iso).split('-').reverse().join('/')+' ('+x.since+' days, usually every '+x.every+')',x.phone,
+          'Hi '+String(x.name).split(' ')[0]+', it’s been '+x.since+' days since your '+x.svc.toLowerCase()+' at '+short+' — time for the next one? Reply BOOK and we’ll find you a slot.'))
+          :h('div',{style:{fontSize:12,color:'var(--text3)'}},'Nobody due right now (from Billing history).'));})(),
       h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:onClose},'Close'))));
 }
 

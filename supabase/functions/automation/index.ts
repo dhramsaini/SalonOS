@@ -21,7 +21,7 @@
 //   compliance      PF / ESIC / PT / TDS / salary / incentive / licence dues within N days or overdue,
 //                   from the snapshot the app saves when an owner / admin opens it (salonos_due_snapshot)
 //   audit           months unlocked in the last 7 days, with the reasons given (weekly, Super Admin)
-//   cash            cash sales coming in but no Cash Deposit entered for over 7 days
+//   cash            cash sales coming in but no Bank Deposit entered for over 7 days
 //
 // Settings: Master Settings → Automation (kv salonos_secret_automation_settings, Super Admin only).
 // Optional digest of new alerts by email / WhatsApp to the "Automatic reports" recipients, using the
@@ -54,7 +54,7 @@ const json = (body: unknown, status = 200) =>
 export const DEFAULTS = {
   enabled: true, salesCheck: true, attendanceCheck: true, dueReminders: true, dueDaysAhead: 3,
   recurringReminders: true, monthEndChecklist: true, autoLock: false, autoLockDay: 10, digest: false, anomalyChecks: true,
-  loginWatch: true, backupReminder: true, errorWatch: true, collectionCheck: true, auditWatch: true, cashDepositCheck: true,
+  loginWatch: true, backupReminder: true, errorWatch: true, collectionCheck: true, auditWatch: true, cashDepositCheck: true, cashCountCheck: true, absenceCheck: true,
 };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -297,7 +297,7 @@ export function computeAlerts(kv: KV, settings: typeof DEFAULTS, today: number) 
           body: `${it.desc || it.type} — ${inr(num(it.amount))}, due ${nice(dn)}. Mark it paid in Due Dates once done.`, tab: "due-dates", due_date: isoOfDay(dn), auto: true });
       }
     }
-    // 12 · Cash not deposited: cash sales keep coming in but no Cash Deposit (Daily Sales row 11) for over 7 days.
+    // 12 · Cash not deposited: cash sales keep coming in but no Bank Deposit (Daily Sales row 11) for over 7 days.
     if (settings.cashDepositCheck && inUse) {
       let lastDep: number | null = null, cashSince = 0;
       for (let i = 0; i <= 60; i++) { const r = sales[isoOfDay(today - i)]; if (r && num(r[11]) > 0) { lastDep = today - i; break; } }
@@ -305,8 +305,25 @@ export function computeAlerts(kv: KV, settings: typeof DEFAULTS, today: number) 
       const gap = lastDep == null ? 61 : today - lastDep;
       // Only for outlets that record deposits in Daily Sales at all (some deposit another way).
       if (lastDep != null && gap > 7 && cashSince > 0) out.push({ akey: `cash_deposit:${sid}:${lastDep == null ? "none" : isoOfDay(lastDep)}`, outlet_id: sid, kind: "cash", severity: gap > 14 ? "urgent" : "warn",
-        title: `${name}: no cash deposit for ${gap > 60 ? "over 60" : gap} days`,
-        body: `${inr(cashSince)} cash sales since ${lastDep == null ? "the last 60 days began" : "the last deposit on " + nice(lastDep)}. Deposit the cash and enter it under Cash Deposit in Daily Sales & Exp.`, tab: "daily-sales", due_date: null, auto: true });
+        title: `${name}: no bank deposit of cash for ${gap > 60 ? "over 60" : gap} days`,
+        body: `${inr(cashSince)} cash sales since ${lastDep == null ? "the last 60 days began" : "the last deposit on " + nice(lastDep)}. Deposit the cash and enter it under Bank Deposit in Daily Sales & Exp.`, tab: "daily-sales", due_date: null, auto: true });
+    }
+    // 13 · Physical cash count differs from the book closing by more than the outlet's limit, no reason (last 14 days).
+    if (settings.cashCountCheck) {
+      const lim = o.cashDiffLimit === "" || o.cashDiffLimit == null || isNaN(Number(o.cashDiffLimit)) ? 100 : Math.max(0, Number(o.cashDiffLimit));
+      const cc = get("salonos_cash_counts", {}) || {};
+      const bad = Object.keys(cc).filter((iso) => { const dn = parseDay(iso); const r = cc[iso] || {}; return dn != null && dn >= today - 14 && Math.abs(num(r.diff)) > Math.max(0.5, lim) && !String(r.reason ?? "").trim(); }).sort();
+      if (bad.length) out.push({ akey: `cash_count:${sid}`, outlet_id: sid, kind: "cash", severity: "urgent",
+        title: `${name}: cash count doesn't match the book on ${bad.length} day${bad.length === 1 ? "" : "s"}`,
+        body: bad.slice(0, 6).map((iso) => `• ${nice(parseDay(iso)!)}: counted ${inr(num(cc[iso].count))} vs book ${inr(num(cc[iso].closing))} (${num(cc[iso].diff) < 0 ? "short " : "excess "}${inr(Math.abs(num(cc[iso].diff)))})`).join("\n") +
+          "\nEnter the reason in Daily Sales & Exp (Physical Cash Count).", tab: "daily-sales", due_date: null, auto: true });
+    }
+    // 14 · Staff with more than 3 absences this month (a half day counts half).
+    if (settings.absenceCheck) {
+      const many = emps.map((e) => { const days = (att[`${e.id}_${Y}_${M}`]?.days || []) as any[]; const a = days.filter((d) => d === "absent").length + days.filter((d) => d === "half").length / 2; return { e, a }; }).filter((x) => x.a > 3);
+      if (many.length) out.push({ akey: `absence:${sid}:${mCode(thisMonth)}:${many.map((x) => x.e.id).sort().join(",").slice(0, 120)}`, outlet_id: sid, kind: "attendance", severity: "info",
+        title: `${name}: ${many.length} staff with more than 3 absences in ${MONTHS[M]}`,
+        body: many.map((x) => `• ${x.e.name}: ${x.a} days`).join("\n"), tab: "attendance", due_date: null, auto: true });
     }
     // 11 · Months unlocked in the last 7 days, with the reasons (weekly digest for the Super Admin).
     if (settings.auditWatch) {

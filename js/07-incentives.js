@@ -13,7 +13,7 @@ function IncentiveWorkingTabs({period,salon,user}={}){
   const [rulesSignal,setRulesSignal]=useState(0);
   const approver=isSummaryApproverRole(user); // given Edit here — keeps Summary Approval as a tab
   const tabBar=React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
-    [{id:'incentive',label:'Incentive Working'},{id:'plan',label:'Monthly Plan'},{id:'incentive-payment',label:'Incentive Payment'},{id:'comparative',label:'Comparative Sheet'},{id:'staff-report',label:'Staff Work Report'},...(approver?[{id:'summary',label:'Summary Approval'}]:[])].map(t=>
+    [{id:'incentive',label:'Incentive Working'},{id:'plan',label:'Monthly Plan'},{id:'tracker',label:'Target Tracker'},{id:'incentive-payment',label:'Incentive Payment'},{id:'comparative',label:'Comparative Sheet'},{id:'staff-report',label:'Staff Work Report'},...(approver?[{id:'summary',label:'Summary Approval'}]:[])].map(t=>
       React.createElement('button',{key:t.id,className:`tab-btn ${subTab===t.id?'active':''}`,onClick:()=>setSubTab(t.id)},t.label)
     )
   );
@@ -23,6 +23,7 @@ function IncentiveWorkingTabs({period,salon,user}={}){
   return React.createElement('div',{className:'fade-in'},
     tabBar,
     React.createElement('div',{style:{display:subTab==='incentive'?'block':'none'}},React.createElement(IncentiveWorkingCore,{period,salon,user,rulesSignal})),
+    subTab==='tracker'&&React.createElement(IncentiveTargetTracker,{period,salon}),
     subTab==='plan'&&React.createElement(MonthlyIncentivePlanSheet,{period,salon,user,onOpenRules:()=>{setSubTab('incentive');setRulesSignal(n=>n+1);}}),
     React.createElement('div',{style:{display:subTab==='incentive-payment'?'block':'none'}},React.createElement(IncentivePaymentSheet,{period,salon})),
     React.createElement('div',{style:{display:subTab==='comparative'?'block':'none'}},React.createElement(IncentiveComparativeSheet,{period,salon})),

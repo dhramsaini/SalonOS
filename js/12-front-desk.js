@@ -762,6 +762,7 @@ function ClientCRM({salon}){
           h('div',{className:'kv'},h('span',null,'Last visit'),h('span',null,fdPretty(c.last)+' ('+c.since+'d)')),
           h('div',{className:'kv'},h('span',null,'Usual service'),h('span',null,c.fav)),
           h('div',{className:'kv'},h('span',null,'Preferred stylist'),h('span',null,c.stylist)),
+          c.tier&&c.tier!=='None'&&h('div',{className:'kv'},h('span',null,c.tier+' valid till'),h('input',{type:'date',className:'form-control',style:{width:150,padding:'2px 6px'},value:c.tierValidTill||'',onChange:e=>{const v=e.target.value;setClients(l=>l.map(x=>x.id===c.id?{...x,tierValidTill:v}:x));}})),
           h('div',{className:'kv'},h('span',null,'Membership'),h('span',null,c.tier)),
           h('div',{className:'kv'},h('span',null,'Birthday'),h('span',null,c.birthday)),
           c.notes?h('div',{className:'help-note',style:{marginTop:12}},'Note: '+c.notes):null,

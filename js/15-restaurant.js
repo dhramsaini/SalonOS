@@ -168,11 +168,15 @@ function licenceStatus(date,paid){
   return days<0?'overdue':days<=30?'soon':dueStatusFor(date,false);
 }
 function autoLicenceDueItemsFor(sid){
-  const o=outletSettings(sid);if(o.businessType!=='Restaurant')return[];
+  const o=outletSettings(sid);const rest=o.businessType==='Restaurant';
   const overrides=loadDueAutoOverrides(sid);
-  const list=[['fssai','FSSAI licence renewal',o.fssaiValidTill,o.fssaiNo],['fire','Fire NOC renewal',o.fireNocValidTill,''],
+  // Every outlet: shop & establishment, insurance, signage, trade licence, fire NOC and any other renewals
+  // added in Master Sheet; restaurants also FSSAI and (bar) liquor licence.
+  const list=[...(rest?[['fssai','FSSAI licence renewal',o.fssaiValidTill,o.fssaiNo]]:[]),['fire','Fire NOC renewal',o.fireNocValidTill,''],
     ['trade','Health / trade licence renewal',o.tradeLicenceValidTill,''],
-    ...(o.servesLiquor?[['liquor','Liquor (bar) licence renewal',o.liquorLicenceValidTill,o.liquorLicenceNo]]:[])];
+    ...(rest&&o.servesLiquor?[['liquor','Liquor (bar) licence renewal',o.liquorLicenceValidTill,o.liquorLicenceNo]]:[]),
+    ['shop','Shop & establishment licence renewal',o.shopLicenceValidTill,''],['insurance','Shop insurance renewal',o.insuranceValidTill,''],['signage','Signage / pollution permit renewal',o.signageValidTill,''],
+    ...((o.renewals||[]).filter(r=>r&&r.name&&r.date).map((r,i)=>['other'+i,String(r.name)+' renewal',r.date,'']))];
   return list.filter(x=>x[2]).map(([k,label,date,no])=>{
     const id='auto-lic-'+k+'-'+date;const ov=overrides[id]||{};
     return{id,auto:true,type:'Licence Renewal',desc:label+(no?' — '+no:'')+' (valid till '+date.split('-').reverse().join('/')+')',due:date,amount:0,

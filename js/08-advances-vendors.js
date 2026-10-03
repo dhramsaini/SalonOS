@@ -1377,7 +1377,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
 
     // ── Tab bar ──
     React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
-      [{id:'invoices',label:'🧾 Invoices & Payments'},{id:'outstanding',label:'⏳ Outstanding Invoices'},{id:'performa',label:'📝 Performa Invoice'},{id:'dashboard',label:'📊 Dashboard'},{id:'master',label:'📋 Master Vendor List'}].map(t=>
+      [{id:'invoices',label:'🧾 Invoices & Payments'},{id:'messages',label:'📣 Messages'},{id:'outstanding',label:'⏳ Outstanding Invoices'},{id:'performa',label:'📝 Performa Invoice'},{id:'dashboard',label:'📊 Dashboard'},{id:'master',label:'📋 Master Vendor List'}].map(t=>
         React.createElement('button',{key:t.id,className:`tab-btn ${tab===t.id?'active':''}`,onClick:()=>setTab(t.id)},t.label)
       )
     ),
@@ -1568,6 +1568,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
     // ══════════════════════════════════
     // TAB 3 — OUTSTANDING INVOICES (payment not yet made, in full)
     // ══════════════════════════════════
+    tab==='messages'&&React.createElement(VendorMessagesPanel,{salonId,salon}),
     tab==='outstanding'&&(()=>{
       const outstandingInv=outstandingInvBase;
       const shown=outFilters.filteredRows;

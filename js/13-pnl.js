@@ -382,7 +382,7 @@ function OutletPnLCore({salon,period}){
   const pct=(n)=>(n>0?'+':'')+n.toFixed(1)+'%';
 
   const compare=(sel)=>{
-    if(budget)return bud(sel(cur));
+    if(budget){const b=budgetPlFor(sid,fy,cur);return b?sel(b):null;} // real budget (P&L → Budget)
     if(!base)return null;
     return sel(base);
   };
@@ -1720,7 +1720,7 @@ function CollectionComparisonSheet({salon,period}={}){
 function OutletPnLSheet({salon,period,onNavTab}={}){
   const [subTab,setSubTab]=useState('pnl');
   const tabBar=React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
-    [{id:'pnl',label:'P&L Statement'},{id:'mtd',label:'MTD P&L'},{id:'variance',label:'Variance Analysis'},{id:'cashflow',label:'Cash Flow'},{id:'compare',label:'Compare'},{id:'collcmp',label:'Collection Comparison'},{id:'gst',label:'GST Summary'},{id:'close',label:'Month-End Close'}].map(t=>
+    [{id:'pnl',label:'P&L Statement'},{id:'mtd',label:'MTD P&L'},{id:'variance',label:'Variance Analysis'},{id:'cashflow',label:'Cash Flow'},{id:'compare',label:'Compare'},{id:'collcmp',label:'Collection Comparison'},{id:'gst',label:'GST Summary'},{id:'budget',label:'Budget'},{id:'bankreco',label:'Bank Reco'},{id:'forecast',label:'30-day Forecast'},{id:'close',label:'Month-End Close'}].map(t=>
       React.createElement('button',{key:t.id,className:`tab-btn ${subTab===t.id?'active':''}`,onClick:()=>setSubTab(t.id)},t.label)
     )
   );
@@ -1743,6 +1743,9 @@ function OutletPnLSheet({salon,period,onNavTab}={}){
     subTab==='collcmp'&&React.createElement(CollectionComparisonSheet,{salon,period}),
     subTab==='mtd'&&React.createElement(MtdPnlSheet,{salon,period}),
     subTab==='gst'&&React.createElement(GstSummarySheet,{salon,period}),
+    subTab==='budget'&&React.createElement(BudgetSheet,{salon,period}),
+    subTab==='bankreco'&&React.createElement(BankRecoSheet,{salon,period}),
+    subTab==='forecast'&&React.createElement(CashForecastSheet,{salon}),
     subTab==='close'&&React.createElement(MonthCloseChecklist,{salon,period,onNavTab})
   );
 }
