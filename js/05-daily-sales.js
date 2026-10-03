@@ -1232,14 +1232,11 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
 
   const saveDay=()=>{setSaveMsg('✓ Data saved for '+toLabel(today));setTimeout(()=>setSaveMsg(''),3000);};
 
-  // Helper: get first names of employees for display in cells
+  // Helper: the cell shows only how many employees were paid, never their names (open the cell to
+  // see who got what).
   const getEmpLabel=(entries)=>{
-    var names=entries.map(function(e){
-      var nm=e.empName||'';
-      var sp=nm.indexOf(String.fromCharCode(32));
-      return sp>0?nm.slice(0,sp):nm;
-    });
-    return String.fromCharCode(128101)+String.fromCharCode(32)+names.join(String.fromCharCode(32)+String.fromCharCode(38)+String.fromCharCode(32));
+    const n=new Set((entries||[]).map(e=>e&&e.empName).filter(Boolean)).size||(entries||[]).length;
+    return String.fromCharCode(128101)+' '+n+(n===1?' employee':' employees');
   };
 
   const exportCSV=async()=>{
