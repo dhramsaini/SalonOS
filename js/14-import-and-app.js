@@ -540,6 +540,8 @@ function App(){
   // or a form/modal open) so their work is never yanked away — a banner offers it instead, and it
   // applies by itself as soon as they pause. ──
   const [dataVersion,setDataVersion]=useState(0);
+  const _viewRef=useRef({page:null,sid:null});
+  _viewRef.current={page:activePage,sid:selectedSalon?selectedSalon.id:null};
   const [cloudUpdateWaiting,setCloudUpdateWaiting]=useState(false);
   // New-version check: version.json is tiny and fetched uncached; if it names a different
   // version than the one running, offer a one-tap update (held back while edits are still saving).
@@ -576,6 +578,14 @@ function App(){
       setCloudUpdateWaiting(false);
       if(!applied.length)return;
       reloadAppLevelData();
+      // Re-mount (which resets tabs, filters and scroll) only when a change touches what's on screen:
+      // inside an outlet, that outlet's data or shared settings - not another outlet's saves, and
+      // never background logs (audit log, due snapshot, a default period, sent-message logs). The
+      // data itself is already in this browser, so other screens show it when they next open.
+      const pg=_viewRef.current;
+      const shown=applied.filter(k=>!/^salonos_(audit_log|due_snapshot|period_default|sent_)/.test(k))
+        .filter(k=>{const m=/_outlet_(\d+)$/.exec(k);return !m||!(pg.page==='salon'&&pg.sid!=null)||String(pg.sid)===m[1];});
+      if(!shown.length)return;
       setDataVersion(v=>v+1);
       setTimeout(()=>{const el=document.querySelector('.content');if(el)el.scrollTop=top;},60);
     }catch(e){}
