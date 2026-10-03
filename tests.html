@@ -633,6 +633,9 @@
         safeLocalSet(outletKey('salonos_billing_invoices',912),JSON.stringify([{customer:'Riya',phone:'9810000001',date:new Date(Date.now()-50*864e5).toISOString().slice(0,10),items:[{name:'Global Hair Colour'}],status:'Paid'}]));
         const cr=clientReminderLists(912,[{id:'c1',name:'Mira',phone:'9810000002',tier:'Gold membership',tierValidTill:new Date(Date.now()+5*864e5).toISOString().slice(0,10)}]);
         eq('Client reminders: membership expiring, repeat hair colour due after 45 days',[cr.expiring.length,cr.repeat.map(x=>x.svc)],[1,['Hair colour']]);
+        const cl=closeChecklistStatus(908,2026,8);const flat=cl.flatMap(p=>p.items);
+        eq('Full month-end checklist: nine phases, automatic items follow the data, manual ones start unticked',
+          [cl.length,flat.find(i=>i.id==='s-cradle').done,flat.find(i=>i.id==='s-diff').isAuto,flat.find(i=>i.id==='f-pack').done,flat.some(i=>i.id==='s-apps')],[9,true,true,false,false]);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.

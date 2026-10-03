@@ -922,7 +922,8 @@ const SALON_SCOPED_KEY_BASES=[
   // — passing these as bases still resolves to the exact same keys via outletKey below.
   'salonos_manager_final_months_attendance','salonos_manager_final_months_dse',
   // Automation / approvals (js/16-18).
-  'salonos_incentive_monthly_plans','salonos_collection_cmp_reasons','salonos_due_snapshot','salonos_sent_payslip','salonos_sent_client','salonos_pl_revenue_source'
+  'salonos_incentive_monthly_plans','salonos_collection_cmp_reasons','salonos_due_snapshot','salonos_sent_payslip','salonos_sent_client','salonos_pl_revenue_source',
+  'salonos_close_checklist','salonos_cash_counts','salonos_sales_targets','salonos_pl_budget','salonos_exit_ticks','salonos_cash_forecast_opening'
 ];
 function deleteAllSalonScopedData(salonId){
   SALON_SCOPED_KEY_BASES.forEach(base=>{cachedLocalRemove(outletKey(base,salonId));});

@@ -115,7 +115,8 @@ function MonthCloseChecklist({salon,period,onNavTab}={}){
           background:s.done?'rgba(76,175,125,0.15)':'var(--bg3)',color:s.done?'var(--green)':'var(--text3)'}},s.done?'✓':String(i+1)),
         h('div',{style:{flex:1}},h('div',{style:{fontSize:13.5,fontWeight:600,color:s.done?'var(--text)':'var(--text)'}},s.label),
           s.detail&&h('div',{style:{fontSize:11.5,color:s.done?'var(--text3)':'var(--orange)'}},s.detail)),
-        !s.done&&onNavTab&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>onNavTab(s.tab)},'Open →')))));
+        !s.done&&onNavTab&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>onNavTab(s.tab)},'Open →')))),
+    h(FullCloseChecklist,{sid,cal,steps,onNavTab}));
 }
 function MonthCloseBoard({accessibleSalons,onOpenOutletTab}){
   const h=React.createElement;
@@ -208,4 +209,126 @@ function bankLearnedNatures(rows){
 function bankLearnedNatureFor(learned,r){
   const sig=bankNarrationSig(r&&r.description);if(sig.length<6)return null;
   return learned[(Number(r.credit)>0?'C|':'D|')+sig]||null;
+}
+
+// ── Full month-end checklist (the nine phases of the Month-End Closing Checklist document) ──
+// Items the app can verify tick themselves from monthCloseStepsFor (auto:'<step key>'); the rest
+// are ticked by hand, each recording who ticked it and when (kv salonos_close_checklist_outlet_<id>:
+// {'YYYY-MM': {itemId: {by, at}}}). Read-only once the month's P&L is Final.
+const CLOSE_CHECKLIST=[
+  {phase:'1 · Daily discipline',items:[
+    {id:'d-sales',text:'Daily Sales & Exp filled for every day of the month',auto:'sales',tab:'daily-sales'},
+    {id:'d-cashcount',text:'Physical Cash Count entered daily; differences over the limit explained',tab:'daily-sales'},
+    {id:'d-deposits',text:'Cash Packet, Cash Handover and Bank Deposit entered the day they happened',tab:'daily-sales'},
+    {id:'d-att',text:'Attendance marked every day for every employee',tab:'attendance'},
+    {id:'d-adv',text:'Cash advances, commissions, tips and overtime entered',tab:'daily-sales'},
+    {id:'d-bills',text:'Vendor bills booked in the week received',tab:'vendors'},
+    {id:'d-alerts',text:'Bell alerts for the month cleared'}]},
+  {phase:'2 · Sales and collection close',items:[
+    {id:'s-cradle',text:'CRADLE collection report imported for the full month',auto:'cradle',tab:'collection-sheet'},
+    {id:'s-settle',text:'Card and UPI settlements matched to the bank in Collection Reco',tab:'collection-sheet'},
+    {id:'s-diff',text:'Collection Comparison: every flagged day has a reason',auto:'coll-diff',tab:'outlet-pnl'},
+    {id:'s-outst',text:'Outstanding Sale / Recovery agree with the customer list',tab:'daily-sales'},
+    {id:'s-source',text:'Revenue source for the month chosen (Collection Reco or Daily Sales)',tab:'outlet-pnl'},
+    {id:'s-apps',text:'Restaurant: Swiggy / Zomato / EazyDiner payouts entered and checked',tab:'aggregators'},
+    {id:'s-final',text:'Daily Sales & Exp marked Month Final',auto:'dse-final',tab:'daily-sales'}]},
+  {phase:'3 · Bank and cash reconciliation',items:[
+    {id:'b-import',text:'Bank statement imported for the full month',auto:'bank',tab:'bank-statement'},
+    {id:'b-nature',text:'Every bank line has a Nature',tab:'bank-statement'},
+    {id:'b-reco1',text:'Bank Reco: lines not recorded in SalonOS cleared',tab:'outlet-pnl'},
+    {id:'b-reco2',text:'Bank Reco: payments not found in the bank explained',tab:'outlet-pnl'},
+    {id:'b-deposit',text:'Bank deposits in Daily Sales match the bank credits',tab:'daily-sales'},
+    {id:'b-cash',text:'Month-end cash counted = book Closing Cash Balance (or explained)',tab:'daily-sales'},
+    {id:'b-charges',text:'Bank charges and interest booked',tab:'bank-statement'}]},
+  {phase:'4 · Payables and expenses',items:[
+    {id:'p-bills',text:'All vendor bills of the month booked with GST split',tab:'vendors'},
+    {id:'p-approve',text:'Bills above the approval limit approved',tab:'vendors'},
+    {id:'p-recurring',text:'Rent and fixed costs billed or estimated, not both',tab:'recurring-expenses'},
+    {id:'p-variable',text:'Electricity / water and other variable bills booked',tab:'recurring-expenses'},
+    {id:'p-stock',text:'Purchases booked and stock counted (restaurants: closing value in Food Cost)',tab:'inventory'},
+    {id:'p-payments',text:'Vendor payments recorded with mode and reference; no duplicates',tab:'vendors'},
+    {id:'p-tds',text:'TDS deducted on rent, professional and contract bills',tab:'vendors'},
+    {id:'p-assets',text:'New fixed assets added to the Fixed Asset Register',tab:'fixed-assets'}]},
+  {phase:'5 · Payroll close',items:[
+    {id:'y-att',text:'Attendance marked Month Final',auto:'att-final',tab:'attendance'},
+    {id:'y-plan',text:'Monthly Incentive Plan approved by Owner / ASM',plan:true,tab:'incentive-working'},
+    {id:'y-salary',text:'Salary Working checked and all rows approved',auto:'salary',tab:'salary-working'},
+    {id:'y-reviews',text:'Salary and incentive summaries reviewed by Manager, Owner and ASM',tab:'salary-working'},
+    {id:'y-staffrep',text:'CRADLE Staff Work report imported for incentive',tab:'incentive-working'},
+    {id:'y-inc',text:'Incentive Working approved',auto:'incentive',tab:'incentive-working'},
+    {id:'y-pay',text:'Salary and incentive paid (bank file / cash entries) by the due day',tab:'bank-payment'},
+    {id:'y-slips',text:'Payslips sent',tab:'salary-working'},
+    {id:'y-exit',text:'Exit checklist complete for staff who left',tab:'master-salary'}]},
+  {phase:'6 · Statutory and tax',items:[
+    {id:'t-tds',text:'TDS paid by the 7th',tab:'due-dates'},
+    {id:'t-gstr1',text:'GSTR-1 filed by the 11th',tab:'outlet-pnl'},
+    {id:'t-pf',text:'PF ECR uploaded and challan paid by the 15th',tab:'salary-working'},
+    {id:'t-esic',text:'ESIC contribution uploaded and paid by the 15th',tab:'salary-working'},
+    {id:'t-gstr3b',text:'GSTR-3B filed and GST paid by the 20th',tab:'outlet-pnl'},
+    {id:'t-pt',text:'Professional Tax paid by the state due day',tab:'due-dates'},
+    {id:'t-marked',text:'Each challan marked paid in Due Dates with reference',tab:'due-dates'}]},
+  {phase:'7 · Monthly P&L review',items:[
+    {id:'l-revenue',text:'Revenue lines tie to Collection Reco / Daily Sales (÷ 1.05)',tab:'outlet-pnl'},
+    {id:'l-other',text:'Other Income entered with a note',tab:'outlet-pnl'},
+    {id:'l-direct',text:'Direct cost agrees with Vendors and Daily Sales',tab:'outlet-pnl'},
+    {id:'l-emp',text:'Employee cost matches Salary and Incentive Working',tab:'outlet-pnl'},
+    {id:'l-opex',text:'Each operating expense annexure reviewed; nothing counted twice',tab:'outlet-pnl'},
+    {id:'l-dep',text:'Depreciation and interest entered',tab:'outlet-pnl'},
+    {id:'l-variance',text:'Movements over 10% vs last month and budget explained',tab:'outlet-pnl'}]},
+  {phase:'8 · Cash flow',items:[
+    {id:'c-statement',text:'Cash Flow reviewed: PBT, depreciation, payables, receivables, advances',tab:'outlet-pnl'},
+    {id:'c-investing',text:'Investing and financing (assets, owner money, loans) entered',tab:'outlet-pnl'},
+    {id:'c-closing',text:'Closing cash + bank agrees with cash count and bank statement',tab:'outlet-pnl'},
+    {id:'c-forecast',text:'30-day forecast reviewed; any shortfall planned for',tab:'outlet-pnl'}]},
+  {phase:'9 · Sign-off and reporting',items:[
+    {id:'f-pnl',text:'P&L marked Final (locks the month)',auto:'pnl',tab:'outlet-pnl'},
+    {id:'f-tally',text:'Vouchers synced to Tally; rejections fixed',tab:'tally-export'},
+    {id:'f-pack',text:'Audit pack downloaded and filed'},
+    {id:'f-email',text:'Final P&L sent to the owner'},
+    {id:'f-next',text:'Next month set up: incentive plan, sales target, budget',tab:'incentive-working'},
+    {id:'f-backup',text:'Backup file downloaded and kept outside SalonOS'}]}];
+function loadCloseTicks(sid){try{return JSON.parse(cachedLocalGet(outletKey('salonos_close_checklist',sid))||'{}')||{};}catch(e){return{};}}
+function closeChecklistStatus(sid,year,month,steps){
+  const ym=year+'-'+String(month+1).padStart(2,'0');const ticks=loadCloseTicks(sid)[ym]||{};
+  const rest=isRestaurantOutlet(sid);
+  const byKey={};(steps||monthCloseStepsFor(sid,year,month)).forEach(s=>{byKey[s.key]=s;});
+  const plan=typeof approvedIncPlanFor==='function'?approvedIncPlanFor(sid,year,month):null;
+  const skip=it=>(it.id==='s-apps'&&!rest)||(rest&&['s-cradle','s-diff','y-inc','y-staffrep','y-plan'].includes(it.id));
+  return CLOSE_CHECKLIST.map(P=>({phase:P.phase,items:P.items.filter(it=>!skip(it)).map(it=>{
+    const st=it.auto?byKey[it.auto]:null;
+    const isAuto=!!(it.auto||it.plan);
+    const t=ticks[it.id];
+    return{...it,isAuto,done:isAuto?(it.plan?!!plan:!!(st&&st.done)):!!t,by:t&&t.by,at:t&&t.at,detail:st&&st.detail};
+  })}));
+}
+function FullCloseChecklist({sid,cal,steps,onNavTab}){
+  const h=React.createElement;
+  const [tick,setTick]=useState(0);
+  const {fy,mi}=calToFYMI(cal.year,cal.month);
+  const locked=isPnlFinal(sid,fy,mi);
+  const ym=cal.year+'-'+String(cal.month+1).padStart(2,'0');
+  const phases=closeChecklistStatus(sid,cal.year,cal.month,steps);
+  const all=phases.flatMap(p=>p.items),done=all.filter(i=>i.done).length;
+  const toggle=(it,v)=>{
+    if(locked||it.isAuto)return;
+    const m=loadCloseTicks(sid);const cur={...(m[ym]||{})};
+    if(v){const u=currentSessionUser();cur[it.id]={by:(u&&u.name)||'',at:new Date().toISOString()};}else delete cur[it.id];
+    m[ym]=cur;safeLocalSet(outletKey('salonos_close_checklist',sid),JSON.stringify(m));setTick(x=>x+1);
+  };
+  const exportX=async()=>{try{await afDownloadXlsx('Month-end checklist',[['Phase','Item','Done','Ticked by','When','How checked'],...phases.flatMap(p=>p.items.map(i=>[p.phase,i.text,i.done?'Yes':'No',i.by||'',i.at?new Date(i.at).toLocaleString('en-IN'):'',i.isAuto?'Automatic':'Manual']))],'Month_End_Checklist_'+String(outletSettings(sid).name||'Outlet').split('—')[0].trim().replace(/[^A-Za-z0-9]+/g,'_')+'_'+ym+'.xlsx');}catch(e){window.alert(e.message||String(e));}};
+  return h('div',{className:'card',style:{marginTop:16,padding:0}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'14px 16px',borderBottom:'1px solid var(--border)',flexWrap:'wrap',gap:8}},
+      h('div',null,h('div',{className:'card-title',style:{margin:0}},'Full month-end checklist'),
+        h('div',{style:{fontSize:12,color:'var(--text3)'}},done+' of '+all.length+' done · ⚙ = ticks itself from the data'+(locked?' · P&L is Final — read-only':''))),
+      h('button',{className:'btn btn-ghost btn-sm',onClick:exportX},'⬇ Excel')),
+    phases.map(p=>{const pd=p.items.filter(i=>i.done).length;
+      return h('details',{key:p.phase,open:pd<p.items.length,style:{borderBottom:'1px solid var(--border)'}},
+        h('summary',{style:{cursor:'pointer',padding:'10px 16px',fontWeight:600,fontSize:13}},
+          p.phase,h('span',{style:{float:'right',fontWeight:500,color:pd===p.items.length?'var(--green)':'var(--text3)'}},pd+'/'+p.items.length)),
+        p.items.map(it=>h('div',{key:it.id,style:{display:'flex',alignItems:'center',gap:10,padding:'6px 16px 6px 28px',fontSize:12.5}},
+          h('input',{type:'checkbox',checked:!!it.done,disabled:locked||it.isAuto,title:it.isAuto?'Ticks itself from the data':'',onChange:e=>toggle(it,e.target.checked)}),
+          h('span',{style:{flex:1,color:it.done?'var(--text3)':'var(--text)'}},(it.isAuto?'⚙ ':'')+it.text,
+            it.detail&&!it.done?h('span',{style:{color:'var(--orange)',marginLeft:6}},'— '+it.detail):null),
+          it.by?h('span',{style:{fontSize:11,color:'var(--text3)',whiteSpace:'nowrap'}},it.by+' · '+new Date(it.at).toLocaleDateString('en-IN')):null,
+          !it.done&&it.tab&&onNavTab?h('button',{className:'btn btn-ghost btn-sm',style:{padding:'2px 8px'},onClick:()=>onNavTab(it.tab)},'Open →'):null)));}));
 }
