@@ -1066,7 +1066,7 @@ function App(){
           React.createElement('div',{className:'user-avatar'},user?.name?.slice(0,2).toUpperCase()),
           React.createElement('div',null,
             React.createElement('div',{className:'user-name'},user?.name),
-            React.createElement('div',{className:'user-role'},user?.role)
+            React.createElement('div',{className:'user-role'},roleLabelForUser(user))
           )
         ),
         React.createElement('div',{style:{fontSize:9.5,color:'var(--text3)',textAlign:'center',marginTop:10,paddingTop:10,borderTop:'1px solid var(--border)',letterSpacing:'0.02em'}},'Developed By CA Dharmender Saini, Gurugram')
@@ -1124,7 +1124,7 @@ function App(){
           React.createElement('div',{className:'hide-phone',style:{fontSize:12,color:'var(--text3)'}},new Date().toLocaleDateString('en-IN',{weekday:'short',month:'short',day:'numeric',year:'numeric'})),
           (()=>{const c=!CLOUD_SYNC_ENABLED?'var(--green)':cloudStatus.state==='error'?'var(--red)':cloudStatus.state==='saving'?'var(--orange)':'var(--green)';
             return React.createElement('div',{className:'hide-phone',title:!CLOUD_SYNC_ENABLED?'Synced locally on this device':cloudStatus.state==='error'?'Cloud save failing — retrying':cloudStatus.state==='saving'?'Saving to the cloud…':'Live — synced with the cloud',style:{width:8,height:8,borderRadius:'50%',background:c,boxShadow:'0 0 6px '+c}});})(),
-          React.createElement('span',{className:'role-chip hide-phone'},user?.role),
+          React.createElement('span',{className:'role-chip hide-phone'},roleLabelForUser(user)),
           React.createElement('button',{className:'topbar-icon-btn hide-phone',onClick:logout},React.createElement(IconLogOut,null),React.createElement('span',null,'Sign Out')),
           // Phone: everything above folds into one ⋯ menu so the topbar stays a single row.
           React.createElement('button',{className:'topbar-icon-btn show-phone','aria-label':'More options','aria-expanded':phoneMenuOpen,style:{fontSize:18,padding:'4px 12px',minHeight:38},onClick:()=>setPhoneMenuOpen(o=>!o)},'⋯')

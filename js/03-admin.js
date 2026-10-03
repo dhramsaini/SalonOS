@@ -2170,7 +2170,7 @@ function UserAccessByOutlet({users,salons,sheets,onEdit}){
             const inactive=(x.u.status||'Active')!=='Active';
             return h('tr',{key:x.u.id,style:{opacity:inactive?0.55:1,verticalAlign:'top'}},
               h('td',null,h('div',{style:{fontWeight:600}},x.u.name),h('div',{style:{fontSize:11,color:'var(--text3)'}},x.u.email)),
-              h('td',null,x.u.role),
+              h('td',null,roleLabelForUser(x.u)),
               h('td',null,h('span',{className:'badge '+(x.outlet==='View and Edit'||sa?'badge-green':x.outlet==='View Only'?'badge-blue':'badge-amber'),style:{whiteSpace:'nowrap'}},x.outlet)),
               h('td',{style:{maxWidth:360}},sa?chip('All sheets','Edit'):(ed.length?(open[key]||ed.length<=6?ed.map(sh=>chip(sh.label,'Edit')):[...ed.slice(0,5).map(sh=>chip(sh.label,'Edit')),h('button',{key:'more',type:'button',className:'btn btn-ghost btn-sm',style:{padding:'1px 8px',fontSize:11},onClick:()=>setOpen(o=>({...o,[key]:true}))},'+'+(ed.length-5)+' more')]):h('span',{style:{color:'var(--text3)'}},'—'))),
               h('td',{style:{maxWidth:300}},vw.length?vw.map(sh=>chip(sh.label,'View Only')):h('span',{style:{color:'var(--text3)'}},'—')),
@@ -2240,8 +2240,12 @@ function UserManagement(){
   ];
   const PERMISSION_LEVELS=['No Access','View Only','Edit'];
   const OUTLET_ACCESS_LEVELS=['No Access','View Only','View and Edit'];
-  const BLANK={name:'',email:'',password:'',role:'Salon Manager',access:'Viewer',status:'Active',sheetAccessByOutlet:{},outletAccess:{}};
-  const salonsList=loadSalonsFromStorage();
+  const BLANK={name:'',email:'',password:'',role:'Salon Manager',access:'Viewer',status:'Active',sheetAccessByOutlet:{},outletAccess:{},business:''};
+  const salonsAll=loadSalonsFromStorage();
+  // Which business the user is being set up for (asked every time): only outlets of that kind are
+  // listed for access, and for Restaurant the "Salon Manager" role is shown as "Manager".
+  const [bizPick,setBizPick]=useState('');
+  const salonsList=salonsAll.filter(s=>bizPick==='Both'||(bizPick==='Restaurant'?s.businessType==='Restaurant':bizPick==='Salon'?s.businessType!=='Restaurant':true));
   const setOutletLevel=(outletId,level)=>setForm(f=>({...f,outletAccess:{...f.outletAccess,[outletId]:level}}));
   const bulkSetOutlets=(level)=>setForm(f=>({...f,outletAccess:Object.fromEntries(salonsList.map(s=>[s.id,level]))}));
   // outletIds is what the rest of the app (outlet switcher, Review Centre) actually checks —
@@ -2280,7 +2284,7 @@ function UserManagement(){
   const allSheetsChecked=checkedSheets.size>0&&checkedSheets.size===PERMISSION_SHEETS.length;
   const toggleAllSheetsChecked=()=>setCheckedSheets(allSheetsChecked?new Set():new Set(PERMISSION_SHEETS.map(s=>s.id)));
 
-  const openAdd=()=>{setForm(BLANK);setEditId(null);setShowFormPass(false);setShowModal(true);};
+  const openAdd=()=>{setForm(BLANK);setBizPick('');setEditId(null);setShowFormPass(false);setShowModal(true);};
   const openEdit=(u)=>{
     const outletAccess=u.outletAccess||Object.fromEntries((u.outletIds||[]).map(id=>[id,'View and Edit']));
     let sheetAccessByOutlet=u.sheetAccessByOutlet;
@@ -2293,11 +2297,13 @@ function UserManagement(){
       sheetAccessByOutlet=Object.fromEntries(ids.map(id=>[id,{...legacyFlat}]));
     }
     setForm({name:u.name,email:u.email,password:'',role:u.role,access:u.access,status:u.status,sheetAccessByOutlet,outletAccess,accessUntil:u.accessUntil||''});
+    setBizPick(userBusinessOf({outletIds:Object.keys(outletAccess).filter(k=>outletAccess[k]&&outletAccess[k]!=='No Access')})||'');
     setEditId(u.id);setShowFormPass(false);setShowModal(true);
   };
   const save=async()=>{
     if(!form.name.trim())return toast('Name is required','error');
     if(!form.email.trim()||!form.email.includes('@'))return toast('Enter a valid email','error');
+    if(!bizPick)return toast('Choose the business this user is for — Salon, Restaurant or Both','error');
     if(!editId&&!form.password.trim())return toast('Set a password for this new user','error');
     if(form.password&&form.password.length<8)return toast('Password must be at least 8 characters','error');
     const emailTaken=users.some(u=>u.email.toLowerCase()===form.email.trim().toLowerCase()&&u.id!==editId);
@@ -2455,7 +2461,7 @@ function UserManagement(){
                 React.createElement('div',{style:{width:30,height:30,borderRadius:'50%',background:'linear-gradient(135deg,var(--accent-fill,var(--accent)),var(--purple))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:600,color:'#fff',flexShrink:0}},u.name.slice(0,2).toUpperCase()),
                 React.createElement('span',{style:{fontWeight:500,color:'var(--text)'}},u.name)
               )),
-              React.createElement('td',null,u.email),React.createElement('td',null,u.role),
+              React.createElement('td',null,u.email),React.createElement('td',null,roleLabelForUser(u)),
               React.createElement('td',null,(u.role==='Super Admin'||u.role==='Reviewer')?React.createElement('span',{className:'badge badge-amber'},'All Outlets'):(()=>{
                 const oa=u.outletAccess||Object.fromEntries((u.outletIds||[]).map(id=>[id,'View and Edit']));
                 const editCount=Object.values(oa).filter(v=>v==='View and Edit').length;
@@ -2490,8 +2496,18 @@ function UserManagement(){
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-9'},'Full Name *'),React.createElement('input',{id:'f-9',className:'form-control',placeholder:'Full name',value:form.name,onChange:fc('name')})),
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-10'},'Email *'),React.createElement('input',{id:'f-10',className:'form-control',placeholder:'email@company.com',value:form.email,onChange:fc('email')}),form.email&&!isValidEmailFormat(form.email)&&fieldWarning('Doesn\u2019t look like a valid email address.'))
         ),
+        React.createElement('div',{className:'form-group'},React.createElement('label',null,'Business *'),
+          React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},[['Salon','💈 Salon'],['Restaurant','🍽 Restaurant'],['Both','Both']].map(([v,l])=>
+            React.createElement('button',{key:v,type:'button',className:'btn btn-sm '+(bizPick===v?'btn-primary':'btn-ghost'),onClick:()=>{
+              setBizPick(v);
+              // Drop access to outlets of the other business when narrowing down.
+              const keep=salonsAll.filter(s=>v==='Both'||(v==='Restaurant'?s.businessType==='Restaurant':s.businessType!=='Restaurant')).map(s=>String(s.id));
+              setForm(f=>({...f,outletAccess:Object.fromEntries(Object.entries(f.outletAccess||{}).filter(([k])=>keep.includes(String(k)))),
+                sheetAccessByOutlet:Object.fromEntries(Object.entries(f.sheetAccessByOutlet||{}).filter(([k])=>keep.includes(String(k))))}));
+            }},l))),
+          !bizPick&&React.createElement('div',{style:{fontSize:11,color:'var(--orange)',marginTop:4}},'Choose which business this user is for — Salon, Restaurant or Both.')),
         React.createElement('div',{className:'form-row cols2'},
-          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-11'},'Role'),React.createElement('select',{id:'f-11',className:'form-control',value:form.role,onChange:fc('role')},ROLE_OPTIONS.map(r=>React.createElement('option',{key:r},r)))),
+          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-11'},'Role'),React.createElement('select',{id:'f-11',className:'form-control',value:form.role,onChange:fc('role')},ROLE_OPTIONS.map(r=>React.createElement('option',{key:r,value:r},roleLabelForBusiness(r,bizPick))))),
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-12'},'Access Level'),React.createElement('select',{id:'f-12',className:'form-control',value:form.access,onChange:fc('access')},['Full','Editor','Viewer','No Access'].map(a=>React.createElement('option',{key:a},a))))
         ),
         React.createElement('div',{className:'form-row cols2'},
@@ -2513,8 +2529,10 @@ function UserManagement(){
           ?React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',background:'var(--bg3)',padding:'10px 14px',borderRadius:'var(--r)',marginBottom:14}},'Super Admin always sees every outlet — the table below doesn\'t apply to this role.')
           :React.createElement(React.Fragment,null,
               React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:10,lineHeight:1.5}},'Choose how much access this user gets, outlet by outlet. "View Only" lets them see that outlet\'s data; "View and Edit" lets them add, change, or delete it; "No Access" hides that outlet from them entirely — they won\'t be able to switch into it at all. This is separate from Sheet-wise Access below, which controls what they can do once inside whichever outlet they\'re in.'),
-              salonsList.length===0
-                ?React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},'No outlets exist yet — add one under Master Sheet first.')
+              !bizPick
+                ?React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},'Choose the business above first — the outlets of that business are listed here.')
+                :salonsList.length===0
+                ?React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},bizPick==='Restaurant'?'No restaurant outlets yet.':'No outlets exist yet — add one under Master Sheet first.')
                 :React.createElement(React.Fragment,null,
                     React.createElement('div',{style:{display:'flex',gap:8,marginBottom:10}},
                       React.createElement('button',{type:'button',className:'btn btn-ghost btn-sm',onClick:()=>bulkSetOutlets('View and Edit')},'Grant Edit to All'),

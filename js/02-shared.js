@@ -414,6 +414,18 @@ function outletSettings(salonId){return SALONS.find(s=>String(s.id)===String(sal
 // outlet saved before restaurants existed. Restaurant outlets get their own sheets, expense rows,
 // P&L lines and departments (js/15-restaurant.js).
 function isRestaurantOutlet(salonId){return outletSettings(salonId).businessType==='Restaurant';}
+// A user's business, from the outlets they can enter: 'Restaurant', 'Salon', 'Both' or null (none).
+function userBusinessOf(u){
+  const ids=(u&&u.outletIds)||[];
+  const list=(typeof SALONS!=='undefined'?SALONS:[]).filter(s=>ids.map(String).includes(String(s.id)));
+  if(!list.length)return null;
+  const r=list.filter(s=>s.businessType==='Restaurant').length;
+  return r===list.length?'Restaurant':r===0?'Salon':'Both';
+}
+// Restaurant users see "Manager" instead of "Salon Manager" (the stored role stays the same,
+// so every permission check keeps working).
+function roleLabelForBusiness(role,biz){return role==='Salon Manager'&&biz==='Restaurant'?'Manager':role;}
+function roleLabelForUser(u){return roleLabelForBusiness(u&&u.role,u&&u.role==='Salon Manager'?userBusinessOf(u):null);}
 function bizKeyOf(salonId){return isRestaurantOutlet(salonId)?'restaurant':'salon';}
 const RESTAURANT_VENDOR_CATEGORIES=['Food & Raw Material Purchase','Liquor Purchase','Packaging Material','Gas / LPG','Pest Control','Licences & Fees'];
 // A vendor category list with the restaurant categories added (before "Other") for a restaurant
