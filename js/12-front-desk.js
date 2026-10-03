@@ -705,6 +705,7 @@ function ClientCRM({salon}){
   const [wa,setWa]=useState(null);
   const [msgOpen,setMsgOpen]=useState(false);
   const [memOpen,setMemOpen]=useState(false);
+  const [growOpen,setGrowOpen]=useState(false);
 
   const list=clients.filter(c=>(seg==='All'||segOf(c)===seg)&&
     (c.name.toLowerCase().includes(q.toLowerCase())||c.phone.includes(q)))
@@ -731,9 +732,10 @@ function ClientCRM({salon}){
     h('div',{className:'section-header'},
       h('div',null,h('div',{className:'page-title'},'Clients'),
         h('div',{className:'page-sub'},'Who they are, what they spend, and who has stopped coming back.')),
-      h('div',{style:{display:'flex',gap:8}},h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setMemOpen(true)},'💳 Memberships'),
+      h('div',{style:{display:'flex',gap:8}},h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setGrowOpen(true)},'🌱 Feedback & referrals'),h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setMemOpen(true)},'💳 Memberships'),
         h('button',{className:'btn btn-primary btn-sm',onClick:()=>setMsgOpen(true)},'📣 Messages to send'))),
     memOpen&&h(MembershipRegisterModal,{salon,onClose:()=>setMemOpen(false)}),
+    growOpen&&h(ClientGrowthModal,{salon,onClose:()=>setGrowOpen(false)}),
     msgOpen&&h(ClientMessagesModal,{salon,clients,onClose:()=>setMsgOpen(false)}),
     h('div',{className:'grid4',style:{marginBottom:16}},
       stat('Clients on file',String(clients.length),members+' on membership or package'),

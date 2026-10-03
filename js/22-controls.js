@@ -196,7 +196,8 @@ function StaffProductivitySheet({salon,period}={}){
         h('td',{style:{textAlign:'right'}},r.worked),h('td',{style:{textAlign:'right'}},c4Money(r.svc)),h('td',{style:{textAlign:'right'}},c4Money(r.prod)),h('td',{style:{textAlign:'right'}},c4Money(r.mem)),
         h('td',{style:{textAlign:'right',fontWeight:600}},c4Money(r.perDay)),
         h('td',{style:{textAlign:'right',color:!avg||!r.worked?'':r.perDay>=avg?'var(--green)':'var(--red)'}},avg&&r.worked?(r.perDay>=avg?'+':'')+Math.round((r.perDay/avg-1)*100)+'%':'—'),
-        h('td',{style:{textAlign:'right'}},f(r.util)),h('td',{style:{textAlign:'right'}},r.clients?f(r.repeatPct)+' of '+r.clients:'—'))))))));
+        h('td',{style:{textAlign:'right'}},f(r.util)),h('td',{style:{textAlign:'right'}},r.clients?f(r.repeatPct)+' of '+r.clients:'—'))))))),
+    h(AttritionWatchCard,{sid,cal}));
 }
 
 // ── 14 · GST input credit check against GSTR-2B ──

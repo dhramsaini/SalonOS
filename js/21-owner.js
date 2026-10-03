@@ -73,14 +73,16 @@ function outletScoreRow(s,y,m){
   const missing=dseDaysMissingFor(s.id,y,m).length;
   const tgt=salesTargetFor(s.id,y,m);
   return{s,rev,growth:prevPace?(rev-prevPace)/prevPace*100:null,ebitdaPct:rev?r.mtd.ebitda/rev*100:null,salPct:rev?emp/rev*100:null,
-    diffs:coll.applicable?coll.unexplained.length:0,missing,tgtPct:tgt?rev*1.05/tgt*100:null,day:r.day};
+    diffs:coll.applicable?coll.unexplained.length:0,missing,tgtPct:tgt?rev*1.05/tgt*100:null,day:r.day,
+    health:typeof outletHealthFor==='function'?outletHealthFor(s.id,y,m):null};
 }
 function OutletRankingBoard({accessibleSalons}){
   const h=React.createElement;
   const [cal,setCal]=useState({year:new Date().getFullYear(),month:new Date().getMonth()});
   const rows=(accessibleSalons||[]).filter(s=>s&&s.id!=null&&s.status!=='Inactive').map(s=>outletScoreRow(s,cal.year,cal.month));
   // Rank on each measure (higher is better except salary %, differences and missing days), average the ranks.
-  const metrics=[['growth',1],['ebitdaPct',1],['salPct',-1],['diffs',-1],['missing',-1],['tgtPct',1]];
+  rows.forEach(r=>{r.healthScore=r.health?r.health.score:null;});
+  const metrics=[['growth',1],['ebitdaPct',1],['salPct',-1],['diffs',-1],['missing',-1],['tgtPct',1],['healthScore',1]];
   metrics.forEach(([k,dir])=>{const vals=rows.filter(r=>r[k]!=null).sort((a,b)=>dir*(b[k]-a[k]));vals.forEach((r,i)=>{r['rk_'+k]=i+1;});});
   rows.forEach(r=>{const rk=metrics.map(([k])=>r['rk_'+k]).filter(Boolean);r.score=rk.length?rk.reduce((a,b)=>a+b,0)/rk.length:99;});
   rows.sort((a,b)=>a.score-b.score);
@@ -90,10 +92,11 @@ function OutletRankingBoard({accessibleSalons}){
       h('div',null,h('div',{className:'page-title'},'Outlet Ranking'),h('div',{className:'page-sub'},'Month to date — revenue growth vs last month’s pace, EBITDA %, salary % of revenue, target achievement, collection differences and missing Daily Sales days; overall rank = average of the ranks')),
       afMonthPicker(cal,setCal)),
     h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,
-      h('thead',null,h('tr',null,['#','Outlet','Revenue MTD','Growth vs last month','EBITDA %','Salary % of rev','Target achieved','Unexplained coll. diffs','Days missing'].map((t,i)=>h('th',{key:i,style:i>1?{textAlign:'right'}:null},t)))),
+      h('thead',null,h('tr',null,['#','Outlet','Health','Revenue MTD','Growth vs last month','EBITDA %','Salary % of rev','Target achieved','Unexplained coll. diffs','Days missing'].map((t,i)=>h('th',{key:i,style:i>1?{textAlign:'right'}:null},t)))),
       h('tbody',null,rows.map((r,i)=>h('tr',{key:r.s.id},
         h('td',{style:{fontWeight:700,color:i===0?'var(--green)':i===rows.length-1&&rows.length>1?'var(--red)':'var(--text2)'}},i+1),
         h('td',{style:{fontWeight:600,whiteSpace:'nowrap'}},opsShort(r.s)),
+        h('td',{style:{textAlign:'right',fontWeight:700,color:r.healthScore>=80?'var(--green)':r.healthScore>=60?'var(--orange)':'var(--red)'},title:r.health&&r.health.notes.length?r.health.notes.join(' · '):'No issues'},r.healthScore==null?'—':r.healthScore),
         h('td',{style:{textAlign:'right'}},opsMoney(r.rev)),
         h('td',{style:{textAlign:'right',color:r.growth==null?'':r.growth>=0?'var(--green)':'var(--red)'}},r.growth==null?'—':(r.growth>=0?'+':'')+f(r.growth,'%')),
         h('td',{style:{textAlign:'right'}},f(r.ebitdaPct,'%')),h('td',{style:{textAlign:'right'}},f(r.salPct,'%')),

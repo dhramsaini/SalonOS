@@ -2440,7 +2440,8 @@ function UserManagement(){
       )
     ),
     React.createElement('div',{style:{display:'flex',gap:6,marginBottom:12}},
-      [['user','👤 By user'],['outlet','🏪 By outlet']].map(([k,l])=>React.createElement('button',{key:k,type:'button',className:'btn btn-sm '+(viewMode===k?'btn-primary':'btn-ghost'),onClick:()=>setViewMode(k)},l))),
+      [['user','👤 By user'],['outlet','🏪 By outlet'],['review','🛡 Access review']].map(([k,l])=>React.createElement('button',{key:k,type:'button',className:'btn btn-sm '+(viewMode===k?'btn-primary':'btn-ghost'),onClick:()=>setViewMode(k)},l))),
+    viewMode==='review'&&React.createElement(AccessReviewView,{users,salons:salonsList}),
     viewMode==='outlet'&&React.createElement(UserAccessByOutlet,{users,salons:salonsList,sheets:PERMISSION_SHEETS,onEdit:openEdit}),
     viewMode==='user'&&React.createElement('div',{className:'card'},
       React.createElement('div',{className:'table-wrap'},

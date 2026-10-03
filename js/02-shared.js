@@ -925,6 +925,7 @@ const SALON_SCOPED_KEY_BASES=[
   'salonos_incentive_monthly_plans','salonos_collection_cmp_reasons','salonos_due_snapshot','salonos_sent_payslip','salonos_sent_client','salonos_pl_revenue_source',
   'salonos_petty_limits','salonos_petty_overrides','salonos_membership_register','salonos_gstr2b',
   'salonos_inventory_log','salonos_std_usage',
+  'salonos_staff_certs','salonos_drawings_ack','salonos_feedback','salonos_referrals',
   'salonos_close_checklist','salonos_cash_counts','salonos_sales_targets','salonos_pl_budget','salonos_exit_ticks','salonos_cash_forecast_opening'
 ];
 function deleteAllSalonScopedData(salonId){

@@ -679,6 +679,19 @@
         eq('Purchase rate: a rise over 5% is caught, a small one is not',[!!checkPurchaseRate(916,{id:'it1',name:'Colour tube',rate:400},440),checkPurchaseRate(916,{id:'it1',name:'Colour tube',rate:400},410)],[true,'']);
         safeLocalSet(outletKey('salonos_vendor_invoices',916),JSON.stringify([{id:'a',vendorId:'v',category:'Housekeeping',invoiceDate:new Date(Date.now()-40*864e5).toISOString().slice(0,10),amount:10000},{id:'b',vendorId:'v',category:'Housekeeping',invoiceDate:new Date(Date.now()-10*864e5).toISOString().slice(0,10),amount:11500}]));
         eq('Vendor price watch: same vendor and category up more than 5%',vendorPriceWatch(916).map(x=>Math.round(x.ch)),[15]);
+        // Batch 6: certificates, owner drawings, TDS register, health score, staffing, attrition, campaigns.
+        const e901c=(loadEmployees(901)||[]).find(e=>e.status==='Active');
+        if(e901c){const cc={};cc[String(e901c.id)]=[{name:'Health check',validTill:'2026-11-15'}];safeLocalSet(outletKey('salonos_staff_certs',901),JSON.stringify(cc));}
+        eq('Staff certificates appear as due items',autoStaffCertDueItemsFor(901).map(x=>x.due),e901c?['2026-11-15']:[]);
+        safeLocalSet(outletKey('salonos_daily_sales_collection_data',917),JSON.stringify({'2026-09-05':{0:5000,9:2000},'2026-09-06':{10:1500}}));
+        const od=ownerDrawingsFor(917,2026,8);
+        eq('Owner drawings: Cash Packet and Cash Handover by day',[od.length,od.reduce((t,r)=>t+r.amount,0)],[2,3500]);
+        eq('TDS register and health score compute',[Array.isArray(tdsRegisterFor(901,'2026-27')),typeof outletHealthFor(901,2026,8).score],[true,'number']);
+        eq('Staffing vs bookings covers 14 days; attrition watch returns a list',[staffingNeedFor(901).length,Array.isArray(attritionSignals(901,2026,8))],[14,true]);
+        safeLocalSet(outletKey('salonos_billing_invoices',917),JSON.stringify([{customer:'Riya',phone:'9810000009',date:'2026-09-20',status:'Paid',items:[{name:'Hair Spa',qty:1,rate:1500}]}]));
+        safeLocalSet(outletKey('salonos_sent_client',917),JSON.stringify({'rep|9810000009|Hair spa|2026-08-01':'2026-09-10T10:00:00Z'}));
+        const cr6=campaignResults(917);
+        eq('Campaign results: a client billed within 30 days of the message counts as back',[cr6.length,cr6[0]&&cr6[0].back,cr6[0]&&cr6[0].revenue],[1,1,1500]);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.

@@ -70,7 +70,8 @@ function StatutoryFilesSheet({salon,period}={}){
   const tag=cal.year+'-'+String(cal.month+1).padStart(2,'0');
   if(!salaryAttendanceReady(sid,cal.year,cal.month))return h('div',null,
     h('div',{className:'section-header'},h('div',null,h('div',{className:'page-title'},'Statutory Files')),afMonthPicker(cal,setCal)),
-    h('div',{className:'card',style:{textAlign:'center',padding:32,color:'var(--text3)'}},'Attendance for '+label+' is not marked Month Final yet — the files are made from final salary.'));
+    h('div',{className:'card',style:{textAlign:'center',padding:32,color:'var(--text3)',marginBottom:14}},'Attendance for '+label+' is not marked Month Final yet — the PF / ESIC / PT / salary TDS files are made from final salary.'),
+    h(TdsRegisterCard,{sid,cal}));
   const ecr=pfEcrFor(sid,cal.year,cal.month);
   const esic=esicRowsFor(sid,cal.year,cal.month);
   const all=statutoryRowsFor(sid,cal.year,cal.month);
@@ -89,6 +90,7 @@ function StatutoryFilesSheet({salon,period}={}){
       h('div',{style:{display:'flex',gap:8,alignItems:'center'}},afMonthPicker(cal,setCal),
         h('button',{className:'btn btn-ghost btn-sm',title:'PF / ESIC / PT / TDS / GST amounts and due dates for the accountant',onClick:()=>{const t=accountantChallanText(sid,cal.year,cal.month);const ph=outletSettings(sid).accountantPhone;window.open(waPhoneOk(ph)?waLink(ph,t):'https://wa.me/?text='+encodeURIComponent(t),'_blank');}},'📤 To accountant (WhatsApp)'),
         outletSettings(sid).accountantEmail&&h('a',{className:'btn btn-ghost btn-sm',href:'mailto:'+outletSettings(sid).accountantEmail+'?subject='+encodeURIComponent('Statutory payments — '+label)+'&body='+encodeURIComponent(accountantChallanText(sid,cal.year,cal.month))},'📧 Email'))),
+    h(TdsRegisterCard,{sid,cal}),
     card('PF — ECR file (EPFO portal)','Text file in the EPFO ECR format: UAN, name, gross / EPF / EPS / EDLI wages, EE share, EPS, ER share, NCP (LOP) days.',
       ecr.rows.length+' employee(s) · EE '+afMoney(sum(ecr.rows,'pfEmp'))+' · ER '+afMoney(sum(ecr.rows,'pfEr')),
       h('button',{className:'btn btn-primary btn-sm',disabled:!ecr.rows.length,onClick:()=>{downloadTextFile(ecr.text,'PF_ECR_'+short+'_'+tag+'.txt','text/plain;charset=utf-8');}},'⬇ ECR .txt'),

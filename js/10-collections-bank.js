@@ -5247,7 +5247,8 @@ const RECURRING_FREQ_DIVISOR={Monthly:1,'Bi-Monthly':2,Quarterly:3,'Half-Yearly'
 function allDueItemsFor(sid){
   let manual=[];try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_due_dates',sid))||'[]');if(Array.isArray(v))manual=v;}catch(e){}
   const auto=[...autoStatutoryDueItemsFor(sid),...autoTdsDueItemsFor(sid),...autoSalaryIncentiveDueItemsFor(sid),...autoVendorDueItemsFor(sid),
-    ...(typeof autoLicenceDueItemsFor==='function'?autoLicenceDueItemsFor(sid):[])];
+    ...(typeof autoLicenceDueItemsFor==='function'?autoLicenceDueItemsFor(sid):[]),
+    ...(typeof autoStaffCertDueItemsFor==='function'?autoStaffCertDueItemsFor(sid):[])];
   return [...auto,...manual.map(d=>({...d,manual:true}))].filter(d=>d&&d.type!=='Update Amount');
 }
 const DUE_SOON_DAYS=5;

@@ -752,6 +752,7 @@ function AttendanceSheet({period,salon,user}={}){
     // ── Individual view ──
     React.createElement(AbsenceWatchBanner,{sid:salon?.id,year:selYear,month:selMonth}),
     viewMode==='offplan'&&React.createElement(WeeklyOffPlanner,{sid:salon?.id,year:selYear,month:selMonth}),
+    viewMode==='offplan'&&React.createElement(StaffingNeedCard,{sid:salon?.id}),
     viewMode==='grid'&&React.createElement('div',{className:'two-col'},
       React.createElement('div',{className:'card'},
         React.createElement('div',{className:'card-title'},'Employees'),
