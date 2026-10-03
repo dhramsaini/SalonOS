@@ -437,6 +437,7 @@ function CollaborationReview({user,salons,submissions,setSubmissions}){
   };
   return React.createElement('div',{className:'fade-in'},
     React.createElement(SummaryApprovalsPanel,{user,salons}),
+    React.createElement(PettyApprovalsPanel,{user,salons}),
     React.createElement('div',{className:'section-header'},React.createElement('div',null,React.createElement('div',{className:'page-title'},canReview?'Review Centre':'My Submissions'),React.createElement('div',{className:'page-sub'},canReview?'Review and approve data submitted by outlet users':'Submit outlet data and track review status')),!canReview&&React.createElement('button',{className:'btn btn-primary',onClick:createSubmission},'+ Submit Current Data')),
     React.createElement('div',{className:'grid4',style:{marginBottom:16}},['Submitted','Under Review','Approved','Returned'].map((st,i)=>React.createElement('div',{key:st,className:'metric-card '+['blue','amber','green','red'][i]},React.createElement('div',{className:'metric-label'},st),React.createElement('div',{className:'metric-value'},visible.filter(x=>x.status===st).length)))),
     React.createElement('div',{style:{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}},['All','Submitted','Under Review','Approved','Returned'].map(st=>React.createElement('button',{key:st,className:'btn '+(filter===st?'btn-primary':'btn-ghost')+' btn-sm',onClick:()=>setFilter(st)},st))),
@@ -700,6 +701,7 @@ function ClientCRM({salon}){
   const [sel,setSel]=useState(null);
   const [wa,setWa]=useState(null);
   const [msgOpen,setMsgOpen]=useState(false);
+  const [memOpen,setMemOpen]=useState(false);
 
   const list=clients.filter(c=>(seg==='All'||segOf(c)===seg)&&
     (c.name.toLowerCase().includes(q.toLowerCase())||c.phone.includes(q)))
@@ -726,7 +728,9 @@ function ClientCRM({salon}){
     h('div',{className:'section-header'},
       h('div',null,h('div',{className:'page-title'},'Clients'),
         h('div',{className:'page-sub'},'Who they are, what they spend, and who has stopped coming back.')),
-      h('button',{className:'btn btn-primary btn-sm',onClick:()=>setMsgOpen(true)},'📣 Messages to send')),
+      h('div',{style:{display:'flex',gap:8}},h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setMemOpen(true)},'💳 Memberships'),
+        h('button',{className:'btn btn-primary btn-sm',onClick:()=>setMsgOpen(true)},'📣 Messages to send'))),
+    memOpen&&h(MembershipRegisterModal,{salon,onClose:()=>setMemOpen(false)}),
     msgOpen&&h(ClientMessagesModal,{salon,clients,onClose:()=>setMsgOpen(false)}),
     h('div',{className:'grid4',style:{marginBottom:16}},
       stat('Clients on file',String(clients.length),members+' on membership or package'),

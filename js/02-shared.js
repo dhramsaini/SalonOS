@@ -923,6 +923,7 @@ const SALON_SCOPED_KEY_BASES=[
   'salonos_manager_final_months_attendance','salonos_manager_final_months_dse',
   // Automation / approvals (js/16-18).
   'salonos_incentive_monthly_plans','salonos_collection_cmp_reasons','salonos_due_snapshot','salonos_sent_payslip','salonos_sent_client','salonos_pl_revenue_source',
+  'salonos_petty_limits','salonos_petty_overrides','salonos_membership_register','salonos_gstr2b',
   'salonos_close_checklist','salonos_cash_counts','salonos_sales_targets','salonos_pl_budget','salonos_exit_ticks','salonos_cash_forecast_opening'
 ];
 function deleteAllSalonScopedData(salonId){
@@ -1169,10 +1170,12 @@ function saveVendorInvoices(invoices,salonId,opts){
       if(u&&!(opts&&opts.system)&&!canBookInvoiceInMonth(ym,u)){refused.push('month');return old||null;}
       if(lockedYm(ym)){refused.push('locked');return old||null;}
     }
+    if(old&&typeof logPaidBillChange==='function')logPaidBillChange(salonId,old,inv);
     return inv;
   }).filter(Boolean);
   // an invoice of a locked month can't be deleted either
-  prev.forEach(o=>{if(o&&o.id!=null&&!seen.has(o.id)&&lockedYm(invoiceBookMonthOf(o))){out.push(o);refused.push('locked');}});
+  prev.forEach(o=>{if(o&&o.id!=null&&!seen.has(o.id)&&lockedYm(invoiceBookMonthOf(o))){out.push(o);refused.push('locked');}
+    else if(o&&o.id!=null&&!seen.has(o.id)&&typeof logPaidBillChange==='function')logPaidBillChange(salonId,o,null);});
   safeLocalSet(outletKey('salonos_vendor_invoices',salonId),JSON.stringify(out));
   if(refused.length){try{window.alert(refused.includes('month')?invoiceMonthBlockMessage():"That bill belongs to a locked month — it can’t be added, changed or deleted while the month is locked.");}catch(e){}}
   return !refused.length;

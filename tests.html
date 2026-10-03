@@ -645,6 +645,25 @@
         safeLocalSet(liveKey,JSON.stringify({live:true}));
         withIncSettings(914,{[liveKey]:JSON.stringify({snap:true})},()=>{safeLocalSet(liveKey,JSON.stringify({snap:true,written:true}));});
         eq('Incentive plan snapshot: writes during a snapshot read are dropped, live settings untouched',JSON.parse(cachedLocalGet(liveKey)),{live:true});
+        // Batch 4: late edits, cash limits, membership liability, GSTR-2B match, productivity.
+        logLateEdit(915,'2026-09-01','Cash Sale','1000','800');logLateEdit(915,new Date().toISOString().slice(0,10),'Cash Sale','1','2');
+        const al915=JSON.parse(cachedLocalGet(outletKey('salonos_audit_log',915))||'[]');
+        eq('Late edit: an old day is logged with before → after, today is not',[al915.length,String(al915[0]&&al915[0].summary||'').includes('Cash Sale on 01/09/2026: ₹1,000 → ₹800')],[1,true]);
+        safeLocalSet(outletKey('salonos_petty_limits',915),JSON.stringify({'Daily Expenses':500}));
+        const op=window.prompt;let reverted=null;window.prompt=()=>'Plumber emergency';checkPettyLimit(915,'2026-10-02','Daily Expenses','0','900',v=>{reverted=v;});
+        window.prompt=()=>null;checkPettyLimit(915,'2026-10-03','Daily Expenses','100','700',v=>{reverted=v;});window.prompt=op;
+        const po=loadPettyOverrides(915);
+        eq('Cash limit: over the limit needs a reason (else undone) and waits for approval',[po['2026-10-02|Daily Expenses']&&po['2026-10-02|Daily Expenses'].status,reverted,!!po['2026-10-03|Daily Expenses']],['Pending','100',false]);
+        const mem=[{id:'m1',client:'A',soldOn:'2026-09-05',paid:9000,value:10000,validTill:'2027-03-31',redemptions:[{date:'2026-09-20',amount:2000},{date:'2026-10-02',amount:3000}]}];
+        const mv=membershipMonthMovement(mem,2026,9);
+        eq('Membership liability: opening, used in month (at paid value), closing',[Math.round(mv.opening),Math.round(mv.redeemed),Math.round(mv.closing)],[7200,2700,4500]);
+        const b2=parseGstr2b({name:'2b.json'},new TextEncoder().encode(JSON.stringify({data:{docdata:{b2b:[{ctin:'07AAACB1234C1Z5',trdnm:'Beauty Supplies',inv:[{inum:'INV-007',dt:'05-09-2026',items:[{txval:1000,cgst:90,sgst:90}]},{inum:'INV-9',dt:'09-09-2026',items:[{txval:500,igst:90}]}]}]}}})));
+        const all2b={};all2b['2026-09']={rows:b2};safeLocalSet(outletKey('salonos_gstr2b',915),JSON.stringify(all2b));
+        safeLocalSet(outletKey('salonos_vendors',915),JSON.stringify([{id:'v1',name:'Beauty Supplies',gst:'07AAACB1234C1Z5'}]));
+        safeLocalSet(outletKey('salonos_vendor_invoices',915),JSON.stringify([{id:'i1',vendorId:'v1',invoiceNo:'INV/007',invoiceDate:'05/09/2026',amount:1180,cgst:90,sgst:90,payments:[]},{id:'i2',vendorId:'v1',invoiceNo:'INV-12',invoiceDate:'10/09/2026',amount:590,igst:90,payments:[]}]));
+        const gm=gstr2bMatchFor(915,2026,8);
+        eq('GSTR-2B: matched by invoice no. (ignoring / and -), credit at risk, missing bill',[gm.matched.length,gm.missing2b.map(b=>b.i.invoiceNo),gm.itcAtRisk,gm.notInBooks.map(r=>r.invNo)],[1,['INV-12'],90,['INV-9']]);
+        eq('Staff productivity: one row per stylist',Array.isArray(staffProductivityFor(901,2026,8)),true);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.

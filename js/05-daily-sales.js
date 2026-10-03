@@ -47,6 +47,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     // eslint-disable-next-line
   },[period&&period.mi,period&&period.fy]);
   const [showCols,setShowCols]=useState(5);
+  const [pettyOpen,setPettyOpen]=useState(false); // ⚙ Cash limits (js/22-controls.js)
 
   // Data store: {iso: {rowIdx: value}}. Previously this was pure in-memory state seeded with
   // fake sample numbers — every real entry was lost on reload. Now it's persisted per outlet,
@@ -1322,8 +1323,9 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     const dayLabel=new Date(iso+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
     const fmt=v=>(Number(v)||0).toLocaleString('en-IN');
     const rowStyle={display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'10px 12px',borderBottom:'1px solid var(--border)'};
-    const numInput=(value,onChange,disabled)=>React.createElement('input',{type:'number',inputMode:'decimal',min:0,value,disabled,placeholder:'0',
+    const numInput=(value,onChange,disabled,onCommit)=>React.createElement('input',{type:'number',inputMode:'decimal',min:0,value,disabled,placeholder:'0',
       onChange:e=>onChange(e.target.value),
+      onFocus:e=>{e.target.dataset.before=e.target.value;},onBlur:e=>{const b=e.target.dataset.before;if(onCommit&&b!==undefined&&b!==e.target.value)onCommit(b,e.target.value);},
       style:{width:128,flexShrink:0,textAlign:'right',fontSize:16,padding:'8px 10px',background:'var(--bg3)',border:'1px solid var(--border2)',borderRadius:8,color:disabled?'var(--text3)':'var(--text)'}});
     const tapBtn=(total,onClick)=>React.createElement('button',{type:'button',onClick,className:'btn btn-ghost btn-sm',style:{minWidth:128,flexShrink:0,justifyContent:'flex-end',fontWeight:total>0?600:400}},
       total>0?'₹'+fmt(total)+' ✎':'+ Add');
@@ -1337,7 +1339,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
         ?React.createElement('span',{style:{fontWeight:700,fontSize:15,color:val<0?'var(--red)':'var(--accent2)'}},'₹'+fmt(val))
         :isSalesEntryRow(sri)
           ?tapBtn(getSalesEntryTotal(iso,sri),()=>openSalesEntryModal(sri,iso))
-          :numInput(getSalesValue(iso,sri),v=>guardedSetSalesValue(iso,sri,v),false);
+          :numInput(getSalesValue(iso,sri),v=>guardedSetSalesValue(iso,sri,v),false,(b,a)=>logLateEdit(salonId,iso,SALES_ROWS[sri].name,b,a));
       return React.createElement('div',{key:'s'+sri,style:{...rowStyle,background:readOnly?'rgba(47,95,224,0.06)':undefined}},
         React.createElement('div',null,React.createElement('div',{style:{fontSize:14,fontWeight:readOnly?700:500,color:readOnly?'var(--accent2)':'var(--text)'}},row.name),
           row.note?React.createElement('div',{style:{fontSize:10.5,color:'var(--orange)'}},row.note):null),right);
@@ -1349,7 +1351,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       if(isDescRow(ri))right=tapBtn(getDescTotal(iso,ri),()=>openDescModal(ri,iso));
       else if(isEmpRow(ri))right=tapBtn(getEmpTotal(iso,ri),()=>openEmpModal(ri,iso));
       else if(isInv){const t=getInvEntryTotal(iso,ri);right=tapBtn(t+Math.max(0,(Number(getValue(iso,ri))||0)-t),()=>openInvModal(ri,iso));}
-      else right=numInput(getValue(iso,ri),v=>{if(blockIfExpenseGoesNegative(iso,ri,v))return;setValue(iso,ri,v);},locked);
+      else right=numInput(getValue(iso,ri),v=>{if(blockIfExpenseGoesNegative(iso,ri,v))return;setValue(iso,ri,v);},locked,
+        (b,a)=>{logLateEdit(salonId,iso,EXPENSE_ROWS[ri].name,b,a);checkPettyLimit(salonId,iso,EXPENSE_ROWS[ri].name,b,a,v=>setValue(iso,ri,v));});
       return React.createElement('div',{key:'e'+ri,style:rowStyle},
         React.createElement('div',{style:{minWidth:0}},
           React.createElement('div',{style:{fontSize:14,fontWeight:500,color:row.name==='Penalties'?'var(--red)':'var(--text)'}},row.name),
@@ -1387,6 +1390,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
             if(periodCal){const lo=localDateToISO(new Date(periodCal.year,periodCal.month,1)),hi=localDateToISO(new Date(periodCal.year,periodCal.month+1,0));if(v<lo)v=lo;if(v>hi)v=hi;}
             setViewDate(v);}}),
         React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Today’s summary for the owner — opens WhatsApp with it ready',onClick:()=>{const t=ownerSummaryText(salonId,viewDate);const ph=outletSettings(salonId).ownerPhone;window.open(waPhoneOk(ph)?waLink(ph,t):'https://wa.me/?text='+encodeURIComponent(t),'_blank');}},'📤 Owner summary'),
+        user&&PETTY_APPROVER_ROLES.includes(user.role)&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Daily cash limit per expense head',onClick:()=>setPettyOpen(true)},'⚙ Cash limits'),
+        pettyOpen&&React.createElement(PettyLimitsModal,{sid:salonId,onClose:()=>setPettyOpen(false)}),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:showCols,onChange:e=>setShowCols(e.target.value==='full'?'full':Number(e.target.value))},
           [5,10,15,20,25].map(n=>React.createElement('option',{key:n,value:n},n+' days')).concat([React.createElement('option',{key:'full',value:'full'},'Full Month')])
         ),
@@ -1637,6 +1642,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                                   if(blockIfExpenseGoesNegative(d.iso,ri,raw))return;
                                   setValue(d.iso,ri,raw);
                                 },
+                                onFocus:e=>{e.target.dataset.before=e.target.value;},
+                                onBlur:e=>{const b=e.target.dataset.before,a=e.target.value;if(b===undefined||b===a)return;logLateEdit(salonId,d.iso,EXPENSE_ROWS[ri].name,b,a);checkPettyLimit(salonId,d.iso,EXPENSE_ROWS[ri].name,b,a,v=>setValue(d.iso,ri,v));},
                                 style:{
                                   width:'100%',background:'transparent',border:'none',outline:'none',
                                   color:dseIsLocked(d.iso)?'var(--text3)':(hasVal?(isSalRow?'var(--purple)':isVendor?'var(--red)':'var(--text)'):'var(--text3)'),
@@ -1722,6 +1729,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                           )
                         :React.createElement('input',{type:'number',value:isOpening?getSalesValue(d.iso,sri):getSalesValue(d.iso,sri),placeholder:'-',
                             onChange:e=>guardedSetSalesValue(d.iso,sri,e.target.value),
+                            onFocus:e=>{e.target.dataset.before=e.target.value;},onBlur:e=>{const b=e.target.dataset.before;if(b!==undefined&&b!==e.target.value)logLateEdit(salonId,d.iso,SALES_ROWS[sri].name,b,e.target.value);},
                             style:{width:'100%',textAlign:'right',background:'transparent',border:'1px solid var(--border)',borderRadius:4,color:'var(--text)',fontSize:11.5,padding:'4px 6px'}})
                   );
                 })

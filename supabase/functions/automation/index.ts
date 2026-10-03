@@ -330,6 +330,14 @@ export function computeAlerts(kv: KV, settings: typeof DEFAULTS, today: number) 
       const since = (today - 7) * 864e5;
       const unl = (get("salonos_audit_log", []) as any[]).filter((x) => x && x.action === "Unlocked" && Date.parse(x.ts) >= since);
       const monday = today - (((today + 4) % 7) + 6) % 7;
+      const late = (get("salonos_audit_log", []) as any[]).filter((x) => x && ["Late edit", "Edited paid bill", "Deleted paid bill"].includes(x.action) && Date.parse(x.ts) >= since);
+      if (late.length) out.push({ akey: `late_edit:${sid}:${isoOfDay(monday)}`, outlet_id: sid, kind: "audit", severity: "warn",
+        title: `${name}: ${late.length} change${late.length === 1 ? "" : "s"} to old entries or paid bills this week`,
+        body: late.slice(0, 8).map((x) => `• ${String(x.ts).slice(0, 10)} ${x.user || ""}: ${x.summary || ""}`).join("\n"), tab: "audit-log", due_date: null, auto: true });
+      const pend = Object.values(get("salonos_petty_overrides", {}) || {}).filter((o: any) => o && o.status === "Pending") as any[];
+      if (pend.length) out.push({ akey: `petty:${sid}:${pend.length}`, outlet_id: sid, kind: "approval", severity: "warn",
+        title: `${name}: ${pend.length} cash spend${pend.length === 1 ? "" : "s"} above the daily limit to approve`,
+        body: pend.slice(0, 6).map((o) => `• ${o.iso} ${o.row}: ${inr(num(o.amount))} (limit ${inr(num(o.cap))}) — ${o.reason || ""}`).join("\n") + "\nApprove or reject in the Review Centre.", tab: null, due_date: null, auto: true });
       if (unl.length) out.push({ akey: `audit:${sid}:${isoOfDay(monday)}`, outlet_id: sid, kind: "audit", severity: "info",
         title: `${name}: ${unl.length} unlock${unl.length === 1 ? "" : "s"} this week`,
         body: unl.slice(0, 6).map((x) => `• ${String(x.ts).slice(0, 10)} ${x.user || ""}: ${x.summary || x.entityId || ""}`).join("\n"), tab: "audit-log", due_date: null, auto: true });
