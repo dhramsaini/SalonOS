@@ -189,11 +189,14 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     // a difference over the outlet's limit asks for a reason (js/20-ops.js recordCashCount).
     {name:'Physical Cash Count',type:'input',note:'cash counted in the drawer at closing'},
     {name:'Cash Difference',type:'computed',note:'counted − Closing Cash Balance'},
+    // More restaurant apps — stored at the end (rows are saved by position), shown after EazyDiner.
+    {name:'Ownly Sale',type:'input',biz:'restaurant',note:'excl. GST — food value from the app’s order report'},
+    {name:'Eatby Minutes Sale',type:'input',biz:'restaurant',note:'excl. GST — food value from the app’s order report'},
   ];
-  const IDX_CASH=0,IDX_CARD=1,IDX_UPI=2,IDX_LUZO=3,IDX_OSALE=4,IDX_OREC=5,IDX_TDS=6,IDX_TCOLL=7,IDX_OPENING=8,IDX_PACKET=9,IDX_HANDOVER=10,IDX_DEPOSIT=11,IDX_RECEIVED=12,IDX_DRAWER=13,IDX_SWIGGY=14,IDX_ZOMATO=15,IDX_EAZY=16,IDX_COUNT=17,IDX_CASHDIFF=18;
+  const IDX_CASH=0,IDX_CARD=1,IDX_UPI=2,IDX_LUZO=3,IDX_OSALE=4,IDX_OREC=5,IDX_TDS=6,IDX_TCOLL=7,IDX_OPENING=8,IDX_PACKET=9,IDX_HANDOVER=10,IDX_DEPOSIT=11,IDX_RECEIVED=12,IDX_DRAWER=13,IDX_SWIGGY=14,IDX_ZOMATO=15,IDX_EAZY=16,IDX_COUNT=17,IDX_CASHDIFF=18,IDX_OWNLY=19,IDX_EBM=20;
   // Display order — restaurants: the three app rows after UPI Sale, no Luzo; salons: as before.
-  const SALES_ORDER=isRestaurantOutlet(salonId)?[0,1,2,IDX_SWIGGY,IDX_ZOMATO,IDX_EAZY,4,5,6,7,8,9,10,11,12,13,IDX_COUNT,IDX_CASHDIFF]:SALES_ROWS.map((r,i)=>i).filter(i=>!SALES_ROWS[i].biz);
-  const appSalesAt=iso=>numSalesAt(iso,IDX_SWIGGY)+numSalesAt(iso,IDX_ZOMATO)+numSalesAt(iso,IDX_EAZY);
+  const SALES_ORDER=isRestaurantOutlet(salonId)?[0,1,2,IDX_SWIGGY,IDX_ZOMATO,IDX_EAZY,IDX_OWNLY,IDX_EBM,4,5,6,7,8,9,10,11,12,13,IDX_COUNT,IDX_CASHDIFF]:SALES_ROWS.map((r,i)=>i).filter(i=>!SALES_ROWS[i].biz);
+  const appSalesAt=iso=>numSalesAt(iso,IDX_SWIGGY)+numSalesAt(iso,IDX_ZOMATO)+numSalesAt(iso,IDX_EAZY)+numSalesAt(iso,IDX_OWNLY)+numSalesAt(iso,IDX_EBM);
   // Rows that always require specific fields per entry (not just an amount), and allow more than
   // one entry per day — same "click cell → modal → list of lines" pattern used elsewhere in this
   // sheet, keyed here by row index since Daily Sales & Collection's rows are fixed and indexed.

@@ -46,9 +46,9 @@ function OutletDashboard({salon,period,onNavTab}){
     let revItems=null,expItems=null,mixItems=null;
     if(isRest){
       const ro=outletSettings(sid);
-      const swiggy=lineAmt(0,'Revenue from Operations - Swiggy'),zomato=lineAmt(0,'Revenue from Operations - Zomato'),eazy=lineAmt(0,'Revenue from Operations - EazyDiner'),
+      const swiggy=lineAmt(0,'Revenue from Operations - Swiggy'),zomato=lineAmt(0,'Revenue from Operations - Zomato'),eazy=lineAmt(0,'Revenue from Operations - EazyDiner'),ownly=lineAmt(0,'Revenue from Operations - Ownly'),ebm=lineAmt(0,'Revenue from Operations - Eatby Minutes'),
         barSale=lineAmt(0,'Revenue from Operations - Bar Sale'),svc=lineAmt(0,'Service Charge Collected');
-      revItems=[['Cash Sale',cash,'var(--green)'],['Card Sale',card,'var(--blue)'],['UPI Sale',upi,'var(--purple)'],['Swiggy',swiggy,'var(--orange)'],['Zomato',zomato,'var(--red)'],['EazyDiner',eazy,'var(--teal)'],
+      revItems=[['Cash Sale',cash,'var(--green)'],['Card Sale',card,'var(--blue)'],['UPI Sale',upi,'var(--purple)'],['Swiggy',swiggy,'var(--orange)'],['Zomato',zomato,'var(--red)'],['EazyDiner',eazy,'var(--teal)'],['Ownly',ownly,'var(--blue)'],['Eatby Minutes',ebm,'var(--purple)'],
         ...(ro.servesLiquor?[['Bar Sale',barSale,'var(--amber,var(--accent))']]:[]),...(ro.serviceChargeApplicable?[['Service Charge',svc,'var(--teal)']]:[]),['Other Income',otherInc,'var(--text3)']];
       const svcStaff=lineAmt(2,'Service Charge to Staff');
       const food=lineAmt(1,'Food Cost (Consumption)'),liquor=lineAmt(1,'Liquor Cost'),packGas=lineAmt(1,'Packaging Material')+lineAmt(1,'Gas / LPG');
@@ -57,7 +57,7 @@ function OutletDashboard({salon,period,onNavTab}){
         ['Food Cost',food,'var(--blue)'],...(ro.servesLiquor?[['Liquor Cost',liquor,'var(--purple)']]:[]),['Packaging & Gas',packGas,'var(--teal)'],
         ['Rent',rent,'var(--purple)'],['Electricity',elec,'var(--amber,var(--accent))'],['Aggregator Commission',agg,'var(--orange)'],['Marketing',mktg,'var(--teal)']];
       expItems=[...listed,['Other Operating Expenses',totalExp-listed.reduce((t,x)=>t+x[1],0),'var(--text3)']];
-      mixItems=[['Cash',cash,'var(--accent)'],['Card',card,'var(--blue)'],['UPI',upi,'var(--teal)'],['Swiggy',swiggy,'var(--orange)'],['Zomato',zomato,'var(--red)'],['EazyDiner',eazy,'var(--teal)'],...(ro.servesLiquor?[['Bar',barSale,'var(--purple)']]:[])];
+      mixItems=[['Cash',cash,'var(--accent)'],['Card',card,'var(--blue)'],['UPI',upi,'var(--teal)'],['Swiggy',swiggy,'var(--orange)'],['Zomato',zomato,'var(--red)'],['EazyDiner',eazy,'var(--teal)'],['Ownly',ownly,'var(--blue)'],['Eatby Minutes',ebm,'var(--purple)'],...(ro.servesLiquor?[['Bar',barSale,'var(--purple)']]:[])];
     }
     return{cash,card,upi,otherInc,totalRev,salaries,rent,elec,cosmetics,mktg,rMaint,misc,incentives,totalExp,netProfit,revItems,expItems,mixItems,
       cashColl:cash+card+upi,staff:activeEmps.length,attPct,gm:totalRev?Math.round((netProfit/totalRev)*100):0};

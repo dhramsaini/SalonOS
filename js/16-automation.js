@@ -231,7 +231,7 @@ const CLOSE_CHECKLIST=[
     {id:'s-diff',text:'Collection Comparison: every flagged day has a reason',auto:'coll-diff',tab:'outlet-pnl'},
     {id:'s-outst',text:'Outstanding Sale / Recovery agree with the customer list',tab:'daily-sales'},
     {id:'s-source',text:'Revenue source for the month chosen (Collection Reco or Daily Sales)',tab:'outlet-pnl'},
-    {id:'s-apps',text:'Restaurant: Swiggy / Zomato / EazyDiner payouts entered and checked',tab:'aggregators'},
+    {id:'s-apps',text:'Restaurant: Swiggy / Zomato / EazyDiner / Ownly / Eatby Minutes payouts entered and checked',tab:'aggregators'},
     {id:'s-final',text:'Daily Sales & Exp marked Month Final',auto:'dse-final',tab:'daily-sales'}]},
   {phase:'3 · Bank and cash reconciliation',items:[
     {id:'b-import',text:'Bank statement imported for the full month',auto:'bank',tab:'bank-statement'},
