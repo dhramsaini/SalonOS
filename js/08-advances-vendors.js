@@ -1021,6 +1021,8 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
         if(!CATEGORY_OPTIONS.includes(category)){failed.push('Row '+rowNum+' ('+vendorNameRaw+'): Category must be one of '+CATEGORY_OPTIONS.join(', '));return;}
         const docNature=['Tax Invoice','Invoice','Performa Invoice'].includes(row['Doc Nature'])?row['Doc Nature']:'Tax Invoice';
         const invoiceDate=parseTemplateDate(row['Invoice Date (DD/MM/YYYY)']||row['Invoice Date']);
+        const dupInv=duplicateVendorInvoice([...invoices,...toAdd],vendor.id,invoiceNo,docNature,null);
+        if(dupInv){failed.push('Row '+rowNum+' ('+vendorNameRaw+'): Invoice No. '+invoiceNo+' is already entered for this vendor — skipped');return;}
         toAdd.push({
           vendorId:vendor.id,docNature,invoiceNo,invoiceDate,
           dueDate:parseTemplateDate(row['Due Date (DD/MM/YYYY)']||row['Due Date']),
@@ -1046,6 +1048,8 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
     if(!invForm.docNature){alert('Select the Doc Nature.');return;}
     if(!(invForm.invoiceNo||'').trim()){alert((invForm.docNature==='Performa Invoice'?'PI':'Invoice / Voucher')+' No. is required.');return;}
     if(!invForm.invoiceDate){alert((invForm.docNature==='Performa Invoice'?'PI':'Invoice')+' Date is required.');return;}
+    {const dupInv=invForm.vendorId!=='__new__'&&duplicateVendorInvoice(invoices,invForm.vendorId,invForm.invoiceNo,invForm.docNature,editInvoiceId);
+     if(dupInv){alert(duplicateInvoiceMessage(dupInv,getVendorName(invForm.vendorId)));return;}}
     {const orig=editInvoiceId?invoices.find(i=>i.id===editInvoiceId):null;const ym=invoiceBookMonthOf(invForm);
      if((!orig||invoiceBookMonthOf(orig)!==ym)&&!canBookInvoiceInMonth(ym)){alert(invoiceMonthBlockMessage());return;}}
     if(!computedTotal){alert('Enter at least a Taxable Value.');return;}

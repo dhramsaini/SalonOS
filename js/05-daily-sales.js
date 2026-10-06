@@ -914,6 +914,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       invoiceDate:dmy(invForm.invoiceDate),bookingDate:dmy(invForm.bookingDate||invForm.invoiceDate),dueDate:dmy(invForm.dueDate),
       taxable:Number(invForm.taxable)||0,igst:Number(invForm.igst)||0,cgst:Number(invForm.cgst)||0,sgst:Number(invForm.sgst)||0,roundOff:Number(invForm.roundOff)||0,
       amount:invFormTotal,category,desc:invForm.desc,attachment:invForm.attachment};
+    {const dupInv=duplicateVendorInvoice(loadVendorInvoices(salonId),vendorId,invFields.invoiceNo,invFields.docNature,payload.mode==='pay'?payload.invoiceId:null);
+     if(dupInv){dseToastErr(duplicateInvoiceMessage(dupInv,(vendors.find(v=>v.id===vendorId)||{}).name));return;}}
 
     if(payload.mode==='pay'){
       const invoices=loadVendorInvoices(salonId);

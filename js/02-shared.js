@@ -1169,6 +1169,22 @@ function invoiceMonthBlockMessage(){
 // when its booking month isn't allowed for this user, and nothing about an invoice booked in a
 // locked month may change (except recording payments against it) — the earlier version is kept.
 // opts.system — the app's own automatic writes (recurring bills it creates on schedule): no month-by-role check.
+// Same vendor + same invoice number = the same bill entered twice. Numbers are compared ignoring
+// case, spaces, '-', '/' and '.' ("INV-001" = "inv 001"). excludeId: the invoice being edited.
+// Returns the existing invoice, or null. A Tax Invoice booked against a Performa Invoice may carry
+// the PI's number, so a PI and a non-PI never count as duplicates of each other.
+const normInvoiceNo=n=>String(n==null?'':n).toLowerCase().replace(/[\s\-\/.]/g,'');
+function duplicateVendorInvoice(list,vendorId,invoiceNo,docNature,excludeId){
+  const k=normInvoiceNo(invoiceNo);if(!k||!vendorId)return null;
+  const isPI=docNature==='Performa Invoice';
+  return(list||[]).find(inv=>inv&&inv.id!==excludeId&&String(inv.vendorId)===String(vendorId)
+    &&normInvoiceNo(inv.invoiceNo)===k&&(inv.docNature==='Performa Invoice')===isPI)||null;
+}
+function duplicateInvoiceMessage(inv,vendorName){
+  return 'Invoice No. '+inv.invoiceNo+' of '+(vendorName||'this vendor')+' is already entered'
+    +(inv.invoiceDate?' (dated '+inv.invoiceDate+', ₹'+Number(inv.amount||0).toLocaleString('en-IN')+')':'')
+    +'. The same invoice number cannot be entered twice for the same vendor.';
+}
 function saveVendorInvoices(invoices,salonId,opts){
   const prev=loadVendorInvoices(salonId);const byId={};prev.forEach(i=>{if(i&&i.id!=null)byId[i.id]=i;});
   const u=currentSessionUser();const refused=[];

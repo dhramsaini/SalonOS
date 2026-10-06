@@ -692,6 +692,9 @@
         safeLocalSet(outletKey('salonos_sent_client',917),JSON.stringify({'rep|9810000009|Hair spa|2026-08-01':'2026-09-10T10:00:00Z'}));
         const cr6=campaignResults(917);
         eq('Campaign results: a client billed within 30 days of the message counts as back',[cr6.length,cr6[0]&&cr6[0].back,cr6[0]&&cr6[0].revenue],[1,1,1500]);
+        // Duplicate vendor invoice numbers are refused (same vendor), other vendors / PIs are fine.
+        const dl=[{id:'VI-1',vendorId:'V1',invoiceNo:'INV-001',docNature:'Tax Invoice'},{id:'VI-2',vendorId:'V1',invoiceNo:'PI 7',docNature:'Performa Invoice'}];
+        eq('Duplicate invoice: same vendor and number caught, ignoring case and dashes',[!!duplicateVendorInvoice(dl,'V1','inv 001','Tax Invoice',null),!!duplicateVendorInvoice(dl,'V2','INV-001','Tax Invoice',null),!!duplicateVendorInvoice(dl,'V1','INV-001','Tax Invoice','VI-1'),!!duplicateVendorInvoice(dl,'V1','PI-7','Tax Invoice',null),!!duplicateVendorInvoice(dl,'V1','PI-7','Performa Invoice',null)],[true,false,false,false,true]);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
