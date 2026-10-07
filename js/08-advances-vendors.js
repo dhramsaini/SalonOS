@@ -952,8 +952,12 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
   const nextVid=()=>nextPrefixedId(vendors,'V',3);
 
   const saveVendor=()=>{
-    if(!vForm.name){alert('Vendor name is required');return;}
-    if(editVendor){setVendors(prev=>prev.map(v=>v.id===vForm.id?vForm:v));}
+    if(!(vForm.name||'').trim()){alert('Vendor name is required');return;}
+    const sameName=vendors.find(v=>v.name.trim().toLowerCase()===vForm.name.trim().toLowerCase()&&(!editVendor||v.id!==editVendor.id));
+    if(sameName){alert('A vendor named "'+sameName.name+'" already exists ('+sameName.id+').');return;}
+    // Edits are matched on the vendor's original ID (invoices, payments and bank links point to it),
+    // so the ID itself can't change here — it used to, and then nothing was saved at all.
+    if(editVendor){setVendors(prev=>prev.map(v=>v.id===editVendor.id?{...v,...vForm,id:editVendor.id}:v));toastSuccess('Vendor "'+vForm.name.trim()+'" updated.');}
     else{setVendors(prev=>[...prev,{...vForm,id:vForm.id||nextVid()}]);}
     setShowVendorModal(false);setVForm(BLANK_V);setEditVendor(null);
   };
@@ -1364,6 +1368,10 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
         React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:bulkBusy,onClick:()=>bulkFileRef.current&&bulkFileRef.current.click()},bulkBusy?'Importing…':'📥 Bulk Import Invoices'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--blue)',borderColor:'rgba(74,158,255,0.4)'},onClick:()=>{setInvForm(BLANK_INV);setEditInvoiceId(null);setIntakeInitial(null);setShowIntake(true);}},'+ Add Invoice'),
         (waNew>0||waInboxLoad(salonId).length>0)&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:waNew?'var(--green)':'var(--text2)'},onClick:()=>setShowWaInbox(true)},'📥 WhatsApp bills'+(waNew?' ('+waNew+')':'')),
+        vendors.length>0&&React.createElement('select',{className:'form-control',style:{width:'auto',fontSize:12,padding:'4px 8px'},value:'',title:'Edit the details of a vendor',
+          onChange:e=>{const v=vendors.find(x=>x.id===e.target.value);if(v)openEditVendor(v);}},
+          React.createElement('option',{value:''},'✏ Edit Vendor…'),
+          [...vendors].sort((a,b)=>String(a.name).localeCompare(String(b.name))).map(v=>React.createElement('option',{key:v.id,value:v.id},v.name+' ('+v.id+')'))),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{setVForm(BLANK_V);setEditVendor(null);setShowVendorModal(true);}},'+ Add Vendor')
       )
     ),
@@ -1414,7 +1422,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
               return React.createElement('tr',{key:v.id},
                 React.createElement('td',{'data-xr':i,'data-xc':0,style:{background:sel(0)}},React.createElement('span',{style:{fontFamily:'monospace',fontSize:11,color:'var(--teal)'}},v.id)),
                 React.createElement('td',{'data-xr':i,'data-xc':1,style:{background:sel(1)}},
-                  React.createElement('div',{style:{fontWeight:500,color:'var(--text)',whiteSpace:'nowrap'}},v.name),
+                  React.createElement('div',{style:{fontWeight:500,color:'var(--accent)',whiteSpace:'nowrap',cursor:'pointer',textDecoration:'underline dotted'},title:'Click to edit this vendor',onClick:()=>openEditVendor(v)},v.name+' ✏'),
                   React.createElement('span',{className:`badge ${CAT_COLORS[v.cat]||'badge-gray'}`,style:{marginTop:4}},v.cat)
                 ),
                 React.createElement('td',{'data-xr':i,'data-xc':2,style:{background:sel(2)}},React.createElement('span',{style:{fontSize:11,color:'var(--text2)',maxWidth:180,display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},v.address||'—')),
@@ -1814,7 +1822,7 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-86'},'Mobile No.'),React.createElement('input',{id:'f-86',className:'form-control',value:vForm.phone,onChange:vc('phone'),placeholder:'98xxxxxxxx'}),vForm.phone&&!isValidIndianMobile(vForm.phone)&&fieldWarning('Doesn\u2019t look like a valid 10-digit Indian mobile number.'))
         ),
         React.createElement('div',{className:'form-row cols2'},
-          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-87'},'Vendor ID (auto if blank)'),React.createElement('input',{id:'f-87',className:'form-control',value:vForm.id,onChange:vc('id'),placeholder:'e.g. V005'})),
+          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-87'},'Vendor ID (auto if blank)'),React.createElement('input',{id:'f-87',className:'form-control',value:vForm.id,onChange:vc('id'),placeholder:'e.g. V005',readOnly:!!editVendor,title:editVendor?'The ID cannot be changed — invoices and payments are linked to it':''})),
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-88'},'Status'),React.createElement('select',{id:'f-88',className:'form-control',value:vForm.status,onChange:vc('status')},['Active','Inactive'].map(s=>React.createElement('option',{key:s},s))))
         ),
         React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'14px 0 10px',paddingTop:12,borderTop:'1px solid var(--border)'}},'Bank Details'),
