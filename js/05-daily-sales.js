@@ -811,6 +811,10 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   const [showInvoiceForm,setShowInvoiceForm]=useState(null); // {mode:'create'|'edit',ri,iso,category,invoiceId,paymentId,entryId} | null
   const [invForm,setInvForm]=useState(INV_FORM_BLANK);
   const ic2=(k)=>(e)=>setInvForm(f=>({...f,[k]:e.target.value}));
+  // IGST vs CGST+SGST from the outlet's and the chosen vendor's GSTIN state codes.
+  const invVendorGst2=invForm.vendorId==='__new__'?invForm.newVendorGst:((loadVendors(salonId).find(v=>v.id===invForm.vendorId)||{}).gst);
+  const invSupply2=gstSupplyTypeFor(salonId,invVendorGst2);
+  useEffect(()=>{if(invSupply2)setInvForm(f=>{const g=gstFieldsForSupply(f,invSupply2);return g===f?f:g;});},[invSupply2]);
   const invFormTotal=(Number(invForm.taxable)||0)+(Number(invForm.igst)||0)+(Number(invForm.cgst)||0)+(Number(invForm.sgst)||0)+(Number(invForm.roundOff)||0);
   const isoOfDmy=(dmyStr)=>{const p=String(dmyStr||'').split('/');return p.length===3?p[2]+'-'+p[1]+'-'+p[0]:'';};
   // Booking Date and Payment Date both default to the day column that was actually clicked to
@@ -1936,13 +1940,14 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Taxable Value (₹)'),
             React.createElement('input',{type:'number',className:'form-control',value:invForm.taxable,onChange:ic2('taxable'),placeholder:'0'})),
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'IGST (₹)'),
-            React.createElement('input',{type:'number',className:'form-control',value:invForm.igst,onChange:ic2('igst'),placeholder:'0'})),
+            React.createElement('input',{type:'number',className:'form-control',value:invForm.igst,onChange:ic2('igst'),placeholder:'0',disabled:invSupply2==='intra',title:invSupply2==='intra'?gstSupplyNote('intra'):''})),
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'CGST (₹)'),
-            React.createElement('input',{type:'number',className:'form-control',value:invForm.cgst,onChange:ic2('cgst'),placeholder:'0'}))
+            React.createElement('input',{type:'number',className:'form-control',value:invForm.cgst,onChange:ic2('cgst'),placeholder:'0',disabled:invSupply2==='inter',title:invSupply2==='inter'?gstSupplyNote('inter'):''}))
         ),
         React.createElement('div',{className:'form-row cols3'},
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'SGST (₹)'),
-            React.createElement('input',{type:'number',className:'form-control',value:invForm.sgst,onChange:ic2('sgst'),placeholder:'0'})),
+            React.createElement('input',{type:'number',className:'form-control',value:invForm.sgst,onChange:ic2('sgst'),placeholder:'0',disabled:invSupply2==='inter',title:invSupply2==='inter'?gstSupplyNote('inter'):''}),
+            invSupply2&&React.createElement('div',{style:{fontSize:11,color:'var(--accent)',marginTop:4}},'ℹ '+gstSupplyNote(invSupply2))),
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Round Off (₹)'),
             React.createElement('input',{type:'number',className:'form-control',value:invForm.roundOff,onChange:ic2('roundOff'),placeholder:'0'})),
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Invoice Total (₹)'),

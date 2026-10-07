@@ -1154,6 +1154,27 @@ function loadVendorInvoices(salonId){
   return [];
 }
 // Booking month of an invoice ('YYYY-MM') — booking date, else invoice date.
+// ── Intra- or inter-state supply, from the first two digits (state code) of the outlet's and the
+// vendor's GSTIN: same state → CGST + SGST only; different states → IGST only. '' when either
+// GSTIN is missing or not a valid 15-character GSTIN (then all three stay open).
+function gstStateCodeOf(g){const s=String(g||'').trim().toUpperCase();return /^[0-9]{2}[A-Z0-9]{13}$/.test(s)?s.slice(0,2):'';}
+function gstSupplyTypeFor(outletId,vendorGst){
+  const o=gstStateCodeOf((getSalonRecordById(outletId)||{}).gst),v=gstStateCodeOf(vendorGst);
+  return !o||!v?'':o===v?'intra':'inter';
+}
+// Moves tax typed in the wrong boxes into the right ones (IGST ↔ CGST+SGST) — used when the vendor
+// changes on a form and on save, so a bill read by OCR in the wrong boxes still books correctly.
+function gstFieldsForSupply(form,supply){
+  const n=v=>Number(v)||0;
+  if(supply==='intra'&&n(form.igst)){const half=Math.round(n(form.igst)*50)/100;return{...form,igst:'',cgst:String(n(form.cgst)+half),sgst:String(Math.round((n(form.sgst)+n(form.igst)-half)*100)/100)};}
+  if(supply==='inter'&&(n(form.cgst)||n(form.sgst)))return{...form,igst:String(Math.round((n(form.igst)+n(form.cgst)+n(form.sgst))*100)/100),cgst:'',sgst:''};
+  return form;
+}
+function gstSupplyNote(supply){
+  return supply==='intra'?'Outlet and vendor GSTIN are in the same state — CGST + SGST apply, IGST is disabled.'
+    :supply==='inter'?'Outlet and vendor GSTIN are in different states — IGST applies, CGST and SGST are disabled.'
+    :'';
+}
 function invoiceBookMonthOf(inv){const p=parseInvoiceDateFlexible((inv&&(inv.bookingDate||inv.invoiceDate))||'');return p?p.y+'-'+String(p.m).padStart(2,'0'):'';}
 // Only a Super Admin or an Accountant may add (or move) an invoice into a month other than the current one.
 const INVOICE_ANY_MONTH_ROLES=['Super Admin','Accountant'];

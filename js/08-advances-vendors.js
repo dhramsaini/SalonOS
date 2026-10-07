@@ -891,6 +891,8 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     if(onConsumePendingVendorCategory)onConsumePendingVendorCategory();
   },[pendingVendorCategory,pendingVendorPaymentDate]);
   const [showVendorModal,setShowVendorModal]=useState(false);
+  const [showVendorList,setShowVendorList]=useState(false); // 📋 Vendors list with Edit per vendor
+  const [vlQ,setVlQ]=useState('');
   const [showInvModal,setShowInvModal]=useState(false);
   const [editInvoiceId,setEditInvoiceId]=useState(null); // null = adding new, string = editing the invoice with this id
   const [showIntake,setShowIntake]=useState(false);
@@ -940,6 +942,10 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
   const vc=(k)=>(e)=>setVForm(f=>({...f,[k]:e.target.value}));
   const vcCheck=(k)=>(e)=>setVForm(f=>({...f,[k]:e.target.checked}));
   const ic=(k)=>(e)=>setInvForm(f=>({...f,[k]:e.target.value}));
+  // IGST vs CGST+SGST from the outlet's and the chosen vendor's GSTIN state codes.
+  const invVendorGst=invForm.vendorId==='__new__'?invForm.newVendorGst:((vendors.find(v=>v.id===invForm.vendorId)||{}).gst);
+  const invSupply=gstSupplyTypeFor(salonId,invVendorGst);
+  useEffect(()=>{if(invSupply)setInvForm(f=>{const g=gstFieldsForSupply(f,invSupply);return g===f?f:g;});},[invSupply]);
   // ── Fixed Assets — a single invoice can cover several distinct assets (e.g. chairs + mirror +
   // reception desk on one bill), each of which needs its own name and amount so it can later be
   // assigned its own depreciation Block (Depreciation tab) — a single "Asset Name" field can't
@@ -1047,6 +1053,8 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
   };
   const saveInvoice=()=>{
     if(vendBlockIfLocked(invForm.bookingDate||invForm.invoiceDate))return;
+    if(invSupply==='intra'&&Number(invForm.igst)){alert(gstSupplyNote('intra')+' Move the IGST amount into CGST and SGST.');return;}
+    if(invSupply==='inter'&&(Number(invForm.cgst)||Number(invForm.sgst))){alert(gstSupplyNote('inter')+' Move the CGST/SGST amount into IGST.');return;}
     const computedTotal=(Number(invForm.taxable)||0)+(Number(invForm.igst)||0)+(Number(invForm.cgst)||0)+(Number(invForm.sgst)||0)+(Number(invForm.freight)||0)+(Number(invForm.roundOff)||0);
     if(!invForm.vendorId){alert('Select a vendor, or choose "+ Add New Vendor".');return;}
     if(invForm.vendorId==='__new__'&&!(invForm.newVendorName||'').trim()){alert('Enter the new vendor’s name.');return;}
@@ -1299,12 +1307,19 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
   // Quick views on Invoices & Payments. "This month" = the outlet's selected period month (by the
   // invoice's booking date, as everywhere else); "pending" = a bill (not a PI) with a balance left.
   const viewCal=periodToCalendar(period)||{year:new Date().getFullYear(),month:new Date().getMonth()};
-  const viewYm=viewCal.year+'-'+String(viewCal.month+1).padStart(2,'0');
-  const viewMonthLabel=new Date(viewCal.year,viewCal.month,1).toLocaleString('en-IN',{month:'short',year:'numeric'});
+  // The period (From / To, by booking date) defaults to the selected month and can be changed.
+  const vIso=(y,m,d)=>y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+  const [vFrom,setVFrom]=useState(()=>vIso(viewCal.year,viewCal.month,1));
+  const [vTo,setVTo]=useState(()=>vIso(viewCal.year,viewCal.month,new Date(viewCal.year,viewCal.month+1,0).getDate()));
+  const vDmy=s=>s?s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(2,4):'…';
+  const viewMonthLabel=(()=>{const a=vFrom,b=vTo;if(a&&b&&a.slice(0,7)===b.slice(0,7)&&a.slice(8)==='01'&&Number(b.slice(8))===new Date(+b.slice(0,4),+b.slice(5,7),0).getDate())
+    return new Date(+a.slice(0,4),+a.slice(5,7)-1,1).toLocaleString('en-IN',{month:'short',year:'numeric'});return vDmy(a)+' – '+vDmy(b);})();
+  const bookIso=inv=>{const p=parseInvoiceDateFlexible(inv.bookingDate||inv.invoiceDate);return p?vIso(p.y,p.m-1,p.d):'';};
+  const inPeriod=inv=>{const d=bookIso(inv);return !!d&&(!vFrom||d>=vFrom)&&(!vTo||d<=vTo);};
   const isPendingInv=inv=>!isPI(inv)&&getBalance(inv)>0.5;
-  const inView=inv=>invView==='month'?invoiceBookMonthOf(inv)===viewYm
+  const inView=inv=>invView==='month'?inPeriod(inv)
     :invView==='pending'?isPendingInv(inv)
-    :invView==='pendingMonth'?isPendingInv(inv)&&invoiceBookMonthOf(inv)===viewYm:true;
+    :invView==='pendingMonth'?isPendingInv(inv)&&inPeriod(inv):true;
   const filteredInv=invoices.filter(inv=>{
     if(!inView(inv))return false;
     const matchV=!filterVendor||inv.vendorId===filterVendor;
@@ -1379,10 +1394,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:bulkBusy,onClick:()=>bulkFileRef.current&&bulkFileRef.current.click()},bulkBusy?'Importing…':'📥 Bulk Import Invoices'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--blue)',borderColor:'rgba(74,158,255,0.4)'},onClick:()=>{setInvForm(BLANK_INV);setEditInvoiceId(null);setIntakeInitial(null);setShowIntake(true);}},'+ Add Invoice'),
         (waNew>0||waInboxLoad(salonId).length>0)&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:waNew?'var(--green)':'var(--text2)'},onClick:()=>setShowWaInbox(true)},'📥 WhatsApp bills'+(waNew?' ('+waNew+')':'')),
-        vendors.length>0&&React.createElement('select',{className:'form-control',style:{width:'auto',fontSize:12,padding:'4px 8px'},value:'',title:'Edit the details of a vendor',
-          onChange:e=>{const v=vendors.find(x=>x.id===e.target.value);if(v)openEditVendor(v);}},
-          React.createElement('option',{value:''},'✏ Edit Vendor…'),
-          [...vendors].sort((a,b)=>String(a.name).localeCompare(String(b.name))).map(v=>React.createElement('option',{key:v.id,value:v.id},v.name+' ('+v.id+')'))),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setVlQ('');setShowVendorList(true);}},'📋 Vendors ('+vendors.length+') — view / edit'),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{setVForm(BLANK_V);setEditVendor(null);setShowVendorModal(true);}},'+ Add Vendor')
       )
     ),
@@ -1398,6 +1410,38 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         React.createElement('div',{className:'metric-value'},m.val)
       ))
     ),
+
+    // ── 📋 Vendors list — every vendor with its details and an Edit button (the edit window opens on
+    // top; the list stays open and shows the change after saving). ──
+    showVendorList&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowVendorList(false)},
+      React.createElement('div',{className:'modal',style:{width:980,maxWidth:'96vw'},onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-title',style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}},
+          React.createElement('span',null,'Vendors ('+vendors.length+')'),
+          React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{setVForm(BLANK_V);setEditVendor(null);setShowVendorModal(true);}},'+ Add Vendor')),
+        React.createElement('input',{className:'form-control',autoFocus:true,placeholder:'Search name, GSTIN, mobile, category…',value:vlQ,onChange:e=>setVlQ(e.target.value),style:{marginBottom:10}}),
+        (()=>{
+          const q=vlQ.trim().toLowerCase();
+          const list=[...vendors].filter(v=>!q||[v.name,v.id,v.gst,v.phone,v.contact,v.cat].some(x=>String(x||'').toLowerCase().includes(q)))
+            .sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+          const owed=vid=>invoices.filter(i=>i.vendorId===vid&&!isPI(i)).reduce((t,i)=>t+Math.max(0,getBalance(i)),0);
+          return React.createElement('div',{className:'table-wrap',style:{maxHeight:'60vh',overflowY:'auto'}},
+            React.createElement('table',null,
+              React.createElement('thead',null,React.createElement('tr',null,['ID','Vendor Name','GSTIN','Category','Contact','Mobile','Status','Outstanding',''].map(c=>React.createElement('th',{key:c,style:{position:'sticky',top:0}},c)))),
+              React.createElement('tbody',null,list.length===0
+                ?React.createElement('tr',null,React.createElement('td',{colSpan:9,style:{textAlign:'center',padding:20,color:'var(--text3)'}},'No vendors match.'))
+                :list.map(v=>React.createElement('tr',{key:v.id},
+                  React.createElement('td',{style:{fontFamily:'monospace',fontSize:11}},v.id),
+                  React.createElement('td',{style:{fontWeight:600}},v.name),
+                  React.createElement('td',{style:{fontFamily:'monospace',fontSize:11}},v.gst||'—'),
+                  React.createElement('td',null,v.cat||'—'),
+                  React.createElement('td',null,v.contact||'—'),
+                  React.createElement('td',{style:{fontFamily:'monospace',fontSize:12}},v.phone||'—'),
+                  React.createElement('td',null,React.createElement('span',{className:'badge '+(v.status==='Active'?'badge-green':'badge-gray')},v.status||'—')),
+                  React.createElement('td',{style:{textAlign:'right'}},rupee(owed(v.id))),
+                  React.createElement('td',null,React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>openEditVendor(v)},'✏ Edit')))))));
+        })(),
+        React.createElement('div',{style:{display:'flex',justifyContent:'flex-end',marginTop:12}},
+          React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowVendorList(false)},'Close')))),
 
     // ── Tab bar ──
     React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
@@ -1478,9 +1522,13 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
       React.createElement('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:12}},
         React.createElement('span',{style:{fontSize:12,color:'var(--text3)',marginRight:4}},'Show:'),
         [['all','All invoices'],['month','Invoices of '+viewMonthLabel],['pending','Pending — all months'],['pendingMonth','Pending — '+viewMonthLabel]].map(([k,l])=>{
-          const n=invoices.filter(inv=>k==='month'?invoiceBookMonthOf(inv)===viewYm:k==='pending'?isPendingInv(inv):k==='pendingMonth'?isPendingInv(inv)&&invoiceBookMonthOf(inv)===viewYm:true).length;
+          const n=invoices.filter(inv=>k==='month'?inPeriod(inv):k==='pending'?isPendingInv(inv):k==='pendingMonth'?isPendingInv(inv)&&inPeriod(inv):true).length;
           return React.createElement('button',{key:k,className:'btn btn-sm '+(invView===k?'btn-primary':'btn-ghost'),onClick:()=>setInvView(k)},l+' ('+n+')');
         }),
+        React.createElement('span',{style:{display:'inline-flex',gap:6,alignItems:'center',marginLeft:8,fontSize:12,color:'var(--text3)'}},'Period:',
+          React.createElement('input',{type:'date',className:'form-control',style:{width:'auto',padding:'3px 6px',fontSize:12},value:vFrom,onChange:e=>setVFrom(e.target.value)}),'to',
+          React.createElement('input',{type:'date',className:'form-control',style:{width:'auto',padding:'3px 6px',fontSize:12},value:vTo,onChange:e=>setVTo(e.target.value)}),
+          React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Back to the selected month',onClick:()=>{setVFrom(vIso(viewCal.year,viewCal.month,1));setVTo(vIso(viewCal.year,viewCal.month,new Date(viewCal.year,viewCal.month+1,0).getDate()));}},'↺')),
         invView!=='all'&&React.createElement('span',{style:{fontSize:12,color:'var(--text2)',marginLeft:6}},
           'Balance pending: ₹'+Math.round(filteredInv.filter(x=>!isPI(x)).reduce((t,x)=>t+Math.max(0,getBalance(x)),0)).toLocaleString('en-IN'))
       ),
@@ -2020,16 +2068,17 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         ),
         React.createElement('div',{className:'form-row cols3'},
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-91'},'Taxable Value (₹)'),React.createElement('input',{id:'f-91',type:'number',className:'form-control',value:invForm.taxable,onChange:ic('taxable'),placeholder:'0'})),
-          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-92'},'IGST (₹)'),React.createElement('input',{id:'f-92',type:'number',className:'form-control',value:invForm.igst,onChange:ic('igst'),placeholder:'0'})),
-          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-93'},'CGST (₹)'),React.createElement('input',{id:'f-93',type:'number',className:'form-control',value:invForm.cgst,onChange:ic('cgst'),placeholder:'0'}))
+          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-92'},'IGST (₹)'),React.createElement('input',{id:'f-92',type:'number',className:'form-control',value:invForm.igst,onChange:ic('igst'),placeholder:'0',disabled:invSupply==='intra',title:invSupply==='intra'?gstSupplyNote('intra'):''})),
+          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-93'},'CGST (₹)'),React.createElement('input',{id:'f-93',type:'number',className:'form-control',value:invForm.cgst,onChange:ic('cgst'),placeholder:'0',disabled:invSupply==='inter',title:invSupply==='inter'?gstSupplyNote('inter'):''}))
         ),
         React.createElement('div',{className:'form-row cols4'},
-          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-94'},'SGST (₹)'),React.createElement('input',{id:'f-94',type:'number',className:'form-control',value:invForm.sgst,onChange:ic('sgst'),placeholder:'0'})),
+          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-94'},'SGST (₹)'),React.createElement('input',{id:'f-94',type:'number',className:'form-control',value:invForm.sgst,onChange:ic('sgst'),placeholder:'0',disabled:invSupply==='inter',title:invSupply==='inter'?gstSupplyNote('inter'):''})),
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-97'},'Freight (₹)'),React.createElement('input',{id:'f-97',type:'number',className:'form-control',value:invForm.freight,onChange:ic('freight'),placeholder:'0'})),
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-95'},'Round Off (₹)'),React.createElement('input',{id:'f-95',type:'number',className:'form-control',value:invForm.roundOff,onChange:ic('roundOff'),placeholder:'0'})),
           React.createElement('div',{className:'form-group'},React.createElement('label',null,(invForm.docNature==='Performa Invoice'?'PI Total (₹)':'Invoice Total (₹)')),
             React.createElement('input',{className:'form-control',value:((Number(invForm.taxable)||0)+(Number(invForm.igst)||0)+(Number(invForm.cgst)||0)+(Number(invForm.sgst)||0)+(Number(invForm.freight)||0)+(Number(invForm.roundOff)||0)).toLocaleString('en-IN'),disabled:true,style:{opacity:0.85,fontWeight:700,color:'var(--accent)'}}))
         ),
+        invSupply&&React.createElement('div',{style:{fontSize:11.5,color:'var(--accent)',margin:'2px 0 6px'}},'ℹ '+gstSupplyNote(invSupply)),
         React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:-6,marginBottom:14}},'Auto-calculated: Taxable Value + IGST + CGST + SGST + Freight + Round Off'),
         invForm.docNature!=='Performa Invoice'&&(()=>{
           const tot=(Number(invForm.taxable)||0)+(Number(invForm.igst)||0)+(Number(invForm.cgst)||0)+(Number(invForm.sgst)||0)+(Number(invForm.freight)||0)+(Number(invForm.roundOff)||0);

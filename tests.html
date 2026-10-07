@@ -701,6 +701,9 @@
           {vendorId:'V9',invoiceNo:'B',invoiceDate:'10/09/2026',amount:2500,payments:[]},{vendorId:'V9',invoiceNo:'P',docNature:'Performa Invoice',invoiceDate:'12/09/2026',amount:900,payments:[{paidAmount:300,paidDate:'2026-09-12'}]},
           {vendorId:'V8',invoiceNo:'X',invoiceDate:'10/09/2026',amount:99,payments:[]}],'V9','2026-09-01','2026-09-30');
         eq('Vendor ledger: opening 600, bills 2,500, paid 900, closing 2,200',[vl.opening,vl.credit,vl.debit,vl.closing,vl.rows.length],[600,2500,900,2200,3]);
+        // GST supply type from the GSTIN state codes, and moving tax into the right boxes.
+        eq('GST: state code from GSTIN; supply type needs both GSTINs',[gstStateCodeOf('07AABCX1234R1ZP'),gstStateCodeOf('bad'),gstSupplyTypeFor(-1,'07AABCX1234R1ZP')],['07','','']);
+        eq('GST: IGST moved to CGST+SGST for same state, CGST+SGST to IGST for another state',[gstFieldsForSupply({igst:'180',cgst:'',sgst:''},'intra'),gstFieldsForSupply({igst:'',cgst:'90',sgst:'90'},'inter')],[{igst:'',cgst:'90',sgst:'90'},{igst:'180',cgst:'',sgst:''}]);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.

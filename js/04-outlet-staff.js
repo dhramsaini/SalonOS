@@ -2052,7 +2052,10 @@ function autoRecurringInvoicesDue(salonId,asOf){
       const dmy=dd=>pad(dd)+'/'+pad(m+1)+'/'+y;
       const invDate=dmy(1);
       create.push({id,invoiceNo:id,recurringId:it.id,vendorId:vendor.id,docNature:'Tax Invoice',invoiceDate:invDate,bookingDate:invDate,
-        dueDate:dmy(Math.min(Math.max(1,Number(it.dueDay)||1),days)),taxable,igst:'',cgst:'',sgst:'',roundOff:'',freight:'',amount:Math.round((taxable+gst)*100)/100,
+        dueDate:dmy(Math.min(Math.max(1,Number(it.dueDay)||1),days)),taxable,
+        // GST by supply type: different states → IGST; same state (or a GSTIN missing) → CGST + SGST.
+        ...(gst?(gstSupplyTypeFor(salonId,vendor.gst)==='inter'?{igst:gst,cgst:'',sgst:''}:{igst:'',cgst:Math.round(gst*50)/100,sgst:Math.round((gst-Math.round(gst*50)/100)*100)/100}):{igst:'',cgst:'',sgst:''}),
+        roundOff:'',freight:'',amount:Math.round((taxable+gst)*100)/100,
         tdsAmt:tds,tdsSection:it.tdsApplicable?(it.tdsSection||''):'',tdsRate:it.tdsApplicable?(it.tdsRate||''):'',
         category:recurringVendorCategoryFor(it.expenseName),desc:'Auto invoice: '+recurringExpenseNameOf(it)+' for '+MONTH_NAMES_SHORT_[m]+' '+y,attachment:null,linkedPI:'',assetLines:[],
         payments:tds>0?[{id:'TDS-'+id,paidAmount:tds,paidDate:y+'-'+pad(m+1)+'-01',mode:'TDS',ref:'',note:'TDS deducted at source ('+(it.tdsSection||'—')+' @ '+(Number(it.tdsRate)||0)+'%) — remitted to the government, not paid to the vendor'}]:[],
