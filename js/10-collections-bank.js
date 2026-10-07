@@ -3523,6 +3523,12 @@ function BankStatement({salon,onNavTab}={}){
   // - Salary lines → resolves to the matched Employee's name instead of a vendor.
   // - Rent lines → resolves to a landlord match from the Vendor List if there's an entry for one,
   //   otherwise just labelled "Landlord" (there's no separate landlord list in the app yet).
+  // Loaded once — for the Vendor Name column (and its filter, which runs further down while the
+  // table is being filtered) and the "link the rest with Vendor Sheet automatically" rule. Declared
+  // here, before anything reads them: the Vendor Name filter used to read them before they existed
+  // and the whole screen went blank.
+  const [vendors]=useState(()=>loadVendors(salonId));
+  const [employees]=useState(()=>loadEmployees(salonId));
   const autoVendorNameFor=(r)=>{
     const desc=String(r.description||'');
     const nature=r.nature||'';
@@ -3683,9 +3689,6 @@ function BankStatement({salon,onNavTab}={}){
   });
   const totals=filtered.reduce((a,r)=>({debit:a.debit+r.debit,credit:a.credit+r.credit}),{debit:0,credit:0});
   const natures=['','Collection','Cash Deposit','Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','EazyDiner Settlement','Ownly Settlement','Eatby Minutes Settlement','Bank Charges','Interest','Vendor Payment','Salary','Incentive','Daily Incentive','Advance Salary','TDS','GST','ESIC Payment','Electricity Expenses','Drycleaning Expenses','Telephone & Internet Expenses','DG Rent','Royalty','Rent','Tax Payment','Transfer','Refund','Other'];
-  // Loaded once for the "link the rest with Vendor Sheet automatically" classification rule.
-  const [vendors]=useState(()=>loadVendors(salonId));
-  const [employees]=useState(()=>loadEmployees(salonId));
 
   // ── Reconciliation summary — how much of the ledger is actually mapped to Revenue (Card/UPI
   // Settlement + Cash Deposit + Collection, the Natures that feed P&L revenue via Collection Reco)
