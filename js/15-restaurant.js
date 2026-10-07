@@ -452,7 +452,7 @@ function FoodCostSheet({salon,period}={}){
           h('option',{value:''},'— Ingredient —'),ings.map(g=>h('option',{key:g.id,value:g.id},g.name+' ('+g.unit+')'))),
         h('input',{type:'number',className:'form-control',placeholder:'Qty',value:l.qty,onChange:e=>setRecForm(f=>({...f,lines:f.lines.map((x,j)=>j===i?{...x,qty:e.target.value}:x)}))}),
         h('div',{style:{fontSize:12,color:'var(--text2)',textAlign:'right'}},'₹'+(rNum(l.qty)*ingUnitCost(ings.find(g=>g.id===l.ingId))).toFixed(2)),
-        h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRecForm(f=>({...f,lines:f.lines.filter((x,j)=>j!==i)}))},'✕'))),
+        h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(!window.confirm('Remove this ingredient from the recipe?'))return;setRecForm(f=>({...f,lines:f.lines.filter((x,j)=>j!==i)}));}},'✕'))),
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRecForm(f=>({...f,lines:[...(f.lines||[]),{ingId:'',qty:''}]}))},'+ Add ingredient'),
       ings.length===0&&h('div',{style:{fontSize:12,color:'var(--orange)',marginTop:6}},'Add ingredients first (left panel).'),
       (()=>{const c=recipeCost(recForm,ings);const p=rNum(recForm.price);return h('div',{style:{marginTop:10,fontSize:13}},'Cost per portion ',h('b',null,'₹'+c.toFixed(2)),p?' · food cost '+(Math.round(c/p*1000)/10)+'% · margin '+rupee(Math.round(p-c)):'');})(),

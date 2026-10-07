@@ -67,7 +67,7 @@ function StaffCertsCard({sid}){
       h('button',{className:'btn btn-primary btn-sm',onClick:add},'+ Add')),
     rows.length>0&&h('div',{className:'table-wrap'},h('table',null,h('tbody',null,rows.map(r=>h('tr',{key:r.eid+'-'+r.i},h('td',null,r.e.name),h('td',null,r.c.name),
       h('td',{style:{color:r.c.validTill<today?'var(--red)':r.c.validTill<=soon?'var(--orange)':''}},b6Dmy(r.c.validTill)+(r.c.validTill<today?' (expired)':'')),
-      h('td',null,h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{const c={...certs,[r.eid]:certs[r.eid].filter((_,j)=>j!==r.i)};save(c);}},'Remove'))))))));
+      h('td',null,h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(!window.confirm('Remove '+r.c.name+' of '+r.e.name+'?'))return;const c={...certs,[r.eid]:certs[r.eid].filter((_,j)=>j!==r.i)};save(c);}},'Remove'))))))));
 }
 
 // ── 11 · Staffing vs bookings, next 14 days ──

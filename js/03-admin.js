@@ -1265,7 +1265,7 @@ function MasterSheet({onSelect,salons,setSalons,user}){
         (form.renewals||[]).map((rw,i)=>React.createElement('div',{key:i,className:'form-row cols3',style:{alignItems:'end'}},
           FG('Other renewal',INP({value:rw.name||'',onChange:e=>{const v=e.target.value;setForm(f=>({...f,renewals:(f.renewals||[]).map((x,j)=>j===i?{...x,name:v}:x)}));},placeholder:'e.g. AC AMC, music licence'})),
           FG('Valid till',INP({type:'date',value:rw.date||'',onChange:e=>{const v=e.target.value;setForm(f=>({...f,renewals:(f.renewals||[]).map((x,j)=>j===i?{...x,date:v}:x)}));}})),
-          React.createElement('button',{type:'button',className:'btn btn-ghost btn-sm',style:{marginBottom:14},onClick:()=>setForm(f=>({...f,renewals:(f.renewals||[]).filter((_,j)=>j!==i)}))},'Remove'))),
+          React.createElement('button',{type:'button',className:'btn btn-ghost btn-sm',style:{marginBottom:14},onClick:()=>{if(!window.confirm('Remove the renewal "'+(rw.name||'(unnamed)')+'"?'))return;setForm(f=>({...f,renewals:(f.renewals||[]).filter((_,j)=>j!==i)}));}},'Remove'))),
         React.createElement('button',{type:'button',className:'btn btn-ghost btn-sm',style:{marginBottom:14},onClick:()=>setForm(f=>({...f,renewals:[...(f.renewals||[]),{name:'',date:''}]}))},'+ Add another renewal'),
 
         React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'18px 0 4px',paddingTop:14,borderTop:'1px solid var(--border)'}},'GST Input Tax Credit'),

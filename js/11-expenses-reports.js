@@ -1012,7 +1012,7 @@ function RecurringExpensesSheet({salon}={}){
           React.createElement('div',{style:{display:'flex',gap:10,alignItems:'center'}},
             React.createElement('input',{type:'file',accept:'image/*,.pdf',id:'re-bill-attach',style:{display:'none'},onChange:e=>{const fl=e.target.files[0];if(fl)readFileAsAttachment(fl,rec=>setBillForm(f=>({...f,attachment:rec})),err=>toast(err==='size'?'That file is too large (max 4MB).':'Couldn’t read that file.','error'));e.target.value='';}}),
             React.createElement('label',{htmlFor:'re-bill-attach',className:'btn btn-ghost btn-sm',style:{cursor:'pointer'}},'📎 '+(billForm.attachment?(billForm.attachment.name||'Attached'):'Attach bill (JPG / PDF)')),
-            billForm.attachment&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setBillForm(f=>({...f,attachment:null}))},'✕'))),
+            billForm.attachment&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(!window.confirm('Remove the attached bill copy?'))return;setBillForm(f=>({...f,attachment:null}));}},'✕'))),
         React.createElement('div',{className:'modal-actions'},
           React.createElement('button',{className:'btn btn-ghost',onClick:()=>setBillItem(null)},'Cancel'),
           React.createElement('button',{className:'btn btn-primary',onClick:saveBill},billForm.editId?'Save changes':'Save bill'))

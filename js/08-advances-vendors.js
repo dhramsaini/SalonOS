@@ -2356,7 +2356,7 @@ function BankLayoutEditor({layout,onChange}){
       h('input',{className:'form-control',style:{flex:1,minWidth:160},value:c.header,placeholder:c.field==='fixed'?'Text to put in every row':'Header name',onChange:e=>set(i,{header:e.target.value})}),
       h('button',{className:'btn btn-ghost btn-sm',title:'Move up',onClick:()=>move(i,-1)},'↑'),
       h('button',{className:'btn btn-ghost btn-sm',title:'Move down',onClick:()=>move(i,1)},'↓'),
-      h('button',{className:'btn btn-ghost btn-sm',title:'Remove',onClick:()=>onChange({...layout,cols:cols.filter((_,j)=>j!==i)})},'✕'))),
+      h('button',{className:'btn btn-ghost btn-sm',title:'Remove',onClick:()=>{if(!window.confirm('Remove this column from the file layout?'))return;onChange({...layout,cols:cols.filter((_,j)=>j!==i)});}},'✕'))),
     h('div',{style:{display:'flex',gap:14,alignItems:'center',flexWrap:'wrap',marginTop:8,fontSize:12.5,color:'var(--text2)'}},
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>onChange({...layout,cols:[...cols,{field:'blank',header:''}]})},'+ Add column'),
       h('label',{style:{display:'flex',gap:6,alignItems:'center'}},h('input',{type:'checkbox',checked:!!layout.headerRow,onChange:e=>onChange({...layout,headerRow:e.target.checked})}),'Header row'),

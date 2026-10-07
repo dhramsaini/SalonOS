@@ -1276,6 +1276,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     setPtSlabsState(next);savePtSlabs(salon?.id,next);
   };
   const resetPtSlabs=()=>{
+    if(!window.confirm('Replace these PT slabs with the default slabs for '+(ptState||'this state')+'? Your changes to the slabs will be lost.'))return;
     const next=(PT_DEFAULT_SLABS[ptState]||[]).map(t=>({...t}));
     setPtSlabsState(next);savePtSlabs(salon?.id,next);
   };

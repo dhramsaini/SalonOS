@@ -111,7 +111,7 @@ function WhatsAppSettingsCard(){
         h('input',{className:'form-control',style:{width:160},value:s.name||'',placeholder:'Name',onChange:e=>setSenders(l=>l.map((x,j)=>j===i?{...x,name:e.target.value}:x))}),
         h('select',{className:'form-control',style:{width:'auto'},value:s.outletId||'',onChange:e=>setSenders(l=>l.map((x,j)=>j===i?{...x,outletId:e.target.value}:x))},
           h('option',{value:''},'Outlet…'),outlets.map(o=>h('option',{key:o.id,value:o.id},o.name))),
-        h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>setSenders(l=>l.filter((_,j)=>j!==i))},'✕'))),
+        h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>{if(!window.confirm('Remove the number '+(s.phone||'')+' from the allowed senders?'))return;setSenders(l=>l.filter((_,j)=>j!==i));}},'✕'))),
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setSenders(l=>[...l,{phone:'',name:'',outletId:outlets.length===1?outlets[0].id:''}])},'+ Add number'),
       h('div',{style:{display:'flex',gap:18,flexWrap:'wrap',margin:'12px 0',fontSize:13,color:'var(--text2)'}},
         h('label',{style:{display:'flex',gap:6,alignItems:'center'}},h('input',{type:'checkbox',checked:billCapture,onChange:e=>setBillCapture(e.target.checked)}),'Accept bills on WhatsApp'),
