@@ -1289,7 +1289,7 @@ function StatutorySummaryTable({salonId,salon,reportTitle,mode,fy,onModeChange,o
 }
 const STATUTORY_FOOTNOTE='Only months that have already started show a figure — nothing appears for a month that hasn\'t come yet. Figures use each employee\'s Salary Working entry for that month (manual override if one was set, otherwise the standard formula), regardless of whether the corresponding column happens to be shown or hidden on Salary Working itself.';
 // ── PF Summary — Monthly or Annual, Employee/Employer/Total. 12% of PF wage base each side
-// (capped at ₹15,000 unless the employee's own pfOnActualBasic override is set). ──
+// (capped at the statutory ceiling — ₹15,000 up to Aug 2026, ₹25,000 from 17 Sep 2026 — unless the employee's own pfOnActualBasic override is set). ──
 function PfSummaryReport({salon}={}){
   const salonId=salon?.id;
   const [mode,setMode]=useState('monthly');
@@ -1305,7 +1305,7 @@ function PfSummaryReport({salon}={}){
       {key:'pfTotal',label:'Total Remitted',bold:true,summary:true,summaryLabel:'PF Total (Emp + Er)',cardColor:'green'}
     ],
     empCols:[{key:'pfEmp',label:'Employee (12%)'},{key:'pfErEpf',label:'Employer EPF'},{key:'eps',label:'EPS'},{key:'edli',label:'EDLI'}],
-    footnote:'Employee\'s 12% and Employer\'s EPF+EPS 12% both use the PF wage base (Basic, capped at ₹15,000 unless the employee\'s pfOnActualBasic override is set). EPS, EDLI, and Admin Charges always use the ₹15,000 ceiling regardless of that override — EPS = 8.33% of that capped wage (≈₹1,250 max), Employer EPF share is the remaining ≈3.67%. EDLI is 0.5%, employer-only. Admin Charges are 0.5% per employee, but the ₹500/month minimum applies once across every employee combined, not per employee. EDLI Admin Charges aren\'t shown — EPFO waived them entirely w.e.f. 1 April 2017. '+STATUTORY_FOOTNOTE});
+    footnote:'Employee\'s 12% and Employer\'s EPF+EPS 12% both use the PF wage base (Basic, capped at the statutory ceiling — ₹15,000 up to Aug 2026, ₹25,000 from 17 Sep 2026 — unless the employee\'s pfOnActualBasic override is set). EPS, EDLI, and Admin Charges always use the ₹15,000 ceiling regardless of that override — EPS = 8.33% of that capped wage (≈₹1,250 max), Employer EPF share is the remaining ≈3.67%. EDLI is 0.5%, employer-only. Admin Charges are 0.5% per employee, but the ₹500/month minimum applies once across every employee combined, not per employee. EDLI Admin Charges aren\'t shown — EPFO waived them entirely w.e.f. 1 April 2017. '+STATUTORY_FOOTNOTE});
 }
 // ── ESIC Summary — Monthly or Annual, Employee/Employer/Total. 0.75%/3.25% of Gross, only for
 // employees with Gross ≤ ₹21,000. ──

@@ -2077,7 +2077,7 @@ function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup}={}){
             React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-3'},'Financial Year Start'),React.createElement('select',{id:'f-3',className:'form-control'},React.createElement('option',null,'April'),React.createElement('option',null,'January')))
           ),
           React.createElement('div',{className:'form-row cols2'},
-            React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-4'},'PF Wage Ceiling (₹)'),React.createElement('input',{id:'f-4',className:'form-control',defaultValue:'15000'})),
+            React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-4'},'PF Wage Ceiling (₹)'),React.createElement('input',{id:'f-4',className:'form-control',defaultValue:String(pfWageCeilingFor()),readOnly:true,title:'Statutory — ₹15,000 up to 16 Sep 2026, ₹25,000 from 17 Sep 2026; applied automatically by wage month'})),
             React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-5'},'ESIC Wage Ceiling (₹)'),React.createElement('input',{id:'f-5',className:'form-control',defaultValue:'21000'}))
           ),
           React.createElement('button',{className:'btn btn-primary btn-sm'},'Save Changes')

@@ -130,8 +130,9 @@
         eq('PF on actual basic ₹20,000 (no cap) = ₹2,400',e2.pfEmp,2400);
         eq('No ESIC above ₹21,000 gross',e2.esicEmp,0);
         eq('Net = 29,000 + 800 − 2,400 = ₹27,400',e2.net,27400);
-        eq('PF capped at ₹15,000 wage ceiling = ₹1,800',e3.pfEmp,1800);
-        eq('Net = 20,000 + 800 − 1,800 − 150 = ₹18,850',e3.net,18850);
+        eq('PF Sep 2026 (ceiling change): 8,000 + 8,400 wage = ₹1,968',e3.pfEmp,1968);
+        eq('Net = 20,000 + 800 − 1,968 − 150 = ₹18,682',e3.net,18682);
+        eq('PF wage ceiling: ₹15,000 to Aug 2026, ₹25,000 from Oct 2026; capped wage on ₹30,000 basic',[pfWageCeilingFor(2026,7),pfWageCeilingFor(2026,9),pfCappedWage(30000,2026,7),pfCappedWage(30000,2026,8),pfCappedWage(30000,2026,9)],[15000,25000,15000,19667,25000]);
         eq('Outlet with PF off: no PF',e4.pfEmp,0);
         eq('Outlet with ESIC off: no ESIC',e4.esicEmp,0);
         eq('Net with no deductions = 20,000 + 800 = ₹20,800',e4.net,20800);

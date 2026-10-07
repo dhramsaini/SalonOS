@@ -1782,6 +1782,33 @@ function advanceDeductionFor(salonId,empName,source,year,month){
 // that date — once "Adjust now" has picked a cutoff for pulling a Next Month Advance forward, the
 // column shows the amount that cutoff actually covers, rather than the whole month's balance
 // regardless of what's genuinely being adjusted.
+// ── EPF / EPS statutory wage ceiling ─────────────────────────────────────────────────────────
+// ₹15,000 a month up to 16 Sep 2026; ₹25,000 from 17 Sep 2026 (MoLE S.O. 5109(E), 17 Sep 2026).
+// September 2026, the changeover month, follows EPFO's FAQ: 1–16 Sep is capped at the old ceiling
+// and 17–30 Sep at the new one, each for its share of the month's 30 days (₹8,000 + ₹11,667).
+// month is 0-based; without a month, the current one.
+const PF_CEILING_OLD=15000,PF_CEILING_NEW=25000,PF_CEILING_CHANGE_YM=2026*12+8;
+function _pfYm(year,month){if(year==null||month==null){const d=new Date();year=d.getFullYear();month=d.getMonth();}return Number(year)*12+Number(month);}
+function pfWageCeilingFor(year,month){
+  const ym=_pfYm(year,month);
+  if(ym<PF_CEILING_CHANGE_YM)return PF_CEILING_OLD;
+  if(ym>PF_CEILING_CHANGE_YM)return PF_CEILING_NEW;
+  return Math.round((PF_CEILING_OLD*16+PF_CEILING_NEW*14)/30);
+}
+// Basic capped at the ceiling for that wage month (the EPS / EDLI / admin wage, and the EPF wage
+// unless the employee contributes on actual Basic). With an outlet id: a September 2026 already
+// locked (salary final / paid before this change) keeps the ₹15,000 ceiling it was worked out on,
+// so finalised figures never change by themselves — unlock the month to recalculate it.
+function pfCappedWage(basic,year,month,sid){
+  const b=Number(basic)||0,ym=_pfYm(year,month);
+  if(ym===PF_CEILING_CHANGE_YM&&sid!=null&&typeof isMonthLockedFor==='function'&&isMonthLockedFor(sid,Number(year),Number(month)))return Math.min(b,PF_CEILING_OLD);
+  if(ym===PF_CEILING_CHANGE_YM)return Math.round(Math.min(b*16/30,PF_CEILING_OLD*16/30)+Math.min(b*14/30,PF_CEILING_NEW*14/30));
+  return Math.min(b,pfWageCeilingFor(year,month));
+}
+function pfCeilingLabel(year,month){
+  const ym=_pfYm(year,month);
+  return ym===PF_CEILING_CHANGE_YM?'₹15,000 (1–16 Sep) / ₹25,000 (17–30 Sep)':'₹'+pfWageCeilingFor(year,month).toLocaleString('en-IN');
+}
 // Advance recovery for months that are FINAL — a month's installment comes off the advance's
 // outstanding balance once that month's Salary Working (or Incentive Working, for advances
 // recovered from incentive) is locked, or the employee's row is Approved. Before this, only
@@ -2124,12 +2151,12 @@ function swWorkingsFor(salonId,year,month){
     const totalIncSW=cols.totalInc&&incDetail?(incDetail.totalInc||0):0;
     const tea=cols.tea&&e.status==='Active'?Math.round(teaCfg.mode==='perDay'?teaCfg.rate*totalDays:teaCfg.rate):0;
     // Employee's and Employer's EPF contribution share the SAME wage base under the EPF Act — 12%
-    // of Basic, capped at the ₹15,000 statutory PF wage ceiling unless this employee record has
+    // of Basic, capped at the statutory PF wage ceiling for this month (pfCappedWage) unless this employee record has
     // pfOnActualBasic set (same toggle as Master Salary's Employment & Salary tab). Previously the
     // employee side ignored this cap and always used the full uncapped Basic — a real correctness
     // bug, since it made the employee's own deduction disagree with the employer's contribution
     // for the exact same wage base.
-    const pfWageBase=e.pfOnActualBasic?e.basic:Math.min(e.basic,15000);
+    const pfWageBase=e.pfOnActualBasic?e.basic:pfCappedWage(e.basic,year,month,salonId);
     const pfAutoAmt=(pfApplicableAtSalon&&e.pf)?Math.round(pfWageBase*0.12):0;
     // PF (Emp) can be manually overridden per employee per month, same pattern as ESIC below —
     // e.g. to match a slightly different rounding the EPFO portal itself produced. Falls back to
@@ -2227,19 +2254,19 @@ function statutoryDeductionsFor(salonId,year,month){
   const esicApplicableAtSalon=!!(salonRec&&salonRec.esicApplicable);
   return EMPLOYEES.map(e=>{
     const swM=swMeta[attMonthKey(e.id,year,month)]||{};
-    const pfWageBase=e.pfOnActualBasic?e.basic:Math.min(e.basic,15000);
+    const pfWageBase=e.pfOnActualBasic?e.basic:pfCappedWage(e.basic,year,month,salonId);
     const pfAutoAmt=(pfApplicableAtSalon&&e.pf)?Math.round(pfWageBase*0.12):0;
     const pfEmp=(swM.pfOverride!=null&&swM.pfOverride!=='')?Number(swM.pfOverride)||0:pfAutoAmt;
     const pfEr=(pfApplicableAtSalon&&e.pf)?Math.round(pfWageBase*0.12):0; // employer side isn't separately overridden
-    // EPS (Pension), EDLI, and Admin Charges all use the ₹15,000 statutory wage ceiling
+    // EPS (Pension), EDLI, and Admin Charges all use the statutory wage ceiling for the month
     // regardless of pfOnActualBasic — that election only raises the EPF contribution itself,
     // never these three, per EPFO's own "pay" definition for Accounts 2/10/21/22.
-    const epsWageBase=Math.min(e.basic,15000);
+    const epsWageBase=pfCappedWage(e.basic,year,month,salonId);
     const pfOn=pfApplicableAtSalon&&e.pf;
-    const eps=pfOn?Math.round(epsWageBase*0.0833):0; // EPS = 8.33% of wage, capped ₹15,000 (≈₹1,250 max)
+    const eps=pfOn?Math.round(epsWageBase*0.0833):0; // EPS = 8.33% of the capped wage (max ₹1,250 to Aug 2026, ₹2,083 from Oct 2026)
     const pfErEpf=Math.max(0,pfEr-eps); // Employer's EPF share = Employer 12% − EPS diverted out of it (≈3.67%)
-    const edli=pfOn?Math.round(epsWageBase*0.005):0; // EDLI — 0.5% of wage, capped ₹15,000, employer-only
-    const adminChargeRaw=pfOn?Math.round(epsWageBase*0.005):0; // Admin Charges — 0.5%, capped ₹15,000; the ₹500/month establishment minimum is applied once, across all employees, in statutoryCellsForMonth below, not per employee
+    const edli=pfOn?Math.round(epsWageBase*0.005):0; // EDLI — 0.5% of the capped wage, employer-only
+    const adminChargeRaw=pfOn?Math.round(epsWageBase*0.005):0; // Admin Charges — 0.5% of the capped wage; the ₹500/month establishment minimum is applied once, across all employees, in statutoryCellsForMonth below, not per employee
     const esicAutoAmt=(esicApplicableAtSalon&&e.esic&&e.gross<=21000)?Math.round(e.gross*0.0075):0;
     const esicEmp=(swM.esicOverride!=null&&swM.esicOverride!=='')?Number(swM.esicOverride)||0:esicAutoAmt;
     const esicEr=(esicApplicableAtSalon&&e.esic&&e.gross<=21000)?Math.round(e.gross*0.0325):0;

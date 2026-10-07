@@ -50,8 +50,8 @@ function pfEcrFor(sid,year,month){
   const r=Math.round;
   const lines=rows.map(e=>{
     const basic=Number(e.basic)||0;
-    const epfW=e.pfOnActualBasic?basic:Math.min(basic,15000);
-    const epsW=Math.min(basic,15000);
+    const epsW=pfCappedWage(basic,year,month,sid);
+    const epfW=e.pfOnActualBasic?basic:epsW;
     return[String(e.pfNumber||'').replace(/\s/g,''),String(e.name||'').toUpperCase(),r(e.grossAfterLop||e.gross||0),r(epfW),r(epsW),r(epsW),r(e.pfEmp||0),r(e.eps||0),r(e.pfErEpf||0),r(e.lop||0),0].join('#~#');
   });
   return{rows,text:lines.join('\n'),missingUan:rows.filter(e=>!String(e.pfNumber||'').trim()).map(e=>e.name)};

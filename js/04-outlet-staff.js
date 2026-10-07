@@ -453,13 +453,13 @@ function OutletDashboard({salon,period,onNavTab}){
   );
 }
 
-// EPF Employer Contribution — 12% of Basic Salary, capped at the ₹15,000 statutory PF wage
-// ceiling by default (uncapped if pfOnActualBasic is set). Zero whenever PF doesn't apply —
+// EPF Employer Contribution — 12% of Basic Salary, capped at the statutory PF wage ceiling
+// (pfWageCeilingFor — ₹25,000 from 17 Sep 2026) by default (uncapped if pfOnActualBasic is set). Zero whenever PF doesn't apply —
 // either the outlet isn't PF-registered, or this employee individually isn't on PF. This is a
 // real cost to the employer and must be included in Gross CTC, not shown as a side note next to it.
-function epfEmployerContributionFor(basic,pfOnActualBasic,pfApplicableAtSalon,pfEnabledForEmployee){
+function epfEmployerContributionFor(basic,pfOnActualBasic,pfApplicableAtSalon,pfEnabledForEmployee,year,month){
   if(!pfApplicableAtSalon||!pfEnabledForEmployee)return 0;
-  const wageBase=pfOnActualBasic?(Number(basic)||0):Math.min(Number(basic)||0,15000);
+  const wageBase=pfOnActualBasic?(Number(basic)||0):pfCappedWage(basic,year,month);
   return Math.round(wageBase*0.12);
 }
 function MasterSalarySheet({salon}={}){
@@ -814,7 +814,7 @@ function MasterSalarySheet({salon}={}){
     )
   );
 
-  // 12% of Basic Salary, capped at the ₹15,000 statutory PF wage ceiling by default — check
+  // 12% of Basic Salary, capped at the statutory PF wage ceiling by default — check
   // "Calculate on actual Basic Salary" to remove the cap and use full Basic instead.
   const epfEmployerContribution=epfEmployerContributionFor(form.basic,form.pfOnActualBasic,salon&&salon.pfApplicable,form.pf);
 
@@ -841,9 +841,9 @@ function MasterSalarySheet({salon}={}){
         (salon&&salon.pfApplicable&&form.pf)&&React.createElement('div',{className:'form-group'},
           React.createElement('label',null,'EPF Employer Contribution'),
           React.createElement('input',{className:'form-control',type:'number',value:epfEmployerContribution||'',readOnly:true,disabled:true,style:{color:'var(--text3)',cursor:'not-allowed'},placeholder:'Auto-calculated'}),
-          React.createElement('div',{style:{fontSize:10,color:'var(--text3)',marginTop:3}},'12% of '+(form.pfOnActualBasic?'actual Basic Salary':'₹15,000 (statutory PF wage ceiling)')+' — included in Gross CTC'),
+          React.createElement('div',{style:{fontSize:10,color:'var(--text3)',marginTop:3}},'12% of '+(form.pfOnActualBasic?'actual Basic Salary':pfCeilingLabel()+' (statutory PF wage ceiling)')+' — included in Gross CTC'),
           React.createElement('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'var(--text2)',cursor:'pointer',marginTop:6}},
-            React.createElement('input',{type:'checkbox',checked:!!form.pfOnActualBasic,onChange:fc('pfOnActualBasic')}),'Calculate on actual Basic Salary (ignore ₹15,000 ceiling)'
+            React.createElement('input',{type:'checkbox',checked:!!form.pfOnActualBasic,onChange:fc('pfOnActualBasic')}),'Calculate on actual Basic Salary (ignore the '+pfCeilingLabel()+' ceiling)'
           )
         ),
         React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-33'},'Gross CTC (auto-sum)'),React.createElement('input',{id:'f-33',className:'form-control',type:'number',readOnly:true,disabled:true,style:{color:'var(--text3)',cursor:'not-allowed'},value:(Number(form.basic)||0)+(Number(form.hra)||0)+(Number(form.conv)||0)+(Number(form.special)||0)+epfEmployerContribution,placeholder:'Auto-calculated'}),React.createElement('div',{style:{fontSize:10,color:'var(--text3)',marginTop:3}},'Basic + HRA + Conveyance + Special'+(epfEmployerContribution?' + EPF Employer Contribution':''))),

@@ -1339,14 +1339,15 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     const rows=workings.filter(e=>e.pf);
     if(!rows.length){swError('No employees are marked PF-applicable for '+MONTHS[selMonth]+' '+selYear+'.');return;}
     // EPS/EDLI/Admin split derived from the same combined 12% Employer figure (pfEr) already on
-    // Salary Working — 8.33% (capped ₹1,250) goes to EPS (A/C10), the rest stays EPF (A/C1
+    // Salary Working — 8.33% of the capped wage goes to EPS (A/C10), the rest stays EPF (A/C1
     // Employer). EDLI (A/C21) is 0.5% capped ₹75; Admin (A/C2) 0.5%, uncapped; EDLI Admin (A/C22)
     // has been NIL since the April 2017 amendment.
     const calcRows=rows.map(e=>{
-      const wageBase=e.pfOnActualBasic?(Number(e.basic)||0):Math.min(Number(e.basic)||0,15000);
-      const eps=Math.min(Math.round(wageBase*0.0833),1250);
+      const capped=pfCappedWage(e.basic,selYear,selMonth,salon&&salon.id);
+      const wageBase=e.pfOnActualBasic?(Number(e.basic)||0):capped;
+      const eps=Math.round(capped*0.0833);
       const epfEr=Math.max(0,e.pfEr-eps);
-      const edli=Math.min(Math.round(wageBase*0.005),75);
+      const edli=Math.round(capped*0.005);
       const admin=Math.round(wageBase*0.005);
       return{...e,wageBase,eps,epfEr,edli,admin};
     });
@@ -1366,7 +1367,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
       +'</tr>').join('');
     const body='<h3>EPF Contribution Challan (ECR)</h3>'
       +'<p><b>Establishment:</b> '+(salon?.name||'—')+' &nbsp; <b>PF Establishment Code:</b> '+(salon?.pfCode||'—')+'</p>'
-      +'<p><b>Wage Month:</b> '+MONTHS[selMonth]+' '+selYear+' &nbsp; <b>Wage Ceiling:</b> ₹15,000/month unless marked "PF on Actual Basic"</p>'
+      +'<p><b>Wage Month:</b> '+MONTHS[selMonth]+' '+selYear+' &nbsp; <b>Wage Ceiling:</b> '+pfCeilingLabel(selYear,selMonth)+'/month unless marked "PF on Actual Basic"</p>'
       +'<table><thead><tr><th class="id">S.No</th><th>UAN</th><th>Employee Name</th><th class="num">Wage Base</th><th class="num">Employee A/C1 (12%)</th><th class="num">Employer A/C1</th><th class="num">A/C10 EPS (8.33%)</th><th class="num">A/C21 EDLI (0.5%)</th><th class="num">A/C2 Admin (0.5%)</th></tr></thead>'
       +'<tbody>'+bodyRows
       +'<tr class="total-row"><td colspan="4">Total ('+rows.length+' employee'+(rows.length===1?'':'s')+')</td><td class="num">₹'+totEmp.toLocaleString('en-IN')+'</td><td class="num">₹'+totEpfEr.toLocaleString('en-IN')+'</td><td class="num">₹'+totEps.toLocaleString('en-IN')+'</td><td class="num">₹'+totEdli.toLocaleString('en-IN')+'</td><td class="num">₹'+totAdmin.toLocaleString('en-IN')+'</td></tr>'
@@ -2027,10 +2028,10 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
         React.createElement('div',{style:{fontFamily:'var(--font2)',fontSize:17,color:'var(--text)',marginBottom:6}},showPfWorking.name+' — PF (Emp)'),
         showPfWorking.pf
           ?(()=>{
-              const wageBase=showPfWorking.pfOnActualBasic?showPfWorking.basic:Math.min(showPfWorking.basic,15000);
+              const wageBase=showPfWorking.pfOnActualBasic?showPfWorking.basic:pfCappedWage(showPfWorking.basic,selYear,selMonth,salon&&salon.id);
               return React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'12px 14px',marginBottom:16}},
                 React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,marginBottom:6}},React.createElement('span',null,'Basic Salary'),React.createElement('span',null,'₹'+Math.round(showPfWorking.basic).toLocaleString('en-IN'))),
-                React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,marginBottom:6}},React.createElement('span',null,'PF Wage Base'+(showPfWorking.pfOnActualBasic?' (actual Basic)':' (capped at ₹15,000)')),React.createElement('span',null,'₹'+Math.round(wageBase).toLocaleString('en-IN'))),
+                React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,marginBottom:6}},React.createElement('span',null,'PF Wage Base'+(showPfWorking.pfOnActualBasic?' (actual Basic)':' (capped at '+pfCeilingLabel(selYear,selMonth)+')')),React.createElement('span',null,'₹'+Math.round(wageBase).toLocaleString('en-IN'))),
                 React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,marginBottom:6}},React.createElement('span',null,'PF Rate (Employee)'),React.createElement('span',null,'12%')),
                 React.createElement('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,fontWeight:700,paddingTop:6,borderTop:'1px solid var(--border)'}},React.createElement('span',null,'Auto-Calculated'),React.createElement('span',null,'₹'+Math.round(showPfWorking.pfAutoAmt).toLocaleString('en-IN')))
               );

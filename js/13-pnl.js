@@ -2330,7 +2330,7 @@ async function buildStatutoryChallanExcelBlob({kind,title,rows,salon,MONTHS,selM
   const infoLines=kind==='esic'
     ?[['Establishment',salon?.name||'—'],['ESIC Code',salon?.esicCode||'—'],['Wage Month',MONTHS[selMonth]+' '+selYear],['Rate','Employee 0.75% + Employer 3.25% of Gross Wages (ceiling ₹21,000)']]
     :kind==='epf'
-    ?[['Establishment',salon?.name||'—'],['PF Establishment Code',salon?.pfCode||'—'],['Wage Month',MONTHS[selMonth]+' '+selYear],['Wage Ceiling','₹15,000/month unless "PF on Actual Basic"']]
+    ?[['Establishment',salon?.name||'—'],['PF Establishment Code',salon?.pfCode||'—'],['Wage Month',MONTHS[selMonth]+' '+selYear],['Wage Ceiling',pfCeilingLabel(selYear,selMonth)+'/month unless "PF on Actual Basic"']]
     :[['Establishment',salon?.name||'—'],['PT Registration No.',salon?.ptRegNo||'—'],['State',(getSalonRecordById(salon?.id)||{}).state||'—'],['Wage Month',MONTHS[selMonth]+' '+selYear]];
   infoLines.forEach(([k,v])=>{
     const r=ws.addRow([k,v]);
@@ -2358,11 +2358,12 @@ async function buildStatutoryChallanExcelBlob({kind,title,rows,salon,MONTHS,selM
       rowVals={no:idx+1,ipNo:e.esicNumber||'—',name:e.name,days:e.totalDays,gross:e.gross||0,
         empAmt:e.esicEmp,erAmt:e.esicEr,total:{formula:L('empAmt')+r+'+'+L('erAmt')+r,result:e.esicEmp+e.esicEr}};
     }else if(kind==='epf'){
-      const wageBase=e.pfOnActualBasic?(Number(e.basic)||0):Math.min(Number(e.basic)||0,15000);
-      const eps=Math.min(Math.round(wageBase*0.0833),1250);
+      const capped=pfCappedWage(e.basic,selYear,selMonth,salon&&salon.id),ceil=pfWageCeilingFor(selYear,selMonth);
+      const wageBase=e.pfOnActualBasic?(Number(e.basic)||0):capped;
+      const eps=Math.round(capped*0.0833);
       rowVals={no:idx+1,uan:e.pfNumber||'—',name:e.name,wageBase,empAmt:e.pfEmp,erAmt:e.pfEr,
-        eps:{formula:'MIN(ROUND('+L('wageBase')+r+'*0.0833,0),1250)',result:eps},
-        edli:{formula:'MIN(ROUND('+L('wageBase')+r+'*0.005,0),75)',result:Math.min(Math.round(wageBase*0.005),75)},
+        eps:{formula:'MIN(ROUND('+L('wageBase')+r+'*0.0833,0),'+Math.round(ceil*0.0833)+')',result:eps},
+        edli:{formula:'MIN(ROUND('+L('wageBase')+r+'*0.005,0),'+Math.round(ceil*0.005)+')',result:Math.round(capped*0.005)},
         admin:{formula:'ROUND('+L('wageBase')+r+'*0.005,0)',result:Math.round(wageBase*0.005)}};
     }else{
       rowVals={no:idx+1,name:e.name,desig:e.desig||'—',gross:e.gross||0,pt:e.ptAmt};
