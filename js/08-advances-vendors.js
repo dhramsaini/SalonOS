@@ -969,7 +969,17 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     setShowVendorModal(false);setVForm(BLANK_V);setEditVendor(null);
   };
   const openEditVendor=(v)=>{setVForm({...BLANK_V,...v});setEditVendor(v);setShowVendorModal(true);};
-  const deleteVendor=(id)=>{if(window.confirm('Delete this vendor?'))setVendors(prev=>prev.filter(v=>v.id!==id));};
+  // A vendor with bills can't be deleted — the invoices, payments and ledger point to it; set it
+  // Inactive instead. One with no bills is deleted after a confirmation.
+  const deleteVendor=(id)=>{
+    const v=vendors.find(x=>x.id===id);if(!v)return;
+    const n=invoices.filter(i=>String(i.vendorId)===String(id)).length;
+    if(n){window.alert('"'+v.name+'" has '+n+' invoice'+(n===1?'':'s')+' entered, so it cannot be deleted (its bills and payments would lose their vendor). Edit it and set Status to Inactive instead.');return;}
+    if(!window.confirm('Delete vendor "'+v.name+'" ('+v.id+')? This cannot be undone.'))return;
+    setVendors(prev=>prev.filter(x=>x.id!==id));
+    try{logAuditEvent(salonId,{entity:'Vendor',entityId:id,action:'Deleted',summary:v.name});}catch(e){}
+    toastSuccess('Vendor "'+v.name+'" deleted.');
+  };
 
   // ── Bulk import — download a template, fill it in Excel, upload it back to add many invoices
   // at once instead of one at a time. Vendor is matched by name against the Vendor List (exact
@@ -1438,7 +1448,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
                   React.createElement('td',{style:{fontFamily:'monospace',fontSize:12}},v.phone||'—'),
                   React.createElement('td',null,React.createElement('span',{className:'badge '+(v.status==='Active'?'badge-green':'badge-gray')},v.status||'—')),
                   React.createElement('td',{style:{textAlign:'right'}},rupee(owed(v.id))),
-                  React.createElement('td',null,React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>openEditVendor(v)},'✏ Edit')))))));
+                  React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:6}},React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>openEditVendor(v)},'✏ Edit'),React.createElement('button',{className:'btn btn-sm',title:'Delete this vendor',style:{background:'rgba(255,107,107,0.1)',border:'1px solid rgba(255,107,107,0.35)',color:'var(--red)'},onClick:()=>deleteVendor(v.id)},'🗑 Delete'))))))));
         })(),
         React.createElement('div',{style:{display:'flex',justifyContent:'flex-end',marginTop:12}},
           React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowVendorList(false)},'Close')))),
