@@ -837,7 +837,7 @@ function tdsAmountOf(it){
   const rate=Number(it.tdsRate)||0;
   return Math.round(base*rate/100);
 }
-function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onConsumePendingVendorCategory}={}){
+function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDate,onConsumePendingVendorCategory}={}){
   const salonId=salon?.id;
   const BLANK_V={id:'',name:'',address:'',gst:'',cat:'Purchase of Cosmetic',contact:'',phone:'',terms:'30 days',status:'Active',tdsApplicable:false,tdsSection:'',tdsRate:'',
     bankName:'',accountNo:'',ifsc:'',accountHolder:'',email:''};
@@ -869,7 +869,8 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
   const [invoices,setInvoices]=useState(()=>loadVendorInvoices(salonId));
   useEffect(()=>{saveVendorInvoices(invoices,salonId);},[invoices,salonId]);
 
-  const [tab,setTab]=useState('invoices');          // 'master' | 'invoices' | 'outstanding' | 'performa' | 'dashboard'
+  const [tab,setTab]=useState('invoices');
+  const [invView,setInvView]=useState('all'); // all | month | pending | pendingMonth          // 'master' | 'invoices' | 'outstanding' | 'performa' | 'dashboard'
   // Daily Sales & Exp signals here after a payment entry on a category-gated row (e.g.
   // Maintenance Expenses) — jump straight to that invoice's Record Payment modal so it can be
   // marked paid immediately, instead of leaving the person to go find it manually.
@@ -1295,7 +1296,17 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
   const totalOverdue=invoices.filter(inv=>!isPI(inv)&&isOverdue(inv)).reduce((s,inv)=>s+getBalance(inv),0);
   const totalPaidMonth=invoices.reduce((s,inv)=>s+inv.payments.filter(p=>p.paidDate&&p.paidDate.slice(0,7)===new Date().toISOString().slice(0,7)).reduce((a,p)=>a+Number(p.paidAmount),0),0);
 
+  // Quick views on Invoices & Payments. "This month" = the outlet's selected period month (by the
+  // invoice's booking date, as everywhere else); "pending" = a bill (not a PI) with a balance left.
+  const viewCal=periodToCalendar(period)||{year:new Date().getFullYear(),month:new Date().getMonth()};
+  const viewYm=viewCal.year+'-'+String(viewCal.month+1).padStart(2,'0');
+  const viewMonthLabel=new Date(viewCal.year,viewCal.month,1).toLocaleString('en-IN',{month:'short',year:'numeric'});
+  const isPendingInv=inv=>!isPI(inv)&&getBalance(inv)>0.5;
+  const inView=inv=>invView==='month'?invoiceBookMonthOf(inv)===viewYm
+    :invView==='pending'?isPendingInv(inv)
+    :invView==='pendingMonth'?isPendingInv(inv)&&invoiceBookMonthOf(inv)===viewYm:true;
   const filteredInv=invoices.filter(inv=>{
+    if(!inView(inv))return false;
     const matchV=!filterVendor||inv.vendorId===filterVendor;
     const matchS=!search||getVendorName(inv.vendorId).toLowerCase().includes(search.toLowerCase())||inv.invoiceNo.toLowerCase().includes(search.toLowerCase());
     return matchV&&matchS;
@@ -1390,10 +1401,12 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
 
     // ── Tab bar ──
     React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
-      [{id:'invoices',label:'🧾 Invoices & Payments'},{id:'messages',label:'📣 Messages'},{id:'outstanding',label:'⏳ Outstanding Invoices'},{id:'performa',label:'📝 Performa Invoice'},{id:'dashboard',label:'📊 Dashboard'},{id:'master',label:'📋 Master Vendor List'}].map(t=>
+      [{id:'invoices',label:'🧾 Invoices & Payments'},{id:'messages',label:'📣 Messages'},{id:'outstanding',label:'⏳ Outstanding Invoices'},{id:'performa',label:'📝 Performa Invoice'},{id:'dashboard',label:'📊 Dashboard'},{id:'ledger',label:'📒 Vendor Ledger'},{id:'master',label:'📋 Master Vendor List'}].map(t=>
         React.createElement('button',{key:t.id,className:`tab-btn ${tab===t.id?'active':''}`,onClick:()=>setTab(t.id)},t.label)
       )
     ),
+
+    tab==='ledger'&&React.createElement(VendorLedgerPanel,{salon,invoices,vendors,period}),
 
     // ══════════════════════════════════
     // TAB 1 — MASTER VENDOR LIST
@@ -1461,6 +1474,15 @@ function VendorSheet({salon,pendingVendorCategory,pendingVendorPaymentDate,onCon
           React.createElement('option',{value:''},'All Vendors'),
           vendors.map(v=>React.createElement('option',{key:v.id,value:v.id},v.name))
         )
+      ),
+      React.createElement('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:12}},
+        React.createElement('span',{style:{fontSize:12,color:'var(--text3)',marginRight:4}},'Show:'),
+        [['all','All invoices'],['month','Invoices of '+viewMonthLabel],['pending','Pending — all months'],['pendingMonth','Pending — '+viewMonthLabel]].map(([k,l])=>{
+          const n=invoices.filter(inv=>k==='month'?invoiceBookMonthOf(inv)===viewYm:k==='pending'?isPendingInv(inv):k==='pendingMonth'?isPendingInv(inv)&&invoiceBookMonthOf(inv)===viewYm:true).length;
+          return React.createElement('button',{key:k,className:'btn btn-sm '+(invView===k?'btn-primary':'btn-ghost'),onClick:()=>setInvView(k)},l+' ('+n+')');
+        }),
+        invView!=='all'&&React.createElement('span',{style:{fontSize:12,color:'var(--text2)',marginLeft:6}},
+          'Balance pending: ₹'+Math.round(filteredInv.filter(x=>!isPI(x)).reduce((t,x)=>t+Math.max(0,getBalance(x)),0)).toLocaleString('en-IN'))
       ),
       React.createElement('div',{className:'card'},
         React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:8}},'Click a cell — or drag across several — then Ctrl/Cmd+C to copy, just like Excel.'),
@@ -2550,4 +2572,95 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
       React.createElement('span',{style:{color:'var(--blue)',cursor:'pointer',textDecoration:'underline'},onClick:()=>onNavTab('master-salary')},'Go to Master Salary')
     )
   );
+}
+
+// ── Vendor ledger ────────────────────────────────────────────────────────────────────────────
+// One vendor's account for a period: each bill (Tax Invoice / Invoice — booked by its booking
+// date, else invoice date) is a Credit, each payment a Debit (by payment date). Payments recorded
+// on a Performa Invoice are advances paid, so they count too; the PI itself is not a bill.
+// Opening = bills − payments before the period; Closing = Opening + bills − payments in it.
+// A positive balance is what we owe the vendor.
+function vlIso(s){const t=String(s==null?'':s).trim();const p=parseInvoiceDateFlexible(/^[0-9]{4}-[0-9]{2}-[0-9]{2}T/.test(t)?t.slice(0,10):t);return p?p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0'):'';}
+function vendorLedgerFor(invoices,vendorId,from,to){
+  const ents=[];
+  (invoices||[]).filter(inv=>inv&&String(inv.vendorId)===String(vendorId)).forEach(inv=>{
+    const pi=inv.docNature==='Performa Invoice';
+    if(!pi){const d=vlIso(inv.bookingDate||inv.invoiceDate);ents.push({date:d,type:'Bill',ref:inv.invoiceNo||'',desc:inv.desc||inv.category||'',credit:Number(inv.amount)||0,debit:0});}
+    (inv.payments||[]).forEach(p=>{const amt=Number(p.paidAmount)||0;if(!amt)return;
+      ents.push({date:vlIso(p.paidDate),type:pi?'Advance (PI)':'Payment',ref:(inv.invoiceNo||'')+(p.ref?' · '+p.ref:''),desc:(p.mode||'')+(p.note?' — '+p.note:''),credit:0,debit:amt});});
+  });
+  ents.sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(b.credit-a.credit));
+  let opening=0;const rows=[];
+  ents.forEach(e=>{
+    if(!e.date||(from&&e.date<from)){opening+=e.credit-e.debit;return;}
+    if(to&&e.date>to)return;
+    rows.push(e);
+  });
+  let bal=opening;rows.forEach(r=>{bal+=r.credit-r.debit;r.balance=bal;});
+  const credit=rows.reduce((t,r)=>t+r.credit,0),debit=rows.reduce((t,r)=>t+r.debit,0);
+  const R=n=>Math.round(n*100)/100;
+  rows.forEach(r=>{r.balance=R(r.balance);});
+  return{opening:R(opening),rows,credit:R(credit),debit:R(debit),closing:R(opening+credit-debit)};
+}
+function VendorLedgerPanel({salon,invoices,vendors,period}){
+  const h=React.createElement;
+  const cal=periodToCalendar(period)||{year:new Date().getFullYear(),month:new Date().getMonth()};
+  const iso=(y,m,d)=>y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+  const [vid,setVid]=useState(()=>(vendors[0]||{}).id||'');
+  const [from,setFrom]=useState(iso(cal.year,cal.month,1));
+  const [to,setTo]=useState(iso(cal.year,cal.month,new Date(cal.year,cal.month+1,0).getDate()));
+  const v=vendors.find(x=>x.id===vid);
+  const L=vid?vendorLedgerFor(invoices,vid,from,to):null;
+  const f=n=>(n<0?'−':'')+'₹'+Math.abs(Math.round(n)).toLocaleString('en-IN');
+  const dmy=s=>s?s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4):'—';
+  const balTxt=n=>f(Math.abs(n))+(n>0.5?' Cr (payable)':n<-0.5?' Dr (advance)':'');
+  const setRange=(a,b)=>{setFrom(a);setTo(b);};
+  const now=new Date(),fyStart=now.getMonth()>=3?now.getFullYear():now.getFullYear()-1;
+  const title=()=>'Vendor Ledger — '+(v?v.name:'')+' — '+dmy(from)+' to '+dmy(to);
+  const exportXlsx=()=>{
+    if(!L)return;
+    const aoa=[[title()],[],['Date','Type','Reference','Details','Debit (Paid)','Credit (Bill)','Balance'],
+      ['','Opening balance','','','','',L.opening],
+      ...L.rows.map(r=>[dmy(r.date),r.type,r.ref,r.desc,r.debit||'',r.credit||'',r.balance]),
+      ['','Total for period','','',L.debit,L.credit,''],['','Closing balance','','','','',L.closing]];
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'Ledger');
+    XLSX.writeFile(wb,'Vendor_Ledger_'+String(v?v.name:'').replace(/[^A-Za-z0-9]+/g,'_')+'_'+from+'_to_'+to+'.xlsx');
+  };
+  const exportPdf=()=>{
+    if(!L)return;
+    const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    const tr=c=>'<tr>'+c.map((x,i)=>'<td'+(i>=4?' class="num"':'')+'>'+esc(x)+'</td>').join('')+'</tr>';
+    const body='<table><thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Details</th><th class="num">Debit (Paid)</th><th class="num">Credit (Bill)</th><th class="num">Balance</th></tr></thead><tbody>'
+      +tr(['','Opening balance','','','','',balTxt(L.opening)])
+      +L.rows.map(r=>tr([dmy(r.date),r.type,r.ref,r.desc,r.debit?f(r.debit):'',r.credit?f(r.credit):'',balTxt(r.balance)])).join('')
+      +tr(['','Total for period','','',f(L.debit),f(L.credit),''])+tr(['','Closing balance','','','','',balTxt(L.closing)])+'</tbody></table>';
+    exportReportPdf(title(),(salon&&salon.name)||'',body,{landscape:true});
+  };
+  const box=(label,val,color)=>h('div',{className:'metric-card '+color},h('div',{className:'metric-label'},label),h('div',{className:'metric-value',style:{fontSize:18}},val));
+  return h('div',null,
+    h('div',{style:{display:'flex',gap:10,flexWrap:'wrap',alignItems:'flex-end',marginBottom:12}},
+      h('div',{className:'form-group',style:{marginBottom:0,minWidth:220}},h('label',null,'Vendor'),
+        h('select',{className:'form-control',value:vid,onChange:e=>setVid(e.target.value)},
+          [...vendors].sort((a,b)=>String(a.name).localeCompare(String(b.name))).map(x=>h('option',{key:x.id,value:x.id},x.name)))),
+      h('div',{className:'form-group',style:{marginBottom:0}},h('label',null,'From'),h('input',{type:'date',className:'form-control',value:from,onChange:e=>setFrom(e.target.value)})),
+      h('div',{className:'form-group',style:{marginBottom:0}},h('label',null,'To'),h('input',{type:'date',className:'form-control',value:to,onChange:e=>setTo(e.target.value)})),
+      h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
+        h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRange(iso(cal.year,cal.month,1),iso(cal.year,cal.month,new Date(cal.year,cal.month+1,0).getDate()))},'Selected month'),
+        h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRange(iso(fyStart,3,1),iso(fyStart+1,2,31))},'This FY'),
+        h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRange('2000-01-01',iso(now.getFullYear(),now.getMonth(),now.getDate()))},'All time')),
+      h('div',{style:{flex:1}}),
+      L&&h('button',{className:'btn btn-ghost btn-sm',onClick:exportXlsx},'⬇ Excel'),
+      L&&h('button',{className:'btn btn-ghost btn-sm',onClick:exportPdf},'🖨 PDF')),
+    !vid?h('div',{className:'help-note'},'Add a vendor first.'):from&&to&&from>to?h('div',{className:'help-note'},'"From" is after "To".'):h(React.Fragment,null,
+      h('div',{className:'grid4',style:{marginBottom:12}},
+        box('Opening Balance',balTxt(L.opening),'blue'),box('Bills in period',f(L.credit),'amber'),box('Paid in period',f(L.debit),'green'),box('Closing Balance',balTxt(L.closing),'red')),
+      h('div',{className:'card'},h('div',{className:'table-wrap'},h('table',null,
+        h('thead',null,h('tr',null,['Date','Type','Reference','Details','Debit (Paid)','Credit (Bill)','Balance'].map((c,i)=>h('th',{key:c,style:i>=4?{textAlign:'right'}:null},c)))),
+        h('tbody',null,
+          h('tr',{style:{fontWeight:700,background:'var(--bg3)'}},h('td',null,dmy(from)),h('td',{colSpan:5},'Opening balance'),h('td',{style:{textAlign:'right'}},balTxt(L.opening))),
+          L.rows.length===0&&h('tr',null,h('td',{colSpan:7,style:{textAlign:'center',padding:20,color:'var(--text3)'}},'No bills or payments for this vendor in this period.')),
+          L.rows.map((r,i)=>h('tr',{key:i},h('td',null,dmy(r.date)),h('td',null,r.type),h('td',{style:{fontFamily:'monospace',fontSize:11}},r.ref),h('td',{style:{fontSize:12,color:'var(--text2)'}},r.desc),
+            h('td',{style:{textAlign:'right',color:'var(--green)'}},r.debit?f(r.debit):''),h('td',{style:{textAlign:'right',color:'var(--orange)'}},r.credit?f(r.credit):''),h('td',{style:{textAlign:'right',fontWeight:600}},balTxt(r.balance)))),
+          h('tr',{style:{fontWeight:700}},h('td',null,''),h('td',{colSpan:3},'Total for period'),h('td',{style:{textAlign:'right'}},f(L.debit)),h('td',{style:{textAlign:'right'}},f(L.credit)),h('td',null,'')),
+          h('tr',{style:{fontWeight:700,background:'var(--bg3)'}},h('td',null,dmy(to)),h('td',{colSpan:5},'Closing balance'),h('td',{style:{textAlign:'right'}},balTxt(L.closing)))))))));
 }

@@ -696,6 +696,11 @@
         // Duplicate vendor invoice numbers are refused (same vendor), other vendors / PIs are fine.
         const dl=[{id:'VI-1',vendorId:'V1',invoiceNo:'INV-001',docNature:'Tax Invoice'},{id:'VI-2',vendorId:'V1',invoiceNo:'PI 7',docNature:'Performa Invoice'}];
         eq('Duplicate invoice: same vendor and number caught, ignoring case and dashes',[!!duplicateVendorInvoice(dl,'V1','inv 001','Tax Invoice',null),!!duplicateVendorInvoice(dl,'V2','INV-001','Tax Invoice',null),!!duplicateVendorInvoice(dl,'V1','INV-001','Tax Invoice','VI-1'),!!duplicateVendorInvoice(dl,'V1','PI-7','Tax Invoice',null),!!duplicateVendorInvoice(dl,'V1','PI-7','Performa Invoice',null)],[true,false,false,false,true]);
+        // Vendor ledger: opening from before the period, closing = opening + bills - payments.
+        const vl=vendorLedgerFor([{vendorId:'V9',invoiceNo:'A',invoiceDate:'15/08/2026',amount:1000,payments:[{paidAmount:400,paidDate:'2026-08-20'},{paidAmount:600,paidDate:'2026-09-05'}]},
+          {vendorId:'V9',invoiceNo:'B',invoiceDate:'10/09/2026',amount:2500,payments:[]},{vendorId:'V9',invoiceNo:'P',docNature:'Performa Invoice',invoiceDate:'12/09/2026',amount:900,payments:[{paidAmount:300,paidDate:'2026-09-12'}]},
+          {vendorId:'V8',invoiceNo:'X',invoiceDate:'10/09/2026',amount:99,payments:[]}],'V9','2026-09-01','2026-09-30');
+        eq('Vendor ledger: opening 600, bills 2,500, paid 900, closing 2,200',[vl.opening,vl.credit,vl.debit,vl.closing,vl.rows.length],[600,2500,900,2200,3]);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.
