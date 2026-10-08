@@ -430,9 +430,13 @@ function bizKeyOf(salonId){return isRestaurantOutlet(salonId)?'restaurant':'salo
 const RESTAURANT_VENDOR_CATEGORIES=['Food & Raw Material Purchase','Liquor Purchase','Packaging Material','Gas / LPG','Pest Control','Licences & Fees'];
 // A vendor category list with the restaurant categories added (before "Other") for a restaurant
 // outlet — or, with no outlet given, whenever any restaurant outlet exists.
+// The category a new vendor / bill starts on: Purchase of Cosmetic for a salon, Food & Raw Material for a restaurant.
+function defaultVendorCategoryFor(salonId){return salonId!=null&&salonId!==''&&isRestaurantOutlet(salonId)?'Food & Raw Material Purchase':'Purchase of Cosmetic';}
 function withBizCategories(list,salonId){
   const rest=salonId!=null&&salonId!==''?isRestaurantOutlet(salonId):SALONS.some(s=>s.businessType==='Restaurant');
   if(!rest)return list;
+  // A restaurant outlet doesn't buy cosmetics — that category isn't offered there.
+  if(salonId!=null&&salonId!=='')list=list.filter(c=>c!=='Purchase of Cosmetic');
   const i=list.indexOf('Other');const extra=RESTAURANT_VENDOR_CATEGORIES.filter(c=>!list.includes(c));
   return i<0?[...list,...extra]:[...list.slice(0,i),...extra,...list.slice(i)];
 }

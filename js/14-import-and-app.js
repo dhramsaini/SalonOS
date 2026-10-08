@@ -2,7 +2,7 @@
 
 // initial (optional): {ai, attachment} — a bill already read on the server (WhatsApp inbox); opens
 // straight on the review step with that stored file attached.
-function InvoiceIntake({vendors,onUse,onManual,onClose,initial}){
+function InvoiceIntake({vendors,salonId,onUse,onManual,onClose,initial}){
   const {toast}=useToast();
   const fromInitial=()=>{
     if(!initial)return null;
@@ -148,7 +148,7 @@ function InvoiceIntake({vendors,onUse,onManual,onClose,initial}){
             h('label',null,'Category *'),
             h('select',{className:'form-control',value:data.category||'',onChange:e=>set('category',e.target.value)},
               h('option',{value:''},'— Select Category —'),
-              withBizCategories(['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Other']).map(c=>h('option',{key:c,value:c},c)))
+              withBizCategories(['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Other'],salonId).map(c=>h('option',{key:c,value:c},c)))
           )
         ),
         h('div',{className:'form-row cols3'},field('Taxable value','taxable','number'),field('IGST','igst','number'),field('CGST','cgst','number')),

@@ -808,7 +808,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     if(dseBlockIfLocked(iso))return;
     setInvModal({ri,iso});
   };
-  const INV_FORM_BLANK={vendorId:'',newVendorName:'',newVendorCat:'Purchase of Cosmetic',newVendorAddress:'',newVendorGst:'',newVendorTerms:'30 days',newVendorContact:'',newVendorPhone:'',newVendorId:'',newVendorStatus:'Active',newVendorTdsApplicable:false,newVendorTdsSection:'',newVendorTdsRate:'',
+  const INV_FORM_BLANK={vendorId:'',newVendorName:'',newVendorCat:defaultVendorCategoryFor(salonId),newVendorAddress:'',newVendorGst:'',newVendorTerms:'30 days',newVendorContact:'',newVendorPhone:'',newVendorId:'',newVendorStatus:'Active',newVendorTdsApplicable:false,newVendorTdsSection:'',newVendorTdsRate:'',
     docNature:'Tax Invoice',invoiceNo:'',invoiceDate:localTodayIso(),bookingDate:localTodayIso(),taxable:'',igst:'',cgst:'',sgst:'',roundOff:'',dueDate:'',desc:'',attachment:null,amountPaid:'',paymentDate:''};
   const [showInvoiceForm,setShowInvoiceForm]=useState(null); // {mode:'create'|'edit',ri,iso,category,invoiceId,paymentId,entryId} | null
   // 'pay' mode: other bills of the same vendor this one cash payment also covers (split oldest first).

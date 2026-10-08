@@ -839,7 +839,7 @@ function tdsAmountOf(it){
 }
 function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDate,onConsumePendingVendorCategory}={}){
   const salonId=salon?.id;
-  const BLANK_V={id:'',name:'',address:'',gst:'',cat:'Purchase of Cosmetic',contact:'',phone:'',terms:'30 days',status:'Active',tdsApplicable:false,tdsSection:'',tdsRate:'',
+  const BLANK_V={id:'',name:'',address:'',gst:'',cat:defaultVendorCategoryFor(salonId),contact:'',phone:'',terms:'30 days',status:'Active',tdsApplicable:false,tdsSection:'',tdsRate:'',
     bankName:'',accountNo:'',ifsc:'',accountHolder:'',email:''};
   const BLANK_INV={periodFrom:'',periodTo:'',splitFirst:'',vendorId:'',invoiceNo:'',invoiceDate:'',amount:'',dueDate:'',desc:'',attachment:null,docNature:'Tax Invoice',bookingDate:'',igst:'',cgst:'',sgst:'',roundOff:'',freight:'',linkedPI:'',category:'',assetLines:[],
     newVendorName:'',newVendorGst:'',newVendorPhone:'',newVendorTerms:'30 days'}; // new* = "+ Add New Vendor" from the invoice form
@@ -1979,7 +1979,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     // ══════════════════════════════════
     showWaInbox&&React.createElement(WhatsAppInbox,{salonId,onClose:()=>setShowWaInbox(false),
       onReview:(draft)=>{setShowWaInbox(false);setInvForm(BLANK_INV);setEditInvoiceId(null);setIntakeInitial({ai:draft.ai,attachment:draft.file,draftId:draft.id});setShowIntake(true);}}),
-    showIntake&&React.createElement(InvoiceIntake,{vendors,initial:intakeInitial,
+    showIntake&&React.createElement(InvoiceIntake,{vendors,salonId,initial:intakeInitial,
       onClose:()=>setShowIntake(false),
       onManual:()=>{setShowIntake(false);setInvForm(intakeInitial?{...BLANK_INV,attachment:intakeInitial.attachment}:BLANK_INV);if(intakeInitial)waInboxSetStatus(salonId,intakeInitial.draftId,'used');setShowInvModal(true);},
       onUse:(d,addVendor)=>{
@@ -1988,7 +1988,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         if(!vid&&addVendor){
           vid=nextPrefixedId(vendors,'V',3);
           setVendors(prev=>[...prev,{id:vid,name:d.vendorName||'Unnamed supplier',address:'',gst:d.gst||'',
-            cat:d.category||'Purchase of Cosmetic',contact:'',phone:d.phone||'',email:d.email||'',terms:'30 days',status:'Active'}]);
+            cat:d.category||defaultVendorCategoryFor(salonId),contact:'',phone:d.phone||'',email:d.email||'',terms:'30 days',status:'Active'}]);
         }
         const due=d.dueDate||(()=>{const p=parseInvoiceDateFlexible(d.invoiceDate);return p?localIsoOf(new Date(p.y,p.m-1,p.d+30)):'';})();
         const matchedVendor=vendors.find(v=>v.id===vid);
@@ -2004,7 +2004,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
           docNature:d.docNature||'Tax Invoice',bookingDate:d.bookingDate||d.invoiceDate||'',
           igst:d.igst||'',cgst:d.cgst||'',sgst:d.sgst||'',freight:d.freight||'',roundOff:d.roundOff||'',linkedPI:'',assetLines:[],
           periodFrom:d.periodFrom||'',periodTo:d.periodTo||'', // bill period read from the bill — a bill for several months is split over them
-          category:d.category||(addVendor?'Purchase of Cosmetic':(matchedVendor?matchedVendor.cat:''))});
+          category:d.category||(addVendor?defaultVendorCategoryFor(salonId):(matchedVendor?matchedVendor.cat:''))});
         if(d._attachment)setInvForm(f=>({...f,attachment:d._attachment})); // already in cloud storage (WhatsApp bill)
         else if(d._file)readFileAsAttachment(d._file,rec=>setInvForm(f=>({...f,attachment:rec})),err=>toastError(err==='size'?'The bill is too large to attach (max 4MB) — attach a smaller copy.':'Could not attach the bill — please attach it again.'));
         setShowIntake(false);setShowInvModal(true);
@@ -2425,7 +2425,7 @@ function BankLayoutEditor({layout,onChange}){
 }
 function BankPaymentSheet({period,salon,onNavTab}={}){
   const salonId=salon?.id;
-  const {success,error:bpError}=useToast();
+  const {success,error:bpError,info}=useToast();
   const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
   const today=new Date();
   const initCal=periodToCalendar(period);
@@ -2512,6 +2512,9 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
   useEffect(()=>{setSelVendor(new Set());},[salonId,refreshTick]);
   const [vendorAmt,setVendorAmt]=useState({});
   const vendorAmtFor=(r)=>vendorAmt[r.invId]!=null?vendorAmt[r.invId]:r.balance;
+  // One bank transfer per vendor: the ticked invoices of a vendor go as ONE line (total amount, all
+  // invoice nos. in the remarks) instead of a separate transfer per invoice.
+  const [combineVendor,setCombineVendor]=useState(true);
 
   const hasBank=(x)=>!!(x.bankName&&x.accountNo&&x.ifsc);
 
@@ -2524,15 +2527,25 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
   };
 
   const generateFile=(tab)=>{
-    const {eligible,selected,amtFor}=rowsFor(tab);
+    const {eligible,selected,amtFor:amtFor0}=rowsFor(tab);
+    const amtFor=x=>x.__merged?x.amount:amtFor0(x);
     const withBank=eligible.filter(x=>tab==='vendor'?hasBank(x.vendor):hasBank(x));
     const missingBank=eligible.length-withBank.length;
-    const chosen=(selected.size>0?withBank.filter(x=>selected.has(tab==='vendor'?x.invId:x.id)):withBank);
+    let chosen=(selected.size>0?withBank.filter(x=>selected.has(tab==='vendor'?x.invId:x.id)):withBank);
+    if(tab==='vendor'&&combineVendor){
+      const by=new Map();
+      chosen.forEach(x=>{const k=String(x.vendor.id);const g=by.get(k);
+        if(g){g.amount+=Math.round(Number(amtFor0(x))||0);g.invoiceNos.push(x.invoiceNo||'—');}
+        else by.set(k,{__merged:true,vendor:x.vendor,invId:'V-'+k,amount:Math.round(Number(amtFor0(x))||0),invoiceNos:[x.invoiceNo||'—']});});
+      chosen=[...by.values()].map(g=>({...g,invoiceNo:g.invoiceNos.join(', ')}));
+    }
     if(!chosen.length){bpError('Nothing to include — select at least one payee with complete bank details.');return;}
     if(!debitAccount){bpError('Enter the Debit Account Number (this outlet\'s own bank account) before generating the file.');return;}
     const label=tab==='salary'?'Salary':tab==='incentive'?'Incentive':'VendorPayments';
     const outletTag=salon?salon.name.split('—')[0].trim().replace(/\s+/g,''):'Outlet';
     const remarksFor=(x)=>tab==='salary'?'Salary '+MONTHS[selMonth]+' '+selYear:tab==='incentive'?'Incentive '+MONTHS[selMonth]+' '+selYear:'Payment against Inv# '+(x.invoiceNo||'—');
+    if(tab==='vendor'&&combineVendor&&chosen.some(x=>x.invoiceNos&&x.invoiceNos.length>1))
+      info('Invoices of the same vendor are combined into one transfer — after the bank pays, record it on Vendors with “💳 Pay Vendor” (tick the same invoices) and link it to the bank line.');
     const rowFor=(x,withIfsc)=>{
       const bank=tab==='vendor'?x.vendor:x;
       const name=bank.accountHolder||bank.name;
@@ -2640,6 +2653,9 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
     missingBankCount>0&&React.createElement('div',{className:'attention-card attention-card-sm',style:{marginBottom:14,color:'var(--orange)'}},
       '⚠ '+missingBankCount+' payee(s) are missing bank details and can\'t be included — add Bank Name/Account/IFSC under '+(subTab==='vendor'?'Vendors':'Master Salary')+' first.'),
 
+    subTab==='vendor'&&eligible.length>0&&React.createElement('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:12.5,color:'var(--text2)',marginBottom:10,cursor:'pointer'}},
+      React.createElement('input',{type:'checkbox',checked:combineVendor,onChange:e=>setCombineVendor(e.target.checked)}),
+      React.createElement('span',null,React.createElement('b',null,'One transfer per vendor'),' — the ticked invoices of the same vendor go to the bank as ONE payment (total amount, all invoice nos. in the remarks). Untick for a separate transfer per invoice.')),
     eligible.length===0
       ?React.createElement('div',{className:'card',style:{textAlign:'center',padding:32,color:'var(--text3)'}},
           subTab==='vendor'?'No outstanding vendor invoices right now.':(subTab==='salary'&&!swReady?'Attendance for '+MONTHS[selMonth]+' '+selYear+' is not marked Month Final yet — salary is worked out only after that.':'No '+(subTab==='salary'?'active employees with net pay':'employees with a payable incentive')+' for '+MONTHS[selMonth]+' '+selYear+'.'))
