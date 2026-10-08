@@ -472,9 +472,11 @@ function OutletPnLCore({salon,period}){
       const TOP2={...BORDER,top:{style:'medium',color:{argb:C.navy}}};
       const DBL={...BORDER,top:{style:'thin',color:{argb:C.navy}},bottom:{style:'double',color:{argb:C.navy}}};
       const NUM='#,##0;[Red]-#,##0;"–"',PCT='0.0%;[Red]-0.0%;"–"';
+      const UP_GOOD='[Color10]▲ 0.0%;[Red]▼ 0.0%;"–"',UP_BAD='[Red]▲ 0.0%;[Color10]▼ 0.0%;"–"'; // change %: income rows / cost rows
+      const CH_GOOD='[Color10]+#,##0;[Red]-#,##0;"–"',CH_BAD='[Red]+#,##0;[Color10]-#,##0;"–"';
       const wb=new ExcelJS.Workbook();wb.creator='SalonOS';wb.created=new Date();wb.calcProperties.fullCalcOnLoad=true; // Excel recalculates every formula on open
       const sheet=(name,tab)=>wb.addWorksheet(name,{properties:{tabColor:{argb:tab||C.navy}},views:[{showGridLines:false}]});
-      const wsS=sheet('Summary'),wsP=sheet('P&L Statement'),w1=sheet('W1 Revenue','FF2E7D32'),w2=sheet('W2 Direct Cost','FF6A1B9A'),
+      const wsS=sheet('Summary'),wsP=sheet('P&L Statement'),wsT=sheet('Trend (6 months)','FF00838F'),w1=sheet('W1 Revenue','FF2E7D32'),w2=sheet('W2 Direct Cost','FF6A1B9A'),
         w3=sheet('W3 Employee Cost','FFEF6C00'),w4=sheet('W4 Operating Exp','FFC62828'),w4a=sheet('W4a Recurring','FFC62828'),w5=sheet('W5 Depreciation','FF546E7A');
       const ref=(ws,cell)=>"'"+ws.name+"'!"+cell;
       const setup=(ws,landscape,freeze)=>{
@@ -635,6 +637,7 @@ function OutletPnLCore({salon,period}){
           const d=cal?operatingExpenseAnnexureFor(sid,cal.year,cal.month,l.name):null;
           const v=[d?R(d.recurringTotal):0,d&&!d.dailyExcluded?R(d.dailyAmt):0,d?R(d.vendorAmt):0,d?R(d.bankAmt):0,d?R(d.recoAmt):0];
           const other=R(l.amt)-v.reduce((t,x)=>t+x,0);
+          if(!R(l.amt)&&!v.some(x=>x))return; // nothing this month — left out to keep the working short
           const src=[];
           if(line.credit)src.push('Penalties recovered (reduces cost)');
           else if(line.vendorWinsOverRecurring)src.push('Vendor bill if booked, else recurring estimate');
@@ -693,15 +696,20 @@ function OutletPnLCore({salon,period}){
         const prevAmt=(si,name)=>{const S=si==='below'?prev.below:(prev.sections[si]||{lines:[]}).lines;const x=(S||[]).find(l=>l.name===name);return x?R(x.amt):0;};
         const wsName={0:'W1',1:'W2',2:'W3',3:'W4',below:'W5'};
         const block=(si,title,lines,totalLabel,key)=>{
+          if(!lines.some(l=>R(l.amt)||prevAmt(si,l.name))){ // nothing this month or last — one 'nil' line instead of an empty section
+            put(ws,r,1,title.replace(/^[A-E]\. /,'')+' — nil');put(ws,r,3,0,NUM);put(ws,r,5,0,NUM);style(ws,r,COLS,'total');P[key]=r;figRows.push(r);RV[r]={c:0,e:0,cost:si!==0};r+=2;return;}
           band(ws,r,title,COLS);r++;const st=r;
           lines.forEach(l=>{
             const pv=prevAmt(si,l.name);if(!R(l.amt)&&!pv)return;
-            put(ws,r,1,l.name.replace('Revenue from Operations - ','Revenue — '));put(ws,r,2,wsName[si]);ws.getCell(r,2).font={size:8.5,color:{argb:C.light}};
-            put(ws,r,3,lineRef[l.name]&&R(l.amt)?{f:lineRef[l.name],r:R(l.amt)}:R(l.amt),NUM);put(ws,r,5,pv,NUM);style(ws,r,COLS);figRows.push(r);RV[r]={c:R(l.amt),e:pv};r++;
+            put(ws,r,1,l.name.replace('Revenue from Operations - ','Revenue — '));
+            const linked=lineRef[l.name]&&R(l.amt);
+            put(ws,r,3,linked?{f:lineRef[l.name],r:R(l.amt)}:R(l.amt),NUM);put(ws,r,5,pv,NUM);style(ws,r,COLS);figRows.push(r);RV[r]={c:R(l.amt),e:pv,cost:si!==0};
+            const wc=ws.getCell(r,2);wc.value=linked?{text:'→ '+wsName[si],hyperlink:'#'+lineRef[l.name]}:wsName[si];wc.font={size:9,color:{argb:linked?'FF1F5FBF':C.light},underline:!!linked};wc.alignment={horizontal:'center',vertical:'middle'};
+            r++;
           });
           if(r===st){put(ws,r,1,'—');style(ws,r,COLS);r++;}
           let tc=0,te=0;for(let k=st;k<r;k++)if(RV[k]){tc+=RV[k].c;te+=RV[k].e;}
-          put(ws,r,1,totalLabel);put(ws,r,3,{f:'SUM(C'+st+':C'+(r-1)+')',r:tc},NUM);put(ws,r,5,{f:'SUM(E'+st+':E'+(r-1)+')',r:te},NUM);style(ws,r,COLS,'total');P[key]=r;figRows.push(r);RV[r]={c:tc,e:te};r++;r++;
+          put(ws,r,1,totalLabel);put(ws,r,3,{f:'SUM(C'+st+':C'+(r-1)+')',r:tc},NUM);put(ws,r,5,{f:'SUM(E'+st+':E'+(r-1)+')',r:te},NUM);style(ws,r,COLS,'total');P[key]=r;figRows.push(r);RV[r]={c:tc,e:te,cost:si!==0};r++;r++;
         };
         block(0,'A. Revenue from operations',revS.lines,'Total revenue','rev');
         block(1,'B. Direct cost of service',dirS.lines,'Total direct cost','dir');
@@ -715,35 +723,118 @@ function OutletPnLCore({salon,period}){
         // % of revenue and change, for every row that has a figure
         for(const i of figRows){
           const v=RV[i]||{c:0,e:0},rv=RV[P.rev].c;
-          put(ws,i,4,{f:'IF($C$'+P.rev+'=0,0,C'+i+'/$C$'+P.rev+')',r:rv?v.c/rv:0},PCT);put(ws,i,6,{f:'C'+i+'-E'+i,r:v.c-v.e},NUM);put(ws,i,7,{f:'IF(E'+i+'=0,0,(C'+i+'-E'+i+')/ABS(E'+i+'))',r:v.e?(v.c-v.e)/Math.abs(v.e):0},PCT);
-          ['D','F','G'].forEach(cc=>{const x=ws.getCell(cc+i);const b=ws.getCell('C'+i);x.border=b.border;x.fill=b.fill;x.font=b.font;x.alignment={horizontal:'right',vertical:'middle'};});}
+          put(ws,i,4,{f:'IF($C$'+P.rev+'=0,0,C'+i+'/$C$'+P.rev+')',r:rv?v.c/rv:0},PCT);put(ws,i,6,{f:'C'+i+'-E'+i,r:v.c-v.e},v.cost?CH_BAD:CH_GOOD);put(ws,i,7,{f:'IF(E'+i+'=0,0,(C'+i+'-E'+i+')/ABS(E'+i+'))',r:v.e?(v.c-v.e)/Math.abs(v.e):0},v.cost?UP_BAD:UP_GOOD);
+          ['D','F','G'].forEach(cc=>{const x=ws.getCell(cc+i);const b=ws.getCell('C'+i);x.border=b.border;x.fill=b.fill;x.font={...(b.font||{}),color:undefined};x.alignment={horizontal:'right',vertical:'middle'};});}
+        // Sign-off
+        let sr=P.pbt+3;
+        note(ws,sr,'Figures for '+monthLbl+' as per SalonOS on '+new Date().toLocaleDateString('en-IN')+'. '+(plFinal?'P&L marked FINAL.':'DRAFT — figures can still change until the P&L is marked Final.'),COLS);sr+=2;
+        [['Prepared by',1],['Reviewed by',3],['Approved by',5]].forEach(([t,cI])=>{const c=ws.getCell(sr,cI);c.value=t;c.font={bold:true,size:9,color:{argb:C.grey}};
+          const l=ws.getCell(sr+2,cI);l.value='Name / signature / date';l.font={size:8,italic:true,color:{argb:C.light}};l.border={top:{style:'thin',color:{argb:C.grey}}};});
+        ws.pageSetup.printTitlesRow='4:4';
         ws.columns=[{width:44},{width:9},{width:20},{width:11},{width:20},{width:14},{width:10}];setup(ws,false,4);
       }
 
-      // ═══ Summary ═══
+      // ═══ Trend (6 months) ═══
+      const trend=[];
       {
-        const ws=wsS,COLS=6;
-        banner(ws,outletName+' — P&L summary · '+monthLbl,'All figures in ₹, linked to the P&L Statement sheet. Status: '+status+'. Revenue source: '+(cal&&plRevenueSourceFor(sid,cal.year,cal.month)==='dse'?'Daily Sales & Exp':'Collection Reco (Cradlee)')+'.',COLS);
-        head(ws,4,['Particulars','This month ₹','% of revenue','Previous month ₹','Change ₹','Change %'],2);
+        for(let k=5;k>=0;k--){const dd=new Date((cal?cal.year:new Date().getFullYear()),(cal?cal.month:new Date().getMonth())-k,1);const fm=calToFYMI(dd.getFullYear(),dd.getMonth());
+          let b=null;try{b=plBuild(sid,fm.fy,fm.mi);}catch(e){}
+          trend.push({lbl:PL_MONTHS[fm.mi].slice(0,3)+' '+String(dd.getFullYear()).slice(2),b});}
+        const ws=wsT,COLS=8;
+        banner(ws,'Trend — last 6 months to '+monthLbl,'Each month as the P&L shows it today (months marked Final are fixed). Bars compare months; margins coloured red → green.',COLS);
+        head(ws,4,['Particulars',...trend.map(t=>t.lbl),'6-month total'],2);
+        const lines=[['Revenue',b=>b.revenue],['Direct cost of service',b=>b.direct],['Gross profit',b=>b.gross],['Employee cost',b=>b.sections[2]?b.sections[2].tot:0],['Operating expenses',b=>b.sections[3]?b.sections[3].tot:0],['EBITDA',b=>b.ebitda],['Profit before tax',b=>b.pbt]];
+        let r=5;
+        lines.forEach(([lbl,fn])=>{put(ws,r,1,lbl);trend.forEach((t,j)=>put(ws,r,2+j,t.b?R(fn(t.b)):0,NUM));
+          put(ws,r,8,{f:'SUM(B'+r+':G'+r+')',r:trend.reduce((s2,t)=>s2+(t.b?R(fn(t.b)):0),0)},NUM);style(ws,r,COLS,['Gross profit','EBITDA','Profit before tax'].includes(lbl)?'total':undefined);r++;});
+        r++;band(ws,r,'Margins',COLS);r++;
+        const mStart=r;
+        [['Gross margin',7],['EBITDA margin',10],['Net margin (PBT)',11]].forEach(([lbl,row])=>{put(ws,r,1,lbl);
+          trend.forEach((t,j)=>{const col=String.fromCharCode(66+j);put(ws,r,2+j,{f:'IF('+col+'5=0,0,'+col+row+'/'+col+'5)',r:t.b&&t.b.revenue?[t.b.gross,t.b.ebitda,t.b.pbt][[7,10,11].indexOf(row)]/t.b.revenue:0},PCT);});
+          put(ws,r,8,{f:'IF(H5=0,0,H'+row+'/H5)',r:(()=>{const tot=f2=>trend.reduce((a2,t)=>a2+(t.b?R(f2(t.b)):0),0);const rv6=tot(b=>b.revenue);return rv6?tot([b=>b.gross,b=>b.ebitda,b=>b.pbt][[7,10,11].indexOf(row)])/rv6:0;})()},PCT);style(ws,r,COLS);r++;});
+        // rows: 5 Revenue, 6 Direct, 7 GP, 8 Emp, 9 Opex, 10 EBITDA, 11 PBT
+        ws.addConditionalFormatting({ref:'B5:G5',rules:[{type:'dataBar',priority:1,minLength:0,maxLength:100,cfvo:[{type:'num',value:0},{type:'max'}],color:{argb:'FF63BE7B'}}]});
+        ws.addConditionalFormatting({ref:'B11:G11',rules:[{type:'dataBar',priority:2,minLength:0,maxLength:100,cfvo:[{type:'min'},{type:'max'}],color:{argb:'FF5B9BD5'}}]});
+        ws.addConditionalFormatting({ref:'B'+mStart+':G'+(r-1),rules:[{type:'colorScale',priority:3,cfvo:[{type:'min'},{type:'percentile',value:50},{type:'max'}],color:[{argb:'FFF8696B'},{argb:'FFFFEB84'},{argb:'FF63BE7B'}]}]});
+        for(let rr=4;rr<r;rr++){const c=ws.getCell(rr,7);c.border={...(c.border||BORDER),left:{style:'medium',color:{argb:C.navy}},right:{style:'medium',color:{argb:C.navy}}};}
+        ws.columns=[{width:26},{width:13},{width:13},{width:13},{width:13},{width:13},{width:15},{width:15}];setup(ws,true,4);
+      }
+
+      // ═══ Summary — the dashboard ═══
+      {
+        const ws=wsS,COLS=8;
         const pl=c=>"'P&L Statement'!"+c;
-        const rows=[['Revenue','rev'],['Direct cost of service','dir'],['Gross profit','gp'],['Employee cost','emp'],['Operating expenses','opex'],['EBITDA','ebitda'],['Depreciation & interest','dep'],['Profit before tax','pbt']];
-        let r=5;const SV={};
-        rows.forEach(([lbl,k])=>{
-          const v=RV[P[k]],rv=RV[P.rev].c;SV[r]=v;
-          put(ws,r,1,lbl);put(ws,r,2,{f:pl('C'+P[k]),r:v.c},NUM);put(ws,r,3,{f:'IF($B$5=0,0,B'+r+'/$B$5)',r:rv?v.c/rv:0},PCT);put(ws,r,4,{f:pl('E'+P[k]),r:v.e},NUM);
-          put(ws,r,5,{f:'B'+r+'-D'+r,r:v.c-v.e},NUM);put(ws,r,6,{f:'IF(D'+r+'=0,0,(B'+r+'-D'+r+')/ABS(D'+r+'))',r:v.e?(v.c-v.e)/Math.abs(v.e):0},PCT);
-          style(ws,r,COLS,['gp','ebitda','pbt'].includes(k)?'total':undefined);if(k==='pbt')style(ws,r,COLS,'grand');r++;
+        const rv=RV[P.rev].c;
+        banner(ws,outletName+' — P&L dashboard · '+monthLbl,'Status: '+status+'  ·  FY '+fy+'  ·  Revenue source: '+(cal&&plRevenueSourceFor(sid,cal.year,cal.month)==='dse'?'Daily Sales & Exp':'Collection Reco (Cradlee)')+'  ·  Compared with '+prevLbl+'. All figures in ₹ and linked to the P&L Statement and workings.',COLS);
+        // KPI cards: 4 × 2 columns, rows 4–7
+        const cards=[['REVENUE','rev',false],['GROSS PROFIT','gp',false],['EBITDA','ebitda',false],['PROFIT BEFORE TAX','pbt',false]];
+        cards.forEach(([lbl,k],j)=>{
+          const c1=1+j*2,c2=c1+1,v=RV[P[k]];
+          ws.mergeCells(4,c1,4,c2);ws.mergeCells(5,c1,5,c2);ws.mergeCells(6,c1,6,c2);ws.mergeCells(7,c1,7,c2);
+          const t=ws.getCell(4,c1);t.value=lbl;t.font={bold:true,size:8.5,color:{argb:C.grey}};
+          const n=ws.getCell(5,c1);n.value={formula:pl('C'+P[k]),result:v.c};n.numFmt='₹ #,##0;[Red]-₹ #,##0;"–"';n.font={bold:true,size:18,color:{argb:v.c<0?'FFC0392B':C.navy}};
+          const m=ws.getCell(6,c1);m.value=k==='rev'?{formula:'"vs "&TEXT('+pl('E'+P[k])+',"#,##0")&" last month"',result:'vs '+v.e.toLocaleString('en-IN')+' last month'}:{formula:'TEXT(IF('+pl('C'+P.rev)+'=0,0,'+pl('C'+P[k])+'/'+pl('C'+P.rev)+'),"0.0%")&" of revenue"',result:(rv?(v.c/rv*100).toFixed(1):'0.0')+'% of revenue'};m.font={size:9,color:{argb:C.grey}};
+          const ch=ws.getCell(7,c1);ch.value={formula:'IF('+pl('E'+P[k])+'=0,0,('+pl('C'+P[k])+'-'+pl('E'+P[k])+')/ABS('+pl('E'+P[k])+'))',result:v.e?(v.c-v.e)/Math.abs(v.e):0};ch.numFmt='[Color10]▲ 0.0%" vs last month";[Red]▼ 0.0%" vs last month";"no change"';ch.font={bold:true,size:9};
+          for(let rr=4;rr<=7;rr++)for(let cc=c1;cc<=c2;cc++){const x=ws.getCell(rr,cc);x.fill=fill(C.kpi);x.alignment={horizontal:'left',vertical:'middle',indent:1};
+            x.border={top:rr===4?{style:'medium',color:{argb:[C.navy,'FF2E7D32','FFEF6C00','FF6A1B9A'][j]}}:undefined,bottom:rr===7?THIN:undefined,left:cc===c1?THIN:undefined,right:cc===c2?THIN:undefined};}
         });
-        r++;band(ws,r,'Key ratios',COLS);r++;
-        head(ws,r,['Ratio','This month','','Previous month','Change (points)',''],2);r++;
-        const ratio=(lbl,num,den)=>{const n=SV[Number(num.slice(1))],dd=SV[Number(den.slice(1))];const a=dd.c?n.c/dd.c:0,b=dd.e?n.e/dd.e:0;put(ws,r,1,lbl);put(ws,r,2,{f:'IF('+den.replace(/#/g,'B')+'=0,0,'+num.replace(/#/g,'B')+'/'+den.replace(/#/g,'B')+')',r:a},PCT);
-          put(ws,r,4,{f:'IF('+den.replace(/#/g,'D')+'=0,0,'+num.replace(/#/g,'D')+'/'+den.replace(/#/g,'D')+')',r:b},PCT);put(ws,r,5,{f:'B'+r+'-D'+r,r:a-b},PCT);style(ws,r,COLS);r++;};
-        ratio('Gross margin','#7','#5');ratio('Employee cost to revenue','#8','#5');ratio('Operating expenses to revenue','#9','#5');ratio('EBITDA margin','#10','#5');ratio('Net margin (PBT)','#12','#5');
-        r++;band(ws,r,'What is in this file',COLS);r++;
-        [['P&L Statement','The statement — every line linked to its working, with previous month and change'],['W1 Revenue','Gross collections ÷ 1.05 = revenue; day-wise collections'],['W2 Direct Cost','Product / consumption cost and the vendor bills behind it'],
-         ['W3 Employee Cost','Salary, incentives, PF / ESIC — with the employee-wise schedule'],['W4 Operating Exp','Each expense line by source (recurring, daily, vendor, bank)'],['W4a Recurring','Monthly accrual of each recurring expense'],['W5 Depreciation','Depreciation and interest']]
-          .forEach(([n,t])=>{const c=ws.getCell(r,1);c.value={text:n,hyperlink:"#'"+n+"'!A1"};c.font={color:{argb:'FF1F5FBF'},underline:true,size:10};ws.mergeCells(r,2,r,COLS);put(ws,r,2,t);style(ws,r,COLS);ws.getCell(r,1).font={color:{argb:'FF1F5FBF'},underline:true,size:10};r++;});
-        ws.columns=[{width:30},{width:18},{width:13},{width:18},{width:16},{width:11}];setup(ws,false,4);
+        ws.getRow(4).height=18;ws.getRow(5).height=30;ws.getRow(6).height=16;ws.getRow(7).height=16;
+        // Statement in brief
+        let r=9;band(ws,r,'Statement in brief',COLS);r++;
+        head(ws,r,['Particulars','','This month ₹','% of revenue','Previous month ₹','','Change ₹','Change %'],3);ws.mergeCells(r,1,r,2);ws.mergeCells(r,5,r,6);r++;
+        const rows=[['Revenue','rev',false],['Direct cost of service','dir',true],['Gross profit','gp',false],['Employee cost','emp',true],['Operating expenses','opex',true],['EBITDA','ebitda',false],['Depreciation & interest','dep',true],['Profit before tax','pbt',false]];
+        const SR={};
+        rows.forEach(([lbl,k,cost])=>{
+          const v=RV[P[k]];SR[k]=r;ws.mergeCells(r,1,r,2);ws.mergeCells(r,5,r,6);
+          put(ws,r,1,lbl);put(ws,r,3,{f:pl('C'+P[k]),r:v.c},NUM);put(ws,r,4,{f:'IF($C$'+SR.rev+'=0,0,C'+r+'/$C$'+SR.rev+')',r:rv?v.c/rv:0},PCT);put(ws,r,5,{f:pl('E'+P[k]),r:v.e},NUM);
+          put(ws,r,7,{f:'C'+r+'-E'+r,r:v.c-v.e},cost?CH_BAD:CH_GOOD);put(ws,r,8,{f:'IF(E'+r+'=0,0,(C'+r+'-E'+r+')/ABS(E'+r+'))',r:v.e?(v.c-v.e)/Math.abs(v.e):0},cost?UP_BAD:UP_GOOD);
+          style(ws,r,COLS,k==='pbt'?'grand':['gp','ebitda'].includes(k)?'total':undefined);r++;
+        });
+        // Key ratios + revenue mix side by side
+        r++;const kr=r;band(ws,r,'Key ratios',4);ws.mergeCells(r,5,r,8);const mb=ws.getCell(r,5);mb.value='Revenue mix';mb.fill=fill(C.band);mb.font={bold:true,size:10,color:{argb:C.navy}};for(let i=5;i<=8;i++)ws.getCell(r,i).border=BORDER;r++;
+        head(ws,r,['Ratio','','This month','Last month','Line','','₹','Share'],3);ws.mergeCells(r,1,r,2);ws.mergeCells(r,5,r,6);ws.getCell(r,5).alignment={horizontal:'left',vertical:'middle'};r++;
+        const ratios=[['Gross margin','gp','rev'],['Employee cost / revenue','emp','rev'],['Operating exp. / revenue','opex','rev'],['EBITDA margin','ebitda','rev'],['Net margin (PBT)','pbt','rev']];
+        const mix=revS.lines.filter(l=>R(l.amt));
+        const n=Math.max(ratios.length,mix.length);
+        for(let i=0;i<n;i++){
+          const rr=r+i;
+          if(ratios[i]){const [lbl,a,b2]=ratios[i],va=RV[P[a]],vb=RV[P[b2]];ws.mergeCells(rr,1,rr,2);put(ws,rr,1,lbl);
+            put(ws,rr,3,{f:'IF(C'+SR[b2]+'=0,0,C'+SR[a]+'/C'+SR[b2]+')',r:vb.c?va.c/vb.c:0},PCT);put(ws,rr,4,{f:'IF(E'+SR[b2]+'=0,0,E'+SR[a]+'/E'+SR[b2]+')',r:vb.e?va.e/vb.e:0},PCT);}
+          if(mix[i]){ws.mergeCells(rr,5,rr,6);put(ws,rr,5,mix[i].name.replace('Revenue from Operations - ',''));
+            put(ws,rr,7,lineRef[mix[i].name]?{f:lineRef[mix[i].name],r:R(mix[i].amt)}:R(mix[i].amt),NUM);put(ws,rr,8,{f:'IF($C$'+SR.rev+'=0,0,G'+rr+'/$C$'+SR.rev+')',r:rv?R(mix[i].amt)/rv:0},PCT);}
+          style(ws,rr,COLS);
+        }
+        if(mix.length)ws.addConditionalFormatting({ref:'H'+r+':H'+(r+mix.length-1),rules:[{type:'dataBar',priority:1,minLength:0,maxLength:100,cfvo:[{type:'num',value:0},{type:'num',value:1}],color:{argb:'FF63BE7B'}}]});
+        r+=n+1;
+        // Break-even
+        const fixed=cur.sections.filter(x=>['Employee cost','Operating expenses'].includes(x.sec)).reduce((t,x)=>t+x.lines.filter(l=>!/Incentive/i.test(l.name)).reduce((a2,l)=>a2+l.amt,0),0)+cur.belowTot;
+        const incAmt=(cur.sections[2]?cur.sections[2].lines.filter(l=>/Incentive/i.test(l.name)).reduce((a2,l)=>a2+l.amt,0):0);
+        const cm=cur.revenue?(cur.revenue-cur.direct-incAmt)/cur.revenue:0,beRev=cm>0?fixed/cm:0;
+        band(ws,r,'Break-even (fixed cost ÷ contribution margin)',COLS);r++;const be=r;
+        const beRow=(lbl,val,fmt,hint)=>{ws.mergeCells(r,1,r,4);ws.mergeCells(r,6,r,8);put(ws,r,1,lbl);put(ws,r,5,val,fmt);put(ws,r,6,hint||'');ws.getCell(r,6).font={size:8.5,italic:true,color:{argb:C.light}};style(ws,r,COLS);r++;};
+        beRow('Fixed cost for the month',R(fixed),NUM,'Employee cost (without incentives) + operating expenses + depreciation & interest');
+        beRow('Variable cost',R(cur.direct+incAmt),NUM,'Direct cost + incentives (move with sales)');
+        beRow('Contribution margin',{f:'IF(C'+SR.rev+'=0,0,(C'+SR.rev+'-E'+(be+1)+')/C'+SR.rev+')',r:cur.revenue?(cur.revenue-cur.direct-incAmt)/cur.revenue:0},PCT,'(Revenue − variable cost) ÷ revenue');
+        beRow('Break-even revenue',{f:'IF(E'+(be+2)+'<=0,0,E'+be+'/E'+(be+2)+')',r:R(beRev)},NUM,'Revenue needed to cover all fixed cost');
+        beRow('Surplus / (shortfall) vs break-even',{f:'C'+SR.rev+'-E'+(be+3),r:R(cur.revenue)-R(beRev)},CH_GOOD,'Positive = above break-even this month');
+        r++;
+        // Biggest changes vs last month (lines)
+        const movers=figRows.filter(i=>!Object.values(P).includes(i)).map(i=>({i,d:RV[i].c-RV[i].e,cost:RV[i].cost,name:wsP.getCell(i,1).value})).filter(x=>x.d).sort((a2,b2)=>Math.abs(b2.d)-Math.abs(a2.d)).slice(0,5);
+        if(movers.length){
+          band(ws,r,'Biggest changes vs '+prevLbl,COLS);r++;
+          head(ws,r,['Line','','This month ₹','','Last month ₹','','Change ₹','Change %'],3);ws.mergeCells(r,1,r,2);ws.mergeCells(r,3,r,4);ws.mergeCells(r,5,r,6);r++;
+          movers.forEach(x=>{ws.mergeCells(r,1,r,2);ws.mergeCells(r,3,r,4);ws.mergeCells(r,5,r,6);
+            put(ws,r,1,x.name);put(ws,r,3,{f:pl('C'+x.i),r:RV[x.i].c},NUM);put(ws,r,5,{f:pl('E'+x.i),r:RV[x.i].e},NUM);
+            put(ws,r,7,{f:'C'+r+'-E'+r,r:x.d},x.cost?CH_BAD:CH_GOOD);put(ws,r,8,{f:'IF(E'+r+'=0,0,(C'+r+'-E'+r+')/ABS(E'+r+'))',r:RV[x.i].e?x.d/Math.abs(RV[x.i].e):0},x.cost?UP_BAD:UP_GOOD);style(ws,r,COLS);r++;});
+          r++;
+        }
+        // Contents
+        band(ws,r,'What is in this file (click to open)',COLS);r++;
+        [['P&L Statement','The statement — each line links to its working; previous month and change'],['Trend (6 months)','Last six months side by side, with margins'],['W1 Revenue','Gross collections ÷ 1.05 = revenue; day-wise collections'],['W2 Direct Cost','Product cost — vendor bills with vendor, invoice date and number'],
+         ['W3 Employee Cost','Salary, incentives, PF / ESIC — employee-wise schedule'],['W4 Operating Exp','Each expense line by source (recurring, daily, vendor, bank)'],['W4a Recurring','Monthly accrual of each recurring expense'],['W5 Depreciation','Depreciation and interest']]
+          .forEach(([nm,t])=>{ws.mergeCells(r,1,r,2);ws.mergeCells(r,3,r,COLS);const c=ws.getCell(r,1);c.value={text:nm,hyperlink:"#'"+nm+"'!A1"};put(ws,r,3,t);style(ws,r,COLS);c.font={color:{argb:'FF1F5FBF'},underline:true,size:10};r++;});
+        ws.columns=[{width:16},{width:14},{width:16},{width:13},{width:16},{width:14},{width:15},{width:13}];setup(ws,false,0);
+        ws.pageSetup.fitToHeight=1;
       }
 
       const filename=(plReportTitle.replace(/[^a-z0-9]+/gi,'_')||'PnL')+'_with_Workings_'+(plFinal?'Final':'Draft')+'.xlsx';
