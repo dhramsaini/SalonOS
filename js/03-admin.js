@@ -1919,7 +1919,7 @@ function TwoStepLoginCard(){
         :React.createElement('button',{className:'btn btn-primary btn-sm'+(busy?' btn-loading':''),disabled:busy||factors===null,onClick:start},'Set up two-step login')
   );
 }
-function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup}={}){
+function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup,salons}={}){
   const {success,error:toastError,warn}=useToast();
   const [importMsg,setImportMsg]=useState('');
   const backupFileRef=useRef(null);
@@ -1968,6 +1968,7 @@ function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup}={}){
   return React.createElement('div',{className:'fade-in'},
     React.createElement('div',{className:'page-title'},'Master Settings'),
     React.createElement('div',{className:'page-sub'},'Global configuration and statutory applicability'),
+    React.createElement('div',{id:'controls-card'},React.createElement(ControlsCenterCard,{salons:salons||SALONS})),
     CLOUD_SYNC_ENABLED&&React.createElement(TwoStepLoginCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(CloudBackupsCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(ReportSettingsCard,null),

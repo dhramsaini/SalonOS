@@ -976,7 +976,7 @@ function App(){
     if(activePage==='pnl')return React.createElement(PnLSheet,null);
     if(activePage==='reports')return React.createElement(ReportsHub,{onNav:(p)=>setActivePage(p),onSalon:(s)=>handleSelectSalon(s)});
     if(activePage==='users')return React.createElement(UserManagement,null);
-    if(activePage==='settings')return React.createElement(MasterSettings,{autoBackupOn,setAutoBackupOn,lastAutoBackup});
+    if(activePage==='settings')return React.createElement(MasterSettings,{autoBackupOn,setAutoBackupOn,lastAutoBackup,salons});
     if(activePage==='salon'){
       const Comp=SALON_TAB_COMPONENTS[salonTab]||MasterSalarySheet;
       return React.createElement('div',{className:'fade-in'},
@@ -1181,7 +1181,7 @@ function App(){
         React.createElement('span',null,'↻ New changes from another user'),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{_lastRemountRef.current=0;applyCloudUpdatesNow();}},'Show latest')
       ),
-      React.createElement('div',{className:'content'},React.createElement('div',{key:activePage+'_'+(selectedSalon?.id||'')+'_'+dataVersion,className:'content-frame'},renderPage())),
+      React.createElement('div',{className:'content'},React.createElement('div',{key:activePage+'_'+(selectedSalon?.id||'')+'_'+dataVersion,className:'content-frame'},activePage!=='settings'&&React.createElement(PendingApprovalsStrip,{onOpen:()=>{setActivePage('settings');setTimeout(()=>{const el=document.getElementById('controls-card');if(el)el.scrollIntoView({behavior:'smooth'});},300);}}),renderPage())),
       // ── Phone bottom tab bar inside an outlet: the four everyday sheets (only those this user
       // may open) plus "All sheets". Hidden on wider screens by CSS. ──
       activePage==='salon'&&selectedSalon&&period&&!gateFor&&(()=>{

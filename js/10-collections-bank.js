@@ -3778,8 +3778,9 @@ function BankStatement({salon,onNavTab}={}){
     if(!(Number(addInvoiceForm.amount)>0)){faError('Enter a valid invoice amount.');return;}
     if(!canBookInvoiceInMonth(invoiceBookMonthOf({invoiceDate:addInvoiceForm.invoiceDate||row.transactionDate}))){faError(invoiceMonthBlockMessage());return;}
     const freshInvoices=loadVendorInvoices(salonId);
-    {const dupInv=duplicateVendorInvoice(freshInvoices,vendor.id,addInvoiceForm.invoiceNo,addInvoiceForm.docNature,null);
+    {const dupInv=controlOn('dupInvoice',salonId)&&duplicateVendorInvoice(freshInvoices,vendor.id,addInvoiceForm.invoiceNo,addInvoiceForm.docNature,null);
      if(dupInv){faError(duplicateInvoiceMessage(dupInv,vendor.name));return;}}
+    if(!invoiceApprovalOk(salonId,vendor.id,vendor.name,addInvoiceForm.invoiceNo,addInvoiceForm.amount,null))return;
     const invoiceDateDmy=addInvoiceForm.invoiceDate?fmtDate(addInvoiceForm.invoiceDate):row.transactionDate;
     const linkId='bank-'+row.id;
     const newInv={

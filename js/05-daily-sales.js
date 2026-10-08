@@ -667,7 +667,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   };
   const {toast:dseLockToast}=useToast();
   const toggleMgrFinalMonth=()=>{
-    if(!mgrFinalMonthChecked){const early=monthFinalTooEarlyMessage(mgrFinalSelYear,mgrFinalSelMonth);if(early){dseLockToast(early,'error');return;}}
+    if(!mgrFinalMonthChecked){const early=controlOn('monthFinalRule',salonId)&&monthFinalTooEarlyMessage(mgrFinalSelYear,mgrFinalSelMonth);if(early){dseLockToast(early,'error');return;}}
     if(!mgrFinalMonthChecked&&!window.confirm('Mark '+DSE_MONTHS[mgrFinalSelMonth]+' '+mgrFinalSelYear+' FINAL?\n\nThe whole month becomes read-only for everyone. Only a Super Admin can undo it, with a reason.'))return;
     if(!mgrFinalMonthChecked){const cm=collectionFinalBlockMessage(salonId,mgrFinalSelYear,mgrFinalSelMonth);if(cm){dseLockToast(cm,'error');return;}}
     if(mgrFinalMonthChecked&&!requestUnlock(salonId,'Daily Sales & Exp — '+DSE_MONTHS[mgrFinalSelMonth]+' '+mgrFinalSelYear))return;
@@ -895,7 +895,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     if(!canBookInvoiceInMonth(invoiceBookMonthOf(invForm))&&!(showInvoiceForm&&showInvoiceForm.invoiceId)){dseToastErr(invoiceMonthBlockMessage());return;}
     if(invFormTotal<=0){dseToastErr('Enter at least a Taxable Value');return;}
     if(outletSettings(salonId).attachmentRequired&&!invForm.attachment){dseToastErr('This outlet requires the invoice / voucher copy to be attached — please attach it before saving.');return;}
-    if(invForm.vendorId==='__new__'&&!confirmIdFields({gst:invForm.newVendorGst,phone:invForm.newVendorPhone,email:invForm.newVendorEmail,accountNo:invForm.newVendorAccountNo,ifsc:invForm.newVendorIfsc,bankName:invForm.newVendorBankName},'the new vendor details'))return;
+    if(invForm.vendorId==='__new__'&&!confirmIdFields({gst:invForm.newVendorGst,phone:invForm.newVendorPhone,email:invForm.newVendorEmail,accountNo:invForm.newVendorAccountNo,ifsc:invForm.newVendorIfsc,bankName:invForm.newVendorBankName},'the new vendor details',salonId))return;
     if(!(Number(invForm.amountPaid)>0)){dseToastErr('Enter Amount Paid — an invoice can\'t be saved from Daily Sales & Exp without recording a payment against it.');return;}
     const payload=showInvoiceForm;
     const category=payload.category;
@@ -926,8 +926,10 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       invoiceDate:dmy(invForm.invoiceDate),bookingDate:dmy(invForm.bookingDate||invForm.invoiceDate),dueDate:dmy(invForm.dueDate),
       taxable:Number(invForm.taxable)||0,igst:Number(invForm.igst)||0,cgst:Number(invForm.cgst)||0,sgst:Number(invForm.sgst)||0,roundOff:Number(invForm.roundOff)||0,
       amount:invFormTotal,category,desc:invForm.desc,attachment:invForm.attachment};
-    {const dupInv=duplicateVendorInvoice(loadVendorInvoices(salonId),vendorId,invFields.invoiceNo,invFields.docNature,payload.mode==='pay'?payload.invoiceId:null);
+    {const dupInv=controlOn('dupInvoice',salonId)&&duplicateVendorInvoice(loadVendorInvoices(salonId),vendorId,invFields.invoiceNo,invFields.docNature,payload.mode==='pay'?payload.invoiceId:null);
      if(dupInv){dseToastErr(duplicateInvoiceMessage(dupInv,(vendors.find(v=>v.id===vendorId)||{}).name));return;}}
+    {const orig=payload.mode==='pay'?(loadVendorInvoices(salonId).find(i=>i.id===payload.invoiceId)||null):null;
+     if(!invoiceApprovalOk(salonId,vendorId,(vendors.find(v=>v.id===vendorId)||{}).name||invForm.newVendorName,invFields.invoiceNo,invFormTotal,orig?orig.amount:null))return;}
 
     if(payload.mode==='pay'&&dseAlso.size>0){
       // One cash payment over this bill and the other ticked bills of the vendor — oldest first.
@@ -1453,7 +1455,12 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       React.createElement('button',{type:'button',className:'btn btn-ghost',onClick:()=>setPhoneGrid(g=>!g)},phoneGrid?'Hide full grid':'Show full grid (several days)'));
   };
 
+  const missingStrip=(()=>{if(!salonId||!controlOn('missingSalesBanner',salonId))return null;const t=new Date();const days=dseDaysMissingFor(salonId,t.getFullYear(),t.getMonth());
+    if(!days.length)return null;const lbl=days.map(d=>Number(d.slice(8))).join(', ');
+    return React.createElement('div',{style:{background:'rgba(224,82,82,0.08)',border:'1px solid rgba(224,82,82,0.35)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5,color:'var(--text2)'}},
+      '⚠ No Daily Sales entered this month for ',React.createElement('b',null,days.length+' day'+(days.length===1?'':'s')),': ',t.toLocaleString('en-IN',{month:'short'})+' '+lbl);})();
   return React.createElement('div',{className:'fade-in'},
+    missingStrip,
     // Header
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,

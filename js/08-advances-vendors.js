@@ -962,7 +962,8 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     if(!(vForm.name||'').trim()){alert('Vendor name is required');return;}
     const sameName=vendors.find(v=>v.name.trim().toLowerCase()===vForm.name.trim().toLowerCase()&&(!editVendor||v.id!==editVendor.id));
     if(sameName){alert('A vendor named "'+sameName.name+'" already exists ('+sameName.id+').');return;}
-    if(!confirmIdFields({gst:vForm.gst,phone:vForm.phone,email:vForm.email,accountNo:vForm.accountNo,ifsc:vForm.ifsc,bankName:vForm.bankName},'the vendor details'))return;
+    if(!confirmIdFields({gst:vForm.gst,phone:vForm.phone,email:vForm.email,accountNo:vForm.accountNo,ifsc:vForm.ifsc,bankName:vForm.bankName},'the vendor details',salonId))return;
+    if(editVendor&&!vendorBankChangeOk(salonId,vendors.find(v=>v.id===editVendor.id)||editVendor,vForm))return;
     // Edits are matched on the vendor's original ID (invoices, payments and bank links point to it),
     // so the ID itself can't change here — it used to, and then nothing was saved at all.
     if(editVendor){setVendors(prev=>prev.map(v=>v.id===editVendor.id?{...v,...vForm,id:editVendor.id}:v));toastSuccess('Vendor "'+vForm.name.trim()+'" updated.');}
@@ -1043,8 +1044,9 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         if(!CATEGORY_OPTIONS.includes(category)){failed.push('Row '+rowNum+' ('+vendorNameRaw+'): Category must be one of '+CATEGORY_OPTIONS.join(', '));return;}
         const docNature=['Tax Invoice','Invoice','Performa Invoice'].includes(row['Doc Nature'])?row['Doc Nature']:'Tax Invoice';
         const invoiceDate=parseTemplateDate(row['Invoice Date (DD/MM/YYYY)']||row['Invoice Date']);
-        const dupInv=duplicateVendorInvoice([...invoices,...toAdd],vendor.id,invoiceNo,docNature,null);
+        const dupInv=controlOn('dupInvoice',salonId)&&duplicateVendorInvoice([...invoices,...toAdd],vendor.id,invoiceNo,docNature,null);
         if(dupInv){failed.push('Row '+rowNum+' ('+vendorNameRaw+'): Invoice No. '+invoiceNo+' is already entered for this vendor — skipped');return;}
+        if(controlOn('invoiceApproval',salonId)&&!isSuperAdminUser(currentSessionUser())&&amount>controlLimit('invoiceApproval')){failed.push('Row '+rowNum+' ('+vendorNameRaw+'): ₹'+amount.toLocaleString('en-IN')+' is above the approval limit — enter this bill on its own so it can be sent for approval');return;}
         toAdd.push({
           vendorId:vendor.id,docNature,invoiceNo,invoiceDate,
           dueDate:parseTemplateDate(row['Due Date (DD/MM/YYYY)']||row['Due Date']),
@@ -1069,15 +1071,17 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     const computedTotal=(Number(invForm.taxable)||0)+(Number(invForm.igst)||0)+(Number(invForm.cgst)||0)+(Number(invForm.sgst)||0)+(Number(invForm.freight)||0)+(Number(invForm.roundOff)||0);
     if(!invForm.vendorId){alert('Select a vendor, or choose "+ Add New Vendor".');return;}
     if(invForm.vendorId==='__new__'&&!(invForm.newVendorName||'').trim()){alert('Enter the new vendor’s name.');return;}
-    if(invForm.vendorId==='__new__'&&!confirmIdFields({gst:invForm.newVendorGst,phone:invForm.newVendorPhone},'the new vendor details'))return;
+    if(invForm.vendorId==='__new__'&&!confirmIdFields({gst:invForm.newVendorGst,phone:invForm.newVendorPhone},'the new vendor details',salonId))return;
     if(!invForm.docNature){alert('Select the Doc Nature.');return;}
     if(!(invForm.invoiceNo||'').trim()){alert((invForm.docNature==='Performa Invoice'?'PI':'Invoice / Voucher')+' No. is required.');return;}
     if(!invForm.invoiceDate){alert((invForm.docNature==='Performa Invoice'?'PI':'Invoice')+' Date is required.');return;}
-    {const dupInv=invForm.vendorId!=='__new__'&&duplicateVendorInvoice(invoices,invForm.vendorId,invForm.invoiceNo,invForm.docNature,editInvoiceId);
+    {const dupInv=invForm.vendorId!=='__new__'&&controlOn('dupInvoice',salonId)&&duplicateVendorInvoice(invoices,invForm.vendorId,invForm.invoiceNo,invForm.docNature,editInvoiceId);
      if(dupInv){alert(duplicateInvoiceMessage(dupInv,getVendorName(invForm.vendorId)));return;}}
     {const orig=editInvoiceId?invoices.find(i=>i.id===editInvoiceId):null;const ym=invoiceBookMonthOf(invForm);
      if((!orig||invoiceBookMonthOf(orig)!==ym)&&!canBookInvoiceInMonth(ym)){alert(invoiceMonthBlockMessage());return;}}
     if(!computedTotal){alert('Enter at least a Taxable Value.');return;}
+    {const orig=editInvoiceId?invoices.find(i=>i.id===editInvoiceId):null;
+     if(!invoiceApprovalOk(salonId,invForm.vendorId==='__new__'?'new:'+(invForm.newVendorName||''):invForm.vendorId,invForm.vendorId==='__new__'?invForm.newVendorName:getVendorName(invForm.vendorId),invForm.invoiceNo,computedTotal,orig?orig.amount:null))return;}
     if(outletSettings(salonId).attachmentRequired&&!invForm.attachment){alert('This outlet requires the document to be attached for every '+invForm.docNature+' — please attach it (📎 below) before saving.');return;}
     if(!invForm.category){alert('Please select a Category before saving.');return;}
     if(invForm.category==='Fixed Assets'){
@@ -2545,6 +2549,7 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
     if(!chosen.length){bpError('Nothing to include — select at least one payee with complete bank details.');return;}
     if(!debitAccount){bpError('Enter the Debit Account Number (this outlet\'s own bank account) before generating the file.');return;}
     const label=tab==='salary'?'Salary':tab==='incentive'?'Incentive':'VendorPayments';
+    if(!bankFileApprovalOk(salon&&salon.id,chosen.reduce((t,x)=>t+(Math.round(Number(amtFor(x))||0)),0),chosen.length,label+' '+(valueDate||'')))return;
     const outletTag=salon?salon.name.split('—')[0].trim().replace(/\s+/g,''):'Outlet';
     const remarksFor=(x)=>tab==='salary'?'Salary '+MONTHS[selMonth]+' '+selYear:tab==='incentive'?'Incentive '+MONTHS[selMonth]+' '+selYear:'Payment against Inv# '+(x.invoiceNo||'—');
     if(tab==='vendor'&&combineVendor&&chosen.some(x=>x.invoiceNos&&x.invoiceNos.length>1))
@@ -2940,10 +2945,11 @@ function VendorManagerModal({salon,vendors,setVendors,invoices,recurring,onClose
     if(!name){window.alert('Vendor name is required.');return;}
     const same=vendors.find(v=>String(v.name).trim().toLowerCase()===name.toLowerCase()&&v.id!==editId);
     if(same){window.alert('A vendor named "'+same.name+'" already exists ('+same.id+').');return;}
-    if(!confirmIdFields({gst:form.gst,phone:form.phone,email:form.email,accountNo:form.accountNo,ifsc:form.ifsc,bankName:form.bankName},'the vendor details'))return;
+    if(!confirmIdFields({gst:form.gst,phone:form.phone,email:form.email,accountNo:form.accountNo,ifsc:form.ifsc,bankName:form.bankName},'the vendor details',salonId))return;
     const clean={...form,name,gst:String(form.gst||'').trim().toUpperCase(),ifsc:String(form.ifsc||'').trim().toUpperCase(),accountNo:String(form.accountNo||'').replace(/\s/g,'')};
     if(editId){
       const old=vendors.find(v=>v.id===editId);
+      if(!vendorBankChangeOk(salonId,old,clean))return;
       setVendors(prev=>prev.map(v=>v.id===editId?{...v,...clean,id:editId}:v));
       try{logAuditEvent(salonId,{entity:'Vendor',entityId:editId,action:'Edited',summary:name+(old&&old.name!==name?' (was '+old.name+')':'')});}catch(e){}
     }else{

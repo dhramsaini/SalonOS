@@ -557,7 +557,7 @@ function MasterSalarySheet({salon}={}){
   const saveEmployee=()=>{
     if(!form.name||!form.desig||!form.doj){alert('Name, Designation and Date of Joining are required.');return;}
     if(!form.aadharFile){alert('Uploading a copy of the Aadhaar Card is mandatory.');return;}
-    if(!confirmIdFields({pan:form.pan,aadhar:form.aadhar,mobile:form.mobile,email:form.email,pfNumber:form.pfNumber,esicNumber:form.esicNumber,accountNo:form.accountNo,ifsc:form.ifsc,bankName:form.bankName},'the employee details'))return;
+    if(!confirmIdFields({pan:form.pan,aadhar:form.aadhar,mobile:form.mobile,email:form.email,pfNumber:form.pfNumber,esicNumber:form.esicNumber,accountNo:form.accountNo,ifsc:form.ifsc,bankName:form.bankName},'the employee details',salon&&salon.id))return;
     // Professional Tax always tracks the outlet's own applicability — never a manual per-employee
     // choice, since it's the outlet's State (not the person) that decides whether PT applies.
     // Gross CTC is always the live auto-sum (Basic + HRA + Conveyance + Special + EPF Employer

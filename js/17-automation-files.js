@@ -156,7 +156,16 @@ function SendPayslipsSheet({salon,period}={}){
   const rows=ready?swWorkingsFor(sid,cal.year,cal.month).filter(e=>e.net>0):[];
   const sent=loadSentMarks(sid,'payslip');
   const short=String(salon&&salon.name||'').split('—')[0].trim();
-  const msg=e=>'Hi '+String(e.name).split(' ')[0]+', your payslip for '+label+' from '+short+': net pay '+afMoney(e.net)+' ('+Math.round(e.totalDays||0)+' days paid). The PDF payslip is attached.';
+  const stmt=controlOn('empStatement',sid);
+  const incBy={};if(stmt){try{(incWorkingsFor(sid,cal.year,cal.month)||[]).forEach(x=>{incBy[x.id]=x.totalInc;});}catch(err){}}
+  // With Master Settings → Controls → “Employee monthly statement” on, the message carries the month in brief.
+  const statement=e=>{const ded=(Number(e.pfEmp)||0)+(Number(e.esicEmp)||0)+(Number(e.ptAmt)||0)+(Number(e.tdsAmt)||0);
+    return '\n\n'+label+' statement:\n• Days paid: '+Math.round(e.totalDays||0)+' of '+(e.daysInMonth||'—')+(Number(e.lop)?' (unpaid leave '+e.lop+')':'')+
+      '\n• Gross salary: '+afMoney(e.grossAfterLop||0)+(Number(e.tea)?' + tea '+afMoney(e.tea):'')+
+      (ded?'\n• PF / ESIC / PT / TDS: −'+afMoney(ded):'')+(Number(e.advAdj)?'\n• Advance recovered: −'+afMoney(e.advAdj):'')+(Number(e.penAmt)?'\n• Penalty: −'+afMoney(e.penAmt):'')+
+      '\n• Net salary: '+afMoney(e.net)+(incBy[e.id]?'\n• Incentive for the month: '+afMoney(incBy[e.id]):'')+
+      '\n• Advance still outstanding: '+afMoney(Math.max(0,Number(e.closingAdvance)||0));};
+  const msg=e=>'Hi '+String(e.name).split(' ')[0]+', your payslip for '+label+' from '+short+': net pay '+afMoney(e.net)+' ('+Math.round(e.totalDays||0)+' days paid). The PDF payslip is attached.'+(stmt?statement(e):'');
   const send=async e=>{
     setBusy(e.id);
     try{

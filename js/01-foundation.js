@@ -547,7 +547,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.10.08.114';
+const APP_VERSION='2026.10.08.115';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);

@@ -914,6 +914,28 @@
         const pbtRow=(()=>{let r=0;cw.eachRow((row,i)=>{if(row.getCell(1).value==='Profit before tax')r=i;});return r;})();const cv=a=>{const v=cw.getCell(a).value;return v&&v.formula?v.result:v;};
         eq('Outlet comparison: each outlet PBT and the all-outlets total',[cv('B'+pbtRow)||0,cv('C'+pbtRow)||0,cv('D'+pbtRow)||0],[p1,p2,p1+p2]);
       }catch(err){results.push({name:'Reports (Excel)',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const A=window.alert,Cf=window.confirm,u0=sessionStorage.getItem('salonos_user');window.alert=()=>{};window.confirm=()=>true;
+        saveControls({});
+        const d0=[controlOn('dupInvoice',902),controlOn('invoiceApproval',902)];
+        saveControls({dupInvoice:{on:false,outlets:{'902':true}}});
+        eq('Controls: default, all-outlets off, outlet-wise on wins for that outlet only',[d0,controlOn('dupInvoice',902),controlOn('dupInvoice',901),controlOn('dupInvoice')],[[true,false],true,false,false]);
+        saveControls({idChecks:{on:false}});
+        eq('Controls: ID checks off lets a wrong PAN through',[confirmIdFields({pan:'BAD'},'x',902)],[true]);
+        saveControls({});eq('Controls: ID checks on stops a wrong PAN',confirmIdFields({pan:'BAD'},'x',902),false);
+        saveControls({invoiceApproval:{on:true,limit:1000}});saveApprovals([]);
+        sessionStorage.setItem('salonos_user',JSON.stringify({name:'Mgr',role:'Manager'}));
+        const r1=[invoiceApprovalOk(902,'V1','Test Vendor','A-1',900,null),invoiceApprovalOk(902,'V1','Test Vendor','A-2',5000,null),loadApprovals().length,loadApprovals()[0].status];
+        const again=invoiceApprovalOk(902,'V1','Test Vendor','A-2',5000,null);
+        sessionStorage.setItem('salonos_user',JSON.stringify({name:'Boss',role:'Super Admin'}));
+        const dec=decideApproval(loadApprovals()[0].id,'approved','');
+        sessionStorage.setItem('salonos_user',JSON.stringify({name:'Mgr',role:'Manager'}));
+        const r2=[invoiceApprovalOk(902,'V1','Test Vendor','A-2',5000,null),loadApprovals()[0].status,invoiceApprovalOk(902,'V1','Test Vendor','A-2',7000,5000)];
+        eq('Approvals: under limit goes through; above limit sends a request; approved once, then used up',[r1,again,dec,r2],[[true,false,1,'pending'],false,true,[true,'used',false]]);
+        saveControls({vendorBankApproval:{on:true}});
+        eq('Approvals: vendor bank change needs approval, first-time bank details do not',[vendorBankChangeOk(902,{id:'V1',accountNo:'',ifsc:''},{accountNo:'123456789',ifsc:'HDFC0000001'}),vendorBankChangeOk(902,{id:'V1',accountNo:'123456789',ifsc:'HDFC0000001'},{accountNo:'999999999',ifsc:'HDFC0000001'})],[true,false]);
+        saveControls({});saveApprovals([]);if(u0==null)sessionStorage.removeItem('salonos_user');else sessionStorage.setItem('salonos_user',u0);window.alert=A;window.confirm=Cf;
+      }catch(err){results.push({name:'Controls',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

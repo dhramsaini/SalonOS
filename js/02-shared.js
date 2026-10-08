@@ -1179,6 +1179,7 @@ function loadVendorInvoices(salonId){
 // GSTIN is missing or not a valid 15-character GSTIN (then all three stay open).
 function gstStateCodeOf(g){const s=String(g||'').trim().toUpperCase();return /^[0-9]{2}[A-Z0-9]{13}$/.test(s)?s.slice(0,2):'';}
 function gstSupplyTypeFor(outletId,vendorGst){
+  if(typeof controlOn==='function'&&!controlOn('gstLock',outletId))return '';
   const o=gstStateCodeOf((getSalonRecordById(outletId)||{}).gst),v=gstStateCodeOf(vendorGst);
   return !o||!v?'':o===v?'intra':'inter';
 }
@@ -2278,7 +2279,8 @@ function idFieldWarnings(f){
   return w;
 }
 // Runs both: returns true when it's OK to save (shows the problems / asks about warnings).
-function confirmIdFields(f,what){
+function confirmIdFields(f,what,sid){
+  if(typeof controlOn==='function'&&!controlOn('idChecks',sid))return true;
   const p=idFieldProblems(f);
   if(p.length){window.alert('Please correct '+(what||'these details')+' before saving:\n\n• '+p.join('\n• '));return false;}
   const w=idFieldWarnings(f);
