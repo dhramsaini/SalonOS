@@ -1191,10 +1191,12 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     setBulkSelectedIds(new Set());
   };
   const [showBulkDeleteConfirm,setShowBulkDeleteConfirm]=useState(false);
-  const [showMultiPay,setShowMultiPay]=useState(false);
+  const [showMultiPay,setShowMultiPay]=useState(false); // true = from ticked rows; 'pick' = choose a vendor; vendor id; {vid,ids,...} from Record Payment
+  const [payAlso,setPayAlso]=useState(()=>new Set()); // Record Payment: other bills this payment also covers
   // One payment split over several bills (MultiPayModal): each bill gets its part as a payment with
   // the same date / mode / reference; cash goes to Daily Sales & Exp like a single cash payment;
   // a matched bank line is linked to all of them.
+  useEffect(()=>{if(!showPayModal)setPayAlso(new Set());},[showPayModal]);
   const saveMultiPay=({allocs,entry,total,bankRowId,vendorName})=>{
     if(vendBlockIfLocked(entry.paidDate))return;
     const blocked=allocs.map(a=>invoices.find(i=>i.id===a.id)).filter(inv=>inv&&invoiceNeedsApproval(inv,salonId));
@@ -1436,6 +1438,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:bulkBusy,onClick:()=>bulkFileRef.current&&bulkFileRef.current.click()},bulkBusy?'Importing…':'📥 Bulk Import Invoices'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--blue)',borderColor:'rgba(74,158,255,0.4)'},onClick:()=>{setInvForm(BLANK_INV);setEditInvoiceId(null);setIntakeInitial(null);setShowIntake(true);}},'+ Add Invoice'),
         (waNew>0||waInboxLoad(salonId).length>0)&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:waNew?'var(--green)':'var(--text2)'},onClick:()=>setShowWaInbox(true)},'📥 WhatsApp bills'+(waNew?' ('+waNew+')':'')),
+        React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(76,175,125,0.15)',border:'1px solid rgba(76,175,125,0.45)',color:'var(--green)',fontWeight:600},title:'One payment against several bills of the same vendor',onClick:()=>setShowMultiPay('pick')},'💳 Pay Vendor'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setVlQ('');setShowVendorList(true);}},'📋 Vendors ('+vendors.length+') — view / edit'),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{setVForm(BLANK_V);setEditVendor(null);setShowVendorModal(true);}},'+ Add Vendor')
       )
@@ -1480,7 +1483,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
                   React.createElement('td',{style:{fontFamily:'monospace',fontSize:12}},v.phone||'—'),
                   React.createElement('td',null,React.createElement('span',{className:'badge '+(v.status==='Active'?'badge-green':'badge-gray')},v.status||'—')),
                   React.createElement('td',{style:{textAlign:'right'}},rupee(owed(v.id))),
-                  React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:6}},React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>openEditVendor(v)},'✏ Edit'),React.createElement('button',{className:'btn btn-sm',title:'Delete this vendor',style:{background:'rgba(255,107,107,0.1)',border:'1px solid rgba(255,107,107,0.35)',color:'var(--red)'},onClick:()=>deleteVendor(v.id)},'🗑 Delete'))))))));
+                  React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:6}},owed(v.id)>0.5&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(76,175,125,0.15)',border:'1px solid rgba(76,175,125,0.45)',color:'var(--green)'},title:'One payment against the pending bills of this vendor',onClick:()=>{setShowVendorList(false);setShowMultiPay(v.id);}},'💳 Pay'),React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>openEditVendor(v)},'✏ Edit'),React.createElement('button',{className:'btn btn-sm',title:'Delete this vendor',style:{background:'rgba(255,107,107,0.1)',border:'1px solid rgba(255,107,107,0.35)',color:'var(--red)'},onClick:()=>deleteVendor(v.id)},'🗑 Delete'))))))));
         })(),
         React.createElement('div',{style:{display:'flex',justifyContent:'flex-end',marginTop:12}},
           React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowVendorList(false)},'Close')))),
@@ -1493,7 +1496,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     ),
 
     tab==='ledger'&&React.createElement(VendorLedgerPanel,{salon,invoices,vendors,period}),
-    showMultiPay&&React.createElement(MultiPayModal,{invoices,vendors,selectedIds:bulkSelectedIds,bankRows,onSave:saveMultiPay,onClose:()=>setShowMultiPay(false)}),
+    showMultiPay&&React.createElement(MultiPayModal,{invoices,vendors,selectedIds:showMultiPay===true?bulkSelectedIds:new Set(),initialVendorId:typeof showMultiPay==='string'&&showMultiPay!=='pick'?showMultiPay:(filterVendor||''),initial:typeof showMultiPay==='object'?showMultiPay:null,bankRows,onSave:saveMultiPay,onClose:()=>setShowMultiPay(false)}),
 
     // ══════════════════════════════════
     // TAB 1 — MASTER VENDOR LIST
@@ -2210,7 +2213,23 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
           return React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:16,fontSize:12}},
             React.createElement('div',{style:{fontWeight:500,color:'var(--text)'}},getVendorName(payInv?.vendorId)),
             React.createElement('div',{style:{color:'var(--text3)',marginTop:2}},payInv?.invoiceNo+' · Invoice ₹'+Number(payInv?.amount||0).toLocaleString('en-IN')),
-            React.createElement('div',{style:{color:'var(--orange)',marginTop:2,fontWeight:500}},'Balance: ₹'+getBalance(payInv||{amount:0,payments:[]}).toLocaleString('en-IN'))
+            React.createElement('div',{style:{color:'var(--orange)',marginTop:2,fontWeight:500}},'Balance: ₹'+getBalance(payInv||{amount:0,payments:[]}).toLocaleString('en-IN')),
+            // One payment that also settles other bills of this vendor: tick their invoice numbers.
+            payForm.editingPaymentId===null&&payInv&&(()=>{
+              const others=invoices.filter(i=>i.id!==payInv.id&&String(i.vendorId)===String(payInv.vendorId)&&!isPI(i)&&getBalance(i)>0.5);
+              if(!others.length)return null;
+              const tot=getBalance(payInv)+others.filter(o=>payAlso.has(o.id)).reduce((t,o)=>t+getBalance(o),0);
+              return React.createElement('div',{style:{marginTop:10,paddingTop:8,borderTop:'1px dashed var(--border)'}},
+                React.createElement('div',{style:{fontWeight:600,color:'var(--text)',marginBottom:4}},'Does this payment also cover other invoices of this vendor? Tick the invoice nos.:'),
+                React.createElement('div',{style:{maxHeight:130,overflowY:'auto'}},others.map(o=>React.createElement('label',{key:o.id,style:{display:'flex',gap:8,alignItems:'center',padding:'2px 0',cursor:'pointer'}},
+                  React.createElement('input',{type:'checkbox',checked:payAlso.has(o.id),onChange:()=>setPayAlso(p=>{const n=new Set(p);n.has(o.id)?n.delete(o.id):n.add(o.id);return n;})}),
+                  React.createElement('span',{style:{fontFamily:'monospace',fontSize:11,minWidth:120}},o.invoiceNo),React.createElement('span',{style:{minWidth:84}},o.invoiceDate),React.createElement('span',null,'balance ₹'+Math.round(getBalance(o)).toLocaleString('en-IN'))))),
+                payAlso.size>0&&React.createElement('button',{className:'btn btn-primary btn-sm',style:{marginTop:8},onClick:()=>{
+                  const ids=[payInv.id,...others.filter(o=>payAlso.has(o.id)).map(o=>o.id)];
+                  setShowPayModal(false);setPayAlso(new Set());
+                  setShowMultiPay({vid:payInv.vendorId,ids,amount:Number(payForm.paidAmount)>0&&Number(payForm.paidAmount)!==getBalance(payInv)?payForm.paidAmount:Math.round(tot*100)/100,date:payForm.paidDate,mode:payForm.mode,ref:payForm.ref});
+                }},'Continue — one payment for '+(payAlso.size+1)+' invoices (₹'+Math.round(tot).toLocaleString('en-IN')+') →'));
+            })()
           );
         })(),
         payForm.invoiceId!==null&&payForm.editingPaymentId===null&&payForm.fromDailySales&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',background:'var(--bg3)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:16}},
@@ -2764,19 +2783,29 @@ function allocateOldestFirst(items,amount){
   let left=Math.round((Number(amount)||0)*100)/100;
   return items.map(it=>{const take=Math.max(0,Math.min(left,Math.round((Number(it.balance)||0)*100)/100));left=Math.round((left-take)*100)/100;return{...it,alloc:take};});
 }
-function MultiPayModal({invoices,vendors,selectedIds,bankRows,onSave,onClose}){
+function MultiPayModal({invoices,vendors,selectedIds,bankRows,onSave,onClose,initialVendorId,initial}){
+  if(initial&&initial.vid&&!initialVendorId)initialVendorId=initial.vid;
   const h=React.createElement;
   const bal=inv=>(Number(inv.amount)||0)-(inv.payments||[]).reduce((t,p)=>t+(Number(p.paidAmount)||0),0);
   const dk=inv=>{const p=parseInvoiceDateFlexible(inv.invoiceDate);return p?p.y*10000+p.m*100+p.d:0;};
-  const sel=invoices.filter(inv=>selectedIds.has(inv.id));
+  const pendingOf=vid=>invoices.filter(inv=>String(inv.vendorId)===String(vid)&&inv.docNature!=='Performa Invoice'&&bal(inv)>0.5);
+  // Two ways in: rows ticked in the invoice list (selectedIds), or "💳 Pay Vendor" — pick a vendor
+  // and all its pending bills are listed, ticked; untick the ones this payment doesn't cover.
+  const pickMode=!selectedIds||selectedIds.size===0;
+  const vendorsWithDues=vendors.filter(v=>pendingOf(v.id).length>0).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const [pickVid,setPickVid]=useState(()=>initialVendorId||(vendorsWithDues[0]||{}).id||'');
+  const [ticked,setTicked]=useState(()=>new Set(initial&&initial.ids?initial.ids:pendingOf(initialVendorId||(vendorsWithDues[0]||{}).id||'').map(i=>i.id)));
+  const retick=n=>{setTicked(n);setManual(null);setAmount(String(Math.round(pendingOf(pickVid).filter(i=>n.has(i.id)).reduce((t,i)=>t+bal(i),0)*100)/100));};
+  const choose=vid=>{setPickVid(vid);setTicked(new Set(pendingOf(vid).map(i=>i.id)));setManual(null);setAmount(String(Math.round(pendingOf(vid).reduce((t,i)=>t+bal(i),0)*100)/100));};
+  const sel=pickMode?pendingOf(pickVid).filter(i=>ticked.has(i.id)):invoices.filter(inv=>selectedIds.has(inv.id));
   const elig=sel.filter(inv=>inv.docNature!=='Performa Invoice'&&bal(inv)>0.5).sort((a,b)=>dk(a)-dk(b));
   const vids=[...new Set(elig.map(i=>String(i.vendorId)))];
   const vendor=vendors.find(v=>String(v.id)===vids[0]);
   const totalBal=Math.round(elig.reduce((t,i)=>t+bal(i),0)*100)/100;
-  const [amount,setAmount]=useState(String(totalBal));
-  const [date,setDate]=useState(localTodayIso());
-  const [mode,setMode]=useState('NEFT');
-  const [ref,setRef]=useState('');
+  const [amount,setAmount]=useState(()=>initial&&Number(initial.amount)>0?String(initial.amount):String(totalBal));
+  const [date,setDate]=useState((initial&&initial.date)||localTodayIso());
+  const [mode,setMode]=useState((initial&&initial.mode)||'NEFT');
+  const [ref,setRef]=useState((initial&&initial.ref)||'');
   const [note,setNote]=useState('');
   const [manual,setManual]=useState(null); // {invId: amount} once edited by hand
   const [bankId,setBankId]=useState('');
@@ -2805,6 +2834,17 @@ function MultiPayModal({invoices,vendors,selectedIds,bankRows,onSave,onClose}){
   return h('div',{className:'modal-overlay',onClick:onClose},
     h('div',{className:'modal',style:{width:760,maxWidth:'96vw'},onClick:e=>e.stopPropagation()},
       h('div',{className:'modal-title'},'💳 One payment for several bills'+(vendor?' — '+vendor.name:'')),
+      pickMode&&h('div',{className:'form-group'},h('label',null,'Vendor *'),
+        vendorsWithDues.length===0?h('div',{className:'help-note'},'No vendor has a pending bill.'):
+        h('select',{className:'form-control',value:pickVid,onChange:e=>choose(e.target.value)},
+          vendorsWithDues.map(v=>{const n=pendingOf(v.id);return h('option',{key:v.id,value:v.id},v.name+' — '+n.length+' pending bill'+(n.length===1?'':'s')+', ₹'+Math.round(n.reduce((t,i)=>t+bal(i),0)).toLocaleString('en-IN'));}))),
+      pickMode&&pickVid&&h('div',{style:{border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'6px 10px',marginBottom:10,maxHeight:170,overflowY:'auto'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12,color:'var(--text3)',marginBottom:4}},
+          h('span',null,'Bills covered by this payment (untick the ones it doesn’t cover):'),
+          h('span',null,h('a',{href:'#',onClick:e=>{e.preventDefault();retick(new Set(pendingOf(pickVid).map(i=>i.id)));}},'All'),' · ',h('a',{href:'#',onClick:e=>{e.preventDefault();retick(new Set());}},'None'))),
+        pendingOf(pickVid).sort((a,b)=>dk(a)-dk(b)).map(inv=>h('label',{key:inv.id,style:{display:'flex',gap:8,alignItems:'center',fontSize:12.5,padding:'2px 0',cursor:'pointer'}},
+          h('input',{type:'checkbox',checked:ticked.has(inv.id),onChange:()=>{const n=new Set(ticked);n.has(inv.id)?n.delete(inv.id):n.add(inv.id);retick(n);}}),
+          h('span',{style:{fontFamily:'monospace',fontSize:11,minWidth:120}},inv.invoiceNo),h('span',{style:{minWidth:90}},inv.invoiceDate),h('span',null,'balance ₹'+Math.round(bal(inv)).toLocaleString('en-IN'))))),
       h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:10}},'One cheque / transfer / UPI paid against several bills of the same vendor. The amount is split over the bills oldest first — change the split below if the vendor applied it differently. Every bill gets its part as a payment with the same date and reference.'),
       h('div',{className:'form-row cols3'},
         h('div',{className:'form-group'},h('label',null,'Amount paid (₹) *'),h('input',{type:'number',className:'form-control',value:amount,onChange:e=>{setAmount(e.target.value);setManual(null);}})),
