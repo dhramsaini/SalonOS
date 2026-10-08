@@ -555,6 +555,7 @@ function MasterSalarySheet({salon}={}){
   const saveEmployee=()=>{
     if(!form.name||!form.desig||!form.doj){alert('Name, Designation and Date of Joining are required.');return;}
     if(!form.aadharFile){alert('Uploading a copy of the Aadhaar Card is mandatory.');return;}
+    if(!confirmIdFields({pan:form.pan,aadhar:form.aadhar,mobile:form.mobile,email:form.email,pfNumber:form.pfNumber,esicNumber:form.esicNumber,accountNo:form.accountNo,ifsc:form.ifsc,bankName:form.bankName},'the employee details'))return;
     // Professional Tax always tracks the outlet's own applicability — never a manual per-employee
     // choice, since it's the outlet's State (not the person) that decides whether PT applies.
     // Gross CTC is always the live auto-sum (Basic + HRA + Conveyance + Special + EPF Employer
@@ -790,7 +791,7 @@ function MasterSalarySheet({salon}={}){
     ),
     React.createElement('div',{className:'form-row cols2'},
       React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-21'},'PAN Card No'),React.createElement('input',{id:'f-21',className:'form-control',value:form.pan,onChange:fc('pan'),placeholder:'ABCDE1234F',style:{textTransform:'uppercase'}}),form.pan&&!isValidPANFormat(form.pan)&&fieldWarning('Doesn\u2019t look like a valid PAN (e.g. AABCX1234R).')),
-      React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-22'},'Aadhaar No'),React.createElement('input',{id:'f-22',className:'form-control',value:form.aadhar,onChange:fc('aadhar'),placeholder:'XXXX XXXX XXXX'}))
+      React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-22'},'Aadhaar No'),React.createElement('input',{id:'f-22',className:'form-control',value:form.aadhar,onChange:fc('aadhar'),placeholder:'XXXX XXXX XXXX',inputMode:'numeric'}),form.aadhar&&!isValidAadhaar(form.aadhar)&&fieldWarning('Not a valid Aadhaar number (12 digits with a check digit) — re-check it.'))
     ),
     React.createElement('div',{className:'form-row cols2'},
       React.createElement('div',{className:'form-group'},
@@ -866,8 +867,8 @@ function MasterSalarySheet({salon}={}){
         ),
         ((salon.pfApplicable&&form.pf)||(salon.esicApplicable&&form.esic))
           ?React.createElement('div',{className:'form-row cols2'},
-              (salon.pfApplicable&&form.pf)?React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-34'},'PF Number (UAN)'),React.createElement('input',{id:'f-34',className:'form-control',value:form.pfNumber,onChange:fc('pfNumber'),placeholder:'e.g. 100123456789'})):React.createElement('div',null),
-              (salon.esicApplicable&&form.esic)?React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-35'},'ESIC Number'),React.createElement('input',{id:'f-35',className:'form-control',value:form.esicNumber,onChange:fc('esicNumber'),placeholder:'e.g. 3412345678'})):React.createElement('div',null)
+              (salon.pfApplicable&&form.pf)?React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-34'},'PF Number (UAN)'),React.createElement('input',{id:'f-34',className:'form-control',value:form.pfNumber,onChange:fc('pfNumber'),placeholder:'e.g. 100123456789',inputMode:'numeric'}),form.pfNumber&&!isValidUAN(form.pfNumber)&&fieldWarning('UAN must be 12 digits.')):React.createElement('div',null),
+              (salon.esicApplicable&&form.esic)?React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-35'},'ESIC Number'),React.createElement('input',{id:'f-35',className:'form-control',value:form.esicNumber,onChange:fc('esicNumber'),placeholder:'e.g. 3412345678',inputMode:'numeric'}),form.esicNumber&&!isValidESICNo(form.esicNumber)&&fieldWarning('ESIC number must be 10 (or 17) digits.')):React.createElement('div',null)
             )
           :null
       )
@@ -878,11 +879,11 @@ function MasterSalarySheet({salon}={}){
     React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:14,marginBottom:14}},
       React.createElement('div',{style:{fontSize:12,fontWeight:600,color:'var(--text2)',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.06em'}},'Bank Account Details'),
       React.createElement('div',{className:'form-row cols2'},
-        React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-36'},'Bank Name'),React.createElement('input',{id:'f-36',className:'form-control',value:form.bankName,onChange:fc('bankName'),placeholder:'e.g. HDFC Bank'})),
+        React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-36'},'Bank Name'),React.createElement(BankNameField,{id:'f-36',value:form.bankName,ifsc:form.ifsc,onChange:v=>setForm(f=>({...f,bankName:v}))})),
         React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-37'},'Account Holder Name'),React.createElement('input',{id:'f-37',className:'form-control',value:form.accountHolder,onChange:fc('accountHolder'),placeholder:'As per bank records'}))
       ),
       React.createElement('div',{className:'form-row cols2'},
-        React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-38'},'Account Number'),React.createElement('input',{id:'f-38',className:'form-control',value:form.accountNo,onChange:fc('accountNo'),placeholder:'Account number'})),
+        React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-38'},'Account Number'),React.createElement('input',{id:'f-38',className:'form-control',value:form.accountNo,onChange:fc('accountNo'),placeholder:'Account number',inputMode:'numeric'}),form.accountNo&&!isValidBankAccountNo(form.accountNo)&&fieldWarning('Account number must be 9 to 18 digits.')),
         React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-39'},'IFSC Code'),React.createElement('input',{id:'f-39',className:'form-control',value:form.ifsc,onChange:fc('ifsc'),placeholder:'e.g. HDFC0001234',style:{textTransform:'uppercase'}}),form.ifsc&&!isValidIfscFormat(form.ifsc)&&fieldWarning('Doesn\u2019t look like a valid IFSC (e.g. HDFC0001234).'))
       ),
       React.createElement('div',{className:'form-row'},

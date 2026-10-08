@@ -12,6 +12,7 @@ function RecurringExpensesSheet({salon}={}){
   // expenses can be caught up retroactively with "🔄 Sync to Vendor List". ──
   const [vendors,setVendors]=useState(()=>loadVendors(salonId));
   useEffect(()=>{saveVendors(vendors,salonId);},[vendors,salonId]);
+  const [showVendorMgr,setShowVendorMgr]=useState(false); // 📋 Vendors — add / edit / delete (same list as the Vendors tab)
   const [vendorInvoices,setVendorInvoices]=useState(()=>loadVendorInvoices(salonId));
   useEffect(()=>{saveVendorInvoices(vendorInvoices,salonId);},[vendorInvoices,salonId]);
   const vendorCategoryForExpenseType=(expenseName)=>{
@@ -382,6 +383,7 @@ function RecurringExpensesSheet({salon}={}){
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:syncAllToVendors},'🔄 Sync to Vendor List'),
         React.createElement(ShareReportButton,{title:'Recurring Expenses — '+(salon?salon.name.split('—')[0].trim():'Outlet'),subtitle:'Recurring Expenses',getBodyHtml:reReportBodyHtml,getSheetRows:reReportSheetRows}),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowVendorMgr(true),title:'Add, edit or delete vendors — the same list as the Vendors tab'},'📋 Vendors ('+vendors.length+')'),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openAdd},'+ Add Recurring Expense')
       )
     ),
@@ -482,9 +484,11 @@ function RecurringExpensesSheet({salon}={}){
       reCellRange.Toolbar()
     ),
 
+    showVendorMgr&&React.createElement(VendorManagerModal,{salon,vendors,setVendors,invoices:vendorInvoices,recurring:items,onClose:()=>setShowVendorMgr(false)}),
     showModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowModal(false)},
       React.createElement('div',{className:'modal',style:{width:580},onClick:e=>e.stopPropagation()},
         React.createElement('div',{className:'modal-title'},editId?'Edit Recurring Expense':'Add Recurring Expense'),
+        React.createElement('datalist',{id:'rec-vendor-names'},vendors.filter(v=>v.status!=='Inactive').map(v=>React.createElement('option',{key:v.id,value:v.name}))),
         React.createElement('div',{className:'form-row cols2'},
           React.createElement('div',{className:'form-group'},
             React.createElement('label',null,'Expense Type *'),
@@ -492,10 +496,10 @@ function RecurringExpensesSheet({salon}={}){
           ),
           form.expenseName==='Other'
             ?React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-110'},'Custom Name *'),React.createElement('input',{id:'f-110',className:'form-control',value:form.customName,onChange:fc('customName'),placeholder:'e.g. Pest Control Contract'}))
-            :React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-111'},'Payee / Vendor / Landlord *'),React.createElement('input',{id:'f-111',className:'form-control',value:form.payee,onChange:fc('payee'),placeholder:'Who this is paid to'}))
+            :React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-111'},'Payee / Vendor / Landlord *'),React.createElement('input',{id:'f-111',className:'form-control',list:'rec-vendor-names',value:form.payee,onChange:fc('payee'),placeholder:'Who this is paid to'}))
         ),
         form.expenseName==='Other'&&React.createElement('div',{className:'form-row cols2'},
-          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-112'},'Payee / Vendor *'),React.createElement('input',{id:'f-112',className:'form-control',value:form.payee,onChange:fc('payee'),placeholder:'Who this is paid to'}))
+          React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-112'},'Payee / Vendor *'),React.createElement('input',{id:'f-112',className:'form-control',list:'rec-vendor-names',value:form.payee,onChange:fc('payee'),placeholder:'Who this is paid to'}))
         ),
         React.createElement('div',{className:'form-row cols3'},
           React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-113'},gstInputAllowedAsOf(salon,localTodayIso())?'Taxable Amount (₹) *':'Amount Total (₹) *'),React.createElement('input',{id:'f-113',type:'number',className:'form-control',value:form.amount,onChange:e=>setForm(f=>({...f,amount:e.target.value,amountUpdatedOn:localTodayIso()})),placeholder:'0'})),

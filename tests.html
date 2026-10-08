@@ -726,6 +726,8 @@
         const pePay=pe?-((pe.lines.find(l=>l[0]==='Salary Payable')||[0,0])[1]):null;
         eq('Tally salary journal: balances, net payable = Salary Working net, PF / ESIC payable',[!!pe,peBal,pePay,pe&&pe.lines.some(l=>l[0]==='PF Payable'),pe&&pe.lines.some(l=>l[0]==='ESIC Payable'),pe&&pe.narr.indexOf('Salary for September 2026')===0],[true,0,swNet,true,true,true]);
         if(!wasFinal)setManagerFinalMonth(901,'attendance',2026,8,false,'test');
+        // ID checks: Aadhaar check digit, UAN, ESIC, bank account, IFSC, bank from IFSC, save problems.
+        eq('ID checks: Aadhaar check digit, UAN, ESIC, account no., IFSC, bank from IFSC',[isValidAadhaar('234123412346'),isValidAadhaar('234123412345'),isValidUAN('100123456789'),isValidUAN('12345'),isValidESICNo('3412345678'),isValidBankAccountNo('50100123456789'),isValidBankAccountNo('12AB'),bankNameFromIfsc('IDFB0040101'),idFieldProblems({pan:'ABCDE1234F',ifsc:'HDFC0001234',accountNo:'123'}).length],[true,false,true,false,true,true,false,'IDFC FIRST Bank',1]);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.

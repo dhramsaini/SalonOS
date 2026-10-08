@@ -2149,7 +2149,12 @@ const IFSC_BANK_CODES={
   IOBA:'Indian Overseas Bank',UCBA:'UCO Bank',MAHB:'Bank of Maharashtra',PSIB:'Punjab & Sind Bank',FDRL:'Federal Bank',
   SIBL:'South Indian Bank',KARB:'Karnataka Bank',CIUB:'City Union Bank',RATN:'RBL Bank',BDBL:'Bandhan Bank',
   IBKL:'IDBI Bank',AUBL:'AU Small Finance Bank',ESFB:'Equitas Small Finance Bank',UJVN:'Ujjivan Small Finance Bank',
-  KVBL:'Karur Vysya Bank',TMBL:'Tamilnad Mercantile Bank',DLXB:'Dhanlaxmi Bank',DCBL:'DCB Bank',JAKA:'Jammu & Kashmir Bank'
+  KVBL:'Karur Vysya Bank',TMBL:'Tamilnad Mercantile Bank',DLXB:'Dhanlaxmi Bank',DCBL:'DCB Bank',JAKA:'Jammu & Kashmir Bank',
+  MAHB:'Bank of Maharashtra',IOBA:'Indian Overseas Bank',UCBA:'UCO Bank',PSIB:'Punjab & Sind Bank',FDRL:'Federal Bank',
+  SCBL:'Standard Chartered Bank',HSBC:'HSBC',CITI:'Citibank',DBSS:'DBS Bank',CSBK:'CSB Bank',JSFB:'Jana Small Finance Bank',
+  SURY:'Suryoday Small Finance Bank',UTKS:'Utkarsh Small Finance Bank',AIRP:'Airtel Payments Bank',PYTM:'Paytm Payments Bank',
+  FINO:'Fino Payments Bank',SRCB:'Saraswat Co-operative Bank',COSB:'Cosmos Co-operative Bank',NKGS:'NKGSB Co-operative Bank',
+  SVCB:'SVC Co-operative Bank',APGB:'Andhra Pragathi Grameena Bank',KVGB:'Karnataka Vikas Grameena Bank',NESF:'North East Small Finance Bank'
 };
 // Returns null if either field is empty/not-yet-valid (nothing to check yet), or a short message
 // if the IFSC's own bank code doesn't match the selected Bank Name — e.g. Bank Name says HDFC
@@ -2216,6 +2221,70 @@ function isValidIndianMobile(v){
 // Email — deliberately permissive (this is a format sanity-check, not a spec-compliant RFC 5322
 // validator); catches the common "forgot the @" / "forgot the domain" typos without rejecting
 // anything a real mail server would actually accept.
+
+// ── More checks on IDs typed into forms (employee, vendor) ─────────────────────────────────────
+// Aadhaar: 12 digits, not starting 0/1, with the Verhoeff check digit UIDAI uses.
+const _VH_D=[[0,1,2,3,4,5,6,7,8,9],[1,2,3,4,0,6,7,8,9,5],[2,3,4,0,1,7,8,9,5,6],[3,4,0,1,2,8,9,5,6,7],[4,0,1,2,3,9,5,6,7,8],[5,9,8,7,6,0,4,3,2,1],[6,5,9,8,7,1,0,4,3,2],[7,6,5,9,8,2,1,0,4,3],[8,7,6,5,9,3,2,1,0,4],[9,8,7,6,5,4,3,2,1,0]];
+const _VH_P=[[0,1,2,3,4,5,6,7,8,9],[1,5,7,6,2,8,3,0,9,4],[5,8,0,3,7,9,6,1,4,2],[8,9,1,6,0,4,3,5,2,7],[9,4,5,3,1,2,6,8,7,0],[4,2,8,6,5,7,3,9,0,1],[2,7,9,3,8,0,6,4,1,5],[7,0,4,6,9,1,3,2,5,8]];
+function isValidAadhaar(v){
+  const s=String(v||'').replace(/[\s-]/g,'');if(!s)return true;
+  if(!/^[2-9][0-9]{11}$/.test(s))return false;
+  let c=0;s.split('').reverse().forEach((d,i)=>{c=_VH_D[c][_VH_P[i%8][Number(d)]];});
+  return c===0;
+}
+function isValidUAN(v){const s=String(v||'').replace(/\s/g,'');return !s||/^[0-9]{12}$/.test(s);}
+function isValidESICNo(v){const s=String(v||'').replace(/\s/g,'');return !s||/^[0-9]{10}$/.test(s)||/^[0-9]{17}$/.test(s);}
+function isValidBankAccountNo(v){const s=String(v||'').replace(/\s/g,'');return !s||/^[0-9]{9,18}$/.test(s);}
+function isValidPinCode(v){const s=String(v||'').trim();return !s||/^[1-9][0-9]{5}$/.test(s);}
+// Bank names for the dropdowns — every bank in IFSC_BANK_CODES, A–Z, plus "Other".
+function indianBankNames(){return Array.from(new Set([...INDIAN_BANKS.filter(b=>b!=='Other'),...Object.values(IFSC_BANK_CODES)])).sort((a,b)=>a.localeCompare(b));}
+function bankNameFromIfsc(ifsc){const s=String(ifsc||'').trim().toUpperCase();return isValidIfscFormat(s)?(IFSC_BANK_CODES[s.slice(0,4)]||''):'';}
+// Bank Name as a dropdown. A name not in the list (older records, small co-operative banks) shows
+// as "Other" with its own box. With a valid IFSC, offers the IFSC's own bank in one click.
+function BankNameField({value,onChange,ifsc,id}){
+  const h=React.createElement;
+  const names=indianBankNames();
+  const v=String(value||'');
+  const listed=names.includes(v);
+  const [other,setOther]=useState(!!v&&!listed);
+  const fromIfsc=bankNameFromIfsc(ifsc);
+  return h('div',null,
+    h('select',{id,className:'form-control',value:other?'__other':v,onChange:e=>{const x=e.target.value;if(x==='__other'){setOther(true);onChange(listed?'':v);}else{setOther(false);onChange(x);}}},
+      h('option',{value:''},'— Select Bank —'),names.map(n=>h('option',{key:n,value:n},n)),h('option',{value:'__other'},'Other (type the name)')),
+    other&&h('input',{className:'form-control',style:{marginTop:6},value:v,onChange:e=>onChange(e.target.value),placeholder:'Bank name'}),
+    fromIfsc&&fromIfsc!==v&&h('div',{style:{fontSize:10.5,marginTop:3,color:'var(--accent)',cursor:'pointer'},onClick:()=>{setOther(false);onChange(fromIfsc);}},'IFSC is of '+fromIfsc+' — click to use it'));
+}
+// Problems that stop a save (a filled field in the wrong format) and warnings that only ask.
+function idFieldProblems(f){
+  const out=[];const chk=(val,ok,msg)=>{if(String(val||'').trim()&&!ok(val))out.push(msg);};
+  chk(f.pan,isValidPANFormat,'PAN must be 5 letters, 4 digits, 1 letter (e.g. ABCDE1234F).');
+  chk(f.gst,isValidGSTINFormat,'GSTIN is not valid (format or check digit) — e.g. 07AABCX1234R1ZP.');
+  chk(f.aadhar,isValidAadhaar,'Aadhaar must be 12 digits and pass the Aadhaar check digit — re-check the number.');
+  chk(f.mobile,isValidIndianMobile,'Mobile must be a 10-digit Indian number starting 6–9.');
+  chk(f.phone,isValidIndianMobile,'Mobile must be a 10-digit Indian number starting 6–9.');
+  chk(f.email,isValidEmailFormat,'Email does not look valid (e.g. name@company.com).');
+  chk(f.pfNumber,isValidUAN,'PF Number (UAN) must be 12 digits.');
+  chk(f.esicNumber,isValidESICNo,'ESIC Number must be 10 (or 17) digits.');
+  chk(f.accountNo,isValidBankAccountNo,'Bank account number must be 9 to 18 digits (no spaces or letters).');
+  chk(f.ifsc,isValidIfscFormat,'IFSC must be 11 characters: 4 letters, 0, then 6 letters/digits (e.g. HDFC0001234).');
+  chk(f.pin,isValidPinCode,'PIN code must be 6 digits.');
+  return out;
+}
+function idFieldWarnings(f){
+  const w=[];
+  const mm=bankIfscMismatch(f.bankName,f.ifsc);if(mm)w.push(mm);
+  if(f.gst&&f.pan&&isValidGSTINFormat(f.gst)&&isValidPANFormat(f.pan)&&panFromGstin(f.gst)!==String(f.pan).trim().toUpperCase())w.push('GSTIN does not contain this PAN ('+panFromGstin(f.gst)+' expected).');
+  if((f.accountNo||f.ifsc||f.bankName)&&!(f.accountNo&&f.ifsc&&f.bankName))w.push('Bank details are incomplete — Bank Name, Account Number and IFSC are all needed for bank payments.');
+  return w;
+}
+// Runs both: returns true when it's OK to save (shows the problems / asks about warnings).
+function confirmIdFields(f,what){
+  const p=idFieldProblems(f);
+  if(p.length){window.alert('Please correct '+(what||'these details')+' before saving:\n\n• '+p.join('\n• '));return false;}
+  const w=idFieldWarnings(f);
+  if(w.length&&!window.confirm('Please check:\n\n• '+w.join('\n• ')+'\n\nSave anyway?'))return false;
+  return true;
+}
 function isValidEmailFormat(v){
   const s=String(v||'').trim();
   return !s||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);

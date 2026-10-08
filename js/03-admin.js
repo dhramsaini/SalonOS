@@ -825,6 +825,11 @@ function MasterSheet({onSelect,salons,setSalons,user}){
     if(!form.city.trim()){toast('City is required','error');return;}
     const bankMismatch=bankIfscMismatch(form.bankName,form.bankIFSC);
     if(bankMismatch){toast(bankMismatch,'error');return;}
+    {const p=[...idFieldProblems({gst:form.gst,pan:form.pan,pin:form.pin,phone:form.phone,email:form.email,accountNo:form.bankAccountNo,ifsc:form.bankIFSC}),
+      ...(form.ownerPhone&&!isValidIndianMobile(form.ownerPhone)?['Owner’s WhatsApp must be a 10-digit Indian mobile number.']:[]),
+      ...(form.accountantPhone&&!isValidIndianMobile(form.accountantPhone)?['Accountant’s WhatsApp must be a 10-digit Indian mobile number.']:[])];
+     if(p.length){window.alert('Please correct these details before saving:\n\n• '+p.join('\n• '));return;}
+     if(form.gst&&form.pan&&isValidGSTINFormat(form.gst)&&isValidPANFormat(form.pan)&&panFromGstin(form.gst)!==String(form.pan).trim().toUpperCase()&&!window.confirm('GSTIN does not contain this PAN ('+panFromGstin(form.gst)+' expected). Save anyway?'))return;}
     // Safety net — guarantees ptApplicable always matches the saved State even if this record
     // was created before Professional Tax auto-detection existed, or its State was never re-picked.
     const formToSave={...form,ptApplicable:ptAppliesToState(form.state)};

@@ -962,6 +962,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     if(!(vForm.name||'').trim()){alert('Vendor name is required');return;}
     const sameName=vendors.find(v=>v.name.trim().toLowerCase()===vForm.name.trim().toLowerCase()&&(!editVendor||v.id!==editVendor.id));
     if(sameName){alert('A vendor named "'+sameName.name+'" already exists ('+sameName.id+').');return;}
+    if(!confirmIdFields({gst:vForm.gst,phone:vForm.phone,email:vForm.email,accountNo:vForm.accountNo,ifsc:vForm.ifsc,bankName:vForm.bankName},'the vendor details'))return;
     // Edits are matched on the vendor's original ID (invoices, payments and bank links point to it),
     // so the ID itself can't change here — it used to, and then nothing was saved at all.
     if(editVendor){setVendors(prev=>prev.map(v=>v.id===editVendor.id?{...v,...vForm,id:editVendor.id}:v));toastSuccess('Vendor "'+vForm.name.trim()+'" updated.');}
@@ -1945,11 +1946,11 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'14px 0 10px',paddingTop:12,borderTop:'1px solid var(--border)'}},'Bank Details'),
         React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginBottom:10}},'Needed to include this vendor in a Bank Payment File (Bank Payment tab) — leave blank if payments to this vendor are never made by bank transfer.'),
         React.createElement('div',{className:'form-row cols2'},
-          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Bank Name'),React.createElement('input',{className:'form-control',value:vForm.bankName,onChange:vc('bankName'),placeholder:'e.g. HDFC Bank'})),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Bank Name'),React.createElement(BankNameField,{value:vForm.bankName,ifsc:vForm.ifsc,onChange:v=>setVForm(f=>({...f,bankName:v}))})),
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Account Holder Name'),React.createElement('input',{className:'form-control',value:vForm.accountHolder,onChange:vc('accountHolder'),placeholder:'As per bank records'}))
         ),
         React.createElement('div',{className:'form-row cols2'},
-          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Account Number'),React.createElement('input',{className:'form-control',value:vForm.accountNo,onChange:vc('accountNo'),placeholder:'Account number'})),
+          React.createElement('div',{className:'form-group'},React.createElement('label',null,'Account Number'),React.createElement('input',{className:'form-control',value:vForm.accountNo,onChange:vc('accountNo'),placeholder:'Account number',inputMode:'numeric'}),vForm.accountNo&&!isValidBankAccountNo(vForm.accountNo)&&fieldWarning('Account number must be 9 to 18 digits.')),
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'IFSC Code'),React.createElement('input',{className:'form-control',value:vForm.ifsc,onChange:vc('ifsc'),placeholder:'HDFC0001234',style:{textTransform:'uppercase'}}),vForm.ifsc&&!isValidIfscFormat(vForm.ifsc)&&fieldWarning('Doesn\u2019t look like a valid IFSC (e.g. HDFC0001234).'))
         ),
         React.createElement('div',{className:'form-group'},React.createElement('label',null,'Email (optional, some banks require it)'),React.createElement('input',{className:'form-control',value:vForm.email,onChange:vc('email'),placeholder:'vendor@company.com',type:'email'}),vForm.email&&!isValidEmailFormat(vForm.email)&&fieldWarning('Doesn\u2019t look like a valid email address.')),
@@ -2914,4 +2915,103 @@ function MultiPayModal({invoices,vendors,selectedIds,bankRows,onSave,onClose,ini
         manual&&h('button',{className:'btn btn-ghost',onClick:()=>setManual(null)},'↺ Split oldest first'),
         h('button',{className:'btn btn-ghost',onClick:onClose},'Cancel'),
         h('button',{className:'btn btn-primary',disabled:problems.length>0,onClick:save},'✓ Record payment'))));
+}
+
+// ── Vendor list with Add / Edit / Delete, usable from any screen that keeps the vendor list in its
+// own state (Recurring Expenses): the parent passes vendors + setVendors, so its own save effect
+// writes the same list the Vendors tab reads — a vendor added or changed here shows there too.
+function VendorManagerModal({salon,vendors,setVendors,invoices,recurring,onClose}){
+  const h=React.createElement;
+  const salonId=salon&&salon.id;
+  const BLANK={id:'',name:'',address:'',gst:'',cat:defaultVendorCategoryFor(salonId),contact:'',phone:'',terms:'30 days',status:'Active',bankName:'',accountHolder:'',accountNo:'',ifsc:'',email:'',tdsApplicable:false,tdsSection:'',tdsRate:''};
+  const [q,setQ]=useState('');
+  const [form,setForm]=useState(null); // null = list; object = add / edit form
+  const [editId,setEditId]=useState(null);
+  const fc=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
+  const owed=vid=>(invoices||[]).filter(i=>String(i.vendorId)===String(vid)&&i.docNature!=='Performa Invoice').reduce((t,i)=>t+Math.max(0,(Number(i.amount)||0)-(i.payments||[]).reduce((s,p)=>s+(Number(p.paidAmount)||0),0)),0);
+  const usedBy=v=>{
+    const n=(invoices||[]).filter(i=>String(i.vendorId)===String(v.id)).length;
+    const r=(recurring||[]).filter(it=>String(it.payee||'').trim().toLowerCase()===String(v.name||'').trim().toLowerCase());
+    return{n,r};
+  };
+  const save=()=>{
+    const name=String(form.name||'').trim();
+    if(!name){window.alert('Vendor name is required.');return;}
+    const same=vendors.find(v=>String(v.name).trim().toLowerCase()===name.toLowerCase()&&v.id!==editId);
+    if(same){window.alert('A vendor named "'+same.name+'" already exists ('+same.id+').');return;}
+    if(!confirmIdFields({gst:form.gst,phone:form.phone,email:form.email,accountNo:form.accountNo,ifsc:form.ifsc,bankName:form.bankName},'the vendor details'))return;
+    const clean={...form,name,gst:String(form.gst||'').trim().toUpperCase(),ifsc:String(form.ifsc||'').trim().toUpperCase(),accountNo:String(form.accountNo||'').replace(/\s/g,'')};
+    if(editId){
+      const old=vendors.find(v=>v.id===editId);
+      setVendors(prev=>prev.map(v=>v.id===editId?{...v,...clean,id:editId}:v));
+      try{logAuditEvent(salonId,{entity:'Vendor',entityId:editId,action:'Edited',summary:name+(old&&old.name!==name?' (was '+old.name+')':'')});}catch(e){}
+    }else{
+      const id=String(form.id||'').trim()||nextPrefixedId(vendors,'V',3);
+      if(vendors.some(v=>v.id===id)){window.alert('Vendor ID "'+id+'" is already in use.');return;}
+      setVendors(prev=>[...prev,{...clean,id}]);
+      try{logAuditEvent(salonId,{entity:'Vendor',entityId:id,action:'Added',summary:name});}catch(e){}
+    }
+    setForm(null);setEditId(null);
+  };
+  const del=v=>{
+    const u=usedBy(v);
+    if(u.n){window.alert('"'+v.name+'" has '+u.n+' invoice'+(u.n===1?'':'s')+' entered, so it cannot be deleted. Edit it and set Status to Inactive instead.');return;}
+    if(u.r.length){window.alert('"'+v.name+'" is the payee of '+u.r.length+' recurring expense'+(u.r.length===1?'':'s')+' — change or delete '+(u.r.length===1?'it':'them')+' first, or set the vendor Inactive.');return;}
+    if(!window.confirm('Delete vendor "'+v.name+'" ('+v.id+')? This cannot be undone.'))return;
+    setVendors(prev=>prev.filter(x=>x.id!==v.id));
+    try{logAuditEvent(salonId,{entity:'Vendor',entityId:v.id,action:'Deleted',summary:v.name});}catch(e){}
+  };
+  const FG=(label,el,w)=>h('div',{className:'form-group'},h('label',null,label),el,w||null);
+  const inp=(k,ph,extra)=>h('input',{className:'form-control',value:form[k]||'',onChange:fc(k),placeholder:ph||'',...(extra||{})});
+  const cats=withBizCategories(['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Fixed Assets','Other'],salonId);
+  const list=[...vendors].filter(v=>{const s=q.trim().toLowerCase();return !s||[v.name,v.id,v.gst,v.phone,v.contact,v.cat].some(x=>String(x||'').toLowerCase().includes(s));}).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  return h('div',{className:'modal-overlay',onClick:onClose},
+    h('div',{className:'modal',style:{width:form?680:980,maxWidth:'96vw'},onClick:e=>e.stopPropagation()},
+      !form?h(React.Fragment,null,
+        h('div',{className:'modal-title',style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},h('span',null,'Vendors ('+vendors.length+')'),
+          h('button',{className:'btn btn-primary btn-sm',onClick:()=>{setForm({...BLANK});setEditId(null);}},'+ Add Vendor')),
+        h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:8}},'Same vendor list as the Vendors tab — anything added, edited or deleted here shows there too.'),
+        h('input',{className:'form-control',autoFocus:true,placeholder:'Search name, GSTIN, mobile, category…',value:q,onChange:e=>setQ(e.target.value),style:{marginBottom:10}}),
+        h('div',{className:'table-wrap',style:{maxHeight:'60vh',overflowY:'auto'}},h('table',null,
+          h('thead',null,h('tr',null,['ID','Vendor Name','GSTIN','Category','Mobile','Bank','Status','Outstanding',''].map(c=>h('th',{key:c,style:{position:'sticky',top:0}},c)))),
+          h('tbody',null,list.length===0?h('tr',null,h('td',{colSpan:9,style:{textAlign:'center',padding:20,color:'var(--text3)'}},'No vendors match.')):
+            list.map(v=>h('tr',{key:v.id},
+              h('td',{style:{fontFamily:'monospace',fontSize:11}},v.id),h('td',{style:{fontWeight:600}},v.name),h('td',{style:{fontFamily:'monospace',fontSize:11}},v.gst||'—'),
+              h('td',null,v.cat||'—'),h('td',{style:{fontFamily:'monospace',fontSize:12}},v.phone||'—'),h('td',{style:{fontSize:12}},v.bankName?(v.bankName+(v.accountNo?' ··'+String(v.accountNo).slice(-4):'')):'—'),
+              h('td',null,h('span',{className:'badge '+(v.status==='Active'?'badge-green':'badge-gray')},v.status||'—')),
+              h('td',{style:{textAlign:'right'}},'₹'+Math.round(owed(v.id)).toLocaleString('en-IN')),
+              h('td',null,h('div',{style:{display:'flex',gap:6}},
+                h('button',{className:'btn btn-primary btn-sm',onClick:()=>{setForm({...BLANK,...v});setEditId(v.id);}},'✏ Edit'),
+                h('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,0.1)',border:'1px solid rgba(255,107,107,0.35)',color:'var(--red)'},onClick:()=>del(v)},'🗑 Delete')))))))),
+        h('div',{style:{display:'flex',justifyContent:'flex-end',marginTop:12}},h('button',{className:'btn btn-ghost',onClick:onClose},'Close')))
+      :h(React.Fragment,null,
+        h('div',{className:'modal-title'},editId?'Edit Vendor — '+(vendors.find(v=>v.id===editId)||{}).name:'Add New Vendor'),
+        h('div',{className:'form-row cols2'},FG('Vendor Name *',inp('name','e.g. ABC Traders')),
+          FG('Category',h('select',{className:'form-control',value:form.cat||'',onChange:fc('cat')},cats.map(c=>h('option',{key:c},c))))),
+        FG('Address',h('textarea',{className:'form-control',rows:2,value:form.address||'',onChange:fc('address'),placeholder:'Full address with PIN code'})),
+        h('div',{className:'form-row cols2'},
+          FG('GST Number',inp('gst','e.g. 07AABCX1234R1ZP',{style:{textTransform:'uppercase'}}),form.gst&&!isValidGSTINFormat(form.gst)&&fieldWarning('Not a valid GSTIN (format or check digit).')),
+          FG('Payment Terms',h('select',{className:'form-control',value:form.terms||'30 days',onChange:fc('terms')},['7 days','15 days','30 days','45 days','60 days','90 days','Advance'].map(t=>h('option',{key:t},t))))),
+        h('div',{className:'form-row cols2'},FG('Contact Person',inp('contact','Contact person')),
+          FG('Mobile No.',inp('phone','98xxxxxxxx',{inputMode:'numeric'}),form.phone&&!isValidIndianMobile(form.phone)&&fieldWarning('Not a valid 10-digit mobile number.'))),
+        h('div',{className:'form-row cols2'},
+          FG('Vendor ID (auto if blank)',inp('id','e.g. V005',{readOnly:!!editId,title:editId?'The ID cannot be changed — invoices are linked to it':''})),
+          FG('Status',h('select',{className:'form-control',value:form.status||'Active',onChange:fc('status')},['Active','Inactive'].map(s=>h('option',{key:s},s))))),
+        h('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'14px 0 10px',paddingTop:12,borderTop:'1px solid var(--border)'}},'Bank Details'),
+        h('div',{className:'form-row cols2'},
+          FG('Bank Name',h(BankNameField,{value:form.bankName,ifsc:form.ifsc,onChange:v=>setForm(f=>({...f,bankName:v}))})),
+          FG('Account Holder Name',inp('accountHolder','As per bank records'))),
+        h('div',{className:'form-row cols2'},
+          FG('Account Number',inp('accountNo','Account number',{inputMode:'numeric'}),form.accountNo&&!isValidBankAccountNo(form.accountNo)&&fieldWarning('Account number must be 9 to 18 digits.')),
+          FG('IFSC Code',inp('ifsc','HDFC0001234',{style:{textTransform:'uppercase'}}),form.ifsc&&!isValidIfscFormat(form.ifsc)&&fieldWarning('Not a valid IFSC (e.g. HDFC0001234).'))),
+        FG('Email (optional)',inp('email','vendor@company.com',{type:'email'}),form.email&&!isValidEmailFormat(form.email)&&fieldWarning('Not a valid email.')),
+        salon&&salon.tdsApplicable&&h('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'10px 12px',marginTop:8}},
+          h('label',{style:{display:'flex',gap:8,alignItems:'center',cursor:'pointer'}},h('input',{type:'checkbox',checked:!!form.tdsApplicable,onChange:e=>setForm(f=>({...f,tdsApplicable:e.target.checked}))}),'TDS applicable on payments to this vendor'),
+          form.tdsApplicable&&h('div',{className:'form-row cols2',style:{marginTop:8}},
+            FG('Section',h('select',{className:'form-control',value:form.tdsSection||'',onChange:e=>{const sec=tdsSectionsAsOf().find(s=>s.code===e.target.value);setForm(f=>({...f,tdsSection:e.target.value,tdsRate:sec?sec.rate:f.tdsRate}));}},
+              [h('option',{key:'',value:''},'Select Section'),...tdsSectionsAsOf().map(s=>h('option',{key:s.code,value:s.code},s.label))])),
+            FG('Rate (%)',inp('tdsRate','e.g. 2',{type:'number',step:'0.1'})))),
+        h('div',{className:'modal-actions'},
+          h('button',{className:'btn btn-ghost',onClick:()=>{setForm(null);setEditId(null);}},'← Back to list'),
+          h('button',{className:'btn btn-primary',onClick:save},editId?'💾 Save Changes':'✓ Add Vendor')))));
 }
