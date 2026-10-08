@@ -717,6 +717,15 @@
         const twb=buildTallyVouchersWorkbook(te,'T');const trows=XLSX.utils.sheet_to_json(twb.Sheets.Vouchers,{header:1}).slice(1);
         const bal=no=>trows.filter(r=>r[2]===no).reduce((t,r)=>t+(r[6]==='Dr'?r[7]:-r[7]),0);
         eq('Tally Excel: rows per ledger line, each voucher balances, narration on every row',[trows.length,bal('T/PUR/0001'),bal('T/PAY/0001'),trows.every(r=>String(r[8]||'').length>5),trows[0][8].indexOf('INV-9')>=0],[6,0,0,true,true]);
+        // Salary journal for Tally: balances, net payable = Salary Working net, PF / ESIC payable present.
+        const wasFinal=isManagerFinalMonth(901,'attendance',2026,8);
+        setManagerFinalMonth(901,'attendance',2026,8,true,'test');
+        const pe=tallyPayrollEntries(901,'2026-09-01','2026-09-30',{}).find(x=>x.kind==='salary');
+        const swNet=Math.round(swWorkingsFor(901,2026,8).reduce((t,e)=>t+(Number(e.net)||0),0)*100)/100;
+        const peBal=pe?Math.round(pe.lines.reduce((t,l)=>t+l[1],0)*100)/100:null;
+        const pePay=pe?-((pe.lines.find(l=>l[0]==='Salary Payable')||[0,0])[1]):null;
+        eq('Tally salary journal: balances, net payable = Salary Working net, PF / ESIC payable',[!!pe,peBal,pePay,pe&&pe.lines.some(l=>l[0]==='PF Payable'),pe&&pe.lines.some(l=>l[0]==='ESIC Payable'),pe&&pe.narr.indexOf('Salary for September 2026')===0],[true,0,swNet,true,true,true]);
+        if(!wasFinal)setManagerFinalMonth(901,'attendance',2026,8,false,'test');
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.

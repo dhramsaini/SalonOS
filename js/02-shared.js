@@ -1656,13 +1656,15 @@ const TALLY_NATURE_LEDGERS={
   'Eatby Minutes Settlement':['Eatby Minutes Receivable','Current Assets'],
   'Bank Charges':['Bank Charges','Indirect Expenses'],
   'Interest':['Bank Interest','Indirect Incomes'],
-  'Salary':['Salaries & Wages','Indirect Expenses'],
-  'Incentive':['Staff Incentive','Indirect Expenses'],
+  'Salary':['Salary Payable','Current Liabilities'],      // booked monthly by the Salary journal
+  'Incentive':['Incentive Payable','Current Liabilities'],// booked monthly by the Incentive journal
   'Daily Incentive':['Staff Incentive','Indirect Expenses'],
   'Advance Salary':['Staff Advances','Loans & Advances (Asset)'],
   'TDS':['TDS Payable','Duties & Taxes'],
   'GST':['GST Payable','Duties & Taxes'],
   'ESIC Payment':['ESIC Payable','Current Liabilities'],
+  'PF Payment':['PF Payable','Current Liabilities'],
+  'PT Payment':['PT Payable','Duties & Taxes'],
   'Electricity Expenses':['Electricity Expenses','Indirect Expenses'],
   'Drycleaning Expenses':['Drycleaning Expenses','Indirect Expenses'],
   'Telephone & Internet Expenses':['Telephone & Internet Expenses','Indirect Expenses'],
@@ -1752,6 +1754,79 @@ function buildTallyBankVouchersXml(rows,bankLedgerName,vendors,opts){
 }
 
 
+
+// ── Salary & Incentive → Tally (monthly Journal vouchers, dated the month's last day) ───────────
+// Salary (once that month's Attendance is final): Dr earned gross salary, tea / staff welfare,
+// employer PF (incl. EPS), employer ESIC, PF admin + EDLI; Cr Salary Payable (net to staff), PF
+// Payable, ESIC Payable, PT Payable, TDS Payable, Staff Advances (recovered) and Penalties Recovered.
+// Incentive (once Incentive Working is locked): Dr Staff Incentive; Cr Incentive Payable, Staff
+// Advances, Penalties Recovered. Paying them (Bank Statement types Salary / Incentive / PF / ESIC /
+// PT Payment) then debits these payables, so the expense is booked once, in its own month.
+const TALLY_PAYROLL_LEDGERS={
+  salary:['Salaries & Wages','Indirect Expenses'],welfare:['Staff Welfare','Indirect Expenses'],
+  pfEr:['Employer PF Contribution','Indirect Expenses'],esicEr:['Employer ESIC Contribution','Indirect Expenses'],
+  pfAdmin:['PF Admin & EDLI Charges','Indirect Expenses'],incentive:['Staff Incentive','Indirect Expenses'],
+  salaryPay:['Salary Payable','Current Liabilities'],incentivePay:['Incentive Payable','Current Liabilities'],
+  pf:['PF Payable','Current Liabilities'],esic:['ESIC Payable','Current Liabilities'],
+  pt:['PT Payable','Duties & Taxes'],tds:['TDS Payable','Duties & Taxes'],
+  advances:['Staff Advances','Loans & Advances (Asset)'],penalties:['Penalties Recovered','Indirect Incomes'],
+};
+function tallyPayrollLedger(map,k){return(map&&map.payroll&&map.payroll[k])||TALLY_PAYROLL_LEDGERS[k][0];}
+function tallyPayrollEntries(salonId,fromIso,toIso,map){
+  const out=[],now=new Date();
+  const r2=n=>Math.round((Number(n)||0)*100)/100;
+  const start=fromIso?new Date(fromIso.slice(0,4),Number(fromIso.slice(5,7))-1,1):new Date(now.getFullYear()-1,3,1);
+  const L=k=>tallyPayrollLedger(map,k);
+  for(let d=new Date(start.getFullYear(),start.getMonth(),1);d<=now;d=new Date(d.getFullYear(),d.getMonth()+1,1)){
+    const y=d.getFullYear(),m=d.getMonth(),last=new Date(y,m+1,0);
+    const iso=y+'-'+String(m+1).padStart(2,'0')+'-'+String(last.getDate()).padStart(2,'0');
+    if(fromIso&&iso<fromIso)continue;if(toIso&&iso>toIso)break;
+    const ym=y+'-'+String(m+1).padStart(2,'0');
+    const label=last.toLocaleString('en-IN',{month:'long',year:'numeric'});
+    const dmy=iso.split('-').reverse().join('-');
+    // Salary
+    if(typeof salaryAttendanceReady!=='function'||salaryAttendanceReady(salonId,y,m)){
+      const rows=(swWorkingsFor(salonId,y,m)||[]).filter(e=>(Number(e.grossAfterLop)||0)+(Number(e.tea)||0)>0);
+      if(rows.length){
+        const st={};(statutoryDeductionsFor(salonId,y,m)||[]).forEach(s=>{st[s.id]=s;});
+        const sum=f=>r2(rows.reduce((t,e)=>t+(Number(f(e))||0),0));
+        const gross=sum(e=>e.grossAfterLop),tea=sum(e=>e.tea),pfEmp=sum(e=>e.pfEmp),pfEr=sum(e=>e.pfEr),esicEmp=sum(e=>e.esicEmp),esicEr=sum(e=>e.esicEr);
+        const pt=sum(e=>e.ptAmt),tds=sum(e=>e.tdsAmt),pen=sum(e=>e.penAmt),adv=sum(e=>e.advAdj);
+        const pfAdmin=sum(e=>(st[e.id]?(Number(st[e.id].edli)||0)+(Number(st[e.id].adminChargeRaw)||0):0));
+        const dr=[[L('salary'),gross],[L('welfare'),tea],[L('pfEr'),pfEr],[L('esicEr'),esicEr],[L('pfAdmin'),pfAdmin]].filter(l=>l[1]>0);
+        const cr=[[L('pf'),r2(pfEmp+pfEr+pfAdmin)],[L('esic'),r2(esicEmp+esicEr)],[L('pt'),pt],[L('tds'),tds],[L('advances'),adv],[L('penalties'),pen]].filter(l=>l[1]>0);
+        const net=r2(dr.reduce((t,l)=>t+l[1],0)-cr.reduce((t,l)=>t+l[1],0));
+        const lines=[...dr,...cr.map(l=>[l[0],-l[1]]),[L('salaryPay'),-net]].filter(l=>l[1]);
+        out.push({key:'sal|'+ym,kind:'salary',iso,date:dmy,type:'Journal',ref:'SAL-'+ym,refDate:'',lines,
+          narr:'Salary for '+label+' — '+rows.length+' employee'+(rows.length===1?'':'s')+': earned ₹'+gross.toLocaleString('en-IN')+', PF ₹'+r2(pfEmp+pfEr).toLocaleString('en-IN')+', ESIC ₹'+r2(esicEmp+esicEr).toLocaleString('en-IN')+(pt?', PT ₹'+pt.toLocaleString('en-IN'):'')+(tds?', TDS ₹'+tds.toLocaleString('en-IN'):'')+(adv?', advance recovered ₹'+adv.toLocaleString('en-IN'):'')+(pen?', penalties ₹'+pen.toLocaleString('en-IN'):'')+', net payable ₹'+net.toLocaleString('en-IN')});
+      }
+    }
+    // Incentive
+    if(isIWEffectiveLockedFor(salonId,y,m)){
+      const rows=(incWorkingsFor(salonId,y,m)||[]).filter(e=>(Number(e.totalInc)||0)+(Number(e.advAdj)||0)+(Number(e.penaltyAmt)||0)>0);
+      if(rows.length){
+        const net=r2(rows.reduce((t,e)=>t+(Number(e.totalInc)||0),0)),adv=r2(rows.reduce((t,e)=>t+(Number(e.advAdj)||0),0)),pen=r2(rows.reduce((t,e)=>t+(Number(e.penaltyAmt)||0),0));
+        const gross=r2(net+adv+pen);
+        const lines=[[L('incentive'),gross],[L('incentivePay'),-net],[L('advances'),-adv],[L('penalties'),-pen]].filter(l=>l[1]);
+        out.push({key:'inc|'+ym,kind:'incentive',iso,date:dmy,type:'Journal',ref:'INC-'+ym,refDate:'',lines,
+          narr:'Incentive for '+label+' — '+rows.length+' employee'+(rows.length===1?'':'s')+': earned ₹'+gross.toLocaleString('en-IN')+(adv?', advance recovered ₹'+adv.toLocaleString('en-IN'):'')+(pen?', penalties ₹'+pen.toLocaleString('en-IN'):'')+', net payable ₹'+net.toLocaleString('en-IN')});
+      }
+    }
+  }
+  return out;
+}
+function tallyPayrollSig(e){return tallyItemSig([e.key,e.lines]);}
+// Any voucher given as {date (YYYY-MM-DD in iso), type, ref, narr, lines:[[ledger, +Dr / −Cr]]} → Tally XML.
+function buildTallyEntryVouchersXml(entries){
+  const msgs=(entries||[]).map(e=>'<VOUCHER VCHTYPE="'+e.type+'" ACTION="Create">'
+    +'<DATE>'+String(e.iso||'').replace(/-/g,'')+'</DATE>'
+    +'<VOUCHERTYPENAME>'+e.type+'</VOUCHERTYPENAME>'
+    +(e.ref?'<REFERENCE>'+escapeTallyXml(e.ref)+'</REFERENCE>':'')
+    +'<NARRATION>'+escapeTallyXml(e.narr||'')+'</NARRATION>'
+    +e.lines.filter(l=>Number(l[1])).map(l=>{const a=Number(l[1]);return'<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(l[0])+'</LEDGERNAME><ISDEEMEDPOSITIVE>'+(a>0?'Yes':'No')+'</ISDEEMEDPOSITIVE><AMOUNT>'+(a>0?'':'-')+Math.abs(a).toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>';}).join('')
+    +'</VOUCHER>');
+  return tallyEnvelope('Vouchers','<TALLYMESSAGE xmlns:UDF="TallyUDF">'+msgs.join('')+'</TALLYMESSAGE>');
+}
 // ── Tally Excel import (Gateway of Tally → Import → Vouchers, Excel) ─────────────────────────────
 // Every voucher as rows — one row per ledger line, the voucher's date / type / number / reference /
 // narration repeated on each of its rows, so Tally's Excel import groups them by Voucher No. The
@@ -1784,6 +1859,7 @@ function tallyVoucherEntries(o){
     out.push({iso:tallyIsoOf(r.transactionDate),date:dmy(r.transactionDate),type:tallyBankVoucherType(r,cp),ref:r.refNo||'',refDate:'',narr:tallyBankNarration(r),
       lines:isDr?[[cp.ledger,amt],[bank,-amt]]:[[bank,amt],[cp.ledger,-amt]]});
   });
+  (o.payroll||[]).forEach(e=>out.push(e));
   (o.payItems||[]).forEach(g=>{
     const vendor=o.vName(g.vendorId),other=tallyPayOtherLedger(g,o.map);
     out.push({iso:g.date,date:g.date.split('-').reverse().join('-'),type:tallyPayVoucherType(g),ref:g.ref||'',refDate:'',narr:tallyPayNarration(g),lines:[[vendor,g.amount],[other,-g.amount]]});
@@ -1871,7 +1947,7 @@ function buildTallyVendorPaymentVouchersXml(items,vendorLedgerNameFor,map){
 // Ledgers the vouchers need besides vendors / categories / GST / bank: Round Off (purchase round-off),
 // the bank-Nature ledgers actually used, and Suspense — so Tally never rejects a voucher for a missing
 // ledger that SalonOS itself chose. Names already covered by another row are left out.
-function tallyExtraLedgers(invoices,bankRows,vendors,vendorLedgerNameFor,map,gstInputBlocked,taken,payItems){
+function tallyExtraLedgers(invoices,bankRows,vendors,vendorLedgerNameFor,map,gstInputBlocked,taken,payItems,payroll){
   const out=[],seen=new Set((taken||[]).map(n=>String(n).toLowerCase()));
   const add=(name,parent,type,note)=>{const k=String(name||'').toLowerCase();if(!name||seen.has(k))return;seen.add(k);out.push({name,parent,type,note});};
   if(!gstInputBlocked&&invoices.some(i=>i.docNature!=='Performa Invoice'&&Number(i.roundOff)))add('Round Off','Indirect Expenses','System','Purchase round-off');
@@ -1883,6 +1959,8 @@ function tallyExtraLedgers(invoices,bankRows,vendors,vendorLedgerNameFor,map,gst
   const PL=tallyPayLedgers(map);
   if((payItems||[]).some(g=>g.kind==='cash'))add(PL.cash,'Cash-in-Hand','System','Cash paid to suppliers');
   if((payItems||[]).some(g=>g.kind==='tds'))add(PL.tds,'Duties & Taxes','System','TDS deducted from supplier bills');
+  if((payroll||[]).length){const used=new Set();payroll.forEach(e=>e.lines.forEach(l=>used.add(l[0])));
+    Object.keys(TALLY_PAYROLL_LEDGERS).forEach(k=>{const n=tallyPayrollLedger(map,k);if(used.has(n))add(n,TALLY_PAYROLL_LEDGERS[k][1],'System','Salary / Incentive journal');});}
   return out;
 }
 
@@ -3603,7 +3681,7 @@ function alertFixedLocally(a){
 // voucher on its own so Tally's answer can be recorded per voucher; a rejected one is retried next
 // evening and listed with Tally's reason. An item edited after it was sent is NOT re-sent (that
 // would duplicate it in Tally) — it's listed as "changed after sending" for a manual check. ──
-function loadTallyPushed(salonId){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_tally_pushed',salonId))||'null');if(v&&typeof v==='object')return{inv:v.inv||{},bank:v.bank||{},pay:v.pay||{}};}catch(e){}return{inv:{},bank:{},pay:{}};}
+function loadTallyPushed(salonId){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_tally_pushed',salonId))||'null');if(v&&typeof v==='object')return{inv:v.inv||{},bank:v.bank||{},pay:v.pay||{},payroll:v.payroll||{}};}catch(e){}return{inv:{},bank:{},pay:{},payroll:{}};}
 function saveTallyPushed(salonId,v){safeLocalSet(outletKey('salonos_tally_pushed',salonId),JSON.stringify(v));}
 function tallyItemSig(o){const s=JSON.stringify(o);let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return String(h);}
 function tallyInvSig(inv){return tallyItemSig([inv.vendorId,inv.invoiceNo,inv.invoiceDate,inv.bookingDate,inv.amount,inv.taxable,inv.igst,inv.cgst,inv.sgst,inv.roundOff,inv.category]);}
@@ -3635,7 +3713,12 @@ function tallyAutoSyncPending(salonId,from){
     if(p){if(p.sig!==tallyPaySig(g))changed.push('Payment '+g.date+' '+g.invoiceNos.join(', '));return false;}
     return true;
   });
-  return{invs,rows,pays,changed};
+  const payroll=tallyPayrollEntries(salonId,from&&from!=='0000'?from:'',null,loadTallyLedgerMap(salonId)).filter(e=>{
+    const p=pushed.payroll[e.key];
+    if(p){if(p.sig!==tallyPayrollSig(e))changed.push((e.kind==='salary'?'Salary ':'Incentive ')+e.key.slice(4));return false;}
+    return true;
+  });
+  return{invs,rows,pays,payroll,changed};
 }
 // Sends vouchers not sent before (kv salonos_tally_pushed_outlet_<id>): {from, to} ISO period (to optional),
 // company, only {inv:Set, bank:Set} to send just those ids. First creates every ledger they need that
@@ -3655,9 +3738,10 @@ async function tallySyncVouchers(salonId,cfg,opts){
   let invs=pend.invs.filter(i=>inTo(i.bookingDate||i.invoiceDate));
   let rows=pend.rows.filter(r=>inTo(r.transactionDate));
   let pays=pend.pays.filter(g=>inTo(g.date));
-  if(o.only){invs=invs.filter(i=>o.only.inv&&o.only.inv.has(i.id));rows=rows.filter(r=>o.only.bank&&o.only.bank.has(r.id));pays=pays.filter(g=>o.only.pay&&o.only.pay.has(g.key));}
+  let payroll=pend.payroll.filter(e=>!o.to||e.iso<=o.to);
+  if(o.only){invs=invs.filter(i=>o.only.inv&&o.only.inv.has(i.id));rows=rows.filter(r=>o.only.bank&&o.only.bank.has(r.id));pays=pays.filter(g=>o.only.pay&&o.only.pay.has(g.key));payroll=payroll.filter(e=>o.only.payroll&&o.only.payroll.has(e.key));}
   const out={sent:0,failed:[],ledgersCreated:0,changed:pend.changed,at:new Date().toISOString()};
-  if(!invs.length&&!rows.length&&!pays.length)return out;
+  if(!invs.length&&!rows.length&&!pays.length&&!payroll.length)return out;
   // 1 · Ledgers the vouchers need.
   const ledgers=parseTallyLedgersDetailed(await tallySend(c,buildTallyLedgerListRequestXml(c.company)));
   // Every Tally company has ledgers (Cash, Profit & Loss A/c) — none means no company is open.
@@ -3666,7 +3750,7 @@ async function tallySyncVouchers(salonId,cfg,opts){
   const cats=Array.from(new Set(invs.map(i=>i.category).filter(Boolean)));
   const gst={igst:invs.some(i=>Number(i.igst)>0),cgst:invs.some(i=>Number(i.cgst)>0),sgst:invs.some(i=>Number(i.sgst)>0)};
   const base=tallyMastersPreviewRows(vendors,cats,gst,map.bankLedger,vName,cName,gstBlocked);
-  const extra=tallyExtraLedgers(invs,rows,vendors,vName,map,gstBlocked,base.map(r=>r.name),pays);
+  const extra=tallyExtraLedgers(invs,rows,vendors,vName,map,gstBlocked,base.map(r=>r.name),pays,payroll);
   const miss=base.concat(extra).filter(r=>!have.has(String(r.name).toLowerCase()));
   if(miss.length){
     const names=new Set(miss.map(r=>r.name));
@@ -3696,7 +3780,13 @@ async function tallySyncVouchers(salonId,cfg,opts){
     const r=parseTallyImportResult(await tallySend(c,buildTallyVendorPaymentVouchersXml([g],vName,map)));
     if(ok(r)){pushed.pay[g.key]={at:out.at,sig:tallyPaySig(g)};out.sent++;saveTallyPushed(salonId,pushed);}
     else out.failed.push('Payment '+g.date+' '+g.invoiceNos.join(', ')+': '+(r.lineErrors[0]||tallyResultText(r)));
-    if(o.onProgress)o.onProgress(out.sent+out.failed.length,invs.length+rows.length+pays.length);
+    if(o.onProgress)o.onProgress(out.sent+out.failed.length,invs.length+rows.length+pays.length+payroll.length);
+  }
+  for(const e of payroll){
+    const r=parseTallyImportResult(await tallySend(c,buildTallyEntryVouchersXml([e])));
+    if(ok(r)){pushed.payroll[e.key]={at:out.at,sig:tallyPayrollSig(e)};out.sent++;saveTallyPushed(salonId,pushed);}
+    else out.failed.push((e.kind==='salary'?'Salary ':'Incentive ')+e.key.slice(4)+': '+(r.lineErrors[0]||tallyResultText(r)));
+    if(o.onProgress)o.onProgress(out.sent+out.failed.length,invs.length+rows.length+pays.length+payroll.length);
   }
   saveTallyPushed(salonId,pushed);
   return out;

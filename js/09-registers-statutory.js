@@ -105,6 +105,8 @@ function TallyExportSheet({salon,onNavTab}={}){
   // Vendor payments (cash, bank not on the Bank Statement, TDS) — see vendorPaymentTallyItems.
   const payItems=useMemo(()=>vendorPaymentTallyItems(loadVendorInvoices(salonId),loadBankStatementRows(salonId)),[salonId,refreshTick]);
   const filteredPays=payItems.filter(g=>inRange(g.date));
+  // Salary / Incentive journals for the months of the period (final months only).
+  const payrollItems=useMemo(()=>tallyPayrollEntries(salonId,fromDate||'',toDate||'',map),[salonId,fromDate,toDate,map,refreshTick]);
   const periodLabel=fromDate||toDate?(fromDate?fromDate.split('-').reverse().join('/'):'start')+' – '+(toDate?toDate.split('-').reverse().join('/'):'today'):'all dates';
   const outletTag=salon?salon.name.split('—')[0].trim().replace(/\s+/g,''):'Outlet';
 
@@ -126,6 +128,12 @@ function TallyExportSheet({salon,onNavTab}={}){
         party:cp.ledger,other:map.bankLedger||'(bank ledger not set)',ref:r.refNo||'',narr:r.description||'',amount:Number(r.debit)||Number(r.credit)||0,
         status:p?(p.sig===tallyBankSig(r)?'sent':'changed'):'new',sentAt:p&&p.at,suspense:cp.kind==='suspense',via:cp.kind==='nature'?'Type: '+cp.nature:cp.kind==='vendor'?'Supplier':'No match'});
     });
+    payrollItems.forEach(e=>{
+      const p=pushed.payroll&&pushed.payroll[e.key];
+      list.push({key:'s'+e.key,kind:'payroll',id:e.key,date:e.date.replace(/-/g,'/'),iso:e.iso,type:'Journal',party:e.kind==='salary'?'Salary Payable':'Incentive Payable',
+        other:e.kind==='salary'?'Salaries & Wages, PF, ESIC, PT, TDS':'Staff Incentive',ref:e.ref,narr:e.narr,amount:e.lines.filter(l=>l[1]>0).reduce((t,l)=>t+l[1],0),
+        status:p?(p.sig===tallyPayrollSig(e)?'sent':'changed'):'new',sentAt:p&&p.at,suspense:false,via:e.kind==='salary'?'Salary':'Incentive'});
+    });
     filteredPays.forEach(g=>{
       const p=pushed.pay&&pushed.pay[g.key];
       list.push({key:'p'+g.key,kind:'pay',id:g.key,date:g.date.split('-').reverse().join('/'),iso:g.date,type:tallyPayVoucherType(g),
@@ -134,7 +142,7 @@ function TallyExportSheet({salon,onNavTab}={}){
     });
     return list.sort((a,b)=>(a.iso||'').localeCompare(b.iso||''));
     // eslint-disable-next-line
-  },[filteredInvoices.length,filteredBankRows.length,filteredPays.length,pushed,map,vendors,fromDate,toDate,refreshTick]);
+  },[filteredInvoices.length,filteredBankRows.length,filteredPays.length,payrollItems.length,pushed,map,vendors,fromDate,toDate,refreshTick]);
   const byType=t=>vouchers.filter(v=>v.type===t);
   const sum=l=>l.reduce((s,v)=>s+v.amount,0);
   const newCount=vouchers.filter(v=>v.status==='new').length;
@@ -144,7 +152,7 @@ function TallyExportSheet({salon,onNavTab}={}){
   // ── Ledgers ──
   const extraLedgersFor=(invs,rows)=>tallyExtraLedgers(invs,rows,vendors,vendorLedgerNameFor,map,gstInputBlocked,
     tallyMastersPreviewRows(vendors,categories,gstTypesUsed,map.bankLedger,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked).map(r=>r.name),
-    vendorPaymentTallyItems(loadVendorInvoices(salonId),loadBankStatementRows(salonId)));
+    vendorPaymentTallyItems(loadVendorInvoices(salonId),loadBankStatementRows(salonId)),payrollItems);
   const allLedgerRows=()=>{const base=tallyMastersPreviewRows(vendors,categories,gstTypesUsed,map.bankLedger,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked);return base.concat(extraLedgersFor(invoices,bankRows));};
   const [ledgerCache,setLedgerCache]=useState(()=>loadTallyLedgerCache(salonId));
   useEffect(()=>{setLedgerCache(loadTallyLedgerCache(salonId));},[salonId,refreshTick]);
@@ -249,10 +257,11 @@ function TallyExportSheet({salon,onNavTab}={}){
     setBusy('');setProgress(null);
   };
   const markSent=(keys,sent)=>{
-    const next={inv:{...pushed.inv},bank:{...pushed.bank},pay:{...(pushed.pay||{})}};
+    const next={inv:{...pushed.inv},bank:{...pushed.bank},pay:{...(pushed.pay||{})},payroll:{...(pushed.payroll||{})}};
     const at=new Date().toISOString();
     vouchers.filter(v=>keys.has(v.key)).forEach(v=>{
       if(v.kind==='inv'){const inv=invoices.find(x=>x.id===v.id);if(sent)next.inv[v.id]={at,sig:tallyInvSig(inv),manual:true};else delete next.inv[v.id];}
+      else if(v.kind==='payroll'){const e=payrollItems.find(x=>x.key===v.id);if(sent&&e)next.payroll[v.id]={at,sig:tallyPayrollSig(e),manual:true};else delete next.payroll[v.id];}
       else if(v.kind==='pay'){const g=payItems.find(x=>x.key===v.id);if(sent&&g)next.pay[v.id]={at,sig:tallyPaySig(g),manual:true};else delete next.pay[v.id];}
       else{const r=bankRows.find(x=>x.id===v.id);if(sent)next.bank[v.id]={at,sig:tallyBankSig(r),manual:true};else delete next.bank[v.id];}
     });
@@ -290,12 +299,18 @@ function TallyExportSheet({salon,onNavTab}={}){
     success(filteredPays.length+' vendor payment voucher(s) — import via Gateway of Tally → Import Data → Vouchers (after Masters and Purchase). Then mark them “already in Tally” on the Vouchers tab.');
   };
   const downloadVouchersExcel=()=>{
-    const entries=tallyVoucherEntries({invoices:filteredInvoices,bankRows:filteredBankRows,payItems:filteredPays,vendors,vName:vendorLedgerNameFor,cName:categoryLedgerNameFor,gstBlocked:gstInputBlocked,map});
+    const entries=tallyVoucherEntries({invoices:filteredInvoices,bankRows:filteredBankRows,payItems:filteredPays,payroll:payrollItems,vendors,vName:vendorLedgerNameFor,cName:categoryLedgerNameFor,gstBlocked:gstInputBlocked,map});
     if(!entries.length){tallyErr('No vouchers in '+periodLabel+'.');return;}
     if(filteredBankRows.length&&!map.bankLedger){setTab('ledgers');tallyErr('Enter the Bank ledger name first (Ledgers tab).');return;}
     XLSX.writeFile(buildTallyVouchersWorkbook(entries,outletTag.slice(0,6).toUpperCase()),'Tally_Vouchers_'+outletTag+'.xlsx');
     logIt({action:'Downloaded Vouchers Excel',period:periodLabel,sent:entries.length});
     success(entries.length+' voucher(s) in Excel, each with its narration — Gateway of Tally → Import → Vouchers (Excel). Import Masters first.');
+  };
+  const downloadPayroll=()=>{
+    if(!payrollItems.length){tallyErr('No final Salary / Incentive month in '+periodLabel+' (Salary needs Attendance Month Final; Incentive needs Incentive Working locked).');return;}
+    downloadTextFile(buildTallyEntryVouchersXml(payrollItems),'Tally_Salary_Incentive_'+outletTag+'.xml');
+    logIt({action:'Downloaded Salary & Incentive XML',period:periodLabel,sent:payrollItems.length});
+    success(payrollItems.length+' Salary / Incentive journal(s) — import via Gateway of Tally → Import Data → Vouchers (after Masters).');
   };
   const downloadExcelTemplate=()=>{XLSX.writeFile(buildTallyVouchersTemplateWorkbook(),'Tally_Voucher_Import_Template.xlsx');};
   const downloadVoucherCsv=()=>{
@@ -375,6 +390,7 @@ function TallyExportSheet({salon,onNavTab}={}){
             h('button',{className:'btn btn-ghost btn-sm',onClick:downloadMasters},'1 · Masters XML'),
             h('button',{className:'btn btn-ghost btn-sm',onClick:downloadPurchase},'2 · Purchase XML'),
             h('button',{className:'btn btn-ghost btn-sm',onClick:downloadBank},'3 · Bank XML'),
+            h('button',{className:'btn btn-ghost btn-sm',onClick:downloadPayroll,title:'Monthly Salary and Incentive payable journals with PF, ESIC, PT, TDS, advances'},'5 · Salary & Incentive XML'),
             h('button',{className:'btn btn-ghost btn-sm',onClick:downloadPays,title:'Cash, TDS and bank payments entered on Vendors that are not on the Bank Statement'},'4 · Vendor payments XML'),
             h('button',{className:'btn btn-ghost btn-sm',onClick:downloadVouchersExcel,title:'All vouchers of the period — one row per ledger line, with narration'},'📗 All vouchers Excel'),
             h('button',{className:'btn btn-ghost btn-sm',onClick:downloadExcelTemplate},'Excel template'),
@@ -398,7 +414,7 @@ function TallyExportSheet({salon,onNavTab}={}){
       h('input',{className:'form-control',style:{width:200,marginLeft:'auto'},placeholder:'Search party / narration',value:vSearch,onChange:e=>setVSearch(e.target.value)})),
     selKeys.size>0&&h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',background:'var(--bg3)',borderRadius:'var(--r)',padding:'8px 10px',marginBottom:10,fontSize:12.5}},
       h('b',null,selKeys.size+' selected'),
-      live&&h('button',{className:'btn btn-primary btn-sm',disabled:!!busy,onClick:()=>{const only={inv:new Set(),bank:new Set(),pay:new Set()};vouchers.filter(v=>selKeys.has(v.key)&&v.status==='new').forEach(v=>(v.kind==='inv'?only.inv:v.kind==='pay'?only.pay:only.bank).add(v.id));if(!only.inv.size&&!only.bank.size&&!only.pay.size){info('Only New vouchers can be sent.');return;}askSync(only);}},'👁 Preview & send'),
+      live&&h('button',{className:'btn btn-primary btn-sm',disabled:!!busy,onClick:()=>{const only={inv:new Set(),bank:new Set(),pay:new Set(),payroll:new Set()};vouchers.filter(v=>selKeys.has(v.key)&&v.status==='new').forEach(v=>(v.kind==='inv'?only.inv:v.kind==='pay'?only.pay:v.kind==='payroll'?only.payroll:only.bank).add(v.id));if(!only.inv.size&&!only.bank.size&&!only.pay.size&&!only.payroll.size){info('Only New vouchers can be sent.');return;}askSync(only);}},'👁 Preview & send'),
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(confirm('Mark '+selKeys.size+' voucher(s) as already in Tally? They won’t be sent by SalonOS.'))markSent(selKeys,true);}},'Mark as already in Tally'),
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(confirm('Mark '+selKeys.size+' voucher(s) as NOT sent? The next sync will send them again — only do this if they are not in Tally.'))markSent(selKeys,false);}},'Mark as not sent'),
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setSel(new Set())},'Clear')),
@@ -592,7 +608,7 @@ function TallyExportSheet({salon,onNavTab}={}){
 
   // ── Preview before anything moves to Tally — every Sync / Send / Create opens this first. ──
   const askSync=(only)=>{
-    const list=vouchers.filter(v=>v.status==='new'&&(!only||(v.kind==='inv'?only.inv.has(v.id):v.kind==='pay'?(only.pay&&only.pay.has(v.id)):only.bank.has(v.id))));
+    const list=vouchers.filter(v=>v.status==='new'&&(!only||(v.kind==='inv'?only.inv.has(v.id):v.kind==='pay'?(only.pay&&only.pay.has(v.id)):v.kind==='payroll'?(only.payroll&&only.payroll.has(v.id)):only.bank.has(v.id))));
     if(!list.length){info('Nothing new to send in '+periodLabel+'.');return;}
     setPreview({kind:'sync',only,vouchers:list,ledgers:missingInTally});
   };
