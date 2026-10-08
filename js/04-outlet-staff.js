@@ -400,7 +400,9 @@ function OutletDashboard({salon,period,onNavTab}){
       return React.createElement('div',null,
         React.createElement('div',{style:{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}},
           React.createElement('span',{style:{fontSize:12,color:'var(--text3)'}},'Report range (ending '+MONTH_FULL[selMonth]+' '+selYear+'):'),
-          [1,3,6,12,18,24,36].map(n=>React.createElement('button',{key:n,className:`btn btn-sm ${rangeMonths===n?'btn-primary':'btn-ghost'}`,onClick:()=>setRangeMonths(n)},n===1?'1 Month':n+' Months'))
+          [1,3,6,12,18,24,36].map(n=>React.createElement('button',{key:n,className:`btn btn-sm ${rangeMonths===n?'btn-primary':'btn-ghost'}`,onClick:()=>setRangeMonths(n)},n===1?'1 Month':n+' Months')),
+          salon&&React.createElement('span',{style:{marginLeft:'auto'}},React.createElement(XlReportButton,{label:'⬇ Full P&L for these months (Excel)',title:'Every P&L line month by month with totals, margins and a summary',
+            build:()=>{const st=new Date(selYear,selMonth-Math.min(rangeMonths,24)+1,1);return buildPeriodPnlWorkbook(salon.id,salon,{year:st.getFullYear(),month:st.getMonth()},{year:selYear,month:selMonth});}}))
         ),
         React.createElement('div',{className:'grid4',style:{marginBottom:16}},
           React.createElement(MetCard,{label:'Total Revenue ('+rangeMonths+' mo)',val:rupee(totRev),color:'green'}),

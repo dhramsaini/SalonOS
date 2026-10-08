@@ -451,7 +451,7 @@ function OutletPnLCore({salon,period}){
   // Operating Expenses lines are real SUM-of-source-columns formulas, and every %-of-revenue cell
   // references the Total Revenue cell — so opening this in Excel and clicking any number shows
   // exactly how it was built, and changing a source figure recalculates everything downstream. ──
-  const [plExcelBusy,setPlExcelBusy]=useState(false);
+  const [plExcelBusy,setPlExcelBusy]=useState(false);const [showPeriodRpt,setShowPeriodRpt]=useState(false);
   const exportPnLExcelWithFormulas=async()=>{
     setPlExcelBusy(true);
     try{
@@ -760,6 +760,29 @@ function OutletPnLCore({salon,period}){
         ws.columns=[{width:26},{width:13},{width:13},{width:13},{width:13},{width:13},{width:15},{width:15}];setup(ws,true,4);
       }
 
+      // ═══ Cash Flow — profit to cash for the month ═══
+      {
+        const ws=sheet('Cash Flow','FF00838F'),COLS=5;
+        const cfv=cashFlowFor(sid,cal?cal.year:null,cal?cal.month:null,cur);
+        banner(ws,'Cash flow — '+outletName+' · '+monthLbl,'Indirect method: profit before tax (from the P&L Statement) + depreciation (no cash goes out) + expenses accrued but not yet paid + vendor bills booked but not yet paid. Investing / financing and opening cash as entered in P&L → Cash Flow.',COLS);
+        head(ws,4,['Particulars','Accrued / booked ₹','Paid ₹','Basis','Amount ₹'],2);
+        let r=5;const pl=c=>"'P&L Statement'!"+c;
+        band(ws,r,'A. Cash from operations',COLS);r++;const st=r;
+        put(ws,r,1,'Profit before tax');put(ws,r,4,'P&L Statement');put(ws,r,5,{f:pl('C'+P.pbt),r:R(cfv.pbt)},NUM);style(ws,r,COLS);r++;
+        put(ws,r,1,'Add: depreciation (non-cash)');put(ws,r,4,'W5 Depreciation');put(ws,r,5,{f:pl('C'+P.dep),r:R(cfv.depAmt)},NUM);style(ws,r,COLS);r++;
+        cfv.opexAdj.filter(x=>R(x.accrued)||R(x.paid)).forEach(x=>{put(ws,r,1,'Add: '+x.name+' accrued, not yet paid');put(ws,r,2,R(x.accrued),NUM);put(ws,r,3,R(x.paid),NUM);put(ws,r,4,'Recurring accrual − paid in Daily Sales');put(ws,r,5,{f:'B'+r+'-C'+r,r:R(x.accrued)-R(x.paid)},NUM);style(ws,r,COLS);r++;});
+        if(R(cfv.cosmeticBooked)||R(cfv.cosmeticPaid)){put(ws,r,1,'Add: product bills booked, not yet paid');put(ws,r,2,R(cfv.cosmeticBooked),NUM);put(ws,r,3,R(cfv.cosmeticPaid),NUM);put(ws,r,4,'Vendor bills − vendor payments');put(ws,r,5,{f:'B'+r+'-C'+r,r:R(cfv.cosmeticGap)},NUM);style(ws,r,COLS);r++;}
+        put(ws,r,1,'Net cash from operations');put(ws,r,5,{f:'SUM(E'+st+':E'+(r-1)+')',r:R(cfv.operatingCF)},NUM);style(ws,r,COLS,'total');const opR=r;r+=2;
+        band(ws,r,'B. Investing and financing',COLS);r++;
+        put(ws,r,1,'Investing (equipment, deposits)');put(ws,r,4,'As entered');put(ws,r,5,R(cfv.investing),NUM);style(ws,r,COLS);const invR=r;r++;
+        put(ws,r,1,'Financing (capital, loans)');put(ws,r,4,'As entered');put(ws,r,5,R(cfv.financing),NUM);style(ws,r,COLS);const finR=r;r++;
+        put(ws,r,1,'Net change in cash (A + B)');put(ws,r,5,{f:'E'+opR+'+E'+invR+'+E'+finR,r:R(cfv.netCF)},NUM);style(ws,r,COLS,'total');const netR=r;r+=2;
+        put(ws,r,1,'Opening cash');put(ws,r,4,'As entered');put(ws,r,5,R(cfv.opening),NUM);style(ws,r,COLS);const opnR=r;r++;
+        put(ws,r,1,'Closing cash');put(ws,r,5,{f:'E'+opnR+'+E'+netR,r:R(cfv.closing)},NUM);style(ws,r,COLS,'grand');r+=2;
+        note(ws,r,'Positive amounts add to cash, negative take away. A positive accrual gap means the expense is in the P&L but the cash has not left yet (payable); negative means paid ahead.',COLS);
+        ws.columns=[{width:42},{width:17},{width:14},{width:36},{width:17}];setup(ws,false,4);
+      }
+
       // ═══ Summary — the dashboard ═══
       {
         const ws=wsS,COLS=8;
@@ -831,7 +854,7 @@ function OutletPnLCore({salon,period}){
         // Contents
         band(ws,r,'What is in this file (click to open)',COLS);r++;
         [['P&L Statement','The statement — each line links to its working; previous month and change'],['Trend (6 months)','Last six months side by side, with margins'],['W1 Revenue','Gross collections ÷ 1.05 = revenue; day-wise collections'],['W2 Direct Cost','Product cost — vendor bills with vendor, invoice date and number'],
-         ['W3 Employee Cost','Salary, incentives, PF / ESIC — employee-wise schedule'],['W4 Operating Exp','Each expense line by source (recurring, daily, vendor, bank)'],['W4a Recurring','Monthly accrual of each recurring expense'],['W5 Depreciation','Depreciation and interest']]
+         ['W3 Employee Cost','Salary, incentives, PF / ESIC — employee-wise schedule'],['W4 Operating Exp','Each expense line by source (recurring, daily, vendor, bank)'],['W4a Recurring','Monthly accrual of each recurring expense'],['W5 Depreciation','Depreciation and interest'],['Cash Flow','Profit to cash — accruals not yet paid, closing cash']]
           .forEach(([nm,t])=>{ws.mergeCells(r,1,r,2);ws.mergeCells(r,3,r,COLS);const c=ws.getCell(r,1);c.value={text:nm,hyperlink:"#'"+nm+"'!A1"};put(ws,r,3,t);style(ws,r,COLS);c.font={color:{argb:'FF1F5FBF'},underline:true,size:10};r++;});
         ws.columns=[{width:16},{width:14},{width:16},{width:13},{width:16},{width:14},{width:15},{width:13}];setup(ws,false,0);
         ws.pageSetup.fitToHeight=1;
@@ -842,7 +865,7 @@ function OutletPnLCore({salon,period}){
       const blob=await stampExcelBlob(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),plWm);
       const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();
       setTimeout(()=>URL.revokeObjectURL(url),4000);
-      toast(filename+' downloaded — Summary, P&L and 6 working sheets, every figure linked by formula','success');
+      toast(filename+' downloaded — Summary, P&L, Cash Flow and 6 working sheets, every figure linked by formula','success');
     }catch(e){toast(e.message||'Could not build the Excel file — please try again','error');}
     setPlExcelBusy(false);
   };
@@ -937,6 +960,8 @@ function OutletPnLCore({salon,period}){
       h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         h('button',{className:'btn btn-ghost btn-sm',onClick:exportCsv},'⬇ Export Excel'),
         h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},disabled:plExcelBusy,onClick:exportPnLExcelWithFormulas},plExcelBusy?'Working…':'⬇ Excel with Formulas'),
+        h('button',{className:'btn btn-ghost btn-sm',title:'Quarter, FY to date or any months side by side',onClick:()=>setShowPeriodRpt(true)},'📅 Period P&L'),
+        showPeriodRpt&&h(PeriodReportModal,{salon,period:{fy,mi},onClose:()=>setShowPeriodRpt(false)}),
         h(ShareReportButton,{title:plReportTitle,subtitle:'FY '+fy,getBodyHtml:plReportBodyHtml,getSheetRows:plReportSheetRows,watermark:plWm,
           execSummary:[
             'Revenue for the period: <b>'+money(cur.revenue)+'</b>'+(prevRev?' ('+pct(delta(cur.revenue,prevRev))+' vs '+cmp.toLowerCase()+')':''),

@@ -188,7 +188,7 @@ function StaffProductivitySheet({salon,period}={}){
   const f=v=>v==null?'—':Math.round(v)+'%';
   return h('div',null,
     h('div',{className:'section-header'},h('div',null,h('div',{className:'page-title'},'Staff Productivity'),
-      h('div',{className:'page-sub'},'Revenue per working day (CRADLE Staff Work report, else Incentive Working figures), utilisation = booked minutes ÷ 9-hour working days, repeat clients = billed again within 90 days')),afMonthPicker(cal,setCal)),
+      h('div',{className:'page-sub'},'Revenue per working day (CRADLE Staff Work report, else Incentive Working figures), utilisation = booked minutes ÷ 9-hour working days, repeat clients = billed again within 90 days')),h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},h(XlReportButton,{label:'⬇ Stylist performance (Excel)',title:'Sales, sale per day, salary + incentive cost and cost % of sale per stylist',build:()=>buildStylistWorkbook(sid,salon,cal.year,cal.month)}),afMonthPicker(cal,setCal))),
     h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,
       h('thead',null,h('tr',null,['Employee','Days worked','Service','Product','Membership','Revenue / day','vs team avg','Utilisation','Repeat clients'].map((t,i)=>h('th',{key:i,style:i?{textAlign:'right'}:null},t)))),
       h('tbody',null,rows.map(r=>h('tr',{key:r.e.id},

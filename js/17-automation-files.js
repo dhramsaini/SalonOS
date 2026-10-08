@@ -245,9 +245,23 @@ async function emailFinalPnl(salon,fy,mi){
   const d=plBuild(salon.id,fy,mi);
   const cal=periodToCalendar({fy,mi});
   const month=AF_MONTHS[cal.month].slice(0,3)+' '+cal.year;
-  const rows=[['Particulars','Amount']];
-  d.sections.forEach(S=>{rows.push([S.sec,Math.round(S.tot)]);(S.lines||[]).forEach(l=>{if(l.amt)rows.push(['   '+l.name,Math.round(l.amt)]);});});
-  rows.push(['Revenue',Math.round(d.revenue)],['EBITDA',Math.round(d.ebitda)],['Profit before tax',Math.round(d.pbt)]);
+  // One page for the owner: headline, then each line with % of revenue and last month for comparison.
+  const pd=new Date(cal.year,cal.month-1,1),pf=calToFYMI(pd.getFullYear(),pd.getMonth());let p=null;try{p=plBuild(salon.id,pf.fy,pf.mi);}catch(e){}
+  const pm=AF_MONTHS[pd.getMonth()].slice(0,3)+' '+pd.getFullYear(),R=n=>Math.round(Number(n)||0);
+  const pct=v=>d.revenue?(Math.round(v/d.revenue*1000)/10)+'%':'—';
+  const ch=(a,b)=>b?((a-b)>=0?'+':'')+(Math.round((a-b)/Math.abs(b)*1000)/10)+'%':'—';
+  const prevLine=(sec,name)=>{if(!p)return 0;const S=p.sections.find(x=>x.sec===sec);const l=S&&S.lines.find(x=>x.name===name);return l?R(l.amt):0;};
+  const prevSec=sec=>p?R((p.sections.find(x=>x.sec===sec)||{tot:0}).tot):0;
+  const below=R((d.below||[]).reduce((t,l)=>t+l.amt,0)),pBelow=p?R((p.below||[]).reduce((t,l)=>t+l.amt,0)):0;
+  const rows=[['Headline','This month','% of revenue','Last month ('+pm+')','Change'],
+    ['Revenue',R(d.revenue),'100%',p?R(p.revenue):0,ch(d.revenue,p&&p.revenue)],
+    ['Gross profit',R(d.gross),pct(d.gross),p?R(p.gross):0,ch(d.gross,p&&p.gross)],
+    ['EBITDA',R(d.ebitda),pct(d.ebitda),p?R(p.ebitda):0,ch(d.ebitda,p&&p.ebitda)],
+    ['Profit before tax',R(d.pbt),pct(d.pbt),p?R(p.pbt):0,ch(d.pbt,p&&p.pbt)],
+    [],['Particulars','This month','% of revenue','Last month','Change']];
+  d.sections.forEach(S=>{rows.push([S.sec,R(S.tot),pct(S.tot),prevSec(S.sec),ch(S.tot,prevSec(S.sec))]);
+    (S.lines||[]).forEach(l=>{const pv=prevLine(S.sec,l.name);if(R(l.amt)||pv)rows.push(['   '+l.name,R(l.amt),pct(l.amt),pv,ch(l.amt,pv)]);});});
+  rows.push(['Depreciation & interest',below,pct(below),pBelow,ch(below,pBelow)]);
   const blob=await exportReportPdfBlob('P&L (Final) — '+month,String(salon.name||''),rows);
   const short=String(salon.name||'').split('—')[0].trim();
   return emailCall('send_pack',{outletId:Number(salon.id),month,fileName:'PnL_'+short.replace(/[^A-Za-z0-9]+/g,'_')+'_'+cal.year+'-'+String(cal.month+1).padStart(2,'0')+'.pdf',pdf:await blobToBase64(blob),toSelf:true});

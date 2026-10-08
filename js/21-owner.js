@@ -90,7 +90,7 @@ function OutletRankingBoard({accessibleSalons}){
   return h('div',null,
     h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}},
       h('div',null,h('div',{className:'page-title'},'Outlet Ranking'),h('div',{className:'page-sub'},'Month to date — revenue growth vs last month’s pace, EBITDA %, salary % of revenue, target achievement, collection differences and missing Daily Sales days; overall rank = average of the ranks')),
-      afMonthPicker(cal,setCal)),
+      h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},h(XlReportButton,{label:'⬇ Outlet comparison (Excel)',title:'Every outlet’s P&L side by side with margins and ranking',build:()=>buildOutletComparisonWorkbook(accessibleSalons,cal.year,cal.month)}),afMonthPicker(cal,setCal))),
     h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,
       h('thead',null,h('tr',null,['#','Outlet','Health','Revenue MTD','Growth vs last month','EBITDA %','Salary % of rev','Target achieved','Unexplained coll. diffs','Days missing'].map((t,i)=>h('th',{key:i,style:i>1?{textAlign:'right'}:null},t)))),
       h('tbody',null,rows.map((r,i)=>h('tr',{key:r.s.id},

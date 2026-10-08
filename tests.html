@@ -898,6 +898,22 @@
         const em=tsMod(window.__EM_TS);
         eq('Email: From address format checked',['SalonOS Reports <reports@digitalca.co.in>','reports@digitalca.co.in','<reports@digitalca.co.in>','SalonOS Reports','a@b'].map(em.validFrom),[true,true,false,false,false]);
       }catch(err){results.push({name:'Email',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        await loadExcelJS();
+        const sal={id:902,name:'Test Outlet — X'};
+        const {wb}=await buildPeriodPnlWorkbook(902,sal,{year:2026,month:6},{year:2026,month:8});xlFillResults(wb);
+        const ws=wb.getWorksheet('Period P&L');const rowOf=t=>{let r=0;ws.eachRow((row,i)=>{if(row.getCell(1).value===t)r=i;});return r;};
+        const res=a=>{const v=ws.getCell(a).value;return v&&v.formula?v.result:v;};
+        let rev=0,pbt=0;[6,7,8].forEach(m=>{const fm=calToFYMI(2026,m);const b=plBuild(902,fm.fy,fm.mi);rev+=Math.round(b.revenue);pbt+=Math.round(b.pbt);});
+        const tr=rowOf('Total revenue from operations'),pr=rowOf('PROFIT BEFORE TAX');
+        eq('Period P&L: 3 months + total column; totals equal the monthly P&Ls (stored results filled for phone viewers)',[ws.getCell(4,5).value,Math.round(res('E'+tr)||0),Math.round(res('E'+pr)||0),ws.getCell(5,1).value],['Total',rev,pbt,'A. Revenue from operations']);
+        let threw='';try{await buildPeriodPnlWorkbook(902,sal,{year:2026,month:8},{year:2026,month:6});}catch(e){threw=e.message;}
+        eq('Period P&L: From after To is refused',/after/.test(threw),true);
+        const cmp=await buildOutletComparisonWorkbook([sal,{id:901,name:'Other — Y'}],2026,8);xlFillResults(cmp.wb);
+        const cw=cmp.wb.getWorksheet('Comparison');const fm=calToFYMI(2026,8);const p1=Math.round(plBuild(902,fm.fy,fm.mi).pbt),p2=Math.round(plBuild(901,fm.fy,fm.mi).pbt);
+        const pbtRow=(()=>{let r=0;cw.eachRow((row,i)=>{if(row.getCell(1).value==='Profit before tax')r=i;});return r;})();const cv=a=>{const v=cw.getCell(a).value;return v&&v.formula?v.result:v;};
+        eq('Outlet comparison: each outlet PBT and the all-outlets total',[cv('B'+pbtRow)||0,cv('C'+pbtRow)||0,cv('D'+pbtRow)||0],[p1,p2,p1+p2]);
+      }catch(err){results.push({name:'Reports (Excel)',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

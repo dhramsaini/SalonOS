@@ -67,6 +67,7 @@ function SalesInsightsModal({salon,invoices,onClose}){
         h('tbody',null,weeks.map((w,i)=>{const p=i?weeks[i-1].s:null;const ch=p&&p.avg?(w.s.avg/p.avg-1)*100:null;
           return h('tr',{key:w.label},h('td',null,w.label),r(w.s.bills),r(S5M(w.s.avg)+(ch==null?'':' ('+(ch>=0?'+':'')+Math.round(ch)+'%)'),{color:ch==null?'':ch>=0?'var(--green)':'var(--red)'}),r(w.s.svcPer.toFixed(2)),r(s5Pct(w.s.attach)));}))))),
     tab==='price'&&h('div',null,
+      h('div',{style:{display:'flex',justifyContent:'flex-end',marginBottom:6}},h(XlReportButton,{label:'⬇ Service profitability (Excel)',build:()=>buildServiceProfitWorkbook(sid,salon,invoices)})),
       h('div',{style:{fontSize:12.5,marginBottom:8}},'Margin = average rate charged (excl. GST) − product used (Inventory → Standard usage × stock rate) − stylist commission (top service slab). Flagged below ',lim.margin,'%.'),
       h('div',{className:'table-wrap'},h('table',null,h('thead',null,h('tr',null,['Service','Times sold','Rate','Product cost','Commission','Margin','Margin %'].map(th))),
         h('tbody',null,pc.map(x=>h('tr',{key:x.name},h('td',null,x.name,!x.hasUsage&&h('div',{style:{fontSize:10.5,color:'var(--text3)'}},'no standard usage set')),r(x.sold),r(S5M(x.rate)),r(S5M(x.prod)),r(S5M(x.commission)),r(S5M(x.margin)),r(s5Pct(x.marginPct),{fontWeight:600,color:x.low?'var(--red)':'var(--green)'}))))))),
