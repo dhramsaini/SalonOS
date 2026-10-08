@@ -1069,6 +1069,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     const computedTotal=(Number(invForm.taxable)||0)+(Number(invForm.igst)||0)+(Number(invForm.cgst)||0)+(Number(invForm.sgst)||0)+(Number(invForm.freight)||0)+(Number(invForm.roundOff)||0);
     if(!invForm.vendorId){alert('Select a vendor, or choose "+ Add New Vendor".');return;}
     if(invForm.vendorId==='__new__'&&!(invForm.newVendorName||'').trim()){alert('Enter the new vendor’s name.');return;}
+    if(invForm.vendorId==='__new__'&&!confirmIdFields({gst:invForm.newVendorGst,phone:invForm.newVendorPhone},'the new vendor details'))return;
     if(!invForm.docNature){alert('Select the Doc Nature.');return;}
     if(!(invForm.invoiceNo||'').trim()){alert((invForm.docNature==='Performa Invoice'?'PI':'Invoice / Voucher')+' No. is required.');return;}
     if(!invForm.invoiceDate){alert((invForm.docNature==='Performa Invoice'?'PI':'Invoice')+' Date is required.');return;}

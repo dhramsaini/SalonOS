@@ -809,6 +809,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     setInvModal({ri,iso});
   };
   const INV_FORM_BLANK={vendorId:'',newVendorName:'',newVendorCat:defaultVendorCategoryFor(salonId),newVendorAddress:'',newVendorGst:'',newVendorTerms:'30 days',newVendorContact:'',newVendorPhone:'',newVendorId:'',newVendorStatus:'Active',newVendorTdsApplicable:false,newVendorTdsSection:'',newVendorTdsRate:'',
+    newVendorBankName:'',newVendorAccountHolder:'',newVendorAccountNo:'',newVendorIfsc:'',newVendorEmail:'',
     docNature:'Tax Invoice',invoiceNo:'',invoiceDate:localTodayIso(),bookingDate:localTodayIso(),taxable:'',igst:'',cgst:'',sgst:'',roundOff:'',dueDate:'',desc:'',attachment:null,amountPaid:'',paymentDate:''};
   const [showInvoiceForm,setShowInvoiceForm]=useState(null); // {mode:'create'|'edit',ri,iso,category,invoiceId,paymentId,entryId} | null
   // 'pay' mode: other bills of the same vendor this one cash payment also covers (split oldest first).
@@ -894,6 +895,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     if(!canBookInvoiceInMonth(invoiceBookMonthOf(invForm))&&!(showInvoiceForm&&showInvoiceForm.invoiceId)){dseToastErr(invoiceMonthBlockMessage());return;}
     if(invFormTotal<=0){dseToastErr('Enter at least a Taxable Value');return;}
     if(outletSettings(salonId).attachmentRequired&&!invForm.attachment){dseToastErr('This outlet requires the invoice / voucher copy to be attached — please attach it before saving.');return;}
+    if(invForm.vendorId==='__new__'&&!confirmIdFields({gst:invForm.newVendorGst,phone:invForm.newVendorPhone,email:invForm.newVendorEmail,accountNo:invForm.newVendorAccountNo,ifsc:invForm.newVendorIfsc,bankName:invForm.newVendorBankName},'the new vendor details'))return;
     if(!(Number(invForm.amountPaid)>0)){dseToastErr('Enter Amount Paid — an invoice can\'t be saved from Daily Sales & Exp without recording a payment against it.');return;}
     const payload=showInvoiceForm;
     const category=payload.category;
@@ -911,6 +913,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
         const newId=customId||nextPrefixedId(vendors,'V',3);
         const newVendor={id:newId,name:invForm.newVendorName.trim(),address:invForm.newVendorAddress,gst:invForm.newVendorGst.trim(),
           cat:invForm.newVendorCat,contact:invForm.newVendorContact,phone:invForm.newVendorPhone,terms:invForm.newVendorTerms,status:invForm.newVendorStatus,
+          bankName:invForm.newVendorBankName||'',accountHolder:invForm.newVendorAccountHolder||'',accountNo:String(invForm.newVendorAccountNo||'').replace(/\s/g,''),ifsc:String(invForm.newVendorIfsc||'').trim().toUpperCase(),email:invForm.newVendorEmail||'',
           tdsApplicable:!!invForm.newVendorTdsApplicable,tdsSection:invForm.newVendorTdsSection,tdsRate:invForm.newVendorTdsRate};
         saveVendors([...vendors,newVendor],salonId);
         vendorId=newId;
@@ -1953,6 +1956,16 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
             React.createElement('div',{className:'form-group',style:{marginBottom:0}},React.createElement('label',{htmlFor:'f-47'},'Vendor ID (auto if blank)'),React.createElement('input',{id:'f-47',className:'form-control',value:invForm.newVendorId,onChange:ic2('newVendorId'),placeholder:'e.g. V005'})),
             React.createElement('div',{className:'form-group',style:{marginBottom:0}},React.createElement('label',{htmlFor:'f-48'},'Status'),React.createElement('select',{id:'f-48',className:'form-control',value:invForm.newVendorStatus,onChange:ic2('newVendorStatus')},['Active','Inactive'].map(s=>React.createElement('option',{key:s},s))))
           ),
+          React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'14px 0 8px',paddingTop:10,borderTop:'1px solid var(--border)'}},'Bank Details (for bank payments — optional)'),
+          React.createElement('div',{className:'form-row cols2'},
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'Bank Name'),React.createElement(BankNameField,{value:invForm.newVendorBankName,ifsc:invForm.newVendorIfsc,onChange:v=>setInvForm(f=>({...f,newVendorBankName:v}))})),
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'Account Holder Name'),React.createElement('input',{className:'form-control',value:invForm.newVendorAccountHolder,onChange:ic2('newVendorAccountHolder'),placeholder:'As per bank records'}))
+          ),
+          React.createElement('div',{className:'form-row cols2'},
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'Account Number'),React.createElement('input',{className:'form-control',value:invForm.newVendorAccountNo,onChange:ic2('newVendorAccountNo'),placeholder:'Account number',inputMode:'numeric'}),invForm.newVendorAccountNo&&!isValidBankAccountNo(invForm.newVendorAccountNo)&&fieldWarning('Account number must be 9 to 18 digits.')),
+            React.createElement('div',{className:'form-group'},React.createElement('label',null,'IFSC Code'),React.createElement('input',{className:'form-control',value:invForm.newVendorIfsc,onChange:ic2('newVendorIfsc'),placeholder:'HDFC0001234',style:{textTransform:'uppercase'}}),invForm.newVendorIfsc&&!isValidIfscFormat(invForm.newVendorIfsc)&&fieldWarning('Not a valid IFSC (e.g. HDFC0001234).'))
+          ),
+          React.createElement('div',{className:'form-group',style:{marginBottom:0}},React.createElement('label',null,'Email (optional)'),React.createElement('input',{className:'form-control',value:invForm.newVendorEmail,onChange:ic2('newVendorEmail'),placeholder:'vendor@company.com',type:'email'}),invForm.newVendorEmail&&!isValidEmailFormat(invForm.newVendorEmail)&&fieldWarning('Not a valid email.')),
           salon&&salon.tdsApplicable&&React.createElement('div',{style:{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'12px 14px',marginTop:12}},
             React.createElement('label',{style:{display:'flex',alignItems:'center',gap:8,cursor:'pointer',marginBottom:invForm.newVendorTdsApplicable?10:0}},
               React.createElement('input',{type:'checkbox',checked:!!invForm.newVendorTdsApplicable,onChange:e=>setInvForm(f=>({...f,newVendorTdsApplicable:e.target.checked}))}),
