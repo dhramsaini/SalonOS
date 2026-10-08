@@ -2455,6 +2455,7 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
     'HDFC Bank':'HDFC\u2019s ENet/CBX portal uses separate file structures for beneficiaries within HDFC Bank (no IFSC needed) vs at other banks (IFSC required). This screen generates both files separately below \u2014 upload each to the matching section in ENet.',
     'ICICI Bank':'ICICI\u2019s own published CIB bulk-upload spec is a FIXED-WIDTH positional file (exact character positions per field), not a simple CSV \u2014 the file below almost certainly won\u2019t upload as-is. Get the exact field-position layout from your RM or CIB admin before relying on this.',
     'State Bank of India':'SBI\u2019s CINB (Vyapaar/Vistaar) bulk upload typically requires the file to be ENCRYPTED (symmetric or PKI keys) before submission. The content below is correct, but it will likely need encrypting through SBI-provided tools first \u2014 check with your branch/RM.',
+    'IDFC First Bank':'IDFC FIRST Bank bulk-payment Excel (.xlsx) in the bank’s own template: row 1 headers, row 2 the bank’s instructions, payments from row 3. Transaction Type is IFT for IDFC FIRST beneficiaries (IFSC starting IDFB), else NEFT / RTGS by amount; date DD/MM/YYYY; currency INR. Custom Info 1–3 carry what the payment is for, the employee / vendor code and the outlet.',
     'Axis Bank':'No verified Axis-specific structural difference from the common Bulk NEFT/RTGS format \u2014 same caveat as always: confirm column order with Axis before a full batch.',
     'Kotak Mahindra Bank':'No verified Kotak-specific structural difference from the common Bulk NEFT/RTGS format \u2014 same caveat as always: confirm column order with Kotak before a full batch.',
     'Generic':'Uses the common Bulk NEFT/RTGS format most Indian banks\u2019 portals accept as a starting point. Column order and any extra header row your specific bank wants can vary \u2014 confirm before a full batch.',
@@ -2592,6 +2593,32 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
       if(layout.headerRow)lines.unshift(layout.cols.map(c=>c.field==='fixed'?'':q(c.header)).join(sep));
       downloadTextFile((layout.ext==='csv'?'﻿':'')+lines.join('\r\n'),'BankPayment_'+label+'_'+outletTag+'_'+valueDate+'.'+(layout.ext||'csv'),layout.ext==='csv'?'text/csv;charset=utf-8':'text/plain;charset=utf-8');
       success(chosen.length+' payment(s) exported in your custom layout ('+modeSummary(chosen)+', total ₹'+chosen.reduce((s,x)=>s+(Math.round(Number(amtFor(x))||0)),0).toLocaleString('en-IN')+').'+(missingBank?' '+missingBank+' payee(s) were skipped — missing bank details.':''));
+      return;
+    }
+    // IDFC FIRST Bank — the bank's own .xlsx template (headers + instruction row, data from row 3).
+    if(bankChoice==='IDFC First Bank'){
+      const H=['Beneficiary Name','Beneficiary Account Number','IFSC','Transaction Type','Debit Account Number','Transaction Date','Amount','Currency','Beneficiary Email ID','Remarks','Custom Header – 1','Custom Header – 2','Custom Header – 3','Custom Header – 4','Custom Header – 5'];
+      const HELP=['Enter beneficiary name.\nMANDATORY','Enter beneficiary account number. \nThis can be IDFC FIRST Bank account or other Bank account.\nMANDATORY','Enter beneficiary bank IFSC code. Required only for Inter bank (NEFT/RTGS) payment.','Enter payment type:\nIFT - Within Bank payment\nNEFT - Inter-Bank(NEFT) payment\nRTGS - Inter-Bank(RTGS) payment\nMANDATORY','Enter debit account number. This should be IDFC FIRST Bank account only. User should have access to do transaction on this account',"Enter transaction value date. Should be today's date or future date.\nMANDATORY\nDD/MM/YYYY format",'Enter payment amount.\nMANDATORY','Enter transaction currency. Should be INR only.\nMANDATORY','Enter beneficiary email id\nOPTIONAL','Enter remarks\nOPTIONAL','Credit Advice:\nEnter Custom Info -1\nNote: Header label is editable in Row 1\nOPTIONAL','Credit Advice:\nEnter Custom Info -2\nNote: Header label is editable in Row 1\nOPTIONAL','Credit Advice:\nEnter Custom Info -3\nNote: Header label is editable in Row 1\nOPTIONAL','Credit Advice:\nEnter Custom Info -4\nNote: Header label is editable in Row 1\nOPTIONAL','Credit Advice:\nEnter Custom Info -5\nNote: Header label is editable in Row 1\nOPTIONAL'];
+      const dmy=valueDate?valueDate.split('-').reverse().join('/'):'';
+      const outletName=salon?salon.name.split('—')[0].trim():'';
+      const data=chosen.map(x=>{
+        const bank=tab==='vendor'?x.vendor:x;
+        const amt=Math.round(Number(amtFor(x))||0);
+        const ifsc=String(bank.ifsc||'').toUpperCase().trim();
+        const pt=paymentTypeFor(amt);
+        const type=ifsc.startsWith('IDFB')?'IFT':(pt==='RTGS'?'RTGS':'NEFT');
+        const code=tab==='vendor'?(x.vendor.id||''):(x.empId||x.code||x.id||'');
+        return[bank.accountHolder||bank.name,String(bank.accountNo||'').trim(),ifsc,type,String(debitAccount).trim(),dmy,amt,'INR',bank.email||'',remarksFor(x).slice(0,60),
+          remarksFor(x),code,outletName,'',''];
+      });
+      const ws=XLSX.utils.aoa_to_sheet([H,HELP,...data]);
+      // Account numbers as text (keeps leading zeros, never shown as 1.23E+13).
+      for(let r=2;r<data.length+2;r++){['B','E'].forEach(c=>{const cell=ws[c+(r+1)];if(cell){cell.t='s';cell.v=String(cell.v);cell.z='@';}});}
+      ws['!cols']=[{wch:26},{wch:22},{wch:13},{wch:16},{wch:20},{wch:16},{wch:12},{wch:9},{wch:24},{wch:34},{wch:30},{wch:14},{wch:20},{wch:14},{wch:14}];
+      const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
+      XLSX.writeFile(wb,'IDFC_'+label+'_'+outletTag+'_'+(valueDate||'').split('-').reverse().join('')+'.xlsx');
+      const ift=data.filter(r=>r[3]==='IFT').length;
+      success(chosen.length+' payment(s) in the IDFC FIRST Bank Excel ('+ift+' IFT, '+(chosen.length-ift)+' NEFT/RTGS), total ₹'+data.reduce((s,r)=>s+r[6],0).toLocaleString('en-IN')+'. Upload it in IDFC FIRST Business Banking → Bulk Payments.'+(missingBank?' '+missingBank+' payee(s) were skipped — no bank details.':''));
       return;
     }
     if(bankChoice==='HDFC Bank'){
