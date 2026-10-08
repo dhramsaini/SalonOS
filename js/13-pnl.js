@@ -546,26 +546,48 @@ function OutletPnLCore({salon,period}){
 
       // ═══ W2 Direct cost ═══
       {
-        const ws=w2,COLS=3;
+        const ws=w2,COLS=5;
         const defs=isRestaurantOutlet(sid)?PL_DIRECT_RESTAURANT_LINES:PL_DIRECT_REAL_LINES;
-        banner(ws,'W2 — Direct cost of service · '+monthLbl,'Products consumed in giving the service: Daily Sales & Exp purchases of the group, plus vendor bills of the category booked in the month (restaurants: food / bar consumption = opening stock + purchases − closing stock).',COLS);
-        head(ws,4,['Line','Basis','Amount ₹ → P&L'],3);
-        let r=5;const st=r;
-        dirS.lines.forEach(l=>{const d=defs.find(x=>x.name===l.name)||{};
-          put(ws,r,1,l.name);put(ws,r,2,d.fn?'Stock consumption (Food Cost sheet)':'Daily Sales & Exp group "'+(d.group||l.name)+'"'+(d.alsoVendorCat?' + vendor bills ('+d.alsoVendorCat+')':''));put(ws,r,3,R(l.amt),NUM);style(ws,r,COLS);lineRef[l.name]=ref(ws,'C'+r);r++;});
-        put(ws,r,1,'Total direct cost');put(ws,r,3,{f:'SUM(C'+st+':C'+(r-1)+')',r:R(dirS.tot)},NUM);style(ws,r,COLS,'grand');r+=2;
-        // supporting: vendor bills of those categories booked this month
-        const cats=new Set(defs.map(d=>d.alsoVendorCat).filter(Boolean));
-        const bills=cal?loadVendorInvoices(sid).filter(i=>i.docNature!=='Performa Invoice'&&cats.has(i.category)&&invoiceBookMonthOf(i)===cal.year+'-'+String(cal.month+1).padStart(2,'0')):[];
-        if(bills.length){
-          band(ws,r,'Supporting — vendor bills booked in '+monthLbl+' ('+[...cats].join(', ')+')',COLS);r++;
-          head(ws,r,['Vendor · Invoice no.','Date · Category','Amount ₹'],3);r++;const bs=r;
-          const vs=loadVendors(sid);
-          bills.forEach(b=>{put(ws,r,1,((vs.find(v=>v.id===b.vendorId)||{}).name||b.vendorId)+' · '+(b.invoiceNo||''));put(ws,r,2,(b.bookingDate||b.invoiceDate||'')+' · '+(b.category||''));put(ws,r,3,R(b.amount),NUM);style(ws,r,COLS);r++;});
-          put(ws,r,1,'Total of these bills (incl. GST)');put(ws,r,3,{f:'SUM(C'+bs+':C'+(r-1)+')',r:R(bills.reduce((t,b)=>t+(Number(b.amount)||0),0))},NUM);style(ws,r,COLS,'total');r++;
-          note(ws,r+0,'Supporting list only — the P&L line counts the bill value as booked by the category rules above.',COLS);
-        }
-        ws.columns=[{width:40},{width:60},{width:18}];setup(ws,false,4);
+        banner(ws,'W2 — Direct cost of service · '+monthLbl,'Products consumed in giving the service: purchases entered in Daily Sales & Exp, plus vendor bills of the category booked in the month (each bill listed below with vendor, invoice date and invoice no.). Restaurants: food / bar consumption = opening stock + purchases − closing stock.',COLS);
+        head(ws,4,['Line','Basis','Daily Sales & Exp ₹','Vendor bills ₹','Amount ₹ → P&L'],3);
+        // Lay out: summary rows, then one bill schedule per line that has vendor bills.
+        const items=dirS.lines.map(l=>{const d=defs.find(x=>x.name===l.name)||{};
+          const bills=(cal&&d.alsoVendorCat)?vendorInvoiceCategoryBreakupFor(sid,cal.year,cal.month,d.alsoVendorCat):[];
+          const daily=(cal&&!d.fn&&d.group)?R(dailySalesGroupSumFor(sid,cal.year,cal.month,d.group)):0;
+          return{l,d,bills,daily};});
+        const st=5,tot=st+items.length;
+        let r=tot+2;
+        items.forEach(it=>{
+          if(!it.bills.length)return;
+          it.band=r;it.head=r+1;it.bStart=r+2;it.bEnd=it.bStart+it.bills.length-1;it.bTot=it.bEnd+1;
+          r=it.bTot+2;
+        });
+        let cSum=0,dSum=0;
+        items.forEach((it,i)=>{
+          const row=st+i,{l,d,bills,daily}=it;
+          const vend=Math.round(bills.reduce((t,b)=>t+(Number(b.amount)||0),0));
+          put(ws,row,1,l.name);
+          put(ws,row,2,d.fn?'Stock consumption (Food Cost sheet)':'Daily Sales & Exp "'+(d.group||l.name)+'"'+(d.alsoVendorCat?' + vendor bills "'+d.alsoVendorCat+'" (listed below)':''));
+          const splits=!d.fn&&Math.abs(daily+vend-R(l.amt))<=1;
+          if(splits){
+            put(ws,row,3,daily,NUM);cSum+=daily;dSum+=vend;
+            put(ws,row,4,bills.length?{f:'E'+it.bTot,r:vend}:0,NUM);
+            put(ws,row,5,{f:'C'+row+'+D'+row,r:R(l.amt)},NUM);
+          }else put(ws,row,5,R(l.amt),NUM);
+          style(ws,row,COLS);lineRef[l.name]=ref(ws,'E'+row);
+        });
+        put(ws,tot,1,'Total direct cost');['C','D','E'].forEach((c,j)=>put(ws,tot,j+3,{f:'SUM('+c+st+':'+c+(tot-1)+')',r:[cSum,dSum,R(dirS.tot)][j]},NUM));style(ws,tot,COLS,'grand');
+        // bill schedules
+        items.forEach(it=>{
+          if(!it.bills.length)return;
+          band(ws,it.band,it.l.name+' — vendor bills booked in '+monthLbl+' (Vendors sheet)',COLS);
+          head(ws,it.head,['Invoice date','Vendor name','Invoice no.','Doc nature','Amount ₹'],5);
+          it.bills.forEach((b,j)=>{const rr=it.bStart+j;
+            put(ws,rr,1,b.invoiceDate||'—');put(ws,rr,2,b.vendorName||'—');put(ws,rr,3,b.invoiceNo||'—');put(ws,rr,4,b.docNature||'Tax Invoice');put(ws,rr,5,Math.round((Number(b.amount)||0)*100)/100,NUM);style(ws,rr,COLS);});
+          put(ws,it.bTot,1,'Total — '+it.l.name+' vendor bills ('+it.bills.length+')');ws.mergeCells(it.bTot,1,it.bTot,4);
+          put(ws,it.bTot,5,{f:'SUM(E'+it.bStart+':E'+it.bEnd+')',r:Math.round(it.bills.reduce((t,b)=>t+(Number(b.amount)||0),0))},NUM);style(ws,it.bTot,COLS,'total');
+        });
+        ws.columns=[{width:30},{width:46},{width:22},{width:16},{width:18}];setup(ws,false,4);
       }
 
       // ═══ W3 Employee cost ═══
