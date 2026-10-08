@@ -348,7 +348,7 @@ function TallyExportSheet({salon,onNavTab}={}){
     h('span',{style:{color:'var(--text3)'}},'to'),
     h('input',{type:'date',className:'form-control',style:{width:'auto'},value:toDate,onChange:e=>setToDate(e.target.value)}),
     h('span',{style:{fontSize:11.5,color:'var(--text3)'}},vouchers.length+' voucher'+(vouchers.length===1?'':'s')+' in '+periodLabel));
-  const tabs=[['overview','Overview'],['vouchers','Vouchers ('+vouchers.length+')'],['ledgers','Ledgers'+(missingInTally&&missingInTally.length?' ⚠ '+missingInTally.length:'')],['history','History'],['settings','Settings']];
+  const tabs=[['overview','Overview'],['vouchers','Vouchers ('+vouchers.length+')'],['ledgers','Ledgers'+(missingInTally&&missingInTally.length?' ⚠ '+missingInTally.length:'')],['check','Balance check'],['history','History'],['settings','Settings']];
 
   // Overview
   const check=(ok,label,detail,fix)=>h('div',{style:{display:'flex',gap:10,alignItems:'flex-start',padding:'8px 0',borderTop:'1px solid var(--border)'}},
@@ -668,6 +668,7 @@ function TallyExportSheet({salon,onNavTab}={}){
     tab==='overview'&&overview,
     tab==='vouchers'&&vouchersTab,
     tab==='ledgers'&&ledgersTab,
+    tab==='check'&&h(TallyBalanceCheck,{salonId,conn,live,vendorLedgerNameFor,bankLedger:map.bankLedger}),
     tab==='history'&&historyTab,
     tab==='settings'&&settingsTab,
     onNavTab&&h('div',{style:{marginTop:16,fontSize:11.5,color:'var(--text3)'}},

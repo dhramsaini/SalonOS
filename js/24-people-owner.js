@@ -135,7 +135,10 @@ function TdsRegisterCard({sid,cal}){
       h('div',null,h('div',{className:'card-title',style:{marginBottom:4}},'TDS register — FY '+fy+' (vendors, rent and salary)'),
         h('div',{style:{fontSize:12,color:'var(--text3)'}},'Every deduction by quarter with deposit status — the working for 24Q (salary) and 26Q (others) and for Form 16A.'),
         h('div',{style:{fontSize:12.5,marginTop:8}},Object.values(byQ).map(x=>x.q+': '+b6Money(x.amt)+(x.unpaid?' ('+b6Money(x.unpaid)+' not deposited)':'')).join(' · ')||'No TDS this year')),
-      h('button',{className:'btn btn-ghost btn-sm',disabled:!rows.length,onClick:exp},'⬇ TDS register .xlsx')));
+      h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
+        h('button',{className:'btn btn-ghost btn-sm',disabled:!rows.length,onClick:exp},'⬇ TDS register .xlsx'),
+        h(XlReportButton,{label:'⬇ 26Q / 24Q working (Excel)',title:'Quarter-wise deductee details, PAN check, deposit status and the annual salary sheet',build:()=>buildTdsReturnsWorkbook(sid,getSalonRecordById(sid)||{name:'Outlet'},fy)}),
+        h('button',{className:'btn btn-ghost btn-sm',title:'One block per employee: salary, PF, ESIC, PT and TDS month by month — the Form 16 Part B working',onClick:async()=>{try{const s=getSalonRecordById(sid)||{name:'Outlet'};const b=await buildAnnualSalaryStatementsPdf(sid,s,fy);rDownloadBlob(b,'Annual_Salary_Statements_'+rptFile(rptShort(s))+'_FY'+fy+'.pdf');}catch(e){window.alert(e.message||String(e));}}},'📄 Annual salary statements (PDF)'))));
 }
 
 // ── 16 · Year-end pack ──

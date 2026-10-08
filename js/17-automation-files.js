@@ -135,6 +135,7 @@ function GstSummarySheet({salon,period}={}){
     h('div',{className:'section-header'},
       h('div',null,h('div',{className:'page-title'},'GST Summary'),h('div',{className:'page-sub'},'GSTR-3B working for '+label+' — outward tax at 5% (same ÷ 1.05 the P&L uses) less input from vendor tax invoices booked this month')),
       h('div',{style:{display:'flex',gap:8}},afMonthPicker(cal,setCal),
+        h(XlReportButton,{label:'⬇ GSTR-1 / 3B working (Excel)',title:'B2C and SAC tables, input credit register with GSTINs, and the 3B set-off',build:()=>buildGstReturnsWorkbook(sid,salon,cal.year,cal.month)}),
         h('button',{className:'btn btn-ghost btn-sm',onClick:async()=>{try{await afDownloadXlsx('GST Summary',rows,'GST_Summary_'+String(salon&&salon.name||'Outlet').split('—')[0].trim().replace(/[^A-Za-z0-9]+/g,'_')+'_'+cal.year+'-'+String(cal.month+1).padStart(2,'0')+'.xlsx');}catch(e){toast(e.message,'error');}}},'⬇ Excel'))),
     !outletSettings(sid).gstApplicable&&h('div',{className:'help-note',style:{marginBottom:12}},'This outlet is not marked GST applicable in Master Sheet — figures shown for reference.'),
     h('div',{className:'card',style:{maxWidth:640}},h('table',null,h('tbody',null,rows.slice(1).map((r,i)=>h(React.Fragment,{key:i},row(r[0],afMoney(r[1]),i===6)))))),
