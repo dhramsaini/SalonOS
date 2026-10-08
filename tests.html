@@ -281,7 +281,7 @@
           return '<RESPONSE><CREATED>1</CREATED><ERRORS>0</ERRORS></RESPONSE>';
         };
         const s1=await runTallyAutoSync(901,{url:'x',company:''},{company:'Test Co',from:'2026-10-01'});
-        eq('Tally sync: sends only new vouchers from the start date, reports rejects',[s1.sent,s1.failed.length,/Ledger missing/.test(s1.failed[0]||'')],[2,1,true]);
+        eq('Tally sync: sends only new vouchers from the start date (bills, bank lines, vendor payments), reports rejects',[s1.sent,s1.failed.length,/Ledger missing/.test(s1.failed[0]||''),calls.some(x=>x.indexOf('Paid against')!==-1||x.indexOf('TDS deducted on')!==-1)],[3,1,true,true]);
         const s2=await runTallyAutoSync(901,{url:'x',company:''},{company:'Test Co',from:'2026-10-01'});
         eq('Tally sync: next run retries only the rejected one',[s2.sent,s2.failed.length],[0,1]);
         const inv=loadVendorInvoices(901);saveVendorInvoices(inv.map(i=>i.id==='REC-R1-2026-10'?{...i,amount:1}:i),901);
@@ -708,6 +708,10 @@
         eq('Month Final: not before the last day; picker opens on previous month',[!!monthFinalTooEarlyMessage(2026,9,new Date(2026,9,8)),monthFinalTooEarlyMessage(2026,9,new Date(2026,9,31)),monthFinalTooEarlyMessage(2026,8,new Date(2026,9,8)),defaultFinalMonthCal(new Date(2026,9,8)),defaultFinalMonthCal(new Date(2026,0,5))],[true,'','',{year:2026,month:8},{year:2025,month:11}]);
         // One payment over several bills: oldest first, each bill at most its balance.
         eq('One payment over several bills: split oldest first',allocateOldestFirst([{id:'a',balance:5940},{id:'b',balance:11880},{id:'c',balance:5940}],15000).map(x=>x.alloc),[5940,9060,0]);
+        // Vendor payments to Tally: cash and TDS kept, bank-linked and bank-statement-matched left out, one voucher per split payment.
+        const tp=vendorPaymentTallyItems([{id:'A',vendorId:'V1',invoiceNo:'A1',payments:[{id:'P1',paidAmount:500,paidDate:'2026-09-05',mode:'Cash'},{id:'P2',paidAmount:100,paidDate:'2026-09-06',mode:'TDS'},{id:'P3',paidAmount:900,paidDate:'2026-09-07',mode:'NEFT',linkId:'bank-9'},{id:'P4',paidAmount:700,paidDate:'2026-09-08',mode:'NEFT'},{id:'P5',paidAmount:300,paidDate:'2026-09-09',mode:'NEFT',multiPayGroup:'X'}]},
+          {id:'B',vendorId:'V1',invoiceNo:'B1',payments:[{id:'P1',paidAmount:200,paidDate:'2026-09-09',mode:'NEFT',multiPayGroup:'X'}]}],[{debit:700,transactionDate:'09/09/2026'}]);
+        eq('Tally vendor payments: cash, TDS journal, one voucher for a split payment; bank-linked / on-statement left out',tp.map(g=>g.kind+':'+g.amount+':'+g.invoiceNos.join('+')),['cash:500:A1','tds:100:A1','bank:500:A1+B1']);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.

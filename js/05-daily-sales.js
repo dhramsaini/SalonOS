@@ -811,6 +811,9 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   const INV_FORM_BLANK={vendorId:'',newVendorName:'',newVendorCat:'Purchase of Cosmetic',newVendorAddress:'',newVendorGst:'',newVendorTerms:'30 days',newVendorContact:'',newVendorPhone:'',newVendorId:'',newVendorStatus:'Active',newVendorTdsApplicable:false,newVendorTdsSection:'',newVendorTdsRate:'',
     docNature:'Tax Invoice',invoiceNo:'',invoiceDate:localTodayIso(),bookingDate:localTodayIso(),taxable:'',igst:'',cgst:'',sgst:'',roundOff:'',dueDate:'',desc:'',attachment:null,amountPaid:'',paymentDate:''};
   const [showInvoiceForm,setShowInvoiceForm]=useState(null); // {mode:'create'|'edit',ri,iso,category,invoiceId,paymentId,entryId} | null
+  // 'pay' mode: other bills of the same vendor this one cash payment also covers (split oldest first).
+  const [dseAlso,setDseAlso]=useState(()=>new Set());
+  useEffect(()=>{setDseAlso(new Set());},[showInvoiceForm&&showInvoiceForm.invoiceId,showInvoiceForm&&showInvoiceForm.mode]);
   const [invForm,setInvForm]=useState(INV_FORM_BLANK);
   const ic2=(k)=>(e)=>setInvForm(f=>({...f,[k]:e.target.value}));
   // IGST vs CGST+SGST from the outlet's and the chosen vendor's GSTIN state codes.
@@ -922,6 +925,41 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       amount:invFormTotal,category,desc:invForm.desc,attachment:invForm.attachment};
     {const dupInv=duplicateVendorInvoice(loadVendorInvoices(salonId),vendorId,invFields.invoiceNo,invFields.docNature,payload.mode==='pay'?payload.invoiceId:null);
      if(dupInv){dseToastErr(duplicateInvoiceMessage(dupInv,(vendors.find(v=>v.id===vendorId)||{}).name));return;}}
+
+    if(payload.mode==='pay'&&dseAlso.size>0){
+      // One cash payment over this bill and the other ticked bills of the vendor — oldest first.
+      const invoices=loadVendorInvoices(salonId);
+      const idx=invoices.findIndex(inv=>inv.id===payload.invoiceId);
+      if(idx<0){dseToastErr('Could not find that invoice anymore — it may have been deleted in Vendor Sheet.');setShowInvoiceForm(null);return;}
+      const balOf=i=>Math.max(0,(Number(i.amount)||0)-(i.payments||[]).reduce((t,x)=>t+(Number(x.paidAmount)||0),0));
+      const cur={...invoices[idx],...invFields,linkedPI:invoices[idx].linkedPI||''};
+      const others=invoices.filter(i=>dseAlso.has(i.id)&&i.id!==cur.id&&balOf(i)>0.5);
+      const dk=i=>{const q=parseInvoiceDateFlexible(i.invoiceDate);return q?q.y*10000+q.m*100+q.d:0;};
+      const group=[cur,...others].sort((a,b)=>dk(a)-dk(b));
+      const maxPay=group.reduce((t,i)=>t+balOf(i),0);
+      if(paid>maxPay+0.5){dseToastErr('₹'+paid.toLocaleString('en-IN')+' is more than the balance of the ticked bills (₹'+Math.round(maxPay).toLocaleString('en-IN')+').');return;}
+      const allocs=allocateOldestFirst(group.map(i=>({id:i.id,balance:balOf(i)})),paid).filter(a=>a.alloc>0);
+      const tag='MP-'+Date.now().toString(36);
+      const note='Auto-recorded from Daily Sales & Exp — one payment of ₹'+paid.toLocaleString('en-IN')+' over '+allocs.length+' bills';
+      const entries=[...getInvEntries(payDate,payload.ri)];
+      const nextInvoices=invoices.map(i=>{
+        const a=allocs.find(x=>x.id===i.id);
+        const base=i.id===cur.id?cur:i;
+        if(!a)return base;
+        const paymentId=nextPrefixedId(base.payments||[],'PMT-',3);
+        entries.push({id:nextPrefixedId(entries,'IE-',3),invoiceId:i.id,paymentId,amount:a.alloc});
+        return{...base,payments:[...(base.payments||[]),{id:paymentId,paidAmount:a.alloc,paidDate:payDate,mode:'Cash',ref:'',note,multiPayGroup:tag}]};
+      });
+      if(!window.confirm('Record ONE cash payment of ₹'+paid.toLocaleString('en-IN')+' on '+payDate+' over '+allocs.length+' bills ('+allocs.map(a=>(group.find(g=>g.id===a.id)||{}).invoiceNo+' ₹'+a.alloc.toLocaleString('en-IN')).join(', ')+')?'))return;
+      const ok=commitInvEntries(payDate,payload.ri,entries);
+      if(!ok)return;
+      saveVendorInvoices(nextInvoices,salonId);
+      try{logAuditEvent(salonId,{entity:'Vendor Payment',entityId:tag,action:'Added',summary:'Daily Sales & Exp — one cash payment ₹'+paid.toLocaleString('en-IN')+' over '+allocs.length+' bills'});}catch(e){}
+      dseToast(rupee(paid)+' recorded over '+allocs.length+' bills','success');
+      setShowInvoiceForm(null);
+      setInvModal(null);
+      return;
+    }
 
     if(payload.mode==='pay'){
       const invoices=loadVendorInvoices(salonId);
@@ -1982,6 +2020,25 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
               'Previously Paid (other payments on this invoice): ₹'+otherPaid.toLocaleString('en-IN')+' — this invoice\'s total will show ₹'+(otherPaid+(Number(invForm.amountPaid)||0)).toLocaleString('en-IN')+' paid once saved.'),
             React.createElement('label',{style:{color:'var(--green)',fontWeight:600}},'Amount Paid (₹) *'),
             React.createElement('input',{type:'number',min:0,className:'form-control',value:invForm.amountPaid,onChange:ic2('amountPaid'),placeholder:'0'}),
+            // One payment that also covers other bills of this vendor — tick their invoice nos.
+            showInvoiceForm.mode==='pay'&&(()=>{
+              const all=loadVendorInvoices(salonId);
+              const balOf=i=>Math.max(0,(Number(i.amount)||0)-(i.payments||[]).reduce((t,x)=>t+(Number(x.paidAmount)||0),0));
+              const cur=all.find(x=>x.id===showInvoiceForm.invoiceId);
+              const others=cur?all.filter(i=>i.id!==cur.id&&String(i.vendorId)===String(cur.vendorId)&&i.docNature!=='Performa Invoice'&&balOf(i)>0.5):[];
+              if(!others.length)return null;
+              const totalFor=set=>Math.round((balOf(cur)+others.filter(o=>set.has(o.id)).reduce((t,o)=>t+balOf(o),0))*100)/100;
+              const toggle=id=>{const n=new Set(dseAlso);n.has(id)?n.delete(id):n.add(id);setDseAlso(n);setInvForm(f=>({...f,amountPaid:String(totalFor(n))}));};
+              const dk=i=>{const q=parseInvoiceDateFlexible(i.invoiceDate);return q?q.y*10000+q.m*100+q.d:0;};
+              const grp=[cur,...others.filter(o=>dseAlso.has(o.id))].sort((a,b)=>dk(a)-dk(b));
+              const split=dseAlso.size?allocateOldestFirst(grp.map(i=>({id:i.id,no:i.invoiceNo,balance:balOf(i)})),invForm.amountPaid):[];
+              return React.createElement('div',{style:{marginTop:10,paddingTop:8,borderTop:'1px dashed rgba(76,175,125,0.4)',fontSize:12}},
+                React.createElement('div',{style:{fontWeight:600,color:'var(--text)',marginBottom:4}},'Does this payment also cover other invoices of this vendor? Tick the invoice nos.:'),
+                React.createElement('div',{style:{maxHeight:130,overflowY:'auto'}},others.sort((a,b)=>dk(a)-dk(b)).map(o=>React.createElement('label',{key:o.id,style:{display:'flex',gap:8,alignItems:'center',padding:'2px 0',cursor:'pointer'}},
+                  React.createElement('input',{type:'checkbox',checked:dseAlso.has(o.id),onChange:()=>toggle(o.id)}),
+                  React.createElement('span',{style:{fontFamily:'monospace',fontSize:11,minWidth:120}},o.invoiceNo),React.createElement('span',{style:{minWidth:84}},o.invoiceDate),React.createElement('span',null,'balance ₹'+Math.round(balOf(o)).toLocaleString('en-IN'))))),
+                dseAlso.size>0&&React.createElement('div',{style:{marginTop:6,color:'var(--text2)'}},'Split oldest first: '+split.map(a=>a.no+' ₹'+a.alloc.toLocaleString('en-IN')).join(' · ')));
+            })(),
             React.createElement('div',{style:{marginTop:10}},
               React.createElement('label',{style:{color:'var(--green)',fontWeight:600}},'Date of Payment'),
               React.createElement('input',{type:'date',className:'form-control',value:invForm.paymentDate,onChange:ic2('paymentDate')})

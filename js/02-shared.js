@@ -1744,10 +1744,55 @@ function buildTallyBankVouchersXml(rows,bankLedgerName,vendors,opts){
   });
   return tallyEnvelope('Vouchers','<TALLYMESSAGE xmlns:UDF="TallyUDF">'+msgs.join('')+'</TALLYMESSAGE>');
 }
+
+// ── Vendor payments → Tally ──────────────────────────────────────────────────────────────────
+// Payments entered on Vendors / Daily Sales & Exp become vouchers too: Cash / bank payments a
+// Payment voucher (Dr supplier, Cr Cash or the bank ledger), TDS deducted a Journal (Dr supplier,
+// Cr TDS Payable). One payment split over several bills (multiPayGroup) is ONE voucher. Left out,
+// so nothing reaches Tally twice: payments linked to a Bank Statement line (linkId — the bank line is
+// the voucher), and a bank-mode payment whose amount and date (±3 days) match a debit on the Bank
+// Statement (that line will carry it).
+function vendorPaymentTallyItems(invoices,bankRows){
+  const groups={};
+  (invoices||[]).forEach(inv=>(inv.payments||[]).forEach(p=>{
+    const amt=Number(p.paidAmount)||0;if(amt<=0||p.linkId)return;
+    const date=tallyIsoOf(p.paidDate);if(!date)return;
+    const mode=String(p.mode||'');
+    const kind=/^tds$/i.test(mode)?'tds':/cash/i.test(mode)?'cash':'bank';
+    const key=p.multiPayGroup?'g'+p.multiPayGroup:'p'+inv.id+'|'+(p.id||'');
+    const g=groups[key]||(groups[key]={key,kind,date,vendorId:inv.vendorId,amount:0,ref:p.ref||'',mode:mode||'—',invoiceNos:[]});
+    g.amount+=amt;g.invoiceNos.push(inv.invoiceNo||inv.id);
+  }));
+  const rows=(bankRows||[]).filter(r=>Number(r.debit)>0);
+  const days=(a,b)=>Math.abs((new Date(a+'T00:00:00')-new Date(b+'T00:00:00'))/86400000);
+  return Object.values(groups).map(g=>({...g,amount:Math.round(g.amount*100)/100}))
+    .filter(g=>!(g.kind==='bank'&&rows.some(r=>{const d=tallyIsoOf(r.transactionDate);return d&&Math.abs(Number(r.debit)-g.amount)<=1&&days(d,g.date)<=3;})))
+    .sort((a,b)=>a.date.localeCompare(b.date));
+}
+function tallyPaySig(g){return tallyItemSig([g.kind,g.date,g.vendorId,g.amount,g.ref,g.invoiceNos]);}
+function tallyPayLedgers(map){return{cash:(map&&map.cashLedger)||'Cash',tds:(map&&map.tdsLedger)||'TDS Payable'};}
+function tallyPayVoucherType(g){return g.kind==='tds'?'Journal':'Payment';}
+function tallyPayOtherLedger(g,map){const L=tallyPayLedgers(map);return g.kind==='cash'?L.cash:g.kind==='tds'?L.tds:((map&&map.bankLedger)||'Bank');}
+function tallyPayNarration(g){return(g.kind==='tds'?'TDS deducted on ':'Paid against ')+'bill'+(g.invoiceNos.length>1?'s ':' ')+g.invoiceNos.join(', ')+(g.ref?' (Ref: '+g.ref+')':'')+' — '+g.mode;}
+function buildTallyVendorPaymentVouchersXml(items,vendorLedgerNameFor,map){
+  const msgs=(items||[]).map(g=>{
+    const vendor=vendorLedgerNameFor(g.vendorId),other=tallyPayOtherLedger(g,map),vtype=tallyPayVoucherType(g);
+    return '<VOUCHER VCHTYPE="'+vtype+'" ACTION="Create">'
+      +'<DATE>'+g.date.replace(/-/g,'')+'</DATE>'
+      +'<VOUCHERTYPENAME>'+vtype+'</VOUCHERTYPENAME>'
+      +(g.ref?'<REFERENCE>'+escapeTallyXml(g.ref)+'</REFERENCE>':'')
+      +'<NARRATION>'+escapeTallyXml(tallyPayNarration(g))+'</NARRATION>'
+      +'<PARTYLEDGERNAME>'+escapeTallyXml(vendor)+'</PARTYLEDGERNAME>'
+      +'<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(vendor)+'</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+g.amount.toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>'
+      +'<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(other)+'</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>-'+g.amount.toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>'
+      +'</VOUCHER>';
+  });
+  return tallyEnvelope('Vouchers','<TALLYMESSAGE xmlns:UDF="TallyUDF">'+msgs.join('')+'</TALLYMESSAGE>');
+}
 // Ledgers the vouchers need besides vendors / categories / GST / bank: Round Off (purchase round-off),
 // the bank-Nature ledgers actually used, and Suspense — so Tally never rejects a voucher for a missing
 // ledger that SalonOS itself chose. Names already covered by another row are left out.
-function tallyExtraLedgers(invoices,bankRows,vendors,vendorLedgerNameFor,map,gstInputBlocked,taken){
+function tallyExtraLedgers(invoices,bankRows,vendors,vendorLedgerNameFor,map,gstInputBlocked,taken,payItems){
   const out=[],seen=new Set((taken||[]).map(n=>String(n).toLowerCase()));
   const add=(name,parent,type,note)=>{const k=String(name||'').toLowerCase();if(!name||seen.has(k))return;seen.add(k);out.push({name,parent,type,note});};
   if(!gstInputBlocked&&invoices.some(i=>i.docNature!=='Performa Invoice'&&Number(i.roundOff)))add('Round Off','Indirect Expenses','System','Purchase round-off');
@@ -1756,6 +1801,9 @@ function tallyExtraLedgers(invoices,bankRows,vendors,vendorLedgerNameFor,map,gst
     if(cp.kind==='nature')add(cp.ledger,cp.parent,'Bank type','Bank Statement: '+cp.nature);
     else if(cp.kind==='suspense')add(cp.ledger,cp.parent,'System','Bank lines with no supplier or type — reclassify in Tally');
   });
+  const PL=tallyPayLedgers(map);
+  if((payItems||[]).some(g=>g.kind==='cash'))add(PL.cash,'Cash-in-Hand','System','Cash paid to suppliers');
+  if((payItems||[]).some(g=>g.kind==='tds'))add(PL.tds,'Duties & Taxes','System','TDS deducted from supplier bills');
   return out;
 }
 
@@ -3476,7 +3524,7 @@ function alertFixedLocally(a){
 // voucher on its own so Tally's answer can be recorded per voucher; a rejected one is retried next
 // evening and listed with Tally's reason. An item edited after it was sent is NOT re-sent (that
 // would duplicate it in Tally) — it's listed as "changed after sending" for a manual check. ──
-function loadTallyPushed(salonId){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_tally_pushed',salonId))||'null');if(v&&typeof v==='object')return{inv:v.inv||{},bank:v.bank||{}};}catch(e){}return{inv:{},bank:{}};}
+function loadTallyPushed(salonId){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_tally_pushed',salonId))||'null');if(v&&typeof v==='object')return{inv:v.inv||{},bank:v.bank||{},pay:v.pay||{}};}catch(e){}return{inv:{},bank:{},pay:{}};}
 function saveTallyPushed(salonId,v){safeLocalSet(outletKey('salonos_tally_pushed',salonId),JSON.stringify(v));}
 function tallyItemSig(o){const s=JSON.stringify(o);let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return String(h);}
 function tallyInvSig(inv){return tallyItemSig([inv.vendorId,inv.invoiceNo,inv.invoiceDate,inv.bookingDate,inv.amount,inv.taxable,inv.igst,inv.cgst,inv.sgst,inv.roundOff,inv.category]);}
@@ -3502,7 +3550,13 @@ function tallyAutoSyncPending(salonId,from){
     if(p){if(p.sig!==tallyBankSig(r))changed.push('Bank '+r.transactionDate+' '+String(r.description||'').slice(0,30));return false;}
     return true;
   });
-  return{invs,rows,changed};
+  const pays=vendorPaymentTallyItems(loadVendorInvoices(salonId),loadBankStatementRows(salonId)).filter(g=>{
+    if(g.date<from)return false;
+    const p=pushed.pay[g.key];
+    if(p){if(p.sig!==tallyPaySig(g))changed.push('Payment '+g.date+' '+g.invoiceNos.join(', '));return false;}
+    return true;
+  });
+  return{invs,rows,pays,changed};
 }
 // Sends vouchers not sent before (kv salonos_tally_pushed_outlet_<id>): {from, to} ISO period (to optional),
 // company, only {inv:Set, bank:Set} to send just those ids. First creates every ledger they need that
@@ -3521,9 +3575,10 @@ async function tallySyncVouchers(salonId,cfg,opts){
   const inTo=d=>!o.to||tallyIsoOf(d)<=o.to;
   let invs=pend.invs.filter(i=>inTo(i.bookingDate||i.invoiceDate));
   let rows=pend.rows.filter(r=>inTo(r.transactionDate));
-  if(o.only){invs=invs.filter(i=>o.only.inv&&o.only.inv.has(i.id));rows=rows.filter(r=>o.only.bank&&o.only.bank.has(r.id));}
+  let pays=pend.pays.filter(g=>inTo(g.date));
+  if(o.only){invs=invs.filter(i=>o.only.inv&&o.only.inv.has(i.id));rows=rows.filter(r=>o.only.bank&&o.only.bank.has(r.id));pays=pays.filter(g=>o.only.pay&&o.only.pay.has(g.key));}
   const out={sent:0,failed:[],ledgersCreated:0,changed:pend.changed,at:new Date().toISOString()};
-  if(!invs.length&&!rows.length)return out;
+  if(!invs.length&&!rows.length&&!pays.length)return out;
   // 1 · Ledgers the vouchers need.
   const ledgers=parseTallyLedgersDetailed(await tallySend(c,buildTallyLedgerListRequestXml(c.company)));
   // Every Tally company has ledgers (Cash, Profit & Loss A/c) — none means no company is open.
@@ -3532,7 +3587,7 @@ async function tallySyncVouchers(salonId,cfg,opts){
   const cats=Array.from(new Set(invs.map(i=>i.category).filter(Boolean)));
   const gst={igst:invs.some(i=>Number(i.igst)>0),cgst:invs.some(i=>Number(i.cgst)>0),sgst:invs.some(i=>Number(i.sgst)>0)};
   const base=tallyMastersPreviewRows(vendors,cats,gst,map.bankLedger,vName,cName,gstBlocked);
-  const extra=tallyExtraLedgers(invs,rows,vendors,vName,map,gstBlocked,base.map(r=>r.name));
+  const extra=tallyExtraLedgers(invs,rows,vendors,vName,map,gstBlocked,base.map(r=>r.name),pays);
   const miss=base.concat(extra).filter(r=>!have.has(String(r.name).toLowerCase()));
   if(miss.length){
     const names=new Set(miss.map(r=>r.name));
@@ -3556,7 +3611,13 @@ async function tallySyncVouchers(salonId,cfg,opts){
     const r=parseTallyImportResult(await tallySend(c,buildTallyBankVouchersXml([row],map.bankLedger,vendors,{vendorLedgerNameFor:vName,map})));
     if(ok(r)){pushed.bank[row.id]={at:out.at,sig:tallyBankSig(row)};out.sent++;saveTallyPushed(salonId,pushed);}
     else out.failed.push('Bank '+row.transactionDate+' '+String(row.description||'').slice(0,30)+': '+(r.lineErrors[0]||tallyResultText(r)));
-    if(o.onProgress)o.onProgress(out.sent+out.failed.length,invs.length+rows.length);
+    if(o.onProgress)o.onProgress(out.sent+out.failed.length,invs.length+rows.length+pays.length);
+  }
+  for(const g of pays){
+    const r=parseTallyImportResult(await tallySend(c,buildTallyVendorPaymentVouchersXml([g],vName,map)));
+    if(ok(r)){pushed.pay[g.key]={at:out.at,sig:tallyPaySig(g)};out.sent++;saveTallyPushed(salonId,pushed);}
+    else out.failed.push('Payment '+g.date+' '+g.invoiceNos.join(', ')+': '+(r.lineErrors[0]||tallyResultText(r)));
+    if(o.onProgress)o.onProgress(out.sent+out.failed.length,invs.length+rows.length+pays.length);
   }
   saveTallyPushed(salonId,pushed);
   return out;

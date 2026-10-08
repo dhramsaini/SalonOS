@@ -13,7 +13,7 @@ function TallyAutoSyncCard({salonId,conn,updateConn,companies,tallyOk,onDone}){
   const pending=auto?tallyAutoSyncPending(salonId,auto.from):null;
   const setAuto=(next)=>{const all={...(conn.autoSync||{})};if(next)all[salonId]=next;else delete all[salonId];updateConn({autoSync:all});};
   const runNow=async()=>{
-    if(pending&&!window.confirm('Send to Tally now: '+pending.invs.length+' purchase invoice(s) and '+pending.rows.length+' bank transaction(s) dated from '+auto.from+'?\n\nTo see every entry first, use “Preview & move” on the Overview tab.'))return;
+    if(pending&&!window.confirm('Send to Tally now: '+pending.invs.length+' purchase invoice(s) and '+pending.rows.length+' bank transaction(s) and '+(pending.pays||[]).length+' vendor payment(s) dated from '+auto.from+'?\n\nTo see every entry first, use “Preview & move” on the Overview tab.'))return;
     setBusy(true);
     try{
       const res=await runTallyAutoSync(salonId,conn,auto);
@@ -39,7 +39,7 @@ function TallyAutoSyncCard({salonId,conn,updateConn,companies,tallyOk,onDone}){
       h('input',{type:'date',className:'form-control',style:{width:'auto'},value:auto.from,onChange:e=>e.target.value&&setAuto({...auto,from:e.target.value})}),
       h('button',{className:'btn btn-ghost btn-sm'+(busy?' btn-loading':''),disabled:busy||!tallyOk,title:tallyOk?'':'Connector / Tally not reachable',onClick:runNow},'Sync now')),
     auto&&pending&&h('div',{style:{fontSize:11.5,color:'var(--text3)',margin:'8px 0 0 22px',lineHeight:1.6}},
-      'Waiting to send: '+pending.invs.length+' invoice(s), '+pending.rows.length+' bank transaction(s).',
+      'Waiting to send: '+pending.invs.length+' invoice(s), '+pending.rows.length+' bank transaction(s), '+(pending.pays||[]).length+' vendor payment(s).',
       pending.changed.length?h('div',{style:{color:'var(--orange)'}},'Changed after they were sent (not re-sent — correct them in Tally): '+pending.changed.slice(0,5).join(' · ')+(pending.changed.length>5?' …':'')):null),
     last&&h('div',{style:{fontSize:11.5,color:last.error||last.failed&&last.failed.length?'var(--orange)':'var(--text3)',margin:'6px 0 0 22px',lineHeight:1.6}},
       'Last run '+new Date(last.at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+': '
@@ -102,6 +102,9 @@ function TallyExportSheet({salon,onNavTab}={}){
   const inRange=(dmy)=>{if(!fromDate&&!toDate)return true;const d=dmyToIso(dmy);if(!d)return true;if(fromDate&&d<fromDate)return false;if(toDate&&d>toDate)return false;return true;};
   const filteredInvoices=invoices.filter(inv=>inRange(inv.bookingDate||inv.invoiceDate));
   const filteredBankRows=bankRows.filter(r=>inRange(r.transactionDate));
+  // Vendor payments (cash, bank not on the Bank Statement, TDS) — see vendorPaymentTallyItems.
+  const payItems=useMemo(()=>vendorPaymentTallyItems(loadVendorInvoices(salonId),loadBankStatementRows(salonId)),[salonId,refreshTick]);
+  const filteredPays=payItems.filter(g=>inRange(g.date));
   const periodLabel=fromDate||toDate?(fromDate?fromDate.split('-').reverse().join('/'):'start')+' – '+(toDate?toDate.split('-').reverse().join('/'):'today'):'all dates';
   const outletTag=salon?salon.name.split('—')[0].trim().replace(/\s+/g,''):'Outlet';
 
@@ -123,9 +126,15 @@ function TallyExportSheet({salon,onNavTab}={}){
         party:cp.ledger,other:map.bankLedger||'(bank ledger not set)',ref:r.refNo||'',narr:r.description||'',amount:Number(r.debit)||Number(r.credit)||0,
         status:p?(p.sig===tallyBankSig(r)?'sent':'changed'):'new',sentAt:p&&p.at,suspense:cp.kind==='suspense',via:cp.kind==='nature'?'Type: '+cp.nature:cp.kind==='vendor'?'Supplier':'No match'});
     });
+    filteredPays.forEach(g=>{
+      const p=pushed.pay&&pushed.pay[g.key];
+      list.push({key:'p'+g.key,kind:'pay',id:g.key,date:g.date.split('-').reverse().join('/'),iso:g.date,type:tallyPayVoucherType(g),
+        party:vendorLedgerNameFor(g.vendorId),other:tallyPayOtherLedger(g,map),ref:g.ref||'',narr:tallyPayNarration(g),amount:g.amount,
+        status:p?(p.sig===tallyPaySig(g)?'sent':'changed'):'new',sentAt:p&&p.at,suspense:false,via:'Vendor payment'});
+    });
     return list.sort((a,b)=>(a.iso||'').localeCompare(b.iso||''));
     // eslint-disable-next-line
-  },[filteredInvoices.length,filteredBankRows.length,pushed,map,vendors,fromDate,toDate,refreshTick]);
+  },[filteredInvoices.length,filteredBankRows.length,filteredPays.length,pushed,map,vendors,fromDate,toDate,refreshTick]);
   const byType=t=>vouchers.filter(v=>v.type===t);
   const sum=l=>l.reduce((s,v)=>s+v.amount,0);
   const newCount=vouchers.filter(v=>v.status==='new').length;
@@ -134,7 +143,8 @@ function TallyExportSheet({salon,onNavTab}={}){
 
   // ── Ledgers ──
   const extraLedgersFor=(invs,rows)=>tallyExtraLedgers(invs,rows,vendors,vendorLedgerNameFor,map,gstInputBlocked,
-    tallyMastersPreviewRows(vendors,categories,gstTypesUsed,map.bankLedger,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked).map(r=>r.name));
+    tallyMastersPreviewRows(vendors,categories,gstTypesUsed,map.bankLedger,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked).map(r=>r.name),
+    vendorPaymentTallyItems(loadVendorInvoices(salonId),loadBankStatementRows(salonId)));
   const allLedgerRows=()=>{const base=tallyMastersPreviewRows(vendors,categories,gstTypesUsed,map.bankLedger,vendorLedgerNameFor,categoryLedgerNameFor,gstInputBlocked);return base.concat(extraLedgersFor(invoices,bankRows));};
   const [ledgerCache,setLedgerCache]=useState(()=>loadTallyLedgerCache(salonId));
   useEffect(()=>{setLedgerCache(loadTallyLedgerCache(salonId));},[salonId,refreshTick]);
@@ -239,10 +249,11 @@ function TallyExportSheet({salon,onNavTab}={}){
     setBusy('');setProgress(null);
   };
   const markSent=(keys,sent)=>{
-    const next={inv:{...pushed.inv},bank:{...pushed.bank}};
+    const next={inv:{...pushed.inv},bank:{...pushed.bank},pay:{...(pushed.pay||{})}};
     const at=new Date().toISOString();
     vouchers.filter(v=>keys.has(v.key)).forEach(v=>{
       if(v.kind==='inv'){const inv=invoices.find(x=>x.id===v.id);if(sent)next.inv[v.id]={at,sig:tallyInvSig(inv),manual:true};else delete next.inv[v.id];}
+      else if(v.kind==='pay'){const g=payItems.find(x=>x.key===v.id);if(sent&&g)next.pay[v.id]={at,sig:tallyPaySig(g),manual:true};else delete next.pay[v.id];}
       else{const r=bankRows.find(x=>x.id===v.id);if(sent)next.bank[v.id]={at,sig:tallyBankSig(r),manual:true};else delete next.bank[v.id];}
     });
     saveTallyPushed(salonId,next);setPushed(next);
@@ -270,6 +281,13 @@ function TallyExportSheet({salon,onNavTab}={}){
     downloadTextFile(buildTallyBankVouchersXml(filteredBankRows,map.bankLedger,vendors,{vendorLedgerNameFor,map}),'Tally_Bank_'+outletTag+'.xml');
     logIt({action:'Downloaded Bank vouchers XML',period:periodLabel,sent:filteredBankRows.length});
     success(filteredBankRows.length+' bank voucher(s) — import via Gateway of Tally → Import Data → Vouchers. Then mark them “already in Tally” on the Vouchers tab.');
+  };
+  const downloadPays=()=>{
+    if(!filteredPays.length){tallyErr('No vendor payments to send in '+periodLabel+' (payments on the Bank Statement go with the Bank XML).');return;}
+    if(filteredPays.some(g=>g.kind==='bank')&&!map.bankLedger){setTab('ledgers');tallyErr('Enter the Bank ledger name first (Ledgers tab).');return;}
+    downloadTextFile(buildTallyVendorPaymentVouchersXml(filteredPays,vendorLedgerNameFor,map),'Tally_VendorPayments_'+outletTag+'.xml');
+    logIt({action:'Downloaded Vendor payments XML',period:periodLabel,sent:filteredPays.length});
+    success(filteredPays.length+' vendor payment voucher(s) — import via Gateway of Tally → Import Data → Vouchers (after Masters and Purchase). Then mark them “already in Tally” on the Vouchers tab.');
   };
   const downloadVoucherCsv=()=>{
     const hdr=['Date','Voucher Type','Party / Counterparty Ledger','Other Ledger','Reference','Narration','Amount','Status'];
@@ -315,7 +333,7 @@ function TallyExportSheet({salon,onNavTab}={}){
     fix||null);
   const overview=h(React.Fragment,null,
     h('div',{className:'grid4',style:{marginBottom:14}},
-      [['Purchase',byType('Purchase'),'blue'],['Payments',byType('Payment'),'amber'],['Receipts',byType('Receipt'),'green'],['Contra',byType('Contra'),'purple']].map(([label,l,color])=>
+      [['Purchase',byType('Purchase'),'blue'],['Payments',byType('Payment'),'amber'],['Receipts',byType('Receipt'),'green'],['Contra',byType('Contra'),'purple'],['Journal (TDS)',byType('Journal'),'red']].map(([label,l,color])=>
         h('div',{key:label,className:'metric-card '+color},h('div',{className:'metric-label'},label+' vouchers'),h('div',{className:'metric-value'},String(l.length)),h('div',{className:'metric-sub'},inr(sum(l))+' · '+l.filter(v=>v.status==='new').length+' not yet sent')))),
     h('div',{className:'grid2',style:{marginBottom:14,alignItems:'start'}},
       h('div',{className:'card'},
@@ -348,6 +366,7 @@ function TallyExportSheet({salon,onNavTab}={}){
             h('button',{className:'btn btn-ghost btn-sm',onClick:downloadMasters},'1 · Masters XML'),
             h('button',{className:'btn btn-ghost btn-sm',onClick:downloadPurchase},'2 · Purchase XML'),
             h('button',{className:'btn btn-ghost btn-sm',onClick:downloadBank},'3 · Bank XML'),
+            h('button',{className:'btn btn-ghost btn-sm',onClick:downloadPays,title:'Cash, TDS and bank payments entered on Vendors that are not on the Bank Statement'},'4 · Vendor payments XML'),
             h('button',{className:'btn btn-ghost btn-sm',onClick:downloadVoucherCsv},'Voucher list (CSV)'))))));
 
   // Vouchers
@@ -362,13 +381,13 @@ function TallyExportSheet({salon,onNavTab}={}){
   const chip=(val,cur,set,label)=>h('button',{key:val,className:'btn btn-sm '+(cur===val?'btn-primary':'btn-ghost'),style:{fontSize:11,padding:'3px 10px'},onClick:()=>set(val)},label);
   const vouchersTab=h('div',{className:'card'},
     h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:10}},
-      ['all','Purchase','Payment','Receipt','Contra'].map(t=>chip(t,vType,setVType,t==='all'?'All types':t)),
+      ['all','Purchase','Payment','Receipt','Contra','Journal'].map(t=>chip(t,vType,setVType,t==='all'?'All types':t)),
       h('span',{style:{width:10}}),
       [['all','Any status'],['new','New'],['sent','Sent'],['changed','Changed'],['suspense','Suspense']].map(([k,l])=>chip(k,vStatus,setVStatus,l)),
       h('input',{className:'form-control',style:{width:200,marginLeft:'auto'},placeholder:'Search party / narration',value:vSearch,onChange:e=>setVSearch(e.target.value)})),
     selKeys.size>0&&h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',background:'var(--bg3)',borderRadius:'var(--r)',padding:'8px 10px',marginBottom:10,fontSize:12.5}},
       h('b',null,selKeys.size+' selected'),
-      live&&h('button',{className:'btn btn-primary btn-sm',disabled:!!busy,onClick:()=>{const only={inv:new Set(),bank:new Set()};vouchers.filter(v=>selKeys.has(v.key)&&v.status==='new').forEach(v=>(v.kind==='inv'?only.inv:only.bank).add(v.id));if(!only.inv.size&&!only.bank.size){info('Only New vouchers can be sent.');return;}askSync(only);}},'👁 Preview & send'),
+      live&&h('button',{className:'btn btn-primary btn-sm',disabled:!!busy,onClick:()=>{const only={inv:new Set(),bank:new Set(),pay:new Set()};vouchers.filter(v=>selKeys.has(v.key)&&v.status==='new').forEach(v=>(v.kind==='inv'?only.inv:v.kind==='pay'?only.pay:only.bank).add(v.id));if(!only.inv.size&&!only.bank.size&&!only.pay.size){info('Only New vouchers can be sent.');return;}askSync(only);}},'👁 Preview & send'),
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(confirm('Mark '+selKeys.size+' voucher(s) as already in Tally? They won’t be sent by SalonOS.'))markSent(selKeys,true);}},'Mark as already in Tally'),
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(confirm('Mark '+selKeys.size+' voucher(s) as NOT sent? The next sync will send them again — only do this if they are not in Tally.'))markSent(selKeys,false);}},'Mark as not sent'),
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setSel(new Set())},'Clear')),
@@ -562,7 +581,7 @@ function TallyExportSheet({salon,onNavTab}={}){
 
   // ── Preview before anything moves to Tally — every Sync / Send / Create opens this first. ──
   const askSync=(only)=>{
-    const list=vouchers.filter(v=>v.status==='new'&&(!only||(v.kind==='inv'?only.inv.has(v.id):only.bank.has(v.id))));
+    const list=vouchers.filter(v=>v.status==='new'&&(!only||(v.kind==='inv'?only.inv.has(v.id):v.kind==='pay'?(only.pay&&only.pay.has(v.id)):only.bank.has(v.id))));
     if(!list.length){info('Nothing new to send in '+periodLabel+'.');return;}
     setPreview({kind:'sync',only,vouchers:list,ledgers:missingInTally});
   };
@@ -573,7 +592,7 @@ function TallyExportSheet({salon,onNavTab}={}){
   const confirmPreview=()=>{const p=preview;setPreview(null);if(p.kind==='sync')syncNow(p.only);else createMissingInTally();};
   const previewModal=preview&&(()=>{
     const pv=preview.vouchers,lg=preview.ledgers;
-    const byT=['Purchase','Payment','Receipt','Contra'].map(t=>[t,pv.filter(v=>v.type===t)]).filter(x=>x[1].length);
+    const byT=['Purchase','Payment','Receipt','Contra','Journal'].map(t=>[t,pv.filter(v=>v.type===t)]).filter(x=>x[1].length);
     const th=t=>h('th',{key:t,style:{position:'sticky',top:0}},t);
     return h('div',{className:'modal-overlay',onClick:()=>setPreview(null)},
       h('div',{className:'modal',style:{width:'min(980px,96vw)',maxHeight:'90vh',display:'flex',flexDirection:'column'},onClick:e=>e.stopPropagation()},
