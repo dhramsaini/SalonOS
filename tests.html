@@ -704,6 +704,8 @@
         // GST supply type from the GSTIN state codes, and moving tax into the right boxes.
         eq('GST: state code from GSTIN; supply type needs both GSTINs',[gstStateCodeOf('07AABCX1234R1ZP'),gstStateCodeOf('bad'),gstSupplyTypeFor(-1,'07AABCX1234R1ZP')],['07','','']);
         eq('GST: IGST moved to CGST+SGST for same state, CGST+SGST to IGST for another state',[gstFieldsForSupply({igst:'180',cgst:'',sgst:''},'intra'),gstFieldsForSupply({igst:'',cgst:'90',sgst:'90'},'inter')],[{igst:'',cgst:'90',sgst:'90'},{igst:'180',cgst:'',sgst:''}]);
+        // Month Final only from the month's last day; the picker opens on the previous month.
+        eq('Month Final: not before the last day; picker opens on previous month',[!!monthFinalTooEarlyMessage(2026,9,new Date(2026,9,8)),monthFinalTooEarlyMessage(2026,9,new Date(2026,9,31)),monthFinalTooEarlyMessage(2026,8,new Date(2026,9,8)),defaultFinalMonthCal(new Date(2026,9,8)),defaultFinalMonthCal(new Date(2026,0,5))],[true,'','',{year:2026,month:8},{year:2025,month:11}]);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.

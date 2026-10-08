@@ -634,8 +634,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   const isManagerSide=isManagerSideRole(user);
   const DSE_MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
   const [mgrFinalTick,setMgrFinalTick]=useState(0);
-  const [mgrFinalSelMonth,setMgrFinalSelMonth]=useState(today.getMonth());
-  const [mgrFinalSelYear,setMgrFinalSelYear]=useState(today.getFullYear());
+  const [mgrFinalSelMonth,setMgrFinalSelMonth]=useState(()=>defaultFinalMonthCal().month);
+  const [mgrFinalSelYear,setMgrFinalSelYear]=useState(()=>defaultFinalMonthCal().year);
   const mgrFinalMonthChecked=useMemo(()=>isManagerFinalMonth(salonId,'dse',mgrFinalSelYear,mgrFinalSelMonth),[salonId,mgrFinalSelYear,mgrFinalSelMonth,mgrFinalTick]);
   const isMgrFinalMonthOf=(year,month)=>isManagerFinalMonth(salonId,'dse',year,month);
   // ── Edit Window — Master Sheet → Edit Salon → Daily Sales & Exp Edit Window. Only ever
@@ -667,6 +667,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   };
   const {toast:dseLockToast}=useToast();
   const toggleMgrFinalMonth=()=>{
+    if(!mgrFinalMonthChecked){const early=monthFinalTooEarlyMessage(mgrFinalSelYear,mgrFinalSelMonth);if(early){dseLockToast(early,'error');return;}}
+    if(!mgrFinalMonthChecked&&!window.confirm('Mark '+DSE_MONTHS[mgrFinalSelMonth]+' '+mgrFinalSelYear+' FINAL?\n\nThe whole month becomes read-only for everyone. Only a Super Admin can undo it, with a reason.'))return;
     if(!mgrFinalMonthChecked){const cm=collectionFinalBlockMessage(salonId,mgrFinalSelYear,mgrFinalSelMonth);if(cm){dseLockToast(cm,'error');return;}}
     if(mgrFinalMonthChecked&&!requestUnlock(salonId,'Daily Sales & Exp — '+DSE_MONTHS[mgrFinalSelMonth]+' '+mgrFinalSelYear))return;
     setManagerFinalMonth(salonId,'dse',mgrFinalSelYear,mgrFinalSelMonth,!mgrFinalMonthChecked,user?.name);

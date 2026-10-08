@@ -421,6 +421,8 @@ function AttendanceSheet({period,salon,user}={}){
   const isMonthLockedForRole=isManagerSide&&mgrFinalMonth;
   const toggleMgrFinalMonth=()=>{
     if(mgrFinalMonth&&isManagerSide){warn('This month is marked Final — ask a Super Admin or Reviewer to un-finalize it before editing.');return;}
+    if(!mgrFinalMonth){const early=monthFinalTooEarlyMessage(selYear,selMonth);if(early){warn(early);return;}
+      if(!window.confirm('Mark '+months[selMonth]+' '+selYear+' Attendance FINAL?\n\nThe whole month becomes read-only on the Manager side, and salary is then worked out from it.'))return;}
     setManagerFinalMonth(salon?.id,'attendance',selYear,selMonth,!mgrFinalMonth,user?.name);
     setMgrFinalTick(t=>t+1);
     toast(!mgrFinalMonth?'Marked '+months[selMonth]+' '+selYear+' Final — Manager side is now locked for this month':months[selMonth]+' '+selYear+' un-finalized — editable again','success');

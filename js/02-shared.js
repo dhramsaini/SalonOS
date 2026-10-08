@@ -770,6 +770,22 @@ function setManagerFinalMonth(salonId,sheet,year,month,final,by){
 }
 // Admin roles can always see/edit past a Manager Final Month — only non-admin, non-reviewer
 // users (Outlet Manager, Data Entry User, etc.) are actually restricted by it.
+// A month can be marked Final only from its last day onward — managers kept ticking "Mark Month
+// Final" on the current month as a daily sign-off, which locked the whole month for everyone.
+// Returns the reason it can't be marked yet, or ''.
+function monthFinalTooEarlyMessage(year,month,now){
+  const d=now||new Date(),last=new Date(year,month+1,0);
+  const todayMid=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+  if(todayMid>=last)return '';
+  const nm=last.toLocaleString('en-IN',{month:'long',year:'numeric'});
+  return nm+' is still running — it can be marked Final only from '+last.getDate()+' '+last.toLocaleString('en-IN',{month:'short'})+' onward, once all its entries are done. (Month Final locks the WHOLE month; there is no need to tick it every day — entries save by themselves.)';
+}
+// The month the sign-off picker opens on: the previous month, unless today is the month's last day.
+function defaultFinalMonthCal(now){
+  const d=now||new Date();
+  if(!monthFinalTooEarlyMessage(d.getFullYear(),d.getMonth(),d))return{year:d.getFullYear(),month:d.getMonth()};
+  return d.getMonth()===0?{year:d.getFullYear()-1,month:11}:{year:d.getFullYear(),month:d.getMonth()-1};
+}
 function isManagerSideRole(user){
   return !!user&&!['Super Admin','Reviewer'].includes(user.role);
 }
