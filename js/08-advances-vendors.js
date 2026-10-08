@@ -1191,6 +1191,38 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     setBulkSelectedIds(new Set());
   };
   const [showBulkDeleteConfirm,setShowBulkDeleteConfirm]=useState(false);
+  const [showMultiPay,setShowMultiPay]=useState(false);
+  // One payment split over several bills (MultiPayModal): each bill gets its part as a payment with
+  // the same date / mode / reference; cash goes to Daily Sales & Exp like a single cash payment;
+  // a matched bank line is linked to all of them.
+  const saveMultiPay=({allocs,entry,total,bankRowId,vendorName})=>{
+    if(vendBlockIfLocked(entry.paidDate))return;
+    const blocked=allocs.map(a=>invoices.find(i=>i.id===a.id)).filter(inv=>inv&&invoiceNeedsApproval(inv,salonId));
+    if(blocked.length){toastError('Bill '+blocked.map(b=>b.invoiceNo).join(', ')+' is above the approval limit and not approved yet — a Super Admin has to approve it first.');return;}
+    const linkId=bankRowId!=null?'bank-'+bankRowId:undefined;
+    const group='MP-'+Date.now().toString(36);
+    const noteFor=n=>'Part of one payment of ₹'+total.toLocaleString('en-IN')+' over '+allocs.length+' bills'+(entry.note?' — '+entry.note:'');
+    setInvoices(prev=>prev.map(inv=>{
+      const a=allocs.find(x=>x.id===inv.id);if(!a)return inv;
+      return{...inv,payments:[...(inv.payments||[]),{id:nextPrefixedId(inv.payments||[],'PMT-',3),paidAmount:a.amount,paidDate:entry.paidDate,mode:entry.mode,ref:entry.ref,note:noteFor(),multiPayGroup:group,...(linkId?{linkId}:{})}]};
+    }));
+    if(entry.mode==='Cash'){
+      const key=outletKey('salonos_daily_sales_data',salonId);
+      let dseData={};try{dseData=JSON.parse(cachedLocalGet(key)||'{}');}catch(e){}
+      const day={...(dseData[entry.paidDate]||{})};let any=false;
+      allocs.forEach(a=>{const inv=invoices.find(i=>i.id===a.id);const ri=inv?EXPENSE_ROWS.findIndex(r=>r.name===inv.category):-1;if(ri>=0){day[ri]=Number(day[ri]||0)+a.amount;any=true;}});
+      if(any)safeLocalSet(key,JSON.stringify({...dseData,[entry.paidDate]:day}));
+    }
+    if(bankRowId!=null){
+      const keys=allocs.map(a=>invoices.find(i=>i.id===a.id)).filter(Boolean).map(invoiceKeyFor);
+      const fresh=loadBankStatementRows(salonId);
+      const upd=fresh.map(r=>String(r.id)===String(bankRowId)?{...r,linkedInvoice:keys[0]||'',linkedInvoices:keys}:r);
+      saveBankStatementRows(upd,salonId);setBankRows(upd);
+    }
+    try{logAuditEvent(salonId,{entity:'Vendor Payment',entityId:group,action:'Added',summary:vendorName+' — one payment ₹'+total.toLocaleString('en-IN')+' over '+allocs.length+' bills ('+allocs.map(a=>(invoices.find(i=>i.id===a.id)||{}).invoiceNo).join(', ')+')'+(entry.ref?' ref '+entry.ref:'')});}catch(e){}
+    toastSuccess('Payment of ₹'+total.toLocaleString('en-IN')+' recorded over '+allocs.length+' bills.');
+    setShowMultiPay(false);setBulkSelectedIds(new Set());
+  };
   const bulkDeleteInvoices=()=>{
     const ids=bulkSelectedIds;
     if(!ids.size)return;
@@ -1461,6 +1493,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     ),
 
     tab==='ledger'&&React.createElement(VendorLedgerPanel,{salon,invoices,vendors,period}),
+    showMultiPay&&React.createElement(MultiPayModal,{invoices,vendors,selectedIds:bulkSelectedIds,bankRows,onSave:saveMultiPay,onClose:()=>setShowMultiPay(false)}),
 
     // ══════════════════════════════════
     // TAB 1 — MASTER VENDOR LIST
@@ -1548,6 +1581,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         bulkSelectedIds.size>0&&React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'10px 14px',background:'rgba(47,95,224,0.08)',border:'1px solid rgba(47,95,224,0.3)',borderRadius:'var(--r)',marginBottom:14}},
           React.createElement('span',{style:{fontSize:12.5,fontWeight:600,color:'var(--text)'}},bulkSelectedIds.size+' selected'),
           React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(76,175,125,0.15)',border:'1px solid rgba(76,175,125,0.4)',color:'var(--green)',padding:'5px 12px',borderRadius:'var(--r)',cursor:'pointer',fontSize:12,fontWeight:500},onClick:bulkMarkPaidInFull},'✓ Mark Paid in Full'),
+          React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>setShowMultiPay(true),title:'One cheque / transfer paid against several bills of the same vendor'},'💳 One payment for selected'),
           React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,0.1)',border:'1px solid rgba(255,107,107,0.3)',color:'var(--red)',padding:'5px 12px',borderRadius:'var(--r)',cursor:'pointer',fontSize:12,fontWeight:500},onClick:()=>setShowBulkDeleteConfirm(true)},'🗑 Delete Selected'),
           React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},onClick:()=>setBulkSelectedIds(new Set())},'Clear selection')
         ),
@@ -2722,4 +2756,79 @@ function VendorLedgerPanel({salon,invoices,vendors,period}){
             h('td',{style:{textAlign:'right',color:'var(--green)'}},r.debit?f(r.debit):''),h('td',{style:{textAlign:'right',color:'var(--orange)'}},r.credit?f(r.credit):''),h('td',{style:{textAlign:'right',fontWeight:600}},balTxt(r.balance)))),
           h('tr',{style:{fontWeight:700}},h('td',null,''),h('td',{colSpan:3},'Total for period'),h('td',{style:{textAlign:'right'}},f(L.debit)),h('td',{style:{textAlign:'right'}},f(L.credit)),h('td',null,'')),
           h('tr',{style:{fontWeight:700,background:'var(--bg3)'}},h('td',null,dmy(to)),h('td',{colSpan:5},'Closing balance'),h('td',{style:{textAlign:'right'}},balTxt(L.closing)))))))));
+}
+
+// ── One payment against several bills of the same vendor ─────────────────────────────────────
+// Splits an amount over bills oldest first (by invoice date); each bill gets at most its balance.
+function allocateOldestFirst(items,amount){
+  let left=Math.round((Number(amount)||0)*100)/100;
+  return items.map(it=>{const take=Math.max(0,Math.min(left,Math.round((Number(it.balance)||0)*100)/100));left=Math.round((left-take)*100)/100;return{...it,alloc:take};});
+}
+function MultiPayModal({invoices,vendors,selectedIds,bankRows,onSave,onClose}){
+  const h=React.createElement;
+  const bal=inv=>(Number(inv.amount)||0)-(inv.payments||[]).reduce((t,p)=>t+(Number(p.paidAmount)||0),0);
+  const dk=inv=>{const p=parseInvoiceDateFlexible(inv.invoiceDate);return p?p.y*10000+p.m*100+p.d:0;};
+  const sel=invoices.filter(inv=>selectedIds.has(inv.id));
+  const elig=sel.filter(inv=>inv.docNature!=='Performa Invoice'&&bal(inv)>0.5).sort((a,b)=>dk(a)-dk(b));
+  const vids=[...new Set(elig.map(i=>String(i.vendorId)))];
+  const vendor=vendors.find(v=>String(v.id)===vids[0]);
+  const totalBal=Math.round(elig.reduce((t,i)=>t+bal(i),0)*100)/100;
+  const [amount,setAmount]=useState(String(totalBal));
+  const [date,setDate]=useState(localTodayIso());
+  const [mode,setMode]=useState('NEFT');
+  const [ref,setRef]=useState('');
+  const [note,setNote]=useState('');
+  const [manual,setManual]=useState(null); // {invId: amount} once edited by hand
+  const [bankId,setBankId]=useState('');
+  const auto=allocateOldestFirst(elig.map(i=>({id:i.id,balance:bal(i)})),amount);
+  const allocOf=id=>manual?Number(manual[id]||0):((auto.find(a=>a.id===id)||{}).alloc||0);
+  const allocTotal=Math.round(elig.reduce((t,i)=>t+allocOf(i.id),0)*100)/100;
+  const amt=Math.round((Number(amount)||0)*100)/100;
+  const f=n=>'₹'+(Math.round(n*100)/100).toLocaleString('en-IN');
+  const isoOfRow=r=>{const p=parseInvoiceDateFlexible(r.transactionDate);return p?p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0'):'';};
+  const days=(a,b)=>Math.abs((new Date(a+'T00:00:00')-new Date(b+'T00:00:00'))/86400000);
+  const bankCands=(bankRows||[]).filter(r=>Number(r.debit)>0&&!r.linkedInvoice&&Math.abs(Number(r.debit)-amt)<=1&&isoOfRow(r)&&days(isoOfRow(r),date)<=7);
+  const problems=[];
+  if(!elig.length)problems.push('None of the selected rows has a balance to pay (Performa Invoices and fully paid bills are skipped).');
+  if(vids.length>1)problems.push('Select bills of ONE vendor only — a single payment goes to one vendor.');
+  if(amt<=0)problems.push('Enter the amount paid.');
+  if(amt>totalBal+0.5)problems.push('The amount is more than the total balance of the selected bills ('+f(totalBal)+').');
+  if(manual&&Math.abs(allocTotal-amt)>0.5)problems.push('The split ('+f(allocTotal)+') must add up to the amount paid ('+f(amt)+').');
+  if(elig.some(i=>allocOf(i.id)>bal(i)+0.5))problems.push('A bill cannot get more than its balance.');
+  const save=()=>{
+    if(problems.length){window.alert(problems.join('\n'));return;}
+    if(!date){window.alert('Enter the payment date.');return;}
+    const allocs=elig.map(i=>({id:i.id,amount:Math.round(allocOf(i.id)*100)/100})).filter(a=>a.amount>0);
+    if(!window.confirm('Record ONE payment of '+f(amt)+' to '+(vendor?vendor.name:'the vendor')+' on '+date+', split over '+allocs.length+' bill'+(allocs.length===1?'':'s')+'?'))return;
+    onSave({allocs,entry:{paidDate:date,mode,ref:ref.trim(),note:note.trim()},total:amt,bankRowId:bankId||null,vendorName:vendor?vendor.name:''});
+  };
+  return h('div',{className:'modal-overlay',onClick:onClose},
+    h('div',{className:'modal',style:{width:760,maxWidth:'96vw'},onClick:e=>e.stopPropagation()},
+      h('div',{className:'modal-title'},'💳 One payment for several bills'+(vendor?' — '+vendor.name:'')),
+      h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:10}},'One cheque / transfer / UPI paid against several bills of the same vendor. The amount is split over the bills oldest first — change the split below if the vendor applied it differently. Every bill gets its part as a payment with the same date and reference.'),
+      h('div',{className:'form-row cols3'},
+        h('div',{className:'form-group'},h('label',null,'Amount paid (₹) *'),h('input',{type:'number',className:'form-control',value:amount,onChange:e=>{setAmount(e.target.value);setManual(null);}})),
+        h('div',{className:'form-group'},h('label',null,'Payment date *'),h('input',{type:'date',className:'form-control',value:date,onChange:e=>setDate(e.target.value)})),
+        h('div',{className:'form-group'},h('label',null,'Mode'),h('select',{className:'form-control',value:mode,onChange:e=>setMode(e.target.value)},['NEFT','RTGS','IMPS','UPI','Cheque','Cash'].map(m=>h('option',{key:m},m))))),
+      h('div',{className:'form-row cols2'},
+        h('div',{className:'form-group'},h('label',null,'UTR / Cheque / Ref no.'),h('input',{className:'form-control',value:ref,onChange:e=>setRef(e.target.value),placeholder:'Same reference on every bill'})),
+        h('div',{className:'form-group'},h('label',null,'Note'),h('input',{className:'form-control',value:note,onChange:e=>setNote(e.target.value),placeholder:'optional'}))),
+      bankCands.length>0&&h('div',{className:'form-group'},h('label',null,'Link to Bank Statement line'),
+        h('select',{className:'form-control',value:bankId,onChange:e=>setBankId(e.target.value)},
+          h('option',{value:''},'— don’t link —'),
+          bankCands.map(r=>h('option',{key:r.id,value:String(r.id)},r.transactionDate+' · '+f(Number(r.debit))+' · '+String(r.description||'').slice(0,60))))),
+      h('div',{className:'table-wrap',style:{maxHeight:'40vh',overflowY:'auto'}},h('table',null,
+        h('thead',null,h('tr',null,['Invoice No','Invoice Date','Invoice Amt','Balance','Pay now (₹)','Balance after'].map(c=>h('th',{key:c},c)))),
+        h('tbody',null,elig.map(inv=>h('tr',{key:inv.id},
+          h('td',{style:{fontFamily:'monospace',fontSize:11}},inv.invoiceNo),h('td',null,inv.invoiceDate),h('td',null,f(Number(inv.amount)||0)),h('td',null,f(bal(inv))),
+          h('td',null,h('input',{type:'number',className:'form-control',style:{width:120,padding:'4px 8px'},value:String(allocOf(inv.id)),
+            onChange:e=>{const base=manual||Object.fromEntries(elig.map(i=>[i.id,allocOf(i.id)]));setManual({...base,[inv.id]:e.target.value});}})),
+          h('td',{style:{color:bal(inv)-allocOf(inv.id)>0.5?'var(--orange)':'var(--green)'}},f(Math.max(0,bal(inv)-allocOf(inv.id))))))),
+        h('tfoot',null,h('tr',{style:{fontWeight:700}},h('td',{colSpan:3},'Total'),h('td',null,f(totalBal)),h('td',null,f(allocTotal)),h('td',null,f(Math.max(0,totalBal-allocTotal))))))),
+      sel.length>elig.length&&h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},(sel.length-elig.length)+' selected row(s) skipped — Performa Invoice or nothing left to pay.'),
+      problems.length>0&&h('div',{style:{fontSize:12,color:'var(--red)',marginTop:8}},problems.map((p,i)=>h('div',{key:i},'⚠ '+p))),
+      h('div',{className:'modal-actions',style:{marginTop:12}},
+        manual&&h('button',{className:'btn btn-ghost',onClick:()=>setManual(null)},'↺ Split oldest first'),
+        h('button',{className:'btn btn-ghost',onClick:onClose},'Cancel'),
+        h('button',{className:'btn btn-primary',disabled:problems.length>0,onClick:save},'✓ Record payment'))));
 }
