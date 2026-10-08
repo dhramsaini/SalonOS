@@ -4105,6 +4105,10 @@ function BankStatement({salon,onNavTab}={}){
     // selectable and never get linked or amount-mixed together.
     const allocations=Array.from(linkSelected).map(id=>({id,amount:Number(linkAllocations[id])||0})).filter(a=>a.amount>0);
     if(!allocations.length){faError('Enter an amount for at least one selected invoice.');return;}
+    {const tot=allocations.reduce((t,a)=>t+a.amount,0),deb=Number(linkRow.debit)||0;
+     if(tot>deb+1){faError('₹'+Math.round(tot).toLocaleString('en-IN')+' is more than this bank debit (₹'+deb.toLocaleString('en-IN')+') — reduce the amounts.');return;}
+     const over=loadVendorInvoices(salonId).find(inv=>{const a=allocations.find(x=>x.id===inv.id);return a&&a.amount>invBalance(inv)+1;});
+     if(over){faError('Invoice '+(over.invoiceNo||over.id)+' would get more than its balance (₹'+Math.round(invBalance(over)).toLocaleString('en-IN')+').');return;}}
     {const blocked=loadVendorInvoices(salonId).filter(inv=>allocations.some(a=>a.id===inv.id)&&invoiceNeedsApproval(inv,salonId));if(blocked.length){faError('Not approved yet: '+blocked.map(i=>i.invoiceNo||i.id).join(', ')+' — a Super Admin has to approve '+(blocked.length===1?'this bill':'these bills')+' in Vendors before payment.');return;}}
     const linkId='bank-'+linkRow.id;
     const freshInvoices=loadVendorInvoices(salonId);
@@ -4982,10 +4986,17 @@ function BankStatement({salon,onNavTab}={}){
           ),
           !linkVendorId&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:5}},'Couldn\'t auto-match a vendor from the description — pick one to see their outstanding invoices.')
         ),
+        linkVendorId&&React.createElement('button',{className:'btn btn-primary btn-sm',style:{marginBottom:8},title:'Tick the oldest invoices of this vendor until the bank debit is used up',onClick:()=>{
+          const dk=inv=>{const q=parseInvoiceDateFlexible(inv.invoiceDate);return q?q.y*10000+q.m*100+q.d:0;};
+          const open=vendorInvoices.filter(inv=>inv.vendorId===linkVendorId&&invBalance(inv)>0).sort((a,b)=>dk(a)-dk(b));
+          const split=allocateOldestFirst(open.map(inv=>({id:inv.id,balance:invBalance(inv)})),Number(linkRow.debit)||0).filter(a=>a.alloc>0);
+          setLinkSelected(new Set(split.map(a=>a.id)));setLinkAllocations(Object.fromEntries(split.map(a=>[a.id,String(a.alloc)])));
+        }},'⚡ Auto-split oldest first'),
         linkVendorId&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:8}},'Tick one or more invoices this payment settles — split a single debit across several bills by adjusting each amount below.'),
         React.createElement('div',{style:{maxHeight:280,overflowY:'auto'}},
           !linkVendorId?null:(()=>{
-            const openInv=vendorInvoices.filter(inv=>inv.vendorId===linkVendorId&&invBalance(inv)>0);
+            const dk=inv=>{const q=parseInvoiceDateFlexible(inv.invoiceDate);return q?q.y*10000+q.m*100+q.d:0;};
+            const openInv=vendorInvoices.filter(inv=>inv.vendorId===linkVendorId&&invBalance(inv)>0).sort((a,b)=>dk(a)-dk(b));
             if(!openInv.length)return React.createElement('div',{style:{textAlign:'center',padding:24,color:'var(--text3)',fontSize:12}},
               React.createElement('div',{style:{marginBottom:10}},'No outstanding invoices for this vendor.'),
               React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{const v=vendors.find(vv=>vv.id===linkVendorId);if(v)openAddInvoiceModal(linkRow,v);setLinkRow(null);}},'+ Add Invoice for this payment')
@@ -5003,7 +5014,7 @@ function BankStatement({salon,onNavTab}={}){
                   React.createElement('input',{type:'checkbox',checked,onChange:()=>toggleInvoiceSelect(inv)}),
                   React.createElement('div',{style:{minWidth:0}},
                     React.createElement('div',{style:{fontWeight:500,color:'var(--text)',fontSize:12.5}},inv.invoiceNo||'(no invoice no.)'),
-                    React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},inv.docNature+' · Due '+(inv.dueDate||'—')+' · Bal ₹'+bal.toLocaleString('en-IN'))
+                    React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},inv.docNature+' · Dated '+(inv.invoiceDate||'—')+' · Due '+(inv.dueDate||'—')+' · Bal ₹'+bal.toLocaleString('en-IN'))
                   )
                 ),
                 checked
