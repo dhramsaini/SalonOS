@@ -712,6 +712,11 @@
         const tp=vendorPaymentTallyItems([{id:'A',vendorId:'V1',invoiceNo:'A1',payments:[{id:'P1',paidAmount:500,paidDate:'2026-09-05',mode:'Cash'},{id:'P2',paidAmount:100,paidDate:'2026-09-06',mode:'TDS'},{id:'P3',paidAmount:900,paidDate:'2026-09-07',mode:'NEFT',linkId:'bank-9'},{id:'P4',paidAmount:700,paidDate:'2026-09-08',mode:'NEFT'},{id:'P5',paidAmount:300,paidDate:'2026-09-09',mode:'NEFT',multiPayGroup:'X'}]},
           {id:'B',vendorId:'V1',invoiceNo:'B1',payments:[{id:'P1',paidAmount:200,paidDate:'2026-09-09',mode:'NEFT',multiPayGroup:'X'}]}],[{debit:700,transactionDate:'09/09/2026'}]);
         eq('Tally vendor payments: cash, TDS journal, one voucher for a split payment; bank-linked / on-statement left out',tp.map(g=>g.kind+':'+g.amount+':'+g.invoiceNos.join('+')),['cash:500:A1','tds:100:A1','bank:500:A1+B1']);
+        // Tally Excel: one row per ledger line, Dr = Cr per voucher, narration on every row.
+        const te=tallyVoucherEntries({invoices:[{id:'X',vendorId:'V1',invoiceNo:'INV-9',invoiceDate:'03/10/2026',bookingDate:'03/10/2026',amount:1180,taxable:1000,cgst:90,sgst:90,category:'Housekeeping',desc:'Mops',payments:[]}],bankRows:[],payItems:[{key:'k',kind:'cash',date:'2026-10-05',vendorId:'V1',amount:500,ref:'',mode:'Cash',invoiceNos:['INV-9']}],vendors:[],vName:id=>'ABC Traders',cName:c=>c,gstBlocked:false,map:{}});
+        const twb=buildTallyVouchersWorkbook(te,'T');const trows=XLSX.utils.sheet_to_json(twb.Sheets.Vouchers,{header:1}).slice(1);
+        const bal=no=>trows.filter(r=>r[2]===no).reduce((t,r)=>t+(r[6]==='Dr'?r[7]:-r[7]),0);
+        eq('Tally Excel: rows per ledger line, each voucher balances, narration on every row',[trows.length,bal('T/PUR/0001'),bal('T/PAY/0001'),trows.every(r=>String(r[8]||'').length>5),trows[0][8].indexOf('INV-9')>=0],[6,0,0,true,true]);
       }catch(err){results.push({name:'Daily Incentive / salary sync',ok:false,got:String(err&&err.stack||err).slice(0,300),want:'no error'});}
       try{
         // Automation phases 4-5: rules in the nightly server check + the app's approval / expiry rules.

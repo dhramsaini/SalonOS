@@ -289,6 +289,15 @@ function TallyExportSheet({salon,onNavTab}={}){
     logIt({action:'Downloaded Vendor payments XML',period:periodLabel,sent:filteredPays.length});
     success(filteredPays.length+' vendor payment voucher(s) — import via Gateway of Tally → Import Data → Vouchers (after Masters and Purchase). Then mark them “already in Tally” on the Vouchers tab.');
   };
+  const downloadVouchersExcel=()=>{
+    const entries=tallyVoucherEntries({invoices:filteredInvoices,bankRows:filteredBankRows,payItems:filteredPays,vendors,vName:vendorLedgerNameFor,cName:categoryLedgerNameFor,gstBlocked:gstInputBlocked,map});
+    if(!entries.length){tallyErr('No vouchers in '+periodLabel+'.');return;}
+    if(filteredBankRows.length&&!map.bankLedger){setTab('ledgers');tallyErr('Enter the Bank ledger name first (Ledgers tab).');return;}
+    XLSX.writeFile(buildTallyVouchersWorkbook(entries,outletTag.slice(0,6).toUpperCase()),'Tally_Vouchers_'+outletTag+'.xlsx');
+    logIt({action:'Downloaded Vouchers Excel',period:periodLabel,sent:entries.length});
+    success(entries.length+' voucher(s) in Excel, each with its narration — Gateway of Tally → Import → Vouchers (Excel). Import Masters first.');
+  };
+  const downloadExcelTemplate=()=>{XLSX.writeFile(buildTallyVouchersTemplateWorkbook(),'Tally_Voucher_Import_Template.xlsx');};
   const downloadVoucherCsv=()=>{
     const hdr=['Date','Voucher Type','Party / Counterparty Ledger','Other Ledger','Reference','Narration','Amount','Status'];
     const rows=vouchers.map(v=>[v.date,v.type,v.party,v.other,v.ref,v.narr,v.amount,v.status==='sent'?'Sent':v.status==='changed'?'Changed after sending':'New'].map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(','));
@@ -367,6 +376,8 @@ function TallyExportSheet({salon,onNavTab}={}){
             h('button',{className:'btn btn-ghost btn-sm',onClick:downloadPurchase},'2 · Purchase XML'),
             h('button',{className:'btn btn-ghost btn-sm',onClick:downloadBank},'3 · Bank XML'),
             h('button',{className:'btn btn-ghost btn-sm',onClick:downloadPays,title:'Cash, TDS and bank payments entered on Vendors that are not on the Bank Statement'},'4 · Vendor payments XML'),
+            h('button',{className:'btn btn-ghost btn-sm',onClick:downloadVouchersExcel,title:'All vouchers of the period — one row per ledger line, with narration'},'📗 All vouchers Excel'),
+            h('button',{className:'btn btn-ghost btn-sm',onClick:downloadExcelTemplate},'Excel template'),
             h('button',{className:'btn btn-ghost btn-sm',onClick:downloadVoucherCsv},'Voucher list (CSV)'))))));
 
   // Vouchers

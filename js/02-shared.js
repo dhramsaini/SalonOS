@@ -1614,6 +1614,8 @@ function buildTallyPurchaseVouchersXml(invoices,vendorLedgerNameFor,categoryLedg
       if(Number(inv.igst))entries.push('<ALLLEDGERENTRIES.LIST><LEDGERNAME>IGST Input</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+Number(inv.igst).toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>');
       if(Number(inv.cgst))entries.push('<ALLLEDGERENTRIES.LIST><LEDGERNAME>CGST Input</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+Number(inv.cgst).toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>');
       if(Number(inv.sgst))entries.push('<ALLLEDGERENTRIES.LIST><LEDGERNAME>SGST Input</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+Number(inv.sgst).toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>');
+      // Freight is part of the bill total — without it the voucher didn't balance.
+      if(Number(inv.freight))entries.push('<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(catLedger)+'</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+Number(inv.freight).toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>');
       if(Number(inv.roundOff))entries.push('<ALLLEDGERENTRIES.LIST><LEDGERNAME>Round Off</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+Number(inv.roundOff).toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>');
     }
     entries.push('<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(vendorLedger)+'</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>-'+total.toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>');
@@ -1621,7 +1623,7 @@ function buildTallyPurchaseVouchersXml(invoices,vendorLedgerNameFor,categoryLedg
       +'<DATE>'+toTallyDate(inv.bookingDate||inv.invoiceDate)+'</DATE>'
       +'<VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>'
       +'<REFERENCE>'+escapeTallyXml(inv.invoiceNo)+'</REFERENCE>'
-      +'<NARRATION>'+escapeTallyXml((inv.desc||inv.category||'')+' — Invoice '+(inv.invoiceNo||''))+'</NARRATION>'
+      +'<NARRATION>'+escapeTallyXml(tallyPurchaseNarration(inv,vendorLedger))+'</NARRATION>'
       +'<PARTYLEDGERNAME>'+escapeTallyXml(vendorLedger)+'</PARTYLEDGERNAME>'
       +entries.join('')
       +'</VOUCHER>';
@@ -1741,7 +1743,7 @@ function buildTallyBankVouchersXml(rows,bankLedgerName,vendors,opts){
     return '<VOUCHER VCHTYPE="'+vtype+'" ACTION="Create">'
       +'<DATE>'+iso.replace(/-/g,'')+'</DATE>'
       +'<VOUCHERTYPENAME>'+vtype+'</VOUCHERTYPENAME>'
-      +'<NARRATION>'+escapeTallyXml(r.description||'')+(r.refNo?' (Ref: '+escapeTallyXml(r.refNo)+')':'')+'</NARRATION>'
+      +'<NARRATION>'+escapeTallyXml(tallyBankNarration(r))+'</NARRATION>'
       +'<PARTYLEDGERNAME>'+escapeTallyXml(counterparty)+'</PARTYLEDGERNAME>'
       +entries.join('')
       +'</VOUCHER>';
@@ -1749,6 +1751,79 @@ function buildTallyBankVouchersXml(rows,bankLedgerName,vendors,opts){
   return tallyEnvelope('Vouchers','<TALLYMESSAGE xmlns:UDF="TallyUDF">'+msgs.join('')+'</TALLYMESSAGE>');
 }
 
+
+// ── Tally Excel import (Gateway of Tally → Import → Vouchers, Excel) ─────────────────────────────
+// Every voucher as rows — one row per ledger line, the voucher's date / type / number / reference /
+// narration repeated on each of its rows, so Tally's Excel import groups them by Voucher No. The
+// ledger lines are the same as in the XML files (Purchase, Bank, Vendor payments).
+function tallyPurchaseNarration(inv,vendorLedger){
+  return (inv.desc||inv.category||'Purchase')+' — Invoice '+(inv.invoiceNo||'')+(inv.invoiceDate?' dated '+inv.invoiceDate:'')+' from '+vendorLedger;
+}
+function tallyBankNarration(r){return String(r.description||'')+(r.refNo?' (Ref: '+r.refNo+')':'');}
+function tallyVoucherEntries(o){
+  const dmy=s=>{const i=tallyIsoOf(s);return i?i.split('-').reverse().join('-'):'';};
+  const out=[];
+  (o.invoices||[]).filter(inv=>inv.docNature!=='Performa Invoice').forEach(inv=>{
+    const vendor=o.vName(inv.vendorId),cat=o.cName(inv.category)||'Purchase Accounts';
+    const total=Number(inv.amount)||0,lines=[];
+    if(o.gstBlocked)lines.push([cat,total]);
+    else{
+      lines.push([cat,Number(inv.taxable)||0]);
+      if(Number(inv.igst))lines.push(['IGST Input',Number(inv.igst)]);
+      if(Number(inv.cgst))lines.push(['CGST Input',Number(inv.cgst)]);
+      if(Number(inv.sgst))lines.push(['SGST Input',Number(inv.sgst)]);
+      if(Number(inv.freight))lines.push([cat,Number(inv.freight)]);
+      if(Number(inv.roundOff))lines.push(['Round Off',Number(inv.roundOff)]);
+    }
+    lines.push([vendor,-total]);
+    out.push({iso:tallyIsoOf(inv.bookingDate||inv.invoiceDate),date:dmy(inv.bookingDate||inv.invoiceDate),type:'Purchase',ref:inv.invoiceNo||'',refDate:dmy(inv.invoiceDate),narr:tallyPurchaseNarration(inv,vendor),lines});
+  });
+  (o.bankRows||[]).filter(r=>r.debit||r.credit).forEach(r=>{
+    const cp=tallyBankCounterparty(r,o.vendors,o.vName,o.map),isDr=Number(r.debit)>0,amt=isDr?Number(r.debit):Number(r.credit);
+    const bank=(o.map&&o.map.bankLedger)||'Bank';
+    out.push({iso:tallyIsoOf(r.transactionDate),date:dmy(r.transactionDate),type:tallyBankVoucherType(r,cp),ref:r.refNo||'',refDate:'',narr:tallyBankNarration(r),
+      lines:isDr?[[cp.ledger,amt],[bank,-amt]]:[[bank,amt],[cp.ledger,-amt]]});
+  });
+  (o.payItems||[]).forEach(g=>{
+    const vendor=o.vName(g.vendorId),other=tallyPayOtherLedger(g,o.map);
+    out.push({iso:g.date,date:g.date.split('-').reverse().join('-'),type:tallyPayVoucherType(g),ref:g.ref||'',refDate:'',narr:tallyPayNarration(g),lines:[[vendor,g.amount],[other,-g.amount]]});
+  });
+  return out.sort((a,b)=>(a.iso||'').localeCompare(b.iso||''));
+}
+const TALLY_XL_HEADER=['Voucher Date','Voucher Type','Voucher No','Reference No','Reference Date','Ledger Name','Dr/Cr','Amount','Narration'];
+function tallyExcelHowTo(){
+  return[['How to import this file into Tally Prime'],[''],
+    ['1. Create the ledgers first: Tally Export → Files → "1 · Masters XML" → Gateway of Tally → Import → Masters (or create them by hand).'],
+    ['2. Gateway of Tally → Import → Vouchers → choose this Excel file (sheet "Vouchers"). In the mapping, match the columns by their names.'],
+    ['3. Rows with the same Voucher No are ONE voucher — Dr rows and Cr rows of a voucher always total the same.'],
+    ['4. Dates are DD-MM-YYYY. Amount is always positive; Dr/Cr says the side.'],
+    ['5. After importing, mark these vouchers "already in Tally" on Tally Export → Vouchers, so they are not sent again.'],[''],
+    ['Voucher types used: Purchase (supplier bills), Payment / Receipt / Contra (bank lines and supplier payments), Journal (TDS deducted).']];
+}
+function buildTallyVouchersWorkbook(entries,prefix){
+  const rows=[TALLY_XL_HEADER];
+  const seq={};
+  (entries||[]).forEach(e=>{
+    seq[e.type]=(seq[e.type]||0)+1;
+    const no=(prefix||'SOS')+'/'+e.type.slice(0,3).toUpperCase()+'/'+String(seq[e.type]).padStart(4,'0');
+    e.lines.forEach(l=>{const a=Math.round(Number(l[1])*100)/100;if(!a)return;rows.push([e.date,e.type,no,e.ref,e.refDate||'',l[0],a>0?'Dr':'Cr',Math.abs(a),e.narr]);});
+  });
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:12},{wch:11},{wch:16},{wch:18},{wch:13},{wch:34},{wch:6},{wch:12},{wch:70}];
+  XLSX.utils.book_append_sheet(wb,ws,'Vouchers');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(tallyExcelHowTo()),'How to import');
+  return wb;
+}
+// A blank template with one worked example of each voucher kind (delete the examples before use).
+function buildTallyVouchersTemplateWorkbook(){
+  const ex=[
+    {date:'05-10-2026',type:'Purchase',ref:'INV-1042',refDate:'03-10-2026',narr:'Hair products — Invoice INV-1042 dated 03-10-2026 from ABC Traders',lines:[['Purchase of Cosmetic',10000],['CGST Input',900],['SGST Input',900],['ABC Traders',-11800]]},
+    {date:'06-10-2026',type:'Payment',ref:'UTR123456',refDate:'',narr:'Paid against bill INV-1042 (Ref: UTR123456) — NEFT',lines:[['ABC Traders',11800],['HDFC Bank',-11800]]},
+    {date:'06-10-2026',type:'Journal',ref:'',refDate:'',narr:'TDS deducted on bill INV-1042 — TDS',lines:[['ABC Traders',200],['TDS Payable',-200]]},
+  ];
+  return buildTallyVouchersWorkbook(ex,'EXAMPLE');
+}
 // ── Vendor payments → Tally ──────────────────────────────────────────────────────────────────
 // Payments entered on Vendors / Daily Sales & Exp become vouchers too: Cash / bank payments a
 // Payment voucher (Dr supplier, Cr Cash or the bank ledger), TDS deducted a Journal (Dr supplier,
