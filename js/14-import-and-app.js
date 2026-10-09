@@ -100,6 +100,10 @@ function InvoiceIntake({vendors,salonId,onUse,onManual,onClose,initial}){
           h('div',{className:'dz-sub'},'or click to browse — PDF, Word (.doc / .docx) or a photo (JPG, PNG)'),
           h('input',{type:'file',id:'intake-file',style:{display:'none'},
             accept:'.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp',onChange:pick})),
+        // Phones: open the camera straight away and read the photo.
+        h('div',{style:{display:'flex',justifyContent:'center',marginTop:10}},
+          h('input',{type:'file',id:'intake-camera',accept:'image/*',capture:'environment',style:{display:'none'},onChange:pick}),
+          h('button',{type:'button',className:'btn btn-primary',onClick:()=>document.getElementById('intake-camera').click()},'📷 Take a photo of the bill')),
         h('div',{className:'help-note',style:{marginTop:14}},
           'The bill is read in your browser — nothing is uploaded anywhere. GSTIN, invoice number, date and amount are picked up automatically and matched against your vendor master. Scanned bills and photos go through OCR, which takes a few seconds longer.'),
         h('div',{className:'modal-actions'},

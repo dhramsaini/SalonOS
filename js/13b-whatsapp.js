@@ -129,6 +129,11 @@ function WhatsAppInbox({salonId,onClose,onReview}){
   const list=showAll?all:all.filter(x=>x.status==='new');
   const when=iso=>{try{return new Date(iso).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});}catch(e){return iso;}};
   const inr=v=>'₹'+Math.round(Number(v)||0).toLocaleString('en-IN');
+  // Which vendor each bill belongs to (GSTIN, then name) and whether it is already entered.
+  const vendors=loadVendors(salonId)||[],invoices=loadVendorInvoices(salonId)||[];
+  const normName=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+  const vendorOf=a=>{const g=String(a.supplierGstin||'').toUpperCase().replace(/\s/g,'');return(g&&vendors.find(v=>String(v.gst||'').toUpperCase()===g))||(a.supplierName&&vendors.find(v=>normName(v.name)===normName(a.supplierName)))||null;};
+  const dupOf=(a,v)=>v&&a.invoiceNo?duplicateVendorInvoice(invoices,v.id,a.invoiceNo,a.docNature||'Tax Invoice',null):null;
   return h('div',{className:'modal-overlay',onClick:onClose},
     h('div',{className:'modal',style:{width:720},onClick:e=>e.stopPropagation(),key:tick},
       h('div',{className:'modal-title'},'📥 Bills received on WhatsApp'),
@@ -139,7 +144,8 @@ function WhatsAppInbox({salonId,onClose,onReview}){
         h('tbody',null,list.map(x=>{const a=x.ai||{};return h('tr',{key:x.id,style:{opacity:x.status==='new'?1:0.55}},
           h('td',{'data-label':'Received'},when(x.receivedAt)),
           h('td',{'data-label':'From'},x.senderName||x.from,x.caption?h('div',{style:{fontSize:11,color:'var(--text3)'}},x.caption):null),
-          h('td',{'data-label':'Supplier'},a.supplierName||h('span',{style:{color:'var(--orange)'}},x.aiError?'Not read ('+x.aiError+')':'—')),
+          h('td',{'data-label':'Supplier'},a.supplierName||h('span',{style:{color:'var(--orange)'}},x.aiError?'Not read ('+x.aiError+')':'—'),
+            a.supplierName&&(()=>{const v=vendorOf(a),d=dupOf(a,v);return h('div',{style:{fontSize:10.5,fontWeight:600,color:d?'var(--red)':v?'var(--green)':'var(--orange)'}},d?'⚠ Already entered ('+(d.invoiceDate||'')+')':v?'✓ '+v.name:'New vendor (not in Vendors yet)');})()),
           h('td',{'data-label':'Invoice'},[a.invoiceNo,a.invoiceDate&&a.invoiceDate.split('-').reverse().join('/')].filter(Boolean).join(' · ')||'—'),
           h('td',{'data-label':'Amount',style:{fontWeight:600}},a.total?inr(a.total):'—'),
           h('td',null,h('button',{className:'btn btn-ghost btn-sm',onClick:()=>downloadAttachment(x.file,'bill')},'👁 Bill')),

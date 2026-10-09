@@ -1393,6 +1393,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   // The full grid stays one tap away. Shown only on phones (CSS .show-phone / .hide-phone). ──
   const [phoneIso,setPhoneIso]=useState(()=>{const v=String(viewDate||'');return /^\d{4}-\d{2}-\d{2}$/.test(v)&&v<=todayISO?v:todayISO;});
   const [phoneGrid,setPhoneGrid]=useState(false);
+  const [phoneAllExp,setPhoneAllExp]=useState(false);
   const shiftPhoneDay=(n)=>{
     const d=new Date(phoneIso+'T00:00:00');d.setDate(d.getDate()+n);
     const iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -1426,8 +1427,14 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
         React.createElement('div',null,React.createElement('div',{style:{fontSize:14,fontWeight:readOnly?700:500,color:readOnly?'var(--accent2)':'var(--text)'}},row.name),
           row.note?React.createElement('div',{style:{fontSize:10.5,color:'var(--orange)'}},row.note):null),right);
     });
+    // Phone: only the heads used today or in the last 45 days, unless "show all" is on.
+    const rowAmtOn=(d,ri)=>{try{return Math.abs(Number(getValue(d,ri))||0)+(isDescRow(ri)?getDescTotal(d,ri):0)+(isEmpRow(ri)?getEmpTotal(d,ri):0)+(INVOICE_GATED_EXPENSE_ROWS.includes(EXPENSE_ROWS[ri].name)?getInvEntryTotal(d,ri):0);}catch(e){return 0;}};
+    const recentDays=Array.from({length:46},(_,k)=>{const d=new Date(iso+'T00:00:00');d.setDate(d.getDate()-k);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');});
+    const usedRecently=ri=>recentDays.some(d=>rowAmtOn(d,ri)>0);
+    let hiddenExp=0;
     const expRows=EXPENSE_ROWS.map((row,ri)=>{if(!expenseRowVisibleFor(row,salonId))return null;
       if(!row.name)return null;
+      if(!phoneAllExp&&!usedRecently(ri)){hiddenExp++;return null;}
       const isInv=INVOICE_GATED_EXPENSE_ROWS.includes(row.name);
       let right;
       if(isDescRow(ri))right=tapBtn(getDescTotal(iso,ri),()=>openDescModal(ri,iso));
@@ -1451,8 +1458,16 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
           locked&&React.createElement('div',{style:{fontSize:11.5,color:'var(--orange)'}},'🔒 Locked — view only')),
         React.createElement('button',{type:'button',className:'btn btn-ghost','aria-label':'Next day',style:{fontSize:20,minWidth:46},disabled:iso>=todayISO,onClick:()=>shiftPhoneDay(1)},'›')),
       React.createElement('div',{className:'card',style:{padding:0,margin:0,overflow:'hidden'}},heading('Sales & collection'),salesRows),
-      React.createElement('div',{className:'card',style:{padding:0,margin:0,overflow:'hidden'}},heading('Expenses','Total ₹'+fmt(dayTotal(iso))),expRows),
-      React.createElement('button',{type:'button',className:'btn btn-ghost',onClick:()=>setPhoneGrid(g=>!g)},phoneGrid?'Hide full grid':'Show full grid (several days)'));
+      React.createElement('div',{className:'card',style:{padding:0,margin:0,overflow:'hidden'}},heading('Expenses','Total ₹'+fmt(dayTotal(iso))),expRows,
+        (hiddenExp>0||phoneAllExp)&&React.createElement('button',{type:'button',className:'btn btn-ghost',style:{width:'100%',borderRadius:0,justifyContent:'center'},onClick:()=>setPhoneAllExp(v=>!v)},
+          phoneAllExp?'Show only heads used recently':'+ Show all expense heads ('+hiddenExp+' more)')),
+      React.createElement('button',{type:'button',className:'btn btn-ghost',onClick:()=>setPhoneGrid(g=>!g)},phoneGrid?'Hide full grid':'Show full grid (several days)'),
+      (()=>{const idx=n=>SALES_ROWS.findIndex(r=>r&&r.name===n);const sale=idx('Total Daily Sale'),close=idx('Closing Cash Balance');
+        const cell=(l,v,c)=>React.createElement('div',{style:{textAlign:'center',flex:1,minWidth:0}},React.createElement('div',{style:{fontSize:10,color:'var(--text3)',textTransform:'uppercase',whiteSpace:'nowrap'}},l),React.createElement('div',{style:{fontWeight:700,fontSize:15,color:c||'var(--text)'}},'₹'+fmt(v)));
+        const cl=close>=0?salesValueAt(iso,close):0;
+        return React.createElement('div',{style:{position:'sticky',bottom:0,zIndex:5,display:'flex',gap:4,padding:'6px 8px',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,boxShadow:'0 -4px 14px rgba(0,0,0,0.12)'}},
+          cell('Sale',sale>=0?salesValueAt(iso,sale):0,'var(--green)'),cell('Expenses',dayTotal(iso),'var(--orange)'),cell('Cash in hand',cl,cl<0?'var(--red)':'var(--accent2)'),
+          React.createElement('div',{style:{alignSelf:'center',fontSize:10.5,color:'var(--green)',whiteSpace:'nowrap'}},'✓ saved'));})());
   };
 
   const missingStrip=(()=>{if(!salonId||!controlOn('missingSalesBanner',salonId))return null;const t=new Date();const days=dseDaysMissingFor(salonId,t.getFullYear(),t.getMonth());
