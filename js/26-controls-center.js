@@ -13,6 +13,7 @@ const CONTROL_DEFS=[
   {id:'monthFinalRule',group:'Month close',label:'Mark Month Final only from the month’s last day',hint:'Daily Sales & Exp and Attendance cannot be finalised before the month ends.',def:true},
   {id:'invoiceApproval',group:'Approvals',label:'Vendor bill above the limit needs Super Admin approval',hint:'The person entering it sends a request; it saves once a Super Admin approves.',def:false,limit:50000},
   {id:'bankFileApproval',group:'Approvals',label:'Bank payment file above the limit needs Super Admin approval',hint:'Bank Payment → download of the bank upload file (total of the file).',def:false,limit:200000},
+  {id:'deleteApproval',group:'Approvals',label:'Deleting a vendor bill or payment needs Super Admin approval',hint:'Anyone else gets a request instead; once approved they can delete that one entry.',def:false},
   {id:'vendorBankApproval',group:'Approvals',label:'Changing a vendor’s bank account needs Super Admin approval',hint:'Stops payments being redirected to a new account without a check.',def:false},
   {id:'payablesDueAlert',group:'Alerts',label:'Vendor bills overdue or due this week',hint:'A strip on Vendors with the overdue amount and what falls due in 7 days (⏱ Ageing has the list).',def:false},
   {id:'bankRecoAlert',group:'Alerts',label:'Bank lines left unexplained for over 7 days',hint:'A strip on Bank Statement counting lines with no Nature and no linked bill.',def:false},

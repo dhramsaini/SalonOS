@@ -169,13 +169,15 @@ function IncentiveTargetTracker({salon,period}={}){
     h('div',{className:'section-header'},h('div',null,h('div',{className:'page-title'},'Incentive Target Tracker'),
       h('div',{className:'page-sub'},'Each stylist’s achievement against target and how much more reaches the next service slab — Send opens WhatsApp with their progress message')),afMonthPicker(cal,setCal)),
     h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,
-      h('thead',null,h('tr',null,['Employee','Service','Product','Membership','Next slab','',''].map((t,i)=>h('th',{key:i},t)))),
-      h('tbody',null,rows.length===0?h('tr',null,h('td',{colSpan:7,style:{textAlign:'center',padding:24,color:'var(--text3)'}},'No incentive working for this month')):
+      h('thead',null,h('tr',null,['Employee','Service','Product','Membership','Service needed a day','Next slab','',''].map((t,i)=>h('th',{key:i},t)))),
+      h('tbody',null,rows.length===0?h('tr',null,h('td',{colSpan:8,style:{textAlign:'center',padding:24,color:'var(--text3)'}},'No incentive working for this month')):
         rows.map(e=>{const n=nextSlab(e);const ph=e.mobile||e.phone;const s=sent[key(e)];
           return h('tr',{key:e.id},h('td',null,h('b',null,e.name),h('div',{style:{fontSize:11,color:'var(--text3)'}},e.desig||'')),
             h('td',null,opsMoney(e.svcActual)+' / '+opsMoney(e.svcTarget),h('div',{style:{fontSize:11,color:'var(--text3)'}},pct(e.svcActual,e.svcTarget))),
             h('td',null,e.prodTarget?opsMoney(e.prodActual)+' / '+opsMoney(e.prodTarget):'—'),
             h('td',null,e.memTarget?opsMoney(e.memActual)+' / '+opsMoney(e.memTarget):'—'),
+            h('td',{style:{fontSize:12}},(()=>{const t=new Date();const isCur=cal.year===t.getFullYear()&&cal.month===t.getMonth();const left=isCur?new Date(cal.year,cal.month+1,0).getDate()-t.getDate()+1:0;const rem=(Number(e.svcTarget)||0)-(Number(e.svcActual)||0);
+              return !isCur?'—':rem<=0?h('span',{style:{color:'var(--green)'}},'✓ target met'):h('span',null,h('b',null,opsMoney(rem/left)),' for '+left+' day'+(left===1?'':'s'));})()),
             h('td',{style:{fontSize:12}},n?opsMoney(n.need)+' more → '+n.times+'× ('+n.rate+'%)':'top slab'),
             h('td',{style:{fontSize:11,color:'var(--green)'}},s?'✓ sent today':''),
             h('td',null,h('button',{className:'btn btn-ghost btn-sm',disabled:!waPhoneOk(ph),onClick:()=>{window.open(waLink(ph,msg(e,n)),'_blank');markSent(sid,'target',key(e));setTick(x=>x+1);}},'📤 Send')));}))))));

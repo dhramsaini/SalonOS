@@ -1168,6 +1168,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     const inv=invoices.find(x=>x.id===id);
     if(!inv)return;
     if(vendBlockIfLocked(inv.bookingDate||inv.invoiceDate))return;
+    if(!deleteApprovalOk(salonId,'inv',inv.id,'vendor bill '+(inv.invoiceNo||'(no number)')+' of '+getVendorName(inv.vendorId)+' for ₹'+Math.round(Number(inv.amount)||0).toLocaleString('en-IN')))return;
     if(!confirm('Delete invoice '+(inv.invoiceNo||'(no number)')+' for '+getVendorName(inv.vendorId)+'? This also removes any payments recorded against it, and clears the amount from Daily Sales & Exp if it was recorded from there.'))return;
     // Any payment(s) that came from Daily Sales & Exp need clearing back out there too, or the
     // amount is left sitting on that sheet with no invoice or payment behind it anymore.
@@ -1327,6 +1328,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     const inv=invoices.find(x=>x.id===invoiceId);
     const p=inv&&inv.payments.find(x=>x.id===paymentId);
     if(vendBlockIfLocked(p&&p.paidDate))return;
+    if(p&&!deleteApprovalOk(salonId,'pay',p.id,'payment of ₹'+Math.round(Number(p.paidAmount)||0).toLocaleString('en-IN')+' on '+(p.paidDate||'')+' against bill '+(inv.invoiceNo||'')+' of '+getVendorName(inv.vendorId)))return;
     if(!confirm('Delete this payment record? The invoice balance will increase accordingly, and the amount will be cleared from Daily Sales & Exp if it was recorded from there.'))return;
     if(inv&&p&&p.note==='Auto-recorded from Daily Sales & Exp')clearDsePaymentAmountFor(salonId,inv.category,p.paidDate,p.paidAmount);
     setInvoices(prev=>prev.map(inv=>inv.id===invoiceId?{...inv,payments:inv.payments.filter(p=>p.id!==paymentId)}:inv));

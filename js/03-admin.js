@@ -341,11 +341,12 @@ function MasterDashboard({selFY,setSelFY,FYS,accessibleSalons,dashTab,setDashTab
   const tab=dashTab||ownTab,setTab=setDashTab||setOwnTab;
   return h('div',{className:'fade-in'},
     h('div',{className:'tab-bar',style:{marginBottom:16}},
-      [['overview','📊 Overview'],['compliance','📌 Due Date Compliance register'],['close','✅ Month-End Close'],['summary','📤 Daily Summary'],['ranking','🏆 Outlet Ranking'],['bankreco','🏦 Bank Reco']].map(([k,l])=>h('button',{key:k,type:'button',className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
+      [['overview','📊 Overview'],['compliance','📌 Due Date Compliance register'],['close','✅ Month-End Close'],['summary','📤 Daily Summary'],['ranking','🏆 Outlet Ranking'],['bankreco','🏦 Bank Reco'],['edits','🔍 Edits & cash']].map(([k,l])=>h('button',{key:k,type:'button',className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
     tab==='close'?h(MonthCloseBoard,{accessibleSalons,onOpenOutletTab}):
     tab==='summary'?h(DailyOwnerSummaryBoard,{accessibleSalons}):
     tab==='ranking'?h(OutletRankingBoard,{accessibleSalons}):
     tab==='bankreco'?h(BankRecoBoard,{accessibleSalons,onOpenOutletTab}):
+    tab==='edits'?h(EditsCashBoard,{accessibleSalons}):
     tab==='compliance'
       ?h('div',null,h('div',{className:'page-title'},'Due Date Compliance register'),
           h('div',{className:'page-sub'},'Payments and compliance across all your outlets — overdue, due this week, pending and paid'),
@@ -1723,6 +1724,7 @@ function ReportSettingsCard(){
   const [daily,setDaily]=useState(saved.daily!==false);
   const [monthly,setMonthly]=useState(saved.monthly!==false);
   const [weekly,setWeekly]=useState(saved.weekly!==false);
+  const [morning,setMorning]=useState(saved.morning===true);
   const [busy,setBusy]=useState(false);
   const [lastResult,setLastResult]=useState(null);
   const split=s=>s.split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean);
@@ -1732,7 +1734,7 @@ function ReportSettingsCard(){
     if(badE.length)return toastError('Not a valid email: '+badE.join(', '));
     const badP=ph.filter(p=>p.replace(/[^\d]/g,'').length<10);
     if(badP.length)return toastError('WhatsApp numbers need the country code, e.g. 91 98xxxxxxxx: '+badP.join(', '));
-    safeLocalSet(REPORT_SETTINGS_KEY,JSON.stringify({emails:em,whatsapp:ph,daily,weekly,monthly}));
+    safeLocalSet(REPORT_SETTINGS_KEY,JSON.stringify({emails:em,whatsapp:ph,daily,weekly,monthly,morning}));
     success('Report settings saved');
   };
   const test=async(kind)=>{
@@ -1766,11 +1768,13 @@ function ReportSettingsCard(){
     React.createElement('div',{style:{display:'flex',flexWrap:'wrap',marginBottom:12}},
       React.createElement('label',{style:row},React.createElement('input',{type:'checkbox',checked:daily,onChange:e=>setDaily(e.target.checked)}),'Nightly summary'),
       React.createElement('label',{style:row},React.createElement('input',{type:'checkbox',checked:weekly,onChange:e=>setWeekly(e.target.checked)}),'Weekly summary (Monday)'),
+      React.createElement('label',{style:row},React.createElement('input',{type:'checkbox',checked:morning,onChange:e=>setMorning(e.target.checked)}),'Morning brief at 9 AM — yesterday for every outlet, missing days, cash differences and approvals waiting'),
       React.createElement('label',{style:row},React.createElement('input',{type:'checkbox',checked:monthly,onChange:e=>setMonthly(e.target.checked)}),'Monthly summary')),
     React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
       React.createElement('button',{className:'btn btn-primary btn-sm',onClick:save},'Save'),
       React.createElement('button',{className:'btn btn-ghost btn-sm'+(busy?' btn-loading':''),disabled:busy,onClick:()=>test('daily')},'Send test nightly report'),
       React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,onClick:()=>test('weekly')},'Send test weekly report'),
+      React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,onClick:()=>test('morning')},'Send test morning brief'),
       React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:busy,onClick:()=>test('monthly')},'Send test monthly report')),
     lastResult&&React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginTop:10}},
       Object.keys(lastResult).map(k=>k+': '+(lastResult[k].ok?'sent ✓':lastResult[k].error)).join(' · ')||'Nothing to send — add recipients and save first.')

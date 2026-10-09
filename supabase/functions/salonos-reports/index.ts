@@ -126,6 +126,37 @@ ${r.f.entered ? `<tr><td style="color:#5e6a82">Cash / Card / UPI / Luzo</td><td 
   return { key: `daily:${iso}`, title, html, line };
 }
 
+// 9 AM owner brief: yesterday's figures per outlet, days still missing this month, cash differences
+// over the outlet's limit, and approvals waiting (Master Settings → Controls → Approvals).
+export function buildMorning(kv: KV) {
+  const now = istNow();
+  const y = new Date(now.getTime() - 864e5);
+  const yIso = isoOf(y);
+  const outlets = (kv.get("salonos_salons") ?? []).filter((s: any) => s.status === "Active");
+  const pending = (kv.get("salonos_approvals") ?? []).filter((a: any) => a && a.status === "pending").length;
+  const title = `Good morning — ${y.getUTCDate()} ${MONTHS[y.getUTCMonth()]} at a glance`;
+  const rows = outlets.map((o: any) => {
+    const sid = Number(o.id);
+    const f = dayFigures(kv, sid, yIso);
+    const mtd = rangeFigures(kv, sid, y.getUTCFullYear(), y.getUTCMonth(), y.getUTCDate());
+    let missing = 0;
+    for (let d = 1; d <= y.getUTCDate(); d++) if (!dayFigures(kv, sid, `${y.getUTCFullYear()}-${pad(y.getUTCMonth() + 1)}-${pad(d)}`).entered) missing++;
+    const cc = (kv.get(`salonos_cash_counts_outlet_${sid}`) ?? {})[yIso];
+    const lim = o.cashDiffLimit !== "" && o.cashDiffLimit != null && Number(o.cashDiffLimit) >= 0 ? Number(o.cashDiffLimit) : 100;
+    const cashDiff = cc && cc.count != null && cc.closing != null ? num(cc.count) - num(cc.closing) : null;
+    return { name: String(o.name).split("—")[0].trim(), f, mtd, missing, cashDiff: cashDiff != null && Math.abs(cashDiff) > lim ? cashDiff : null };
+  });
+  const tot = rows.reduce((s: number, r: any) => s + r.f.sales, 0);
+  const html = `<h2 style="margin:0 0 4px;color:#14335e">${escapeHtml(title)}</h2>
+<p style="margin:0 0 12px;color:#5e6a82">All outlets yesterday: <b>${inr(tot)}</b> sales${pending ? ` · <b style="color:#c06a12">${pending} approval${pending === 1 ? "" : "s"} waiting</b>` : ""}</p>
+<table cellpadding="6" style="border-collapse:collapse;width:100%;max-width:600px;font:14px Arial,sans-serif;border:1px solid #d9e1f0">
+<tr style="background:#14335e;color:#fff"><th align="left">Outlet</th><th align="right">Sales</th><th align="right">Expenses</th><th align="right">Month so far</th><th align="left">Needs attention</th></tr>
+${rows.map((r: any) => `<tr><td>${escapeHtml(r.name)}</td><td align="right">${r.f.entered ? inr(r.f.sales) : "—"}</td><td align="right">${inr(r.f.exp)}</td><td align="right">${inr(r.mtd.sales)}</td><td style="color:#c06a12">${[!r.f.entered ? "sales not entered" : "", r.missing ? `${r.missing} day${r.missing === 1 ? "" : "s"} missing` : "", r.cashDiff != null ? `cash difference ${inr(r.cashDiff)}` : ""].filter(Boolean).join(" · ")}</td></tr>`).join("")}
+</table>`;
+  const line = `Yesterday ${inr(tot)}` + (pending ? `, ${pending} approval(s) waiting` : "") + " | " + rows.map((r: any) => `${r.name}: ${r.f.entered ? inr(r.f.sales) : "not entered"}${r.missing ? `, ${r.missing}d missing` : ""}${r.cashDiff != null ? `, cash diff ${inr(r.cashDiff)}` : ""}`).join(" | ");
+  return { key: `morning:${yIso}`, title, html, line };
+}
+
 function buildMonthly(kv: KV) {
   const now = istNow();
   const y = now.getUTCMonth() === 0 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
@@ -283,15 +314,15 @@ Deno.serve(async (req) => {
     new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
   try {
     const body = await req.json().catch(() => ({}));
-    const kind = body.kind === "monthly" ? "monthly" : body.kind === "weekly" ? "weekly" : "daily";
+    const kind = body.kind === "monthly" ? "monthly" : body.kind === "weekly" ? "weekly" : body.kind === "morning" ? "morning" : "daily";
     const test = !!body.test;
     if (test && !(await isActiveSuperAdmin(req))) return json({ error: "Only a signed-in Super Admin can send a test report." }, 403);
     if (!test && !(await isCronCall(req))) return json({ error: "Not allowed." }, 403);
 
     const kv = await loadKv();
     const settings = kv.get("salonos_secret_report_settings") ?? {};
-    if (!test && settings[kind] === false) return json({ skipped: `${kind} reports are turned off` });
-    const report = kind === "monthly" ? buildMonthly(kv) : kind === "weekly" ? buildWeekly(kv, istNow()) : buildDaily(kv);
+    if (!test && (settings[kind] === false || (kind === "morning" && settings.morning !== true))) return json({ skipped: `${kind} reports are turned off` });
+    const report = kind === "monthly" ? buildMonthly(kv) : kind === "weekly" ? buildWeekly(kv, istNow()) : kind === "morning" ? buildMorning(kv) : buildDaily(kv);
 
     // Scheduled runs send each report once only, however often the job is triggered.
     const state = kv.get("salonos_secret_report_state") ?? {};

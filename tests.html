@@ -875,6 +875,12 @@
         kv.set('salonos_salons',[{id:902,name:'Test Outlet B',status:'Active'}]);
         const w=rep.buildWeekly(kv,new Date(Date.UTC(2026,8,15,10)));
         eq('Weekly summary: last Mon–Sun vs the week before, bills due this week',[w.key,w.title,w.line],['weekly:2026-09-14','Weekly summary — 7 Sep to 13 Sep','Test Outlet B: ₹8,000 sales (+0% vs week before), attendance 100%, bills due ₹300, overdue ₹500']);
+        {const y=new Date(Date.now()+5.5*3600e3-864e5);const yi=y.getUTCFullYear()+'-'+String(y.getUTCMonth()+1).padStart(2,'0')+'-'+String(y.getUTCDate()).padStart(2,'0');
+         const k2=new Map();k2.set('salonos_salons',[{id:7,name:'Morning Outlet — X',status:'Active',cashDiffLimit:100}]);
+         k2.set('salonos_daily_sales_collection_data_outlet_7',{[yi]:{0:5000,1:3000}});k2.set('salonos_cash_counts_outlet_7',{[yi]:{count:4500,closing:5000}});
+         k2.set('salonos_approvals',[{status:'pending'},{status:'approved'}]);
+         const mb=rep.buildMorning(k2);
+         eq('Morning brief: yesterday per outlet, cash difference over the limit, approvals waiting',[mb.key,/₹8,000/.test(mb.line),/cash diff -?₹-?500|cash diff ₹-500/.test(mb.line),/1 approval/.test(mb.line)],['morning:'+yi,true,true,true]);}
       }catch(err){results.push({name:'Weekly summary',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       try{
         const d=aiBillToIntake({supplierName:'Test Vendor Pvt',supplierGstin:'',invoiceNo:'B-9',invoiceDate:'2026-09-12',dueDate:'',total:1180,taxable:1000,cgst:90,sgst:90,category:'Housekeeping',docNature:'Tax Invoice',notes:''},[{id:'V1',name:'Test Vendor'}]);
