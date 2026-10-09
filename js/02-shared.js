@@ -595,8 +595,10 @@ function attSummaryFor(e,year,month,record){
   const workingDaysRaw=dim-c('left')-c('notjoined')-c('absent')-c('half')*0.5-notMarked;
   const workingDays=workingDaysRaw-adjustment;
   const extraDays=allowedWeekoff-c('off');
-  const totalDaysPayable=workingDays+extraDays;
-  return{days:sl,present:c('present'),off:c('off'),holiday:c('holiday'),half:c('half'),absent:c('absent'),notjoined:c('notjoined'),left:c('left'),notMarked,
+  // Paid leave (Controls → Paid leave): absent days paid from the employee's leave balance.
+  const paidLeave=Math.max(0,Math.min(Number(record&&record.paidLeave)||0,c('absent')+c('half')*0.5));
+  const totalDaysPayable=workingDays+extraDays+paidLeave;
+  return{paidLeave,days:sl,present:c('present'),off:c('off'),holiday:c('holiday'),half:c('half'),absent:c('absent'),notjoined:c('notjoined'),left:c('left'),notMarked,
     allowedWeekoff,adjustment,daysInMonth:dim,workingDaysRaw,workingDays,extraDays,totalDaysPayable};
 }
 // ── Salary Working row meta (Status / Payment Status / Mode) — persisted per outlet ──

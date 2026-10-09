@@ -667,6 +667,22 @@ function AttendanceSheet({period,salon,user}={}){
     updateDays(empId,dayIdx,STATUS_OPTS[(ci+1)%STATUS_OPTS.length]);
   };
   const setStatus=(empId,dayIdx,status)=>{updateDays(empId,dayIdx,status);};
+  const plOn=controlOn('paidLeave',salon&&salon.id),ciOn=controlOn('phoneCheckin',salon&&salon.id);
+  const [kiosk,setKiosk]=useState(false);
+  const setPaidLeave=(empId,val)=>{
+    if(attMonthLocked){warn(months[selMonth]+' '+selYear+' is locked — unlock it from Master Sheet or Salary Working to make changes.');return;}
+    setAttStore(prev=>{const k=monthKey(empId,selYear,selMonth);const e=EMPLOYEES.find(x=>x.id===empId);
+      const curRec=prev[k]||{days:e?genAttDay(e,selYear,selMonth):Array(31).fill(null),adjustment:0};return{...prev,[k]:{...curRec,paidLeave:Number(val)||0}};});
+  };
+  // Phone check-ins (Controls → Phone check-in) not yet marked Present in this register.
+  const ciPending=ciOn?pendingCheckinMarks(salon&&salon.id,selYear,selMonth):[];
+  const applyCheckins=()=>{
+    if(attMonthLocked){warn(months[selMonth]+' '+selYear+' is locked.');return;}
+    if(!window.confirm('Mark '+ciPending.length+' day(s) Present from phone check-ins?\n\n'+ciPending.slice(0,12).map(x=>x.name+' — '+x.day+' '+months[selMonth].slice(0,3)+(x.cur?' (now '+x.cur+')':'')).join('\n')+(ciPending.length>12?'\n…':'')))return;
+    setAttStore(prev=>{const next={...prev};ciPending.forEach(x=>{const e=EMPLOYEES.find(z=>String(z.id)===String(x.empId));if(!e)return;const k=monthKey(e.id,selYear,selMonth);
+      const cur=next[k]||{days:genAttDay(e,selYear,selMonth),adjustment:0};const days=[...cur.days];days[x.day-1]='present';next[k]={...cur,days};});return next;});
+    toast(ciPending.length+' day(s) marked Present from check-ins','success');
+  };
   const setAdjustment=(empId,val)=>{
     if(attMonthLocked){warn(months[selMonth]+' '+selYear+' is locked — unlock it from Master Sheet or Salary Working to make changes.');return;}
     setAttStore(prev=>{
@@ -711,6 +727,10 @@ function AttendanceSheet({period,salon,user}={}){
     );
   }
   return React.createElement('div',{className:'fade-in'},
+    ciOn&&React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:12}},
+      React.createElement('button',{className:'btn btn-sm '+(kiosk?'btn-primary':'btn-ghost'),onClick:()=>setKiosk(k=>!k)},kiosk?'← Back to register':'📲 Check-in screen'),
+      ciPending.length>0&&React.createElement('button',{className:'btn btn-primary btn-sm',onClick:applyCheckins},'Mark '+ciPending.length+' check-in day(s) Present')),
+    kiosk&&React.createElement(CheckInKiosk,{salon}),
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,React.createElement('div',{className:'page-title'},'Employee Attendance'),React.createElement('div',{className:'page-sub'},'Monthly attendance register — click any cell to mark it (previous day must be marked first)')),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
@@ -886,7 +906,7 @@ function AttendanceSheet({period,salon,user}={}){
               React.createElement('tr',null,
                 React.createElement('th',{style:{padding:'8px 12px',background:'var(--th-bg)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',whiteSpace:'nowrap',borderRight:'1px solid var(--border2)',minWidth:160}},'Name of Employee'),
                 ['1. Present','2. Weekoff','3. Holiday','4. Halfday','5. Absent','6. Not Joined','7. Left','8. Not Marked'].map(h=>React.createElement('th',{key:h,style:{padding:'8px 10px',background:'var(--th-bg)',color:'var(--accent2)',fontSize:10,fontWeight:700,textAlign:'center',borderRight:'1px solid var(--border)',minWidth:96}},h)),
-                ['Total','Working Days','Extra Days','Allowed Weekoff','Adjustment','Total Days'].map(h=>React.createElement('th',{key:h,style:{padding:'8px 10px',background:'var(--bg3)',color:'var(--accent)',fontSize:10,fontWeight:700,textAlign:'center',borderLeft:h==='Total'?'2px solid var(--border2)':undefined,borderRight:'1px solid var(--border2)',minWidth:100}},h))
+                [...['Total','Working Days','Extra Days','Allowed Weekoff','Adjustment'],...(plOn?['Paid leave']:[]),'Total Days'].map(h=>React.createElement('th',{key:h,style:{padding:'8px 10px',background:'var(--bg3)',color:'var(--accent)',fontSize:10,fontWeight:700,textAlign:'center',borderLeft:h==='Total'?'2px solid var(--border2)':undefined,borderRight:'1px solid var(--border2)',minWidth:100}},h))
               )
             ),
             React.createElement('tbody',null,
@@ -907,6 +927,8 @@ function AttendanceSheet({period,salon,user}={}){
                     React.createElement('input',{type:'number',value:adjRaw,onChange:ev=>setAdjustment(e.id,ev.target.value),
                       style:{width:60,textAlign:'center',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:4,color:'var(--text)',fontSize:11,padding:'3px 4px'}})
                   ),
+                  plOn&&React.createElement('td',{style:{padding:'4px 8px',textAlign:'center',borderRight:'1px solid var(--border2)',borderBottom:'1px solid var(--border)'}},
+                    React.createElement(PaidLeaveCell,{sid:salon&&salon.id,e,year:selYear,month:selMonth,rec,summary:s,locked:attMonthLocked,onSet:v=>setPaidLeave(e.id,v)})),
                   React.createElement('td',{style:{padding:'7px 10px',textAlign:'center',fontWeight:700,color:'var(--green)',borderRight:'1px solid var(--border2)',borderBottom:'1px solid var(--border)'}},fmtDays(s.totalDaysPayable))
                 );
               })

@@ -945,6 +945,15 @@
         const A=payablesAgeingFor(903,'2026-10-09');
         eq('Payables ageing: buckets by invoice date, paid bills left out, overdue by due date',[A.rows[0].b.map(Math.round),Math.round(A.total),Math.round(A.overdue),A.payWeek.map(x=>x.invoiceNo)],[[0,6000,0,5000],11000,11000,['2','1']]);
       }catch(err){results.push({name:'Payables ageing',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const e={id:'PL1',name:'Leave Test',doj:'01/07/2026',weeklyOff:'None',gross:30000};
+        const days=Array(30).fill('present');days[2]='absent';days[3]='absent';days[4]='absent';
+        const base=attSummaryFor(e,2026,8,{days:days.concat([null]),adjustment:0}),pl=attSummaryFor(e,2026,8,{days:days.concat([null]),adjustment:0,paidLeave:9});
+        saveControls({paidLeave:{on:true,limit:1.5}});
+        safeLocalSet('salonos_attendance_outlet_904',JSON.stringify({'PL1_2026_7':{days:[],paidLeave:2}}));
+        const b=leaveBalanceFor(904,e,2026,8);saveControls({});
+        eq('Paid leave: pays absent days only up to the absences; balance = months on rolls × rate − used',[pl.totalDaysPayable-base.totalDaysPayable,pl.paidLeave,b.earned,b.used,b.available],[3,3,4.5,2,2.5]);
+      }catch(err){results.push({name:'Paid leave',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
