@@ -139,6 +139,8 @@ function OutletDashboard({salon,period,onNavTab}){
   return React.createElement('div',{className:'fade-in'},
     React.createElement(OutletSetupChecklist,{salon,onNavTab}),
     React.createElement(DataGapsCard,{salon,onNavTab}),
+    React.createElement(BudgetPaceStrip,{salon}),
+    React.createElement(YoyCard,{salon,period}),
     // Header
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,

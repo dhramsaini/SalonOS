@@ -92,11 +92,12 @@ function OutletRankingBoard({accessibleSalons}){
       h('div',null,h('div',{className:'page-title'},'Outlet Ranking'),h('div',{className:'page-sub'},'Month to date — revenue growth vs last month’s pace, EBITDA %, salary % of revenue, target achievement, collection differences and missing Daily Sales days; overall rank = average of the ranks')),
       h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},h(XlReportButton,{label:'⬇ Outlet comparison (Excel)',title:'Every outlet’s P&L side by side with margins and ranking',build:()=>buildOutletComparisonWorkbook(accessibleSalons,cal.year,cal.month)}),afMonthPicker(cal,setCal))),
     h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,
-      h('thead',null,h('tr',null,['#','Outlet','Health','Revenue MTD','Growth vs last month','EBITDA %','Salary % of rev','Target achieved','Unexplained coll. diffs','Days missing'].map((t,i)=>h('th',{key:i,style:i>1?{textAlign:'right'}:null},t)))),
+      h('thead',null,h('tr',null,['#','Outlet','Health','6-month health','Revenue MTD','Growth vs last month','EBITDA %','Salary % of rev','Target achieved','Unexplained coll. diffs','Days missing'].map((t,i)=>h('th',{key:i,style:i>1?{textAlign:'right'}:null},t)))),
       h('tbody',null,rows.map((r,i)=>h('tr',{key:r.s.id},
         h('td',{style:{fontWeight:700,color:i===0?'var(--green)':i===rows.length-1&&rows.length>1?'var(--red)':'var(--text2)'}},i+1),
         h('td',{style:{fontWeight:600,whiteSpace:'nowrap'}},opsShort(r.s)),
         h('td',{style:{textAlign:'right',fontWeight:700,color:r.healthScore>=80?'var(--green)':r.healthScore>=60?'var(--orange)':'var(--red)'},title:r.health&&r.health.notes.length?r.health.notes.join(' · '):'No issues'},r.healthScore==null?'—':r.healthScore),
+        h('td',{style:{textAlign:'right'}},h(HealthSpark,{trend:healthTrendFor(r.s.id,cal.year,cal.month)})),
         h('td',{style:{textAlign:'right'}},opsMoney(r.rev)),
         h('td',{style:{textAlign:'right',color:r.growth==null?'':r.growth>=0?'var(--green)':'var(--red)'}},r.growth==null?'—':(r.growth>=0?'+':'')+f(r.growth,'%')),
         h('td',{style:{textAlign:'right'}},f(r.ebitdaPct,'%')),h('td',{style:{textAlign:'right'}},f(r.salPct,'%')),
@@ -160,7 +161,8 @@ function budgetOverruns(sid,r,fy){
 }
 
 // ── 18 · 30-day cash forecast ──
-function cashForecastFor(sid,opening){
+function cashForecastFor(sid,opening,nDays){
+  const N=Number(nDays)===60?60:30;
   const today=new Date();today.setHours(0,0,0,0);
   let ds={},ex={};try{ds=JSON.parse(cachedLocalGet(outletKey('salonos_daily_sales_collection_data',sid))||'{}')||{};ex=JSON.parse(cachedLocalGet(outletKey('salonos_daily_sales_data',sid))||'{}')||{};}catch(e){}
   const skip=new Set(['Previous Month Salary','Previous Month Incentive']);
@@ -171,8 +173,8 @@ function cashForecastFor(sid,opening){
     const wd=d.getDay();inW[wd]+=n(0)+n(1)+n(2)+n(3)+n(5)+n(14)+n(15)+n(16);outW[wd]+=Object.entries(ex[iso]||{}).filter(([k])=>!skipIdx.has(k)).reduce((t,[,v])=>t+(Number(v)||0),0);nW[wd]++;}
   const avgIn=wd=>nW[wd]?inW[wd]/nW[wd]:0,avgOut=wd=>nW[wd]?outW[wd]/nW[wd]:0;
   const days=[];
-  for(let i=0;i<30;i++){const d=new Date(today.getTime()+i*864e5);days.push({iso:opsIso(d),inflow:avgIn(d.getDay()),outflow:avgOut(d.getDay()),items:[]});}
-  const last=days[29].iso;const put=(iso,amt,label)=>{const t=iso<days[0].iso?days[0]:days.find(x=>x.iso===iso);if(t&&amt>0){t.items.push({label,amt});}};
+  for(let i=0;i<N;i++){const d=new Date(today.getTime()+i*864e5);days.push({iso:opsIso(d),inflow:avgIn(d.getDay()),outflow:avgOut(d.getDay()),items:[]});}
+  const last=days[N-1].iso;const put=(iso,amt,label)=>{const t=iso<days[0].iso?days[0]:days.find(x=>x.iso===iso);if(t&&amt>0){t.items.push({label,amt});}};
   // Scheduled payments: unpaid dues (salary, incentive, PF / ESIC / PT / TDS, vendor bills, licences).
   (allDueItemsFor(sid)||[]).forEach(d=>{if(!d||d.paid||d.status==='done'||!d.due)return;const iso=toISO(d.due)||d.due;if(iso>last)return;put(iso,Math.max(0,(Number(d.amount)||0)-(Number(d.paidAmount)||0)),(d.type||'Due')+(d.desc?' — '+String(d.desc).slice(0,40):''));});
   // This month's salary (not final yet, so not in the dues) on next month's salary due day.
@@ -181,9 +183,10 @@ function cashForecastFor(sid,opening){
   if(sdIso<=last&&!salaryAttendanceReady(sid,today.getFullYear(),today.getMonth())){
     const est=(getEmployeesForMonth(today.getFullYear(),today.getMonth(),sid)||[]).filter(e=>e.status==='Active').reduce((t,e)=>t+(Number(e.gross)||0),0);
     put(sdIso,est,'Salary for '+OPS_M[today.getMonth()]+' (estimate)');}
+  if(N>30){const sd2=new Date(today.getFullYear(),today.getMonth()+2,dueDay);const iso2=opsIso(sd2);if(iso2<=last){const est2=(getEmployeesForMonth(today.getFullYear(),today.getMonth(),sid)||[]).filter(e=>e.status==='Active').reduce((t,e)=>t+(Number(e.gross)||0),0);put(iso2,est2,'Salary for '+OPS_M[(today.getMonth()+1)%12]+' (estimate)');}}
   // Fixed recurring commitments with a due day in the window, unless a bill for them is already in Vendors.
   (loadRecurringExpenses(sid)||[]).filter(it=>it.status==='Active'&&Number(it.dueDay)>0&&it.amountType!=='Variable').forEach(it=>{
-    [0,1].forEach(k=>{const dd=new Date(today.getFullYear(),today.getMonth()+k,Number(it.dueDay));const iso=opsIso(dd);if(iso<days[0].iso||iso>last)return;
+    (N>30?[0,1,2]:[0,1]).forEach(k=>{const dd=new Date(today.getFullYear(),today.getMonth()+k,Number(it.dueDay));const iso=opsIso(dd);if(iso<days[0].iso||iso>last)return;
       const amt=recurringExpenseMonthlyAmt(it,dd.getFullYear(),dd.getMonth(),sid);if(!(amt>0))return;
       const billed=(loadVendorInvoices(sid)||[]).some(inv=>{const v=(loadVendors(sid)||[]).find(x=>x.id===inv.vendorId);return v&&it.payee&&v.name&&v.name.toLowerCase()===String(it.payee).toLowerCase()&&invoiceBookMonthOf(inv)===iso.slice(0,7);});
       if(!billed)put(iso,amt,(it.customName||it.expenseName||'Recurring')+' — '+(it.payee||''));});});
@@ -197,16 +200,16 @@ function CashForecastSheet({salon}={}){
   const lastBank=(()=>{const rows=(loadBankStatementRows(sid)||[]).filter(r=>r.closingBalance!=null&&r.closingBalance!=='').map(r=>({iso:toISO(r.transactionDate||r.date),b:Number(r.closingBalance)})).filter(x=>x.iso&&!isNaN(x.b)).sort((a,b)=>a.iso.localeCompare(b.iso));return rows.length?rows[rows.length-1]:null;})();
   const lastCount=(()=>{const c=loadCashCounts(sid);const ks=Object.keys(c).sort();return ks.length?{iso:ks[ks.length-1],amt:c[ks[ks.length-1]].count}:null;})();
   const [opening,setOpening]=useState(()=>cachedLocalGet(k)||String(Math.round((lastBank?lastBank.b:0)+(lastCount?lastCount.amt:0))));
-  const [open,setOpen]=useState(null);
-  const f=cashForecastFor(sid,opening);
+  const [open,setOpen]=useState(null);const [nDays,setNDays]=useState(30);
+  const f=cashForecastFor(sid,opening,nDays);
   return h('div',null,
-    h('div',{className:'section-header'},h('div',null,h('div',{className:'page-title'},'30-day Cash Forecast'),
+    h('div',{className:'section-header'},h('div',null,h('div',{className:'page-title'},nDays+'-day Cash Forecast'),
       h('div',{className:'page-sub'},'Receipts and daily spends from each weekday’s average over the last 8 weeks, plus every scheduled payment (salary, statutory, vendor bills, rent and other commitments) on its due date')),
-      h('div',{style:{display:'flex',gap:8,alignItems:'center'}},h('span',{style:{fontSize:12,color:'var(--text3)'}},'Cash + bank today ₹'),
+      h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},[30,60].map(n=>h('button',{key:n,className:'btn btn-sm '+(nDays===n?'btn-primary':'btn-ghost'),onClick:()=>setNDays(n)},n+' days')),h('span',{style:{fontSize:12,color:'var(--text3)'}},'Cash + bank today ₹'),
         h('input',{type:'number',className:'form-control',style:{width:140},value:opening,onChange:e=>{setOpening(e.target.value);safeLocalSet(k,e.target.value);}}))),
     h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:10}},'Suggested: '+(lastBank?'bank '+opsMoney(lastBank.b)+' ('+opsDMY(lastBank.iso)+')':'no bank balance imported')+(lastCount?' + cash counted '+opsMoney(lastCount.amt)+' ('+opsDMY(lastCount.iso)+')':'')),
     f.firstNeg?h('div',{style:{background:'rgba(224,82,82,0.1)',border:'1px solid rgba(224,82,82,0.35)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:12,fontSize:13}},h('b',{style:{color:'var(--red)'}},'⚠ Cash runs short on '+opsDMY(f.firstNeg)),' — lowest point '+opsMoney(f.low.bal)+' on '+opsDMY(f.low.iso)+'. Arrange funds or move payments.')
-      :h('div',{style:{fontSize:12.5,color:'var(--green)',marginBottom:12}},'✓ No shortfall expected in the next 30 days — lowest balance '+opsMoney(f.low.bal)+' on '+opsDMY(f.low.iso)+'.'),
+      :h('div',{style:{fontSize:12.5,color:'var(--green)',marginBottom:12}},'✓ No shortfall expected in the next '+nDays+' days — lowest balance '+opsMoney(f.low.bal)+' on '+opsDMY(f.low.iso)+'.'),
     h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,
       h('thead',null,h('tr',null,['Date','Expected receipts','Daily spends','Scheduled payments','Balance'].map((t,i)=>h('th',{key:i,style:i?{textAlign:'right'}:null},t)))),
       h('tbody',null,...f.days.flatMap(d=>[h('tr',{key:d.iso,style:{cursor:d.items.length?'pointer':'default',background:d.balance<0?'rgba(224,82,82,0.06)':undefined},onClick:()=>d.items.length&&setOpen(open===d.iso?null:d.iso)},

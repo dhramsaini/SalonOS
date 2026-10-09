@@ -1494,14 +1494,16 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         React.createElement('div',{style:{display:'flex',justifyContent:'flex-end',marginTop:12}},
           React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowVendorList(false)},'Close')))),
 
+    React.createElement(PayablesDueStrip,{salon}),
     // ── Tab bar ──
     React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
-      [{id:'invoices',label:'🧾 Invoices & Payments'},{id:'messages',label:'📣 Messages'},{id:'outstanding',label:'⏳ Outstanding Invoices'},{id:'performa',label:'📝 Performa Invoice'},{id:'dashboard',label:'📊 Dashboard'},{id:'ledger',label:'📒 Vendor Ledger'},{id:'master',label:'📋 Master Vendor List'}].map(t=>
+      [{id:'invoices',label:'🧾 Invoices & Payments'},{id:'messages',label:'📣 Messages'},{id:'outstanding',label:'⏳ Outstanding Invoices'},{id:'ageing',label:'⏱ Ageing'},{id:'performa',label:'📝 Performa Invoice'},{id:'dashboard',label:'📊 Dashboard'},{id:'ledger',label:'📒 Vendor Ledger'},{id:'master',label:'📋 Master Vendor List'}].map(t=>
         React.createElement('button',{key:t.id,className:`tab-btn ${tab===t.id?'active':''}`,onClick:()=>setTab(t.id)},t.label)
       )
     ),
 
     tab==='ledger'&&React.createElement(VendorLedgerPanel,{salon,invoices,vendors,period}),
+    tab==='ageing'&&React.createElement(PayablesAgeingPanel,{salon}),
     showMultiPay&&React.createElement(MultiPayModal,{invoices,vendors,selectedIds:showMultiPay===true?bulkSelectedIds:new Set(),initialVendorId:typeof showMultiPay==='string'&&showMultiPay!=='pick'?showMultiPay:(filterVendor||''),initial:typeof showMultiPay==='object'?showMultiPay:null,bankRows,onSave:saveMultiPay,onClose:()=>setShowMultiPay(false)}),
 
     // ══════════════════════════════════

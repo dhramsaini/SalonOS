@@ -341,10 +341,11 @@ function MasterDashboard({selFY,setSelFY,FYS,accessibleSalons,dashTab,setDashTab
   const tab=dashTab||ownTab,setTab=setDashTab||setOwnTab;
   return h('div',{className:'fade-in'},
     h('div',{className:'tab-bar',style:{marginBottom:16}},
-      [['overview','📊 Overview'],['compliance','📌 Due Date Compliance register'],['close','✅ Month-End Close'],['summary','📤 Daily Summary'],['ranking','🏆 Outlet Ranking']].map(([k,l])=>h('button',{key:k,type:'button',className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
+      [['overview','📊 Overview'],['compliance','📌 Due Date Compliance register'],['close','✅ Month-End Close'],['summary','📤 Daily Summary'],['ranking','🏆 Outlet Ranking'],['bankreco','🏦 Bank Reco']].map(([k,l])=>h('button',{key:k,type:'button',className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
     tab==='close'?h(MonthCloseBoard,{accessibleSalons,onOpenOutletTab}):
     tab==='summary'?h(DailyOwnerSummaryBoard,{accessibleSalons}):
     tab==='ranking'?h(OutletRankingBoard,{accessibleSalons}):
+    tab==='bankreco'?h(BankRecoBoard,{accessibleSalons,onOpenOutletTab}):
     tab==='compliance'
       ?h('div',null,h('div',{className:'page-title'},'Due Date Compliance register'),
           h('div',{className:'page-sub'},'Payments and compliance across all your outlets — overdue, due this week, pending and paid'),

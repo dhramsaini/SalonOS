@@ -936,6 +936,15 @@
         eq('Approvals: vendor bank change needs approval, first-time bank details do not',[vendorBankChangeOk(902,{id:'V1',accountNo:'',ifsc:''},{accountNo:'123456789',ifsc:'HDFC0000001'}),vendorBankChangeOk(902,{id:'V1',accountNo:'123456789',ifsc:'HDFC0000001'},{accountNo:'999999999',ifsc:'HDFC0000001'})],[true,false]);
         saveControls({});saveApprovals([]);if(u0==null)sessionStorage.removeItem('salonos_user');else sessionStorage.setItem('salonos_user',u0);window.alert=A;window.confirm=Cf;
       }catch(err){results.push({name:'Controls',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        safeLocalSet('salonos_vendors_outlet_903',JSON.stringify([{id:'V1',name:'Ageing Vendor'}]));
+        safeLocalSet('salonos_vendor_invoices_outlet_903',JSON.stringify([
+          {id:'A1',vendorId:'V1',invoiceNo:'1',invoiceDate:'01/09/2026',dueDate:'15/09/2026',amount:10000,payments:[{paidAmount:4000}]},
+          {id:'A2',vendorId:'V1',invoiceNo:'2',invoiceDate:'01/06/2026',dueDate:'01/07/2026',amount:5000,payments:[]},
+          {id:'A3',vendorId:'V1',invoiceNo:'3',invoiceDate:'05/10/2026',dueDate:'12/10/2026',amount:2000,payments:[{paidAmount:2000}]}]));
+        const A=payablesAgeingFor(903,'2026-10-09');
+        eq('Payables ageing: buckets by invoice date, paid bills left out, overdue by due date',[A.rows[0].b.map(Math.round),Math.round(A.total),Math.round(A.overdue),A.payWeek.map(x=>x.invoiceNo)],[[0,6000,0,5000],11000,11000,['2','1']]);
+      }catch(err){results.push({name:'Payables ageing',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

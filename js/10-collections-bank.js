@@ -4281,6 +4281,7 @@ function BankStatement({salon,onNavTab}={}){
   },[rows]);
 
   return React.createElement('div',{className:'fade-in'},
+    React.createElement(BankStaleStrip,{salonId}),
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,React.createElement('div',{className:'page-title'},'Bank Statement'),React.createElement('div',{className:'page-sub'},'Import a bank-specific statement and map transactions with Cradlee details')),
       React.createElement('div',{className:'quick-actions'},
