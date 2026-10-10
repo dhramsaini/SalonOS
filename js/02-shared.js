@@ -1970,6 +1970,15 @@ function tallyExtraLedgers(invoices,bankRows,vendors,vendorLedgerNameFor,map,gst
 // ── Shared: Card/UPI Settlement credit totals from Bank Statement, grouped by Date as per
 // Cradlee — used by both Bank Statement's Settlement Reconciliation and Collection Reco's
 // Collection Sheet, so the two tabs always agree on the same linked figures. ──
+// The sale date a card / UPI settlement belongs to, as printed in the bank narration —
+// e.g. IDFC "CMS_IFT CARD PMT MID-90006628 SETDT-01102026IDFC" → 01/10/2026. '' when absent.
+function settlementDateFromNarration(desc){
+  const m=String(desc||'').match(/SET(?:TLEMENT)?[\s_-]?DT[\s:_-]*(\d{2})[\/.-]?(\d{2})[\/.-]?(\d{4})/i);
+  if(!m)return'';const d=+m[1],mo=+m[2],y=+m[3];
+  if(d<1||d>31||mo<1||mo>12||y<2000)return'';
+  const dt=new Date(y,mo-1,d);if(dt.getDate()!==d)return'';
+  return m[1]+'/'+m[2]+'/'+m[3];
+}
 function loadBankSettlementsByDate(salonId){
   let bankRows=[];
   try{bankRows=JSON.parse(cachedLocalGet(outletKey('salonos_bank_statement_rows',salonId))||'[]');}catch(e){}

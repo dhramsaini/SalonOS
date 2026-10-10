@@ -3223,6 +3223,12 @@ function BankStatement({salon,onNavTab}={}){
     const desc=String(description||'').toLowerCase();
     const baseDate=valueDate||transactionDate;
     if(!baseDate)return null;
+    // The bank prints the sale date in the narration (IDFC: "CARD PMT MID-… SETDT-DDMMYYYY") — use it
+    // instead of guessing "the day before" for card / UPI settlements.
+    const setDt=settlementDateFromNarration(description);
+    if(desc.includes('card pmt'))return{nature:'Card Settlement',cradleeDate:setDt||addDaysToDMY(baseDate,-1)};
+    if(setDt&&/upi/.test(desc))return{nature:'UPI Settlement',cradleeDate:setDt};
+    if(setDt&&/card|pos|settl/.test(desc))return{nature:'Card Settlement',cradleeDate:setDt};
     if(desc.includes('swiggy')||desc.includes('bundl tech'))return{nature:'Swiggy Settlement',cradleeDate:baseDate};
     if(desc.includes('zomato'))return{nature:'Zomato Settlement',cradleeDate:baseDate};
     if(desc.includes('eazydiner')||desc.includes('eazy diner'))return{nature:'EazyDiner Settlement',cradleeDate:baseDate};
@@ -3440,6 +3446,16 @@ function BankStatement({salon,onNavTab}={}){
   const onFile=(e)=>{const f=e.target.files&&e.target.files[0];if(f)loadWorkbook(f);e.target.value='';};
   const onDrop=(e)=>{e.preventDefault();setDragging(false);const f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f)loadWorkbook(f);};
   const update=(id,k,v)=>setRows(p=>p.map(r=>r.id===id?{...r,[k]:v}:r));
+  // Card / UPI settlements whose Date as per Cradlee disagrees with the sale date printed in the
+  // bank narration (SETDT-…) — usually a date picked by hand in the wrong month.
+  const setDtMismatch=rows.filter(r=>{const sd=settlementDateFromNarration(r.description);return sd&&(r.nature==='Card Settlement'||r.nature==='UPI Settlement'||!r.nature)&&Number(r.credit)>0&&toISO(r.cradleeDate)!==toISO(sd);});
+  const fixSetDt=()=>{
+    const list=setDtMismatch.slice(0,15).map(r=>(r.transactionDate||'')+': '+(r.cradleeDate||'blank')+' → '+settlementDateFromNarration(r.description)).join('\n');
+    if(!window.confirm('Set Date as per Cradlee from the bank narration for '+setDtMismatch.length+' line(s)?\n\n'+list+(setDtMismatch.length>15?'\n…':'')))return;
+    const ids=new Set(setDtMismatch.map(r=>r.id));
+    setRows(p=>p.map(r=>ids.has(r.id)?{...r,cradleeDate:settlementDateFromNarration(r.description),nature:r.nature||(/upi/i.test(r.description)?'UPI Settlement':'Card Settlement')}:r));
+    try{logAuditEvent(salonId,{entity:'Bank Statement',entityId:'SETDT',action:'Dates corrected',summary:setDtMismatch.length+' settlement date(s) set from the bank narration'});}catch(e){}
+  };
   const downloadTemplate=()=>{const t=BANKS[bank]||BANKS.Generic;const csv=[t.headers,t.sample].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=bank.replace(/\s+/g,'_')+'_Bank_Statement_Template.csv';a.click();URL.revokeObjectURL(u);};
   const clearData=()=>{if(confirm('Remove all imported bank statement data?')){setRows([]);setFileName('');setSelected(new Set());setMessage('Bank statement data cleared.');}};
   const toggleSelect=(id)=>setSelected(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
@@ -4284,6 +4300,9 @@ function BankStatement({salon,onNavTab}={}){
 
   return React.createElement('div',{className:'fade-in'},
     React.createElement(BankStaleStrip,{salonId}),
+    setDtMismatch.length>0&&React.createElement('div',{style:{background:'rgba(224,82,82,0.08)',border:'1px solid rgba(224,82,82,0.35)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}},
+      React.createElement('span',null,'⚠ ',React.createElement('b',null,setDtMismatch.length+' settlement line'+(setDtMismatch.length===1?'':'s')),' have a Date as per Cradlee different from the sale date in the bank narration (SETDT), e.g. '+(setDtMismatch[0].transactionDate||'')+': '+(setDtMismatch[0].cradleeDate||'blank')+' instead of '+settlementDateFromNarration(setDtMismatch[0].description)+'. Collection Reco adds bank credits by this date.'),
+      React.createElement('button',{className:'btn btn-primary btn-sm',onClick:fixSetDt},'Fix from narration')),
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,React.createElement('div',{className:'page-title'},'Bank Statement'),React.createElement('div',{className:'page-sub'},'Import a bank-specific statement and map transactions with Cradlee details')),
       React.createElement('div',{className:'quick-actions'},

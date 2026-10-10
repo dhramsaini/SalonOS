@@ -971,6 +971,11 @@
         eq('Collection Reco Excel: Cradlee by SUMIF, bank by SUMIFS on Date as per Cradlee, differences and bank charges',
           [v(ws,'B6'),v(ws,'D6'),v(ws,'E6'),v(ws,'F6'),v(ws,'G6'),v(ws,'I6'),v(ws,'J6'),v(ws,'K6'),v(bc,'C10'),v(bc,'C11')],[1000,-100,3500,3400,-100,2950,-50,-250,100,-150]);
       }catch(err){results.push({name:'Collection Reco Excel',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        eq('Bank: settlement date read from the narration (SETDT), invalid dates ignored',
+          ['CMS_IFT CARD PMT MID-90006628 SETDT-01102026IDFC','CMS_IFT CARD PMT MID-90006628 SETDT-30092026IDFC','UPI SETTLEMENT SETDT 05/10/2026','NEFT CR XYZ','SETDT-31022026'].map(settlementDateFromNarration),
+          ['01/10/2026','30/09/2026','05/10/2026','','']);
+      }catch(err){results.push({name:'Settlement date',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
