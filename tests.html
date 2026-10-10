@@ -995,6 +995,12 @@
         saveControls({monthFinalNeedsMapping:{on:false}});const off=monthFinalBlockedLines(907,2026,8).length;saveControls({});
         eq('Month Final gate: unmapped debits (no Nature / vendor payment without vendor) and credits; accented vendor names match; switch in Controls',[on,off],[['1:Debit:No Nature','2:Debit:No vendor','4:Credit:No Nature'],0]);
       }catch(err){results.push({name:'Month Final gate',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        safeLocalSet('salonos_bank_statement_rows_outlet_908',JSON.stringify([{id:1,transactionDate:'05/09/2026',debit:500,nature:'',description:'X'},{id:2,transactionDate:'06/09/2026',credit:900,nature:'',description:'CARD PMT SETDT-05092026'}]));
+        const a=unmappedBankLinesFor(908,2026,8).length;saveBankLineMapping(908,1,{nature:'Bank Charges'});saveBankLineMapping(908,2,{nature:'Card Settlement'});
+        const b=unmappedBankLinesFor(908,2026,8).map(x=>x.id+':'+x.problem);saveBankLineMapping(908,2,{cradleeDate:'05/09/2026'});
+        eq('Map from the list: each saved mapping clears the line; settlement still needs its Cradlee date',[a,b,unmappedBankLinesFor(908,2026,8).length],[2,['2:No Date as per Cradlee'],0]);
+      }catch(err){results.push({name:'Map from list',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

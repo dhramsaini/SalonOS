@@ -135,7 +135,7 @@ function CollectionRecoExcelButton({salon,onNavTab}){
   const t=new Date();const d=new Date(t.getFullYear(),t.getMonth()-(t.getDate()<8?1:0),1);
   const [open,setOpen]=useState(false);const [m,setM]=useState(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'));const [busy,setBusy]=useState(false);
   const [blocked,setBlocked]=useState(null);
-  const go=async()=>{const yy=Number(m.slice(0,4)),mm=Number(m.slice(5,7))-1;const bl=collRecoBlocked(salon.id,yy,mm);if(bl.length){setBlocked({list:bl,label:RPT_MONTHS[mm]+' '+yy});return;}
+  const go=async()=>{const yy=Number(m.slice(0,4)),mm=Number(m.slice(5,7))-1;const bl=collRecoBlocked(salon.id,yy,mm);if(bl.length){setBlocked({y:yy,m:mm,label:RPT_MONTHS[mm]+' '+yy});return;}
     setBusy(true);try{const {wb,filename}=await buildCollectionRecoWorkbook(salon.id,salon,yy,mm);await xlDownload(wb,filename);toast(filename+' downloaded','success');setOpen(false);}catch(e){toast(e.message||String(e),'error');}setBusy(false);};
   return h(React.Fragment,null,
     h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},onClick:()=>setOpen(true)},'⬇ Collection Reco (Excel with formulas)'),
@@ -144,101 +144,112 @@ function CollectionRecoExcelButton({salon,onNavTab}){
       h('div',{className:'form-group'},h('label',null,'Month'),h('input',{type:'month',className:'form-control',value:m,onChange:e=>setM(e.target.value)})),
       h('div',{className:'help-note'},'Five sheets: Summary, Collection Reco (day-wise), Bank Charges Reco, Collection Sheet and Bank Statement — the reco figures are formulas on the two data sheets.'),
       h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:()=>setOpen(false)},'Cancel'),h('button',{className:'btn btn-primary',disabled:busy,onClick:go},busy?'Building…':'⬇ Download')))),
-    blocked&&h(UnmappedCreditsPopup,{list:blocked.list,monthLabel:blocked.label,onClose:()=>setBlocked(null),onNavTab:onNavTab?(t=>{setOpen(false);onNavTab(t);}):null}));
+    blocked&&h(UnmappedCreditsPopup,{sid:salon.id,year:blocked.y,month:blocked.m,monthLabel:blocked.label,onClose:()=>setBlocked(null),onNavTab:onNavTab?(t=>{setOpen(false);onNavTab(t);}):null}));
 }
 
-// Bank credits of a month that are not mapped yet: no Nature, or a card / UPI settlement without a
-// Date as per Cradlee. [{id, date, description, credit, nature, problem}]
-function unmappedBankCreditsFor(sid,year,month){
-  const pre=year+'-'+String(month+1).padStart(2,'0');let bank=[];
-  try{bank=JSON.parse(cachedLocalGet(outletKey('salonos_bank_statement_rows',sid))||'[]')||[];}catch(e){}
-  return bank.filter(r=>r&&Number(r.credit)>0&&String(toISO(r.transactionDate)||'').startsWith(pre)).map(r=>{
-    const nat=String(r.nature||'').trim();
-    const problem=!nat?'No Nature':((nat==='Card Settlement'||nat==='UPI Settlement')&&!String(r.cradleeDate||'').trim())?'No Date as per Cradlee':'';
-    return problem?{id:r.id,date:r.transactionDate,description:r.description||'',credit:Number(r.credit)||0,nature:nat,problem}:null;}).filter(Boolean);
-}
-function collRecoBlocked(sid,year,month){
-  if(!controlOn('collRecoNeedsMapping',sid))return[];
-  return unmappedBankCreditsFor(sid,year,month);
-}
-function UnmappedCreditsPopup({list,monthLabel,onClose,onNavTab}){
-  const h=React.createElement;const m=n=>'₹'+Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2});
-  const tot=list.reduce((t,x)=>t+x.credit,0);
-  return h('div',{className:'modal-overlay',onClick:onClose},h('div',{className:'modal',style:{width:760,maxWidth:'96vw',maxHeight:'88vh',overflowY:'auto'},onClick:e=>e.stopPropagation()},
-    h('div',{className:'modal-title'},'⚠ Map every bank credit before the Collection Reco'),
-    h('div',{style:{fontSize:13,marginBottom:10,lineHeight:1.6}},h('b',null,list.length+' credit line'+(list.length===1?'':'s')+' ('+m(tot)+')'),' in the bank statement for '+monthLabel+' are not mapped. Give each a Nature in Bank Statement — and a Date as per Cradlee for card / UPI settlements — then come back.'),
-    h('div',{className:'table-wrap'},h('table',null,
-      h('thead',null,h('tr',null,['Date','Description','Credit','Nature','What is missing'].map((t,i)=>h('th',{key:i,style:i===2?{textAlign:'right'}:null},t)))),
-      h('tbody',null,list.slice(0,200).map((x,i)=>h('tr',{key:i},h('td',{style:{whiteSpace:'nowrap'}},x.date),h('td',{style:{fontSize:12}},x.description),h('td',{style:{textAlign:'right',fontWeight:600}},m(x.credit)),h('td',null,x.nature||'—'),h('td',{style:{color:'var(--red)',fontWeight:600,whiteSpace:'nowrap'}},x.problem)))))),
-    list.length>200&&h('div',{style:{fontSize:12,color:'var(--text3)',marginTop:6}},'…and '+(list.length-200)+' more.'),
-    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'In Bank Statement, filter Nature = (blank) to see them together. This rule can be switched off in Master Settings → 🎛 Controls.'),
-    h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:onClose},'Close'),onNavTab&&h('button',{className:'btn btn-primary',onClick:()=>{onClose();onNavTab('bank-statement');}},'Go to Bank Statement →'))));
-}
-
-// Every unmapped bank line of a month, debit and credit.
+// ── Unmapped bank lines ──
+// Every unmapped bank line of a month, debit and credit (rows = Bank Statement's own list when it
+// is open, else read from storage).
 //  Credit: no Nature, or a card / UPI settlement without a Date as per Cradlee.
 //  Debit:  no Nature, or a Vendor Payment with no vendor (chosen or matched) and no linked bill.
-function unmappedBankLinesFor(sid,year,month){
-  const pre=year+'-'+String(month+1).padStart(2,'0');let bank=[];
-  try{bank=JSON.parse(cachedLocalGet(outletKey('salonos_bank_statement_rows',sid))||'[]')||[];}catch(e){}
-  const vendors=loadVendors(sid)||[];
-  return bank.filter(r=>r&&String(toISO(r.transactionDate)||'').startsWith(pre)&&(Number(r.credit)>0||Number(r.debit)>0)).map(r=>{
-    const nat=String(r.nature||'').trim();const credit=Number(r.credit)>0;let problem='';
-    if(!nat)problem='No Nature';
-    else if(credit&&(nat==='Card Settlement'||nat==='UPI Settlement')&&!String(r.cradleeDate||'').trim())problem='No Date as per Cradlee';
-    else if(!credit&&nat==='Vendor Payment'&&!r.linkedInvoice){
-      const ov=r.vendorOverride;const hasVendor=ov&&ov!=='__none__'?true:(ov==='__none__'?false:!!findVendorMatch(r.description,vendors));
-      if(!hasVendor)problem='No vendor';}
-    return problem?{id:r.id,date:r.transactionDate,description:r.description||'',credit:credit?Number(r.credit)||0:0,debit:credit?0:Number(r.debit)||0,side:credit?'Credit':'Debit',nature:nat,problem}:null;}).filter(Boolean);
+function bankRowsFor(sid){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_bank_statement_rows',sid))||'[]');return Array.isArray(v)?v:[];}catch(e){return[];}}
+function bankLineProblem(r,vendors){
+  const nat=String(r.nature||'').trim();const credit=Number(r.credit)>0;
+  if(!nat)return'No Nature';
+  if(credit&&(nat==='Card Settlement'||nat==='UPI Settlement')&&!String(r.cradleeDate||'').trim())return'No Date as per Cradlee';
+  if(!credit&&nat==='Vendor Payment'&&!r.linkedInvoice){const ov=r.vendorOverride;
+    const has=ov&&ov!=='__none__'?true:(ov==='__none__'?false:!!findVendorMatch(r.description,vendors));if(!has)return'No vendor';}
+  return'';
 }
-function monthFinalBlockedLines(sid,year,month){
-  if(!controlOn('monthFinalNeedsMapping',sid))return[];
-  return unmappedBankLinesFor(sid,year,month);
+function unmappedBankLinesFor(sid,year,month,rows){
+  const pre=year+'-'+String(month+1).padStart(2,'0');const vendors=loadVendors(sid)||[];
+  return(rows||bankRowsFor(sid)).filter(r=>r&&String(toISO(r.transactionDate)||'').startsWith(pre)&&(Number(r.credit)>0||Number(r.debit)>0)).map(r=>{
+    const problem=bankLineProblem(r,vendors);const credit=Number(r.credit)>0;
+    return problem?{id:r.id,date:r.transactionDate,description:r.description||'',credit:credit?Number(r.credit)||0:0,debit:credit?0:Number(r.debit)||0,side:credit?'Credit':'Debit',nature:String(r.nature||'').trim(),cradleeDate:r.cradleeDate||'',vendorOverride:r.vendorOverride||'',problem}:null;}).filter(Boolean);
 }
-// Pop-up with debit and credit lines; title / intro vary by where it is used.
-function UnmappedLinesPopup({list,title,intro,onClose,onNavTab}){
-  const h=React.createElement;const m=n=>n?'₹'+Number(n).toLocaleString('en-IN',{maximumFractionDigits:2}):'';
-  const dr=list.filter(x=>x.side==='Debit'),cr=list.filter(x=>x.side==='Credit');
-  const sum=(a,k)=>a.reduce((t,x)=>t+x[k],0);
-  const [side,setSide]=useState('All');
+function unmappedBankCreditsFor(sid,year,month,rows){return unmappedBankLinesFor(sid,year,month,rows).filter(x=>x.side==='Credit');}
+function collRecoBlocked(sid,year,month,rows){return controlOn('collRecoNeedsMapping',sid)?unmappedBankCreditsFor(sid,year,month,rows):[];}
+function monthFinalBlockedLines(sid,year,month,rows){return controlOn('monthFinalNeedsMapping',sid)?unmappedBankLinesFor(sid,year,month,rows):[];}
+// Writes a mapping straight to storage (used when Bank Statement is not the open screen).
+function saveBankLineMapping(sid,id,patch){
+  const rows=bankRowsFor(sid);if(!rows.some(r=>r.id===id))return;
+  safeLocalSet(outletKey('salonos_bank_statement_rows',sid),JSON.stringify(rows.map(r=>r.id===id?{...r,...patch}:r)));
+}
+const BANK_MAP_NATURES=['Collection','Cash Deposit','Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','EazyDiner Settlement','Ownly Settlement','Eatby Minutes Settlement','Bank Charges','Interest','Vendor Payment','Salary','Incentive','Daily Incentive','Advance Salary','TDS','GST','PF Payment','ESIC Payment','PT Payment','Electricity Expenses','Drycleaning Expenses','Telephone & Internet Expenses','DG Rent','Royalty','Rent','Tax Payment','Transfer','Refund','Other'];
+const BANK_CREDIT_NATURES=new Set(['Collection','Cash Deposit','Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','EazyDiner Settlement','Ownly Settlement','Eatby Minutes Settlement','Interest','Transfer','Refund','Other']);
+// Pop-up listing unmapped lines, each mappable in place: Nature, the vendor for a vendor payment,
+// the Date as per Cradlee for a card / UPI settlement. getList() is re-read after every change.
+//   onMap(id, patch)  — how to save (Bank Statement passes its own; default saves to storage)
+//   onMapped()        — tells the opening screen to refresh
+function UnmappedLinesPopup({sid,getList,title,intro,onClose,onNavTab,onMap,onMapped}){
+  const h=React.createElement;const [,setTick]=useState(0);const [side,setSide]=useState('All');
+  const list=getList();const vendors=(loadVendors(sid)||[]).filter(v=>v&&v.status!=='Inactive').sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const m=n=>n?'₹'+Number(n).toLocaleString('en-IN',{maximumFractionDigits:2}):'';
+  const dr=list.filter(x=>x.side==='Debit'),cr=list.filter(x=>x.side==='Credit');const sum=(a,k)=>a.reduce((t,x)=>t+x[k],0);
   const shown=side==='All'?list:list.filter(x=>x.side===side);
-  return h('div',{className:'modal-overlay',style:{zIndex:3000},onClick:onClose},h('div',{className:'modal',style:{width:820,maxWidth:'96vw',maxHeight:'88vh',overflowY:'auto'},onClick:e=>e.stopPropagation()},
+  const map=(x,patch)=>{
+    if(patch.nature&&(patch.nature==='Card Settlement'||patch.nature==='UPI Settlement')&&!x.cradleeDate){const sd=settlementDateFromNarration(x.description);if(sd)patch={...patch,cradleeDate:sd};}
+    if(onMap)onMap(x.id,patch);else saveBankLineMapping(sid,x.id,patch);
+    setTick(t=>t+1);if(onMapped)onMapped();
+  };
+  const dmyOf=iso=>iso?iso.split('-').reverse().join('/'):'';
+  const sel={padding:'5px 6px',fontSize:11.5,minWidth:150};
+  return h('div',{className:'modal-overlay',style:{zIndex:3000},onClick:onClose},h('div',{className:'modal',style:{width:1000,maxWidth:'97vw',maxHeight:'90vh',overflowY:'auto'},onClick:e=>e.stopPropagation()},
     h('div',{className:'modal-title'},title),
     h('div',{style:{fontSize:13,marginBottom:10,lineHeight:1.6}},intro),
-    h('div',{style:{display:'flex',gap:6,marginBottom:8,flexWrap:'wrap'}},[['All',list.length],['Debit',dr.length],['Credit',cr.length]].map(([k,n])=>h('button',{key:k,className:'btn btn-sm '+(side===k?'btn-primary':'btn-ghost'),onClick:()=>setSide(k)},k+' ('+n+')')),
-      h('span',{style:{fontSize:12,color:'var(--text3)',alignSelf:'center',marginLeft:6}},'Debit '+(m(sum(dr,'debit'))||'₹0')+' · Credit '+(m(sum(cr,'credit'))||'₹0'))),
-    h('div',{className:'table-wrap'},h('table',null,
-      h('thead',null,h('tr',null,['Date','Side','Description','Debit','Credit','Nature','What is missing'].map((t,i)=>h('th',{key:i,style:i===3||i===4?{textAlign:'right'}:null},t)))),
-      h('tbody',null,shown.slice(0,300).map((x,i)=>h('tr',{key:i},h('td',{style:{whiteSpace:'nowrap'}},x.date),h('td',{style:{color:x.side==='Debit'?'var(--orange)':'var(--green)',fontWeight:600}},x.side),
-        h('td',{style:{fontSize:12}},x.description),h('td',{style:{textAlign:'right'}},m(x.debit)),h('td',{style:{textAlign:'right'}},m(x.credit)),h('td',null,x.nature||'—'),h('td',{style:{color:'var(--red)',fontWeight:600,whiteSpace:'nowrap'}},x.problem)))))),
-    shown.length>300&&h('div',{style:{fontSize:12,color:'var(--text3)',marginTop:6}},'…and '+(shown.length-300)+' more.'),
-    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'In Bank Statement, filter Nature = (blank) to see unmapped lines together. These rules can be switched off in Master Settings → 🎛 Controls.'),
-    h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:onClose},'Close'),onNavTab&&h('button',{className:'btn btn-primary',onClick:()=>{onClose();onNavTab('bank-statement');}},'Go to Bank Statement →'))));
+    !list.length?h('div',{style:{padding:'18px 0',fontSize:14,color:'var(--green)',fontWeight:600}},'✓ Everything is mapped now.'):h(React.Fragment,null,
+      h('div',{style:{display:'flex',gap:6,marginBottom:8,flexWrap:'wrap',alignItems:'center'}},[['All',list.length],['Debit',dr.length],['Credit',cr.length]].map(([k,n])=>h('button',{key:k,className:'btn btn-sm '+(side===k?'btn-primary':'btn-ghost'),onClick:()=>setSide(k)},k+' ('+n+')')),
+        h('span',{style:{fontSize:12,color:'var(--text3)',marginLeft:6}},'Debit '+(m(sum(dr,'debit'))||'₹0')+' · Credit '+(m(sum(cr,'credit'))||'₹0'))),
+      h('div',{className:'table-wrap'},h('table',null,
+        h('thead',null,h('tr',null,['Date','Side','Description','Amount','Map it','What is missing'].map((t,i)=>h('th',{key:i,style:i===3?{textAlign:'right'}:null},t)))),
+        h('tbody',null,shown.slice(0,300).map(x=>{const natList=BANK_MAP_NATURES.filter(n=>x.side==='Credit'?BANK_CREDIT_NATURES.has(n)||n===x.nature:!/Settlement$|^Collection$|^Interest$/.test(n)||n===x.nature);
+          return h('tr',{key:x.id},
+            h('td',{style:{whiteSpace:'nowrap'}},x.date),h('td',{style:{color:x.side==='Debit'?'var(--orange)':'var(--green)',fontWeight:600}},x.side),
+            h('td',{style:{fontSize:12,maxWidth:320}},x.description),h('td',{style:{textAlign:'right',fontWeight:600,whiteSpace:'nowrap'}},m(x.debit||x.credit)),
+            h('td',null,h('div',{style:{display:'flex',flexDirection:'column',gap:4}},
+              h('select',{className:'form-control',style:sel,value:x.nature,onChange:e=>map(x,{nature:e.target.value,aiTagged:false})},h('option',{value:''},'Select Nature'),natList.map(n=>h('option',{key:n,value:n},n))),
+              x.side==='Debit'&&x.nature==='Vendor Payment'&&h('select',{className:'form-control',style:sel,value:x.vendorOverride&&x.vendorOverride!=='__none__'?x.vendorOverride:'',onChange:e=>e.target.value&&map(x,{vendorOverride:e.target.value})},
+                h('option',{value:''},'Select vendor'),vendors.map(v=>h('option',{key:v.id,value:v.name},v.name))),
+              x.side==='Credit'&&(x.nature==='Card Settlement'||x.nature==='UPI Settlement')&&h('input',{type:'date',className:'form-control',style:sel,value:toISO(x.cradleeDate)||'',title:'Date as per Cradlee — the sale date this settlement belongs to',
+                onChange:e=>e.target.value&&map(x,{cradleeDate:dmyOf(e.target.value)})}))),
+            h('td',{style:{color:'var(--red)',fontWeight:600,whiteSpace:'nowrap'}},x.problem));})))),
+      shown.length>300&&h('div',{style:{fontSize:12,color:'var(--text3)',marginTop:6}},'…and '+(shown.length-300)+' more.')),
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'Each change saves at once and the line leaves this list when it is mapped. Linking a payment to a specific bill is done in Bank Statement. These rules can be switched off in Master Settings → 🎛 Controls.'),
+    h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:onClose},list.length?'Close':'Done'),onNavTab&&h('button',{className:'btn btn-primary',onClick:()=>{onClose();onNavTab('bank-statement');}},'Go to Bank Statement →'))));
+}
+// Collection Reco: credits only.
+function UnmappedCreditsPopup({sid,year,month,monthLabel,onClose,onNavTab,onMapped}){
+  return React.createElement(UnmappedLinesPopup,{sid,getList:()=>collRecoBlocked(sid,year,month),onClose,onNavTab,onMapped,
+    title:'⚠ Map every bank credit before the Collection Reco',
+    intro:'These credit lines in the bank statement for '+monthLabel+' are not mapped. Map each one below (or in Bank Statement), then the Collection Reco opens.'});
 }
 // Opens the pop-up from anywhere (no component state needed).
-function showUnmappedLinesPopup(list,title,intro,onNavTab){
+function showUnmappedLinesPopup(sid,getList,title,intro,onNavTab){
   const el=document.createElement('div');document.body.appendChild(el);const root=ReactDOM.createRoot(el);
   const close=()=>{root.unmount();el.remove();};
-  root.render(React.createElement(typeof ToastProvider!=='undefined'?ToastProvider:React.Fragment,null,React.createElement(UnmappedLinesPopup,{list,title,intro,onClose:close,onNavTab})));
+  root.render(React.createElement(UnmappedLinesPopup,{sid,getList,title,intro,onClose:close,onNavTab}));
 }
 // Month Final check: true when the month may be finalised; otherwise shows the pop-up.
 function monthFinalMappingOk(sid,year,month,onNavTab){
   const bl=monthFinalBlockedLines(sid,year,month);if(!bl.length)return true;
   const dr=bl.filter(x=>x.side==='Debit').length,cr=bl.length-dr;
-  showUnmappedLinesPopup(bl,'⚠ Map every bank line before marking the month Final',
-    RPT_MONTHS[month]+' '+year+' cannot be marked Final yet: '+bl.length+' bank line'+(bl.length===1?'':'s')+' are not mapped ('+dr+' debit, '+cr+' credit). Map them in Bank Statement, then mark Final again.',onNavTab);
+  showUnmappedLinesPopup(sid,()=>monthFinalBlockedLines(sid,year,month),'⚠ Map every bank line before marking the month Final',
+    RPT_MONTHS[month]+' '+year+' cannot be marked Final yet: '+bl.length+' bank line'+(bl.length===1?'':'s')+' are not mapped ('+dr+' debit, '+cr+' credit). Map them below, then mark Final again.',onNavTab);
   return false;
 }
-// Bank Statement strip: months with unmapped lines, each opens the list.
-function UnmappedMonthsStrip({salonId,onNavTab}){
+// Bank Statement strip: months with unmapped lines, each opens the list (mapped through the screen's own rows).
+function UnmappedMonthsStrip({salonId,rows,onMap}){
   const h=React.createElement;const [open,setOpen]=useState(null);
   if(salonId==null)return null;
-  let bank=[];try{bank=JSON.parse(cachedLocalGet(outletKey('salonos_bank_statement_rows',salonId))||'[]')||[];}catch(e){}
-  const months=[...new Set(bank.map(r=>String(toISO(r&&r.transactionDate)||'').slice(0,7)).filter(x=>x.length===7))].sort().reverse().slice(0,6);
-  const rows=months.map(ym=>({ym,y:Number(ym.slice(0,4)),m:Number(ym.slice(5,7))-1})).map(x=>({...x,list:unmappedBankLinesFor(salonId,x.y,x.m)})).filter(x=>x.list.length);
-  if(!rows.length)return null;
+  const all=rows||bankRowsFor(salonId);
+  const months=[...new Set(all.map(r=>String(toISO(r&&r.transactionDate)||'').slice(0,7)).filter(x=>x.length===7))].sort().reverse().slice(0,6);
+  const items=months.map(ym=>({ym,y:Number(ym.slice(0,4)),m:Number(ym.slice(5,7))-1})).map(x=>({...x,list:unmappedBankLinesFor(salonId,x.y,x.m,all)})).filter(x=>x.list.length);
+  if(!items.length&&!open)return null;
   return h('div',{style:{background:'rgba(224,165,48,0.1)',border:'1px solid rgba(224,165,48,0.4)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
-    h('span',null,'🧩 Unmapped bank lines:'),
-    rows.map(x=>{const dr=x.list.filter(l=>l.side==='Debit').length;return h('button',{key:x.ym,className:'btn btn-ghost btn-sm',onClick:()=>setOpen(x)},RPT_MONTHS[x.m].slice(0,3)+' '+x.y+' — '+dr+' debit, '+(x.list.length-dr)+' credit');}),
-    open&&h(UnmappedLinesPopup,{list:open.list,title:'Unmapped bank lines — '+RPT_MONTHS[open.m]+' '+open.y,intro:'These lines still need a Nature (vendor payments a vendor or linked bill; card / UPI settlements a Date as per Cradlee). The month cannot be marked Final, nor its Collection Reco made, until they are mapped.',onClose:()=>setOpen(null),onNavTab:null}));
+    h('span',null,items.length?'🧩 Unmapped bank lines:':'✓ All bank lines mapped'),
+    items.map(x=>{const dr=x.list.filter(l=>l.side==='Debit').length;return h('button',{key:x.ym,className:'btn btn-ghost btn-sm',onClick:()=>setOpen(x)},RPT_MONTHS[x.m].slice(0,3)+' '+x.y+' — '+dr+' debit, '+(x.list.length-dr)+' credit');}),
+    open&&h(UnmappedLinesPopup,{sid:salonId,getList:()=>unmappedBankLinesFor(salonId,open.y,open.m,all),onMap,
+      title:'Unmapped bank lines — '+RPT_MONTHS[open.m]+' '+open.y,
+      intro:'Map each line below — a Nature, the vendor for a vendor payment, the Date as per Cradlee for a card / UPI settlement. The month cannot be marked Final, nor its Collection Reco made, until they are mapped.',
+      onClose:()=>setOpen(null),onNavTab:null}));
 }

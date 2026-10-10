@@ -1553,7 +1553,7 @@ function CollectionSheetView({salon,onNavTab}={}){
   // that month is mapped (Master Settings → Controls → Collection Reco only after mapping).
   const recoWorkMonth=(()=>{const isos=collectionSheetRows.map(d=>toISO(d.date)).filter(Boolean).sort();const last=isos[isos.length-1];return last?{year:Number(last.slice(0,4)),month:Number(last.slice(5,7))-1,pre:last.slice(0,7)}:null;})();
   const recoUnmapped=recoWorkMonth&&salonId!=null?collRecoBlocked(salonId,recoWorkMonth.year,recoWorkMonth.month):[];
-  const [recoPopup,setRecoPopup]=useState(true);
+  const [recoPopup,setRecoPopup]=useState(true);const [,setRecoMapTick]=useState(0);
   const filteredCollectionSheetRows=collectionSheetRows.filter(d=>{
     if(recoUnmapped.length&&String(toISO(d.date)||'').startsWith(recoWorkMonth.pre))return false;
     for(const col of csFilterCols){
@@ -1929,7 +1929,7 @@ function CollectionSheetView({salon,onNavTab}={}){
       React.createElement('div',null,React.createElement('div',{className:'page-title'},'Collection Reco'),React.createElement('div',{className:'page-sub'},'Daily reconciliation — Cradlee vs Counter Report vs Bank Statement · '+(salon?salon.name.split('—')[0].trim():'Outlet'))),
       salon&&React.createElement(CollectionRecoExcelButton,{salon,onNavTab})
     ),
-    recoUnmapped.length>0&&recoPopup&&React.createElement(UnmappedCreditsPopup,{list:recoUnmapped,monthLabel:RPT_MONTHS[recoWorkMonth.month]+' '+recoWorkMonth.year,onClose:()=>setRecoPopup(false),onNavTab}),
+    recoUnmapped.length>0&&recoPopup&&React.createElement(UnmappedCreditsPopup,{sid:salonId,year:recoWorkMonth.year,month:recoWorkMonth.month,onMapped:()=>{setRecoMapTick(t=>t+1);setBankSettlements(loadBankSettlementsByDate(salonId));},monthLabel:RPT_MONTHS[recoWorkMonth.month]+' '+recoWorkMonth.year,onClose:()=>setRecoPopup(false),onNavTab}),
     recoUnmapped.length>0&&React.createElement('div',{style:{background:'rgba(224,82,82,0.08)',border:'1px solid rgba(224,82,82,0.35)',borderRadius:'var(--r)',padding:'8px 12px',margin:'12px 0',fontSize:12.5,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}},
       React.createElement('span',null,'🔒 '+RPT_MONTHS[recoWorkMonth.month]+' '+recoWorkMonth.year+' is hidden: ',React.createElement('b',null,recoUnmapped.length+' bank credit'+(recoUnmapped.length===1?'':'s')),' not mapped yet.'),
       React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRecoPopup(true)},'See the list'),
@@ -4311,7 +4311,7 @@ function BankStatement({salon,onNavTab}={}){
 
   return React.createElement('div',{className:'fade-in'},
     React.createElement(BankStaleStrip,{salonId}),
-    React.createElement(UnmappedMonthsStrip,{salonId,onNavTab}),
+    React.createElement(UnmappedMonthsStrip,{salonId,rows,onMap:(id,patch)=>setRows(p=>p.map(r=>r.id===id?{...r,...patch}:r))}),
     setDtMismatch.length>0&&React.createElement('div',{style:{background:'rgba(224,82,82,0.08)',border:'1px solid rgba(224,82,82,0.35)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}},
       React.createElement('span',null,'⚠ ',React.createElement('b',null,setDtMismatch.length+' settlement line'+(setDtMismatch.length===1?'':'s')),' have a Date as per Cradlee different from the sale date in the bank narration (SETDT), e.g. '+(setDtMismatch[0].transactionDate||'')+': '+(setDtMismatch[0].cradleeDate||'blank')+' instead of '+settlementDateFromNarration(setDtMismatch[0].description)+'. Collection Reco adds bank credits by this date.'),
       React.createElement('button',{className:'btn btn-primary btn-sm',onClick:fixSetDt},'Fix from narration')),
