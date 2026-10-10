@@ -960,6 +960,17 @@
         const b=leaveBalanceFor(904,e,2026,8);saveControls({});
         eq('Paid leave: pays absent days only up to the absences; balance = months on rolls × rate − used',[pl.totalDaysPayable-base.totalDaysPayable,pl.paidLeave,b.earned,b.used,b.available],[3,3,4.5,2,2.5]);
       }catch(err){results.push({name:'Paid leave',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        await loadExcelJS();
+        safeLocalSet('salonos_cradlee_collection_rows_outlet_905',JSON.stringify([{centerName:'A',invoiceDate:'02/09/2026',cash:1000,card:2000,upi:3000,wallet:500,district:0,luzo:0,online:0,total:6500},{centerName:'B',invoiceDate:'02/09/2026',cash:0,card:1000,upi:0,wallet:0,district:0,luzo:0,online:0,total:1000}]));
+        safeLocalSet('salonos_bank_statement_rows_outlet_905',JSON.stringify([{id:1,transactionDate:'03/09/2026',credit:3400,debit:0,nature:'Card Settlement',cradleeDate:'02/09/2026'},{id:2,transactionDate:'03/09/2026',credit:2950,debit:0,nature:'UPI Settlement',cradleeDate:'02/09/2026'}]));
+        safeLocalSet('salonos_daily_sales_collection_data_outlet_905',JSON.stringify({'2026-09-02':{0:900}}));
+        safeLocalSet('salonos_collection_reason_diff_outlet_905',JSON.stringify({'02/09/2026':{type:'shortCollection',amount:100}}));
+        const {wb}=await buildCollectionRecoWorkbook(905,{id:905,name:'Reco Test'},2026,8);xlFillResults(wb);
+        const ws=wb.getWorksheet('Collection Reco'),bc=wb.getWorksheet('Bank Charges Reco');const v=(w2,a)=>{const x=w2.getCell(a).value;return x&&x.formula!==undefined?(x.result||0):x;};
+        eq('Collection Reco Excel: Cradlee by SUMIF, bank by SUMIFS on Date as per Cradlee, differences and bank charges',
+          [v(ws,'B6'),v(ws,'D6'),v(ws,'E6'),v(ws,'F6'),v(ws,'G6'),v(ws,'I6'),v(ws,'J6'),v(ws,'K6'),v(bc,'C10'),v(bc,'C11')],[1000,-100,3500,3400,-100,2950,-50,-250,100,-150]);
+      }catch(err){results.push({name:'Collection Reco Excel',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

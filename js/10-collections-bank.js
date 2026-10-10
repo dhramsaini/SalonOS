@@ -1167,6 +1167,7 @@ function CollectionReco({salon,onNavTab}={}){
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openCradlee},'🔗 Open Cradlee eSoft Login'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:downloadTemplate},'⬇ Download Template'),
         rows.length>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:exportData},'⬇ Export Imported Data'),
+        salon&&React.createElement(CollectionRecoExcelButton,{salon}),
         selected.size>0&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,.15)',border:'1px solid rgba(255,107,107,.4)',color:'var(--red)',fontWeight:600},onClick:deleteSelected},'🗑 Delete Selected ('+selected.size+')'),
         rows.length>0&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,.1)',border:'1px solid rgba(255,107,107,.3)',color:'var(--red)'},onClick:clearData},'Clear Data')
       )
@@ -1919,7 +1920,8 @@ function CollectionSheetView({salon,onNavTab}={}){
 
   return React.createElement('div',{className:'fade-in'},
     React.createElement('div',{className:'section-header'},
-      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Collection Reco'),React.createElement('div',{className:'page-sub'},'Daily reconciliation — Cradlee vs Counter Report vs Bank Statement · '+(salon?salon.name.split('—')[0].trim():'Outlet')))
+      React.createElement('div',null,React.createElement('div',{className:'page-title'},'Collection Reco'),React.createElement('div',{className:'page-sub'},'Daily reconciliation — Cradlee vs Counter Report vs Bank Statement · '+(salon?salon.name.split('—')[0].trim():'Outlet'))),
+      salon&&React.createElement(CollectionRecoExcelButton,{salon})
     ),
     collectionSheetRows.length===0&&React.createElement('div',{className:'card',style:{textAlign:'center',padding:40,color:'var(--text3)'}},
       'No Collection Reco data yet — import a Cradlee Collection Report from Collection Summary first.',
