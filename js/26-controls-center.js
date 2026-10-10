@@ -10,6 +10,7 @@ const CONTROL_DEFS=[
   {id:'dupInvoice',group:'Entry checks',label:'Block a vendor invoice number entered twice',hint:'Same vendor + same invoice no. (Vendors, Daily Sales & Exp, Bank Statement).',def:true},
   {id:'gstLock',group:'Entry checks',label:'Lock CGST/SGST or IGST by state',hint:'Outlet and vendor in the same state → only CGST + SGST; different states → only IGST.',def:true},
   {id:'idChecks',group:'Entry checks',label:'Check PAN, GSTN, IFSC, Aadhaar, UAN, ESIC, account no., phone & email',hint:'Wrong formats are stopped before saving employees and vendors.',def:true},
+  {id:'collRecoNeedsMapping',group:'Month close',label:'Collection Reco only after every bank credit of the month is mapped',hint:'Each credit line needs a Nature, and card / UPI settlements a Date as per Cradlee, before the month’s Collection Reco is shown or downloaded.',def:true},
   {id:'monthFinalRule',group:'Month close',label:'Mark Month Final only from the month’s last day',hint:'Daily Sales & Exp and Attendance cannot be finalised before the month ends.',def:true},
   {id:'invoiceApproval',group:'Approvals',label:'Vendor bill above the limit needs Super Admin approval',hint:'The person entering it sends a request; it saves once a Super Admin approves.',def:false,limit:50000},
   {id:'bankFileApproval',group:'Approvals',label:'Bank payment file above the limit needs Super Admin approval',hint:'Bank Payment → download of the bank upload file (total of the file).',def:false,limit:200000},

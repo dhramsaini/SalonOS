@@ -1167,7 +1167,7 @@ function CollectionReco({salon,onNavTab}={}){
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openCradlee},'🔗 Open Cradlee eSoft Login'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:downloadTemplate},'⬇ Download Template'),
         rows.length>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:exportData},'⬇ Export Imported Data'),
-        salon&&React.createElement(CollectionRecoExcelButton,{salon}),
+        salon&&React.createElement(CollectionRecoExcelButton,{salon,onNavTab}),
         selected.size>0&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,.15)',border:'1px solid rgba(255,107,107,.4)',color:'var(--red)',fontWeight:600},onClick:deleteSelected},'🗑 Delete Selected ('+selected.size+')'),
         rows.length>0&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,.1)',border:'1px solid rgba(255,107,107,.3)',color:'var(--red)'},onClick:clearData},'Clear Data')
       )
@@ -1549,7 +1549,13 @@ function CollectionSheetView({salon,onNavTab}={}){
     });
   };
   const csClearColumnFilter=(colKey)=>setCsColumnFilters(prev=>{const next={...prev};delete next[colKey];return next;});
+  // Working month = the latest month in the reco; its days stay hidden until every bank credit of
+  // that month is mapped (Master Settings → Controls → Collection Reco only after mapping).
+  const recoWorkMonth=(()=>{const isos=collectionSheetRows.map(d=>toISO(d.date)).filter(Boolean).sort();const last=isos[isos.length-1];return last?{year:Number(last.slice(0,4)),month:Number(last.slice(5,7))-1,pre:last.slice(0,7)}:null;})();
+  const recoUnmapped=recoWorkMonth&&salonId!=null?collRecoBlocked(salonId,recoWorkMonth.year,recoWorkMonth.month):[];
+  const [recoPopup,setRecoPopup]=useState(true);
   const filteredCollectionSheetRows=collectionSheetRows.filter(d=>{
+    if(recoUnmapped.length&&String(toISO(d.date)||'').startsWith(recoWorkMonth.pre))return false;
     for(const col of csFilterCols){
       const active=csColumnFilters[col.key];
       if(active!==undefined&&!active.has(String(col.get(d))))return false;
@@ -1921,8 +1927,13 @@ function CollectionSheetView({salon,onNavTab}={}){
   return React.createElement('div',{className:'fade-in'},
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,React.createElement('div',{className:'page-title'},'Collection Reco'),React.createElement('div',{className:'page-sub'},'Daily reconciliation — Cradlee vs Counter Report vs Bank Statement · '+(salon?salon.name.split('—')[0].trim():'Outlet'))),
-      salon&&React.createElement(CollectionRecoExcelButton,{salon})
+      salon&&React.createElement(CollectionRecoExcelButton,{salon,onNavTab})
     ),
+    recoUnmapped.length>0&&recoPopup&&React.createElement(UnmappedCreditsPopup,{list:recoUnmapped,monthLabel:RPT_MONTHS[recoWorkMonth.month]+' '+recoWorkMonth.year,onClose:()=>setRecoPopup(false),onNavTab}),
+    recoUnmapped.length>0&&React.createElement('div',{style:{background:'rgba(224,82,82,0.08)',border:'1px solid rgba(224,82,82,0.35)',borderRadius:'var(--r)',padding:'8px 12px',margin:'12px 0',fontSize:12.5,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}},
+      React.createElement('span',null,'🔒 '+RPT_MONTHS[recoWorkMonth.month]+' '+recoWorkMonth.year+' is hidden: ',React.createElement('b',null,recoUnmapped.length+' bank credit'+(recoUnmapped.length===1?'':'s')),' not mapped yet.'),
+      React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRecoPopup(true)},'See the list'),
+      onNavTab&&React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>onNavTab('bank-statement')},'Go to Bank Statement →')),
     collectionSheetRows.length===0&&React.createElement('div',{className:'card',style:{textAlign:'center',padding:40,color:'var(--text3)'}},
       'No Collection Reco data yet — import a Cradlee Collection Report from Collection Summary first.',
       React.createElement('div',{style:{marginTop:12}},React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>onNavTab&&onNavTab('collection')},'Go to Collection Summary →'))

@@ -130,16 +130,47 @@ async function buildCollectionRecoWorkbook(sid,salon,year,month){
     W.columns=[{width:14},{width:10},{width:16},{width:18},{width:16},{width:12},{width:14},{width:12}];K.setup(W,false,0);}
   return{wb,filename:'Collection_Reco_'+rptFile(outlet)+'_'+year+'-'+String(month+1).padStart(2,'0')+'.xlsx'};
 }
-function CollectionRecoExcelButton({salon}){
+function CollectionRecoExcelButton({salon,onNavTab}){
   const h=React.createElement;const {toast}=useToast();
   const t=new Date();const d=new Date(t.getFullYear(),t.getMonth()-(t.getDate()<8?1:0),1);
   const [open,setOpen]=useState(false);const [m,setM]=useState(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'));const [busy,setBusy]=useState(false);
-  const go=async()=>{setBusy(true);try{const {wb,filename}=await buildCollectionRecoWorkbook(salon.id,salon,Number(m.slice(0,4)),Number(m.slice(5,7))-1);await xlDownload(wb,filename);toast(filename+' downloaded','success');setOpen(false);}catch(e){toast(e.message||String(e),'error');}setBusy(false);};
+  const [blocked,setBlocked]=useState(null);
+  const go=async()=>{const yy=Number(m.slice(0,4)),mm=Number(m.slice(5,7))-1;const bl=collRecoBlocked(salon.id,yy,mm);if(bl.length){setBlocked({list:bl,label:RPT_MONTHS[mm]+' '+yy});return;}
+    setBusy(true);try{const {wb,filename}=await buildCollectionRecoWorkbook(salon.id,salon,yy,mm);await xlDownload(wb,filename);toast(filename+' downloaded','success');setOpen(false);}catch(e){toast(e.message||String(e),'error');}setBusy(false);};
   return h(React.Fragment,null,
     h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},onClick:()=>setOpen(true)},'⬇ Collection Reco (Excel with formulas)'),
     open&&h('div',{className:'modal-overlay',onClick:()=>setOpen(false)},h('div',{className:'modal',style:{width:420},onClick:e=>e.stopPropagation()},
       h('div',{className:'modal-title'},'Collection Reco — Excel'),
       h('div',{className:'form-group'},h('label',null,'Month'),h('input',{type:'month',className:'form-control',value:m,onChange:e=>setM(e.target.value)})),
       h('div',{className:'help-note'},'Five sheets: Summary, Collection Reco (day-wise), Bank Charges Reco, Collection Sheet and Bank Statement — the reco figures are formulas on the two data sheets.'),
-      h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:()=>setOpen(false)},'Cancel'),h('button',{className:'btn btn-primary',disabled:busy,onClick:go},busy?'Building…':'⬇ Download')))));
+      h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:()=>setOpen(false)},'Cancel'),h('button',{className:'btn btn-primary',disabled:busy,onClick:go},busy?'Building…':'⬇ Download')))),
+    blocked&&h(UnmappedCreditsPopup,{list:blocked.list,monthLabel:blocked.label,onClose:()=>setBlocked(null),onNavTab:onNavTab?(t=>{setOpen(false);onNavTab(t);}):null}));
+}
+
+// Bank credits of a month that are not mapped yet: no Nature, or a card / UPI settlement without a
+// Date as per Cradlee. [{id, date, description, credit, nature, problem}]
+function unmappedBankCreditsFor(sid,year,month){
+  const pre=year+'-'+String(month+1).padStart(2,'0');let bank=[];
+  try{bank=JSON.parse(cachedLocalGet(outletKey('salonos_bank_statement_rows',sid))||'[]')||[];}catch(e){}
+  return bank.filter(r=>r&&Number(r.credit)>0&&String(toISO(r.transactionDate)||'').startsWith(pre)).map(r=>{
+    const nat=String(r.nature||'').trim();
+    const problem=!nat?'No Nature':((nat==='Card Settlement'||nat==='UPI Settlement')&&!String(r.cradleeDate||'').trim())?'No Date as per Cradlee':'';
+    return problem?{id:r.id,date:r.transactionDate,description:r.description||'',credit:Number(r.credit)||0,nature:nat,problem}:null;}).filter(Boolean);
+}
+function collRecoBlocked(sid,year,month){
+  if(!controlOn('collRecoNeedsMapping',sid))return[];
+  return unmappedBankCreditsFor(sid,year,month);
+}
+function UnmappedCreditsPopup({list,monthLabel,onClose,onNavTab}){
+  const h=React.createElement;const m=n=>'₹'+Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2});
+  const tot=list.reduce((t,x)=>t+x.credit,0);
+  return h('div',{className:'modal-overlay',onClick:onClose},h('div',{className:'modal',style:{width:760,maxWidth:'96vw',maxHeight:'88vh',overflowY:'auto'},onClick:e=>e.stopPropagation()},
+    h('div',{className:'modal-title'},'⚠ Map every bank credit before the Collection Reco'),
+    h('div',{style:{fontSize:13,marginBottom:10,lineHeight:1.6}},h('b',null,list.length+' credit line'+(list.length===1?'':'s')+' ('+m(tot)+')'),' in the bank statement for '+monthLabel+' are not mapped. Give each a Nature in Bank Statement — and a Date as per Cradlee for card / UPI settlements — then come back.'),
+    h('div',{className:'table-wrap'},h('table',null,
+      h('thead',null,h('tr',null,['Date','Description','Credit','Nature','What is missing'].map((t,i)=>h('th',{key:i,style:i===2?{textAlign:'right'}:null},t)))),
+      h('tbody',null,list.slice(0,200).map((x,i)=>h('tr',{key:i},h('td',{style:{whiteSpace:'nowrap'}},x.date),h('td',{style:{fontSize:12}},x.description),h('td',{style:{textAlign:'right',fontWeight:600}},m(x.credit)),h('td',null,x.nature||'—'),h('td',{style:{color:'var(--red)',fontWeight:600,whiteSpace:'nowrap'}},x.problem)))))),
+    list.length>200&&h('div',{style:{fontSize:12,color:'var(--text3)',marginTop:6}},'…and '+(list.length-200)+' more.'),
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'In Bank Statement, filter Nature = (blank) to see them together. This rule can be switched off in Master Settings → 🎛 Controls.'),
+    h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:onClose},'Close'),onNavTab&&h('button',{className:'btn btn-primary',onClick:()=>{onClose();onNavTab('bank-statement');}},'Go to Bank Statement →'))));
 }

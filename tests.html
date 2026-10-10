@@ -976,6 +976,15 @@
           ['CMS_IFT CARD PMT MID-90006628 SETDT-01102026IDFC','CMS_IFT CARD PMT MID-90006628 SETDT-30092026IDFC','UPI SETTLEMENT SETDT 05/10/2026','NEFT CR XYZ','SETDT-31022026'].map(settlementDateFromNarration),
           ['01/10/2026','30/09/2026','05/10/2026','','']);
       }catch(err){results.push({name:'Settlement date',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        safeLocalSet('salonos_bank_statement_rows_outlet_906',JSON.stringify([
+          {id:1,transactionDate:'05/09/2026',credit:1000,nature:''},{id:2,transactionDate:'06/09/2026',credit:2000,nature:'Card Settlement',cradleeDate:''},
+          {id:3,transactionDate:'07/09/2026',credit:3000,nature:'Card Settlement',cradleeDate:'06/09/2026'},{id:4,transactionDate:'08/09/2026',credit:0,debit:500,nature:''},
+          {id:5,transactionDate:'02/10/2026',credit:900,nature:''}]));
+        saveControls({});const on=collRecoBlocked(906,2026,8).map(x=>x.id+':'+x.problem);
+        saveControls({collRecoNeedsMapping:{on:false}});const off=collRecoBlocked(906,2026,8).length;saveControls({});
+        eq('Collection Reco gate: unmapped credits of the month (no Nature / settlement without Cradlee date); debits and other months ignored; switch off in Controls',[on,off],[['1:No Nature','2:No Date as per Cradlee'],0]);
+      }catch(err){results.push({name:'Collection Reco gate',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
