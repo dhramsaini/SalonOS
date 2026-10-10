@@ -667,7 +667,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   };
   const {toast:dseLockToast}=useToast();
   const toggleMgrFinalMonth=()=>{
-    if(!mgrFinalMonthChecked){const early=controlOn('monthFinalRule',salonId)&&monthFinalTooEarlyMessage(mgrFinalSelYear,mgrFinalSelMonth);if(early){dseLockToast(early,'error');return;}}
+    if(!mgrFinalMonthChecked){const early=controlOn('monthFinalRule',salonId)&&monthFinalTooEarlyMessage(mgrFinalSelYear,mgrFinalSelMonth);if(early){dseLockToast(early,'error');return;}
+      if(!monthFinalMappingOk(salonId,mgrFinalSelYear,mgrFinalSelMonth,null))return;}
     if(!mgrFinalMonthChecked&&!window.confirm('Mark '+DSE_MONTHS[mgrFinalSelMonth]+' '+mgrFinalSelYear+' FINAL?\n\nThe whole month becomes read-only for everyone. Only a Super Admin can undo it, with a reason.'))return;
     if(!mgrFinalMonthChecked){const cm=collectionFinalBlockMessage(salonId,mgrFinalSelYear,mgrFinalSelMonth);if(cm){dseLockToast(cm,'error');return;}}
     if(mgrFinalMonthChecked&&!requestUnlock(salonId,'Daily Sales & Exp — '+DSE_MONTHS[mgrFinalSelMonth]+' '+mgrFinalSelYear))return;

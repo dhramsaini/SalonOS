@@ -985,6 +985,16 @@
         saveControls({collRecoNeedsMapping:{on:false}});const off=collRecoBlocked(906,2026,8).length;saveControls({});
         eq('Collection Reco gate: unmapped credits of the month (no Nature / settlement without Cradlee date); debits and other months ignored; switch off in Controls',[on,off],[['1:No Nature','2:No Date as per Cradlee'],0]);
       }catch(err){results.push({name:'Collection Reco gate',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        safeLocalSet('salonos_vendors_outlet_907',JSON.stringify([{id:'V1',name:"L'Oréal India Pvt Ltd"}]));
+        safeLocalSet('salonos_bank_statement_rows_outlet_907',JSON.stringify([
+          {id:1,transactionDate:'05/09/2026',debit:500,nature:''},{id:2,transactionDate:'06/09/2026',debit:900,nature:'Vendor Payment',description:'NEFT XYZ UNKNOWN'},
+          {id:3,transactionDate:'07/09/2026',debit:800,nature:'Vendor Payment',description:'NEFT-LOREAL INDIA PVT LTD'},{id:4,transactionDate:'08/09/2026',credit:700,nature:''},
+          {id:5,transactionDate:'09/09/2026',debit:300,nature:'Bank Charges'}]));
+        saveControls({});const on=monthFinalBlockedLines(907,2026,8).map(x=>x.id+':'+x.side+':'+x.problem);
+        saveControls({monthFinalNeedsMapping:{on:false}});const off=monthFinalBlockedLines(907,2026,8).length;saveControls({});
+        eq('Month Final gate: unmapped debits (no Nature / vendor payment without vendor) and credits; accented vendor names match; switch in Controls',[on,off],[['1:Debit:No Nature','2:Debit:No vendor','4:Credit:No Nature'],0]);
+      }catch(err){results.push({name:'Month Final gate',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

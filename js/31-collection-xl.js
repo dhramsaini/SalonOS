@@ -174,3 +174,71 @@ function UnmappedCreditsPopup({list,monthLabel,onClose,onNavTab}){
     h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'In Bank Statement, filter Nature = (blank) to see them together. This rule can be switched off in Master Settings → 🎛 Controls.'),
     h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:onClose},'Close'),onNavTab&&h('button',{className:'btn btn-primary',onClick:()=>{onClose();onNavTab('bank-statement');}},'Go to Bank Statement →'))));
 }
+
+// Every unmapped bank line of a month, debit and credit.
+//  Credit: no Nature, or a card / UPI settlement without a Date as per Cradlee.
+//  Debit:  no Nature, or a Vendor Payment with no vendor (chosen or matched) and no linked bill.
+function unmappedBankLinesFor(sid,year,month){
+  const pre=year+'-'+String(month+1).padStart(2,'0');let bank=[];
+  try{bank=JSON.parse(cachedLocalGet(outletKey('salonos_bank_statement_rows',sid))||'[]')||[];}catch(e){}
+  const vendors=loadVendors(sid)||[];
+  return bank.filter(r=>r&&String(toISO(r.transactionDate)||'').startsWith(pre)&&(Number(r.credit)>0||Number(r.debit)>0)).map(r=>{
+    const nat=String(r.nature||'').trim();const credit=Number(r.credit)>0;let problem='';
+    if(!nat)problem='No Nature';
+    else if(credit&&(nat==='Card Settlement'||nat==='UPI Settlement')&&!String(r.cradleeDate||'').trim())problem='No Date as per Cradlee';
+    else if(!credit&&nat==='Vendor Payment'&&!r.linkedInvoice){
+      const ov=r.vendorOverride;const hasVendor=ov&&ov!=='__none__'?true:(ov==='__none__'?false:!!findVendorMatch(r.description,vendors));
+      if(!hasVendor)problem='No vendor';}
+    return problem?{id:r.id,date:r.transactionDate,description:r.description||'',credit:credit?Number(r.credit)||0:0,debit:credit?0:Number(r.debit)||0,side:credit?'Credit':'Debit',nature:nat,problem}:null;}).filter(Boolean);
+}
+function monthFinalBlockedLines(sid,year,month){
+  if(!controlOn('monthFinalNeedsMapping',sid))return[];
+  return unmappedBankLinesFor(sid,year,month);
+}
+// Pop-up with debit and credit lines; title / intro vary by where it is used.
+function UnmappedLinesPopup({list,title,intro,onClose,onNavTab}){
+  const h=React.createElement;const m=n=>n?'₹'+Number(n).toLocaleString('en-IN',{maximumFractionDigits:2}):'';
+  const dr=list.filter(x=>x.side==='Debit'),cr=list.filter(x=>x.side==='Credit');
+  const sum=(a,k)=>a.reduce((t,x)=>t+x[k],0);
+  const [side,setSide]=useState('All');
+  const shown=side==='All'?list:list.filter(x=>x.side===side);
+  return h('div',{className:'modal-overlay',style:{zIndex:3000},onClick:onClose},h('div',{className:'modal',style:{width:820,maxWidth:'96vw',maxHeight:'88vh',overflowY:'auto'},onClick:e=>e.stopPropagation()},
+    h('div',{className:'modal-title'},title),
+    h('div',{style:{fontSize:13,marginBottom:10,lineHeight:1.6}},intro),
+    h('div',{style:{display:'flex',gap:6,marginBottom:8,flexWrap:'wrap'}},[['All',list.length],['Debit',dr.length],['Credit',cr.length]].map(([k,n])=>h('button',{key:k,className:'btn btn-sm '+(side===k?'btn-primary':'btn-ghost'),onClick:()=>setSide(k)},k+' ('+n+')')),
+      h('span',{style:{fontSize:12,color:'var(--text3)',alignSelf:'center',marginLeft:6}},'Debit '+(m(sum(dr,'debit'))||'₹0')+' · Credit '+(m(sum(cr,'credit'))||'₹0'))),
+    h('div',{className:'table-wrap'},h('table',null,
+      h('thead',null,h('tr',null,['Date','Side','Description','Debit','Credit','Nature','What is missing'].map((t,i)=>h('th',{key:i,style:i===3||i===4?{textAlign:'right'}:null},t)))),
+      h('tbody',null,shown.slice(0,300).map((x,i)=>h('tr',{key:i},h('td',{style:{whiteSpace:'nowrap'}},x.date),h('td',{style:{color:x.side==='Debit'?'var(--orange)':'var(--green)',fontWeight:600}},x.side),
+        h('td',{style:{fontSize:12}},x.description),h('td',{style:{textAlign:'right'}},m(x.debit)),h('td',{style:{textAlign:'right'}},m(x.credit)),h('td',null,x.nature||'—'),h('td',{style:{color:'var(--red)',fontWeight:600,whiteSpace:'nowrap'}},x.problem)))))),
+    shown.length>300&&h('div',{style:{fontSize:12,color:'var(--text3)',marginTop:6}},'…and '+(shown.length-300)+' more.'),
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'In Bank Statement, filter Nature = (blank) to see unmapped lines together. These rules can be switched off in Master Settings → 🎛 Controls.'),
+    h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:onClose},'Close'),onNavTab&&h('button',{className:'btn btn-primary',onClick:()=>{onClose();onNavTab('bank-statement');}},'Go to Bank Statement →'))));
+}
+// Opens the pop-up from anywhere (no component state needed).
+function showUnmappedLinesPopup(list,title,intro,onNavTab){
+  const el=document.createElement('div');document.body.appendChild(el);const root=ReactDOM.createRoot(el);
+  const close=()=>{root.unmount();el.remove();};
+  root.render(React.createElement(typeof ToastProvider!=='undefined'?ToastProvider:React.Fragment,null,React.createElement(UnmappedLinesPopup,{list,title,intro,onClose:close,onNavTab})));
+}
+// Month Final check: true when the month may be finalised; otherwise shows the pop-up.
+function monthFinalMappingOk(sid,year,month,onNavTab){
+  const bl=monthFinalBlockedLines(sid,year,month);if(!bl.length)return true;
+  const dr=bl.filter(x=>x.side==='Debit').length,cr=bl.length-dr;
+  showUnmappedLinesPopup(bl,'⚠ Map every bank line before marking the month Final',
+    RPT_MONTHS[month]+' '+year+' cannot be marked Final yet: '+bl.length+' bank line'+(bl.length===1?'':'s')+' are not mapped ('+dr+' debit, '+cr+' credit). Map them in Bank Statement, then mark Final again.',onNavTab);
+  return false;
+}
+// Bank Statement strip: months with unmapped lines, each opens the list.
+function UnmappedMonthsStrip({salonId,onNavTab}){
+  const h=React.createElement;const [open,setOpen]=useState(null);
+  if(salonId==null)return null;
+  let bank=[];try{bank=JSON.parse(cachedLocalGet(outletKey('salonos_bank_statement_rows',salonId))||'[]')||[];}catch(e){}
+  const months=[...new Set(bank.map(r=>String(toISO(r&&r.transactionDate)||'').slice(0,7)).filter(x=>x.length===7))].sort().reverse().slice(0,6);
+  const rows=months.map(ym=>({ym,y:Number(ym.slice(0,4)),m:Number(ym.slice(5,7))-1})).map(x=>({...x,list:unmappedBankLinesFor(salonId,x.y,x.m)})).filter(x=>x.list.length);
+  if(!rows.length)return null;
+  return h('div',{style:{background:'rgba(224,165,48,0.1)',border:'1px solid rgba(224,165,48,0.4)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+    h('span',null,'🧩 Unmapped bank lines:'),
+    rows.map(x=>{const dr=x.list.filter(l=>l.side==='Debit').length;return h('button',{key:x.ym,className:'btn btn-ghost btn-sm',onClick:()=>setOpen(x)},RPT_MONTHS[x.m].slice(0,3)+' '+x.y+' — '+dr+' debit, '+(x.list.length-dr)+' credit');}),
+    open&&h(UnmappedLinesPopup,{list:open.list,title:'Unmapped bank lines — '+RPT_MONTHS[open.m]+' '+open.y,intro:'These lines still need a Nature (vendor payments a vendor or linked bill; card / UPI settlements a Date as per Cradlee). The month cannot be marked Final, nor its Collection Reco made, until they are mapped.',onClose:()=>setOpen(null),onNavTab:null}));
+}

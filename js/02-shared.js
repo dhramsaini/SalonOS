@@ -1139,12 +1139,14 @@ function saveVendors(list,salonId){
 }
 // Significant words from a vendor's name (drops common corporate suffixes) used for fuzzy
 // matching against bank narration text, which rarely spells a vendor's full registered name.
+// Accents dropped and apostrophes / dots joined, so "L'Oréal" reads as "loreal" and "M.A.C" as "mac".
+function vendorMatchNorm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/['’.`]/g,'').replace(/[^a-z0-9\s]/g,' ');}
 function vendorNameTokens(name){
   const stop=new Set(['pvt','ltd','llp','private','limited','services','solutions','solution','co','company','and','the','inc','india']);
-  return String(name||'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(w=>w.length>=4&&!stop.has(w));
+  return vendorMatchNorm(name).split(/\s+/).filter(w=>w.length>=4&&!stop.has(w));
 }
 function findVendorMatch(description,vendors){
-  const descNorm=String(description||'').toLowerCase().replace(/[^a-z0-9\s]/g,' ');
+  const descNorm=vendorMatchNorm(description);
   for(const v of (vendors||[])){
     const tokens=vendorNameTokens(v.name);
     if(tokens.length&&tokens.some(t=>descNorm.includes(t)))return v;

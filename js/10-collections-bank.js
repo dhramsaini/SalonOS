@@ -4311,6 +4311,7 @@ function BankStatement({salon,onNavTab}={}){
 
   return React.createElement('div',{className:'fade-in'},
     React.createElement(BankStaleStrip,{salonId}),
+    React.createElement(UnmappedMonthsStrip,{salonId,onNavTab}),
     setDtMismatch.length>0&&React.createElement('div',{style:{background:'rgba(224,82,82,0.08)',border:'1px solid rgba(224,82,82,0.35)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}},
       React.createElement('span',null,'⚠ ',React.createElement('b',null,setDtMismatch.length+' settlement line'+(setDtMismatch.length===1?'':'s')),' have a Date as per Cradlee different from the sale date in the bank narration (SETDT), e.g. '+(setDtMismatch[0].transactionDate||'')+': '+(setDtMismatch[0].cradleeDate||'blank')+' instead of '+settlementDateFromNarration(setDtMismatch[0].description)+'. Collection Reco adds bank credits by this date.'),
       React.createElement('button',{className:'btn btn-primary btn-sm',onClick:fixSetDt},'Fix from narration')),

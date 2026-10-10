@@ -437,7 +437,8 @@ function OutletPnLCore({salon,period}){
   const canFinalize=!!plUser&&(plUser.role==='Super Admin'||userCanEditSheet(plUser,sid,'outlet-pnl'));
   const toggleFinal=()=>{
     const label=PL_MONTHS[mi]+' '+(mi<9?fy.slice(0,4):'20'+fy.slice(5));
-    if(!plFinal){const cal0=periodToCalendar({fy,mi});const cm=cal0?collectionFinalBlockMessage(sid,cal0.year,cal0.month):'';if(cm){toast(cm,'error');return;}}
+    if(!plFinal){const cal0=periodToCalendar({fy,mi});const cm=cal0?collectionFinalBlockMessage(sid,cal0.year,cal0.month):'';if(cm){toast(cm,'error');return;}
+      if(cal0&&!monthFinalMappingOk(sid,cal0.year,cal0.month,typeof onNavTab==='function'?onNavTab:null))return;}
     if(!plFinal){if(!window.confirm('Mark the '+label+' P&L as FINAL? The whole month locks: nobody — Super Admin included — can change Daily Sales, Vendors, Attendance, Salary, Incentive, Advances, Penalties or the P&L for it. Only a Super Admin can un-finalize it, with a reason.'))return;}
     else if(!requestUnlock(sid,'the '+label+' P&L (it goes back to DRAFT and the month unlocks)'))return;
     setPnlFinal(sid,fy,mi,!plFinal);setFinalTick(t=>t+1);
