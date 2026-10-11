@@ -47,6 +47,11 @@ const CONTROL_DEFS=[
   {id:'pettyCashCheck',group:'Bank mapping',label:'Check cash withdrawals against the cash expenses entered',hint:'✅ Close tab: bank cash withdrawals (ATM / self cheque) of the month against the expenses in Daily Sales & Exp — the gap is cash not accounted for.',def:true},
   {id:'bankAuditorView',group:'Bank mapping',label:'Reviewers / CA can open the bank mapping read-only',hint:'Reports → Bank Mapping: review, exceptions, month close, payees and the certificate — nothing can be changed. Off = the tab is closed to them.',def:true},
   {id:'bankDailyDigest',group:'Bank mapping',label:'Bank lines in the 9 AM morning brief',hint:'Yesterday’s new bank lines and the lines still unmapped (over 7 days) per outlet, added to the morning brief email / WhatsApp. Needs the salonos-reports function redeployed.',def:false},
+  {id:'ownTransferPairs',group:'Bank mapping',label:'Recognise transfers between your own accounts and group companies',hint:'Narrations naming your own company / outlets (or ⋯ More → 🏢 Own accounts) are suggested as Transfer; the matching line in your other outlet is mapped too.',def:true},
+  {id:'newVendorFromNarration',group:'Bank mapping',label:'Offer to add an unknown payee as a vendor',hint:'A payee named in two or more NEFT / IMPS / UPI debits who is not a vendor yet is suggested as “+ New vendor” (name and IFSC taken from the narration).',def:true},
+  {id:'bankChargeGst',group:'Bank mapping',label:'Separate the GST on bank charges (input credit)',hint:'GST lines on bank charges are suggested as “Bank Charges GST” (own Tally ledger); a charge “incl. GST” is split 100 : 18.',def:true},
+  {id:'fdLines',group:'Bank mapping',label:'Recognise fixed deposits (booking, maturity, sweep) and FD interest',hint:'FD lines are suggested as Fixed Deposit (Tally: Fixed Deposits under Investments), FD interest as Interest.',def:true},
+  {id:'mappingSla',group:'Bank mapping',label:'Mapping time target — lines mapped within the days below',hint:'On-time % per outlet on Dashboard → 🏦 Bank Reco and in the ✅ Close tab (a line mapped on import counts as on time).',def:false,limit:3,limitLabel:'Days to map'},
   {id:'collRecoNeedsMapping',group:'Month close',label:'Collection Reco only after every bank credit of the month is mapped',hint:'Each credit line needs a Nature, and card / UPI settlements a Date as per Cradlee, before the month’s Collection Reco is shown or downloaded.',def:true},
   {id:'monthFinalNeedsMapping',group:'Month close',label:'Mark Month Final only after every bank line of the month is mapped',hint:'Debits need a Nature (vendor payments a vendor or linked bill); credits a Nature (card / UPI settlements a Date as per Cradlee). Applies to P&L Final and Daily Sales & Exp Month Final.',def:true},
   {id:'monthFinalRule',group:'Month close',label:'Mark Month Final only from the month’s last day',hint:'Daily Sales & Exp and Attendance cannot be finalised before the month ends.',def:true},
@@ -132,7 +137,7 @@ function ControlsCenterCard({salons}){
   return h('div',{className:'card',style:{marginBottom:16}},
     h('div',{className:'card-title'},'🎛 Controls'),
     h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:10,lineHeight:1.6}},'Switch each check or approval rule on or off for all outlets, then open “Outlet-wise” to set a different choice for any outlet. '+(canEdit?'':'Only a Super Admin can change these.')),
-    h('div',{className:'tab-bar',style:{marginBottom:10}},[['rules','Rules'],['appr','Approvals'+(pend.length?' ('+pend.length+')':'')]].map(([k,l])=>h('button',{key:k,className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
+    h('div',{className:'tab-bar',style:{marginBottom:10}},[['rules','Rules'],['checkup','Bank mapping check-up'],['appr','Approvals'+(pend.length?' ('+pend.length+')':'')]].map(([k,l])=>h('button',{key:k,className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
     tab==='rules'&&groups.map(g=>h('div',{key:g,style:{marginBottom:10}},
       h('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'8px 0 2px'}},g),
       CONTROL_DEFS.filter(d=>d.group===g).map(d=>{const over=outlets.filter(s=>outletState(d,s.id)!=='same').length;
@@ -149,6 +154,20 @@ function ControlsCenterCard({salons}){
                 h('span',{style:{flex:1}},String(s.name).split('—')[0].trim()),
                 h('span',{style:{fontSize:11,color:eff?'var(--green)':'var(--text3)',width:28}},eff?'On':'Off'),
                 [['same','Same as all'],['on','On'],['off','Off']].map(([v,l])=>h('button',{key:v,disabled:!canEdit,className:'btn btn-sm '+(st===v?'btn-primary':'btn-ghost'),style:{padding:'2px 8px'},onClick:()=>setOutlet(d,s.id,v)},l)));})));}))),
+    tab==='checkup'&&(()=>{const defs=CONTROL_DEFS.filter(d=>d.group==='Bank mapping'||d.group==='Month close');
+      const eff=(d,s)=>{const st=outletState(d,s.id);return st==='same'?allOn(d):st==='on';};
+      const off=defs.reduce((t,d)=>t+outlets.filter(s=>eff(d,s)!==d.def).length,0);
+      const useRec=()=>{if(!canEdit){toast('Only a Super Admin can change controls','error');return;}if(!window.confirm('Set every bank-mapping and month-close switch to the recommended setting for all outlets (outlet-wise choices are cleared; limits stay)?'))return;
+        const n={...c};defs.forEach(d=>{n[d.id]={...(n[d.id]||{}),on:d.def,outlets:{}};});setC(n);saveControls(n);try{logAuditEvent(null,{entity:'Controls',entityId:'bank-checkup',action:'Recommended settings applied',summary:defs.length+' switches'});}catch(e){}toast('Recommended settings applied','success');};
+      return h('div',null,
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:8}},
+          h('div',{style:{fontSize:12.5,color:off?'var(--orange)':'var(--green)'}},off?off+' outlet setting(s) differ from the recommended one (shaded below).':'✓ Every outlet uses the recommended settings.'),
+          canEdit&&h('button',{className:'btn btn-primary btn-sm',onClick:useRec},'Use recommended for all outlets')),
+        h('div',{className:'table-wrap'},h('table',null,
+          h('thead',null,h('tr',null,h('th',null,'Switch'),h('th',null,'Recommended'),outlets.map(s=>h('th',{key:s.id,style:{textAlign:'center'}},String(s.name).split('—')[0].trim())))),
+          h('tbody',null,defs.map(d=>h('tr',{key:d.id},h('td',{style:{fontSize:12.5}},d.label),h('td',{style:{fontSize:12,color:'var(--text3)'}},d.def?'On':'Off'),
+            outlets.map(s=>{const v=eff(d,s);return h('td',{key:s.id,style:{textAlign:'center',fontSize:12,fontWeight:600,color:v?'var(--green)':'var(--text3)',background:v!==d.def?'rgba(224,138,18,0.12)':undefined}},v?'On':'Off');})))))),
+        h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Recommended = suggestions and flags on, rules that stop people off. Change any switch on the Rules tab.'));})(),
     tab==='appr'&&h('div',null,
       !pend.length&&h('div',{style:{fontSize:12.5,color:'var(--text3)',padding:'6px 0'}},'Nothing waiting for approval.'),
       pend.map(a=>h('div',{key:a.id,style:{display:'flex',gap:10,alignItems:'center',borderBottom:'1px solid var(--border)',padding:'8px 0'}},

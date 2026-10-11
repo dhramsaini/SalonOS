@@ -347,6 +347,18 @@ const HELP_TOPICS=[
     'Open "ℹ️ How classification works" directly on the Bank Statement screen for the exact, current list of rules — it always reflects what\'s actually running, not a simplified summary.',
     'Anything auto-filled can be overridden by hand, and manual edits are never overwritten — except by "🪄 Re-classify," which is explicitly for correcting many rows at once.'
   ]},
+  {title:'Bank mapping — how it works',body:[
+    '<b>Map</b>: every bank line needs a Nature. ✓ Accept takes the suggestion (green = sure, amber = likely, red = guess); “Accept all sure” clears the easy ones. 🔗 Bill links vendor bills, 👤 Pay settles salary, 💵 Adv records an advance, ✂ Split spreads one line over several Natures. ⚡ Quick map: type “rent sharma 100300” and press Enter.',
+    '<b>Review</b>: a second person ticks each mapped line “Checked”. <b>Exceptions</b>: unusual payments (paid twice, above usual, new payee, round amounts …) — check each and mark it “It is right”. <b>Expected</b>: regular payments that have not come this month.',
+    '<b>Close</b>: one checklist for the month — mapped, checked, exceptions, regular payments, running balance, statutory dues, aggregator payouts, cash withdrawals, Tally — then ✅ Mark Final. 🧾 Certificate prints the month for the owner / CA.',
+    '<b>⋯ More</b>: Summary Excel, paste from Excel, map from Tally, year-end pack, rules, loans, own accounts, keyboard keys and the tour. 🕘 on any line shows its full history. Every check can be switched on or off in Master Settings → 🎛 Controls (and Bank mapping check-up there shows the recommended settings).'
+  ]},
+  {title:'बैंक मैपिंग — कैसे करें',body:[
+    '<b>मैप</b>: हर बैंक लाइन को एक Nature देनी है। ✓ Accept से सुझाव मान लें (हरा = पक्का, पीला = संभावित, लाल = अंदाज़ा)। “Accept all sure” से आसान लाइनें एक साथ हो जाती हैं। 🔗 Bill से वेंडर बिल जोड़ें, 👤 Pay से सैलरी, 💵 Adv से एडवांस, ✂ Split से एक लाइन को कई Nature में बाँटें।',
+    '<b>रिव्यू</b>: दूसरा व्यक्ति हर मैप की हुई लाइन पर “Checked” लगाता है। <b>Exceptions</b>: असामान्य भुगतान (दो बार भुगतान, सामान्य से ज़्यादा, नया पेयी) — जाँच कर “It is right” दबाएँ। <b>Expected</b>: इस महीने जो नियमित भुगतान नहीं आए।',
+    '<b>Close</b>: महीने की पूरी चेकलिस्ट — सब मैप, चेक, exceptions, बैलेंस, PF/ESIC/TDS, Tally — फिर ✅ Mark Final। 🧾 Certificate मालिक / CA के लिए प्रिंट होता है।',
+    '<b>⋯ More</b> में Summary Excel, Excel से पेस्ट, Tally से मैप, साल का पैक, नियम, लोन और टूर है। किसी भी लाइन पर 🕘 से उसका पूरा इतिहास दिखता है।'
+  ]},
   {title:'Sharing & exporting reports',body:[
     'The 📤 Share button (wherever it appears) offers PDF, Word, and Excel — all real files, not print-outs, so all three can go straight to WhatsApp, Email, or your device\'s own share sheet.',
     'Excel exports are fully color-coded and styled — dark headers, zebra striping, bold totals, real number formats — not just raw data in a grid.',
@@ -547,7 +559,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.10.11.144';
+const APP_VERSION='2026.10.11.145';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);

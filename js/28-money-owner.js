@@ -104,7 +104,7 @@ function BankMappingAgeingBoard({accessibleSalons,onOpenOutletTab,cal}){
   const h=React.createElement;const [cfOutlet,setCfOutlet]=useState('all');const [,setT]=useState(0);
   const outs=(accessibleSalons||[]).filter(s=>s&&s.id!=null&&s.status!=='Inactive'&&controlOn('bankAgeingBoard',s.id));
   if(!outs.length)return null;
-  const list=outs.map(s=>({s,a:bankUnmappedAgeing(s.id),rv:bankReviewProgress(s.id,cal.year,cal.month),hs:bankHealthScore(s.id,cal.year,cal.month),
+  const list=outs.map(s=>({s,a:bankUnmappedAgeing(s.id),rv:bankReviewProgress(s.id,cal.year,cal.month),hs:bankHealthScore(s.id,cal.year,cal.month),sla:bankMappingSla(s.id,cal.year,cal.month),
     nudge:controlOn('bankUnmappedNudge',s.id)?bankUnmappedOlderThan(s.id,controlLimit('bankUnmappedNudge')||7):null}));
   const from=new Date(cal.year,cal.month,1).getTime(),to=new Date(cal.year,cal.month+1,1).getTime()-1;
   const prod={};outs.forEach(s=>bankMappingProductivity(s.id,from,to).forEach(x=>{const k=x.user;const z=prod[k]=prod[k]||{user:k,mapped:0,fromSugg:0,auto:0,changed:0,undone:0,checked:0,outlets:new Set()};
@@ -136,7 +136,8 @@ function BankMappingAgeingBoard({accessibleSalons,onOpenOutletTab,cal}){
       '🧾 ',h('b',null,RPT_MONTHS[prevM.getMonth()]+' '+prevM.getFullYear()+' bank one-pager'),' has not been sent to the owner yet — pick that month above, then print or share it.',h('button',{className:'btn btn-ghost btn-sm',onClick:markOp},'Mark as sent')),
     h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}},
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(printBankOnePager(outs,cal.year,cal.month))markOp();}},'🧾 One-pager for '+RPT_MONTHS[cal.month]+' '+cal.year),
-      h('button',{className:'btn btn-ghost btn-sm',onClick:shareOp},'📲 Share summary on WhatsApp')),
+      h('button',{className:'btn btn-ghost btn-sm',onClick:shareOp},'📲 Share summary on WhatsApp'),
+      h('button',{className:'btn btn-ghost btn-sm',title:'Printable quarterly review: health, money in / out, exceptions, payment speed',onClick:()=>printBankQuarterDeck(outs,cal.year,cal.month)},'📊 Quarterly review')),
     alerts.length>0&&h('div',{className:'card',style:{padding:'10px 14px',marginBottom:14,borderColor:'rgba(192,57,43,0.4)'}},
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}},h('b',null,'🔔 Checked / Final bank lines changed ('+alerts.length+')'),
         isSA&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{outs.forEach(s=>markBankChangeAlertsSeen(s.id,null));setT(t=>t+1);}},'Mark all seen')),
@@ -146,14 +147,15 @@ function BankMappingAgeingBoard({accessibleSalons,onOpenOutletTab,cal}){
     h('div',{className:'page-title',style:{fontSize:18}},'Unmapped bank lines by age'),
     h('div',{className:'page-sub',style:{marginBottom:8}},'Every month, counted from the bank date to today. “Checked” is the second-person review and Health the mapping health score (mapped 40%, checked 20%, ageing 25%, exceptions 15%) for '+RPT_MONTHS[cal.month]+' '+cal.year+'.'),
     h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,
-      h('thead',null,h('tr',null,['Outlet','0–7 days','8–30 days','Over 30 days','Oldest','Checked','Health',''].map((t,i)=>h('th',{key:i,style:i&&i<7?{textAlign:'right'}:null},t)))),
-      h('tbody',null,list.map(({s,a,rv,hs,nudge})=>h('tr',{key:s.id},h('td',{style:{fontWeight:600}},rptShort(s)),cell(a.a.n,a.a.amt,'var(--text)'),cell(a.b.n,a.b.amt,'var(--orange)'),cell(a.c.n,a.c.amt,'var(--red)'),
+      h('thead',null,h('tr',null,['Outlet','0–7 days','8–30 days','Over 30 days','Oldest','Checked','On time','Health',''].map((t,i)=>h('th',{key:i,style:i&&i<8?{textAlign:'right'}:null},t)))),
+      h('tbody',null,list.map(({s,a,rv,hs,nudge,sla})=>h('tr',{key:s.id},h('td',{style:{fontWeight:600}},rptShort(s)),cell(a.a.n,a.a.amt,'var(--text)'),cell(a.b.n,a.b.amt,'var(--orange)'),cell(a.c.n,a.c.amt,'var(--red)'),
         h('td',{style:{textAlign:'right',color:'var(--text3)'}},a.oldest?moDmy(a.oldest):'—'),
         h('td',{style:{textAlign:'right',color:rv.total&&rv.pct<100?'var(--orange)':'var(--green)'}},rv.total?rv.done+'/'+rv.total+' ('+rv.pct+'%)':'—'),
+        h('td',{style:{textAlign:'right',color:sla?(sla.pct>=90?'var(--green)':sla.pct>=70?'var(--orange)':'var(--red)'):'var(--text3)'},title:sla?'Mapped within '+sla.days+' day(s): '+sla.on+' on time, '+sla.late+' late':'Turn on the mapping time target in Controls'},sla?sla.pct+'%':'—'),
         h('td',{style:{textAlign:'right',fontWeight:700,color:hs.score>=90?'var(--green)':hs.score>=70?'var(--orange)':'var(--red)'},title:'Mapped '+hs.mapped+'% · checked '+hs.reviewed+'% · ageing '+hs.ageing+' · '+hs.exceptions+' exception(s)'},hs.score),
         h('td',{style:{whiteSpace:'nowrap'}},onOpenOutletTab&&(a.a.n+a.b.n+a.c.n)>0&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>onOpenOutletTab(s,'bank-statement')},'Map'),
           nudge&&nudge.n>0&&h('button',{className:'btn btn-ghost btn-sm',title:nudgedAt(s.id)?'Last nudged '+new Date(nudgedAt(s.id)).toLocaleString('en-IN'):'Send a WhatsApp reminder to the outlet phone',onClick:()=>doNudge(s,nudge)},'📲 Nudge ('+nudge.n+')'+(nudgedAt(s.id)&&Date.now()-nudgedAt(s.id)<864e5?' ✓':''))))),
-        list.length>1&&h('tr',{key:'tot',style:{fontWeight:700}},h('td',null,'All outlets'),...['a','b','c'].map(k=>h('td',{key:k,style:{textAlign:'right'}},tot(k)||'—')),h('td'),h('td'),h('td'),h('td')))))),
+        list.length>1&&h('tr',{key:'tot',style:{fontWeight:700}},h('td',null,'All outlets'),...['a','b','c'].map(k=>h('td',{key:k,style:{textAlign:'right'}},tot(k)||'—')),h('td'),h('td'),h('td'),h('td'),h('td')))))),
     h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end',gap:8,flexWrap:'wrap',marginTop:18}},
       h('div',null,h('div',{className:'page-title',style:{fontSize:18}},'Cash flow by Nature — 6 months to '+RPT_MONTHS[cal.month]+' '+cal.year),
         h('div',{className:'page-sub'},'From the bank statement: money in less money out for each Nature (split lines by part). Unmapped lines show as “(not mapped)”.')),

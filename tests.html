@@ -1317,6 +1317,26 @@
           [combo,pair,emi,wd,cw&&[cw.total,cw.gap>0],agg,[cf,/Ravi/.test(asked)],sig1!==sig2,[ro1,ro2,ro3],off.includes('bank:'),on.includes('bank: 2 new lines yesterday, 2 unmapped (1 over 7 days)')],
           ['A1+A2',['pair',4000],'Loan Interest:5000,Loan Principal:5000','Cash Withdrawal',[5000,true],['Swiggy:9000:-180:false'],[false,true],true,[false,true,false],false,true]);
       }catch(err){results.push({name:'Smarter matching & reach',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=928;saveControls({mappingSla:{on:true,limit:3}});saveVendors([],S);saveVendorInvoices([],S);saveEmployees([{id:'E1',name:'Sangita Rai',status:'Active'}],S);
+        safeLocalSet('salonos_bank_map_journal_outlet_'+S,'[]');saveOwnEntities([{name:'Moksha Wellness Pvt Ltd'}]);
+        const rows=[{id:'O1',transactionDate:'05/10/2026',description:'NEFT DR-UTIB0000707-MOKSHA WELLNESS PVT LTD-NETBANK, MUM-N11',debit:50000,nature:''},
+          {id:'P1',transactionDate:'06/10/2026',description:'NEFT DR-ICIC0006251-PV MARKETING-NETBANK, MUM-N1152430021385',debit:12000,nature:''},{id:'P2',transactionDate:'01/09/2026',description:'NEFT DR-ICIC0006251-PV MARKETING-NETBANK, MUM-N99',debit:9000,nature:''},
+          {id:'ST',transactionDate:'07/10/2026',description:'NEFT DR-SBIN0007218-SANGITA RAI INDIRANAGAR-NETBANK, MUM-N18',debit:20000,nature:''},{id:'ST2',transactionDate:'07/09/2026',description:'NEFT DR-SBIN0007218-SANGITA RAI INDIRANAGAR-NETBANK, MUM-N17',debit:20000,nature:''},
+          {id:'G1',transactionDate:'08/10/2026',description:'IGST ON SMS CHARGES',debit:2.7,nature:''},{id:'G2',transactionDate:'08/10/2026',description:'DEBIT CARD ANNUAL FEE INCL GST',debit:590,nature:''},
+          {id:'F1',transactionDate:'09/10/2026',description:'FD BOOKING 1234',debit:100000,nature:''},{id:'F2',transactionDate:'09/10/2026',description:'INT PD ON FD 1234',credit:1500,nature:''},
+          {id:'J1',transactionDate:'05/07/2026',description:'OLD',debit:10,nature:'Other'}];
+        safeLocalSet('salonos_bank_statement_rows_outlet_'+S,JSON.stringify(rows));
+        const L=unmappedBankLinesFor(S,2026,9);const sg=bankSuggestionsFor(S,L,bankRowsFor(S));const lab=id=>sg[id]?(sg[id].apply.type==='newVendor'?'new:'+sg[id].apply.name:suggestionNature(sg[id])):'-';
+        const g2=sg.G2&&sg.G2.apply.patch.splits.map(z=>z.nature+':'+z.amount).join(',');
+        applyBankSuggestion(S,L.find(x=>x.id==='P1'),sg.P1,null,bankRowsFor(S));const nv=loadVendors(S).map(v=>v.name+':'+v.ifsc).join(',');
+        const miss=bankMissingMonths(S);const sla=bankMappingSla(S,2026,9);
+        const help=HELP_TOPICS.some(h=>/Bank mapping/.test(h.title))&&HELP_TOPICS.some(h=>/बैंक/.test(h.title));
+        saveControls({});saveOwnEntities([]);
+        eq('Real-data fixes: own-company transfer, new vendor from narration (staff excluded), GST on charges, FD, missing months, mapping time target, help pages',
+          [lab('O1'),lab('P1'),lab('ST'),lab('G1'),g2,lab('F1'),lab('F2'),nv,bankPayeeName('IB FUNDS TRANSFER DR-50200046176297  -MYSHA VENTURES LLP'),miss,sla&&sla.days,help],
+          ['Transfer','new:PV Marketing','-','Bank Charges GST','Bank Charges:500,Bank Charges GST:90','Fixed Deposit','Interest','PV Marketing:ICIC0006251','Mysha Ventures LLP',['2026-08'],3,true]);
+      }catch(err){results.push({name:'Real-data fixes',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

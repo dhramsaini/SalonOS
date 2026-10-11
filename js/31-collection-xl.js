@@ -176,8 +176,8 @@ function saveBankLineMapping(sid,id,patch){
   const rows=bankRowsFor(sid);if(!rows.some(r=>r.id===id))return;
   safeLocalSet(outletKey('salonos_bank_statement_rows',sid),JSON.stringify(rows.map(r=>r.id===id?{...r,...patch}:r)));
 }
-const BANK_MAP_NATURES=['Collection','Cash Deposit','Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','EazyDiner Settlement','Ownly Settlement','Eatby Minutes Settlement','Bank Charges','Interest','Vendor Payment','Salary','Incentive','Daily Incentive','Advance Salary','TDS','GST','PF Payment','ESIC Payment','PT Payment','Electricity Expenses','Drycleaning Expenses','Telephone & Internet Expenses','DG Rent','Royalty','Rent','Tax Payment','Cash Withdrawal','Loan Principal','Loan Interest','Transfer','Refund','Other'];
-const BANK_CREDIT_NATURES=new Set(['Collection','Cash Deposit','Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','EazyDiner Settlement','Ownly Settlement','Eatby Minutes Settlement','Interest','Transfer','Refund','Other']);
+const BANK_MAP_NATURES=['Collection','Cash Deposit','Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','EazyDiner Settlement','Ownly Settlement','Eatby Minutes Settlement','Bank Charges','Interest','Vendor Payment','Salary','Incentive','Daily Incentive','Advance Salary','TDS','GST','PF Payment','ESIC Payment','PT Payment','Electricity Expenses','Drycleaning Expenses','Telephone & Internet Expenses','DG Rent','Royalty','Rent','Tax Payment','Cash Withdrawal','Loan Principal','Loan Interest','Bank Charges GST','Fixed Deposit','Transfer','Refund','Other'];
+const BANK_CREDIT_NATURES=new Set(['Collection','Cash Deposit','Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','EazyDiner Settlement','Ownly Settlement','Eatby Minutes Settlement','Interest','Fixed Deposit','Transfer','Refund','Other']);
 // Links a bank debit to vendor bills the same way Bank Statement's 🔗 Link does: a payment on each
 // bill (linkId bank-<row id>) and the bill keys on the bank line. allocations = [{id, amount}].
 // Returns '' when done, else the reason it was not linked.
@@ -374,7 +374,7 @@ function planBulkAdvances(sid,lines,deductFrom){
 // A journal per outlet, kept while the app is open: each bank line mapped from the pop-up, with its
 // fields as they were before (the earliest state if it was changed several times), bills created for
 // it, and the Advances sheet as it was before an advance was recorded.
-const BANK_MAP_FIELDS=['nature','vendorOverride','cradleeDate','linkedInvoice','linkedEmployeePay','linkedAdvance','aiTagged','natureLearned','splits','reversalOf','natureRule','mapNote','loanId'];
+const BANK_MAP_FIELDS=['nature','vendorOverride','cradleeDate','linkedInvoice','linkedEmployeePay','linkedAdvance','aiTagged','natureLearned','splits','reversalOf','natureRule','mapNote','loanId','transferOf'];
 // The pop-up itself (UnmappedLinesPopup) is in js/32-bank-mapper.js.
 // Collection Reco: credits only.
 function UnmappedCreditsPopup({sid,year,month,monthLabel,onClose,onNavTab,onMapped}){
