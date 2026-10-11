@@ -187,7 +187,7 @@ function linkBankLineToBills(sid,row,vendor,allocations,onMap){
   const tot=al.reduce((t,a)=>t+Number(a.amount),0),deb=Number(row.debit)||0;
   if(tot>deb+1)return'₹'+Math.round(tot).toLocaleString('en-IN')+' is more than this bank debit (₹'+deb.toLocaleString('en-IN')+').';
   const fresh=loadVendorInvoices(sid)||[];
-  const over=fresh.find(inv=>{const a=al.find(x=>x.id===inv.id);return a&&Number(a.amount)>bal(inv)+1;});
+  const over=fresh.find(inv=>{const a=al.find(x=>x.id===inv.id);return a&&Number(a.amount)+(Number(a.tds)||0)>bal(inv)+1;});
   if(over)return'Bill '+(over.invoiceNo||over.id)+' would get more than its balance (₹'+Math.round(bal(over)).toLocaleString('en-IN')+').';
   const blocked=fresh.filter(inv=>al.some(a=>a.id===inv.id)&&invoiceNeedsApproval(inv,sid));
   if(blocked.length)return'Not approved yet: '+blocked.map(i=>i.invoiceNo||i.id).join(', ')+' — a Super Admin has to approve these bills first.';
@@ -196,7 +196,10 @@ function linkBankLineToBills(sid,row,vendor,allocations,onMap){
     if(a&&!confirmNoDuplicatePayment(inv,{...inv,payments:[...(inv.payments||[]),{id:'__new',paidAmount:Number(a.amount),paidDate,mode:'Bank Transfer'}]}))return'Cancelled.';}
   const keys=[];
   const updated=fresh.map(inv=>{const a=al.find(x=>x.id===inv.id);if(!a)return inv;keys.push(invoiceKeyFor(inv));
-    return{...inv,payments:[...(inv.payments||[]),{paidAmount:Number(a.amount),paidDate,mode:'Bank Transfer',ref:row.refNo||'',note:'Auto-linked from Bank Statement'+(al.length>1?' (split payment)':''),linkId}]};});
+    const pays=[{paidAmount:Number(a.amount),paidDate,mode:'Bank Transfer',ref:row.refNo||'',note:'Auto-linked from Bank Statement'+(al.length>1?' (split payment)':''),linkId}];
+    // TDS deducted on this bill when it was paid (bank amount = bill − TDS) — kept with the same link so Undo removes both.
+    if(Number(a.tds)>0)pays.push({paidAmount:Math.round(Number(a.tds)*100)/100,paidDate,mode:'TDS',ref:'',note:'TDS deducted at source — paid with bank transfer of '+(row.transactionDate||''),linkId});
+    return{...inv,payments:[...(inv.payments||[]),...pays]};});
   saveVendorInvoices(updated,sid);
   const patch={linkedInvoice:keys.join(','),nature:'Vendor Payment',vendorOverride:vendor.name};
   if(onMap)onMap(row.id,patch);else saveBankLineMapping(sid,row.id,patch);
@@ -309,6 +312,14 @@ function planBulkBillLinks(sid,lines,split){
     open.forEach(i=>{if(rem<=0.005)return;const a=Math.round(Math.min(left[i.id],rem)*100)/100;if(a>0){al.push({id:i.id,invoiceNo:i.invoiceNo||i.id,amount:a});left[i.id]=Math.round((left[i.id]-a)*100)/100;rem=Math.round((rem-a)*100)/100;}});
     return{x,vendor:v,allocations:al};});
 }
+// Employee for a bank narration: the name, else their bank account number (last 6+ digits) or mobile.
+function findEmployeeByBank(desc,emps){
+  const digits=String(desc||'').replace(/[^0-9]/g,' ').split(/\s+/).filter(d=>d.length>=6);if(!digits.length)return null;
+  const hits=(emps||[]).filter(e=>{const ac=String(e.accountNo||'').replace(/[^0-9]/g,'');const mo=String(e.mobile||e.phone||'').replace(/[^0-9]/g,'').slice(-10);
+    return (ac.length>=6&&digits.some(t=>t===ac||(t.length>=6&&(ac.endsWith(t)||t.endsWith(ac.slice(-6))))))||(mo.length===10&&digits.some(t=>t.endsWith(mo)));});
+  return hits.length===1?hits[0]:null;
+}
+function findEmployeeSmart(desc,emps){return findEmployeeMatch(desc,emps)||findEmployeeByBank(desc,emps);}
 // Plan for settling many bank debits against employees at once. Per line: the employee named in
 // the narration, the month (forced, else the month before when paid on or before the 15th), and what
 // the amount matches exactly — salary due, incentive due, both together, or all daily incentive due.
@@ -321,7 +332,7 @@ function planBulkEmployeePay(sid,lines,forceYM,rows){
     let y,m;if(forceYM){y=forceYM.year;m=forceYM.month;}else{const iso=toISO(x.date);const d=iso?new Date(iso+'T00:00:00'):null;if(!d)return{x,reason:'No bank date'};
       const p=d.getDate()<=15?new Date(d.getFullYear(),d.getMonth()-1,1):new Date(d.getFullYear(),d.getMonth(),1);y=p.getFullYear();m=p.getMonth();}
     const emps=(getEmployeesForMonth(y,m,sid)||[]).filter(e=>e&&e.status!=='Inactive');
-    const e=findEmployeeMatch(x.description,emps);
+    const e=findEmployeeSmart(x.description,emps);
     if(!e)return{x,year:y,month:m,reason:'No employee named in the narration — use 👤 Pay employees on this line'};
     const k=e.id+'|'+y+'|'+m;const u=used[k]||(used[k]={sal:false,inc:false,di:false});
     const sal=u.sal?0:R(employeeSalaryOutstandingFor(sid,e.id,y,m)),inc=u.inc?0:R(employeeIncentiveOutstandingFor(sid,e.id,y,m));
@@ -345,7 +356,7 @@ function planBulkAdvances(sid,lines,deductFrom){
   const takenIds=new Set(),batch={};const block=!!outletSettings(sid).advBlock;
   return(lines||[]).map(x=>{
     if(x.side!=='Debit')return{x,reason:'Credit line'};
-    const e=findEmployeeMatch(x.description,emps);
+    const e=findEmployeeSmart(x.description,emps);
     if(!e)return{x,reason:'No employee named in the narration — use 💵 Advance on this line'};
     const cand=advanceCandidatesForEmp(sid,e.name).filter(a=>!takenIds.has(a.id)&&Math.abs((Number(a.outstanding!=null?a.outstanding:a.amount)||0)-x.debit)<=1);
     if(cand.length===1){takenIds.add(cand[0].id);return{x,emp:e,linked:cand[0].id,line:{employeeId:e.id,employeeName:e.name,linkExistingId:cand[0].id}};}

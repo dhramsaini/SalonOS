@@ -4317,6 +4317,9 @@ function BankStatement({salon,onNavTab}={}){
     autoMatchPendingRef.current=null;
     const msg=autoLinkAll({onlyIds:ids});
     if(msg)setMessage(m=>(m?m+' \u00b7 ':'')+msg);
+    // Controls → Map “sure” lines automatically on import
+    if(controlOn('bankAutoMapImport',salonId))setTimeout(()=>{try{const r=autoMapBankLines(salonId,ids,(id,patch)=>setRows(p=>p.map(x=>x.id===id?{...x,...patch}:x)));
+      if(r.done){setVendorInvoices(loadVendorInvoices(salonId));setMessage(m=>(m?m+' \u00b7 ':'')+r.done+' line'+(r.done===1?'':'s')+' mapped automatically ('+r.summary+') — review or undo them in the 🧩 mapping pop-up.');}}catch(e){}},400);
   },[rows]);
 
   return React.createElement('div',{className:'fade-in'},

@@ -1109,6 +1109,30 @@
           [!!ru&&ru.nature,rp.cradleeDate,rp2.cradleeDate,sg[1]&&sg[1].conf+':'+sg[1].apply.patch.nature+':'+sg[1].apply.patch.cradleeDate,sg[2]&&sg[2].conf+':'+sg[2].apply.patch.nature,sg[3]&&sg[3].apply.patch.nature,Object.keys(dmap).sort().join(','),rd.total+'/'+rd.mapped+'/'+rd.unDebit+'/'+rd.unCredit,ap],
           ['Bank Charges','04/10/2026','04/10/2026','high:Card Settlement:04/10/2026','high:Bank Charges','Cash Deposit','4,5','6/1/3/2',[false,true,false]]);
       }catch(err){results.push({name:'Bank mapper',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=919;const A0=window.confirm;window.confirm=()=>true;
+        safeLocalSet('salonos_vendors_outlet_'+S,JSON.stringify([{id:'V1',name:'Tds Vendor Pvt',tdsApplicable:true,tdsRate:10},{id:'V2',name:'Other Supplier'}]));
+        safeLocalSet('salonos_vendor_invoices_outlet_'+S,JSON.stringify([{id:'B1',vendorId:'V1',invoiceNo:'TV-501',invoiceDate:'01/10/2026',amount:11800,taxable:10000,payments:[]},{id:'B2',vendorId:'V2',invoiceNo:'INV-7781',invoiceDate:'02/10/2026',amount:5000,payments:[]}]));
+        const inv=loadVendorInvoices(S);const left={};inv.forEach(i=>left[i.id]=i.amount);const ctx={inv,left,vendors:loadVendors(S)};
+        const t=planSmartBillLink(S,{id:1,side:'Debit',debit:10800,description:'NEFT TDS VENDOR PVT'},ctx);
+        const bn=planSmartBillLink(S,{id:2,side:'Debit',debit:3000,description:'NEFT PAYMENT INV-7781 THANKS'},ctx);
+        linkBankLineToBills(S,{id:'R1',debit:10800,transactionDate:'10/10/2026'},{name:'Tds Vendor Pvt'},t.allocations,null);
+        const b1=loadVendorInvoices(S).find(i=>i.id==='B1');
+        const emp=findEmployeeByBank('IMPS/50100123456789/SAL',[{id:'E1',name:'Ravi',accountNo:'50100123456789'},{id:'E2',name:'Sita',accountNo:'1111222233'}]);
+        safeLocalSet('salonos_cradlee_collection_rows_outlet_'+S,JSON.stringify([{invoiceDate:'14/10/2026',card:10000,upi:0,cash:0}]));
+        const bd=cradleeDateByAmount(S,{credit:9820,date:'15/10/2026'},'card',{totals:cradleeDayTotals(S),claimed:{}});
+        safeLocalSet('salonos_bank_rules_outlet_'+S,'[]');addBankRule(S,{sig:'',side:'Credit',contains:'swiggy',minAmt:100,maxAmt:'',nature:'Swiggy Settlement'});
+        const r1=matchBankRule(S,{description:'NEFT CR SWIGGY BUNDL',credit:500}),r2=matchBankRule(S,{description:'NEFT CR SWIGGY BUNDL',credit:50});
+        safeLocalSet('salonos_bank_statement_rows_outlet_'+S,JSON.stringify([{id:'C1',transactionDate:'15/10/2026',description:'SMS ALERT CHRGS QTR',debit:59,nature:''},{id:'C2',transactionDate:'16/10/2026',description:'CMS_IFT CARD PMT MID-1 SETDT-15102026IDFC',credit:900,nature:''}]));
+        safeLocalSet('salonos_bank_sugg_feedback_outlet_'+S,'{}');const L0=unmappedBankLinesFor(S,2026,9);const before=bankSuggestionsFor(S,L0,bankRowsFor(S));const x1=L0.find(x=>x.id==='C1');
+        noteBankFeedback(S,x1,'Bank Charges',false);const mid=bankSuggestionsFor(S,L0,bankRowsFor(S));noteBankFeedback(S,x1,'Bank Charges',false);const gone=bankSuggestionsFor(S,L0,bankRowsFor(S));
+        saveControls({});const am=autoMapBankLines(S,new Set(['C1','C2']),null);const rr=bankRowsFor(S);
+        window.confirm=A0;
+        eq('Smarter mapping: TDS-aware and bill-number links, employee by account, sale date by amount, conditional rule, learning from changes, auto-map',
+          [t&&t.how,t&&t.allocations[0].tds,bn&&bn.how+':'+bn.allocations[0].invoiceNo,b1.payments.map(q=>q.mode+':'+q.paidAmount).join(','),emp&&emp.id,bd&&bd.dmy,!!r1,!!r2,
+            before.C1&&before.C1.conf,mid.C1&&mid.C1.conf,!!gone.C1,am.done,rr.find(r=>r.id==='C2').nature+'|'+rr.find(r=>r.id==='C2').cradleeDate,rr.find(r=>r.id==='C1').nature||'-'],
+          ['tds',1000,'partial:INV-7781','Bank Transfer:10800,TDS:1000','E1','14/10/2026',true,false,'mid','low',false,1,'Card Settlement|15/10/2026','-']);
+      }catch(err){results.push({name:'Smarter mapping',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

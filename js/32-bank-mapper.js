@@ -22,14 +22,18 @@ function bmapUser(){const u=currentSessionUser();return u?(u.name||u.email||'—
 function bankRulesKey(sid){return outletKey('salonos_bank_rules',sid);}
 function loadBankRules(sid){try{const v=JSON.parse(cachedLocalGet(bankRulesKey(sid))||'[]');return Array.isArray(v)?v:[];}catch(e){return[];}}
 function saveBankRules(sid,list){safeLocalSet(bankRulesKey(sid),JSON.stringify((list||[]).slice(-300)));}
+// A rule matches on its narration pattern (sig) and/or “narration contains”, and an optional amount range.
 function matchBankRule(sid,row,rules){
-  const side=Number(row&&row.credit)>0?'Credit':'Debit';const sg=bmapSig(row&&row.description);if(sg.length<6)return null;
-  return(rules||loadBankRules(sid)).find(r=>r.side===side&&r.sig===sg)||null;
+  const side=Number(row&&row.credit)>0?'Credit':'Debit';const desc=String(row&&row.description||'');const sg=bmapSig(desc);const amt=Number(row&&(row.credit||row.debit))||0;
+  const ok=r=>r.side===side&&(!r.sig||(sg.length>=6&&r.sig===sg))&&(!r.contains||desc.toLowerCase().includes(String(r.contains).toLowerCase()))&&(r.sig||r.contains)
+    &&(r.minAmt===''||r.minAmt==null||amt>=Number(r.minAmt))&&(r.maxAmt===''||r.maxAmt==null||amt<=Number(r.maxAmt));
+  const L=(rules||loadBankRules(sid)).filter(ok);
+  return L.find(r=>r.contains||r.minAmt||r.maxAmt)||L[0]||null; // a rule with conditions wins over a plain pattern
 }
 function addBankRule(sid,rule){
-  const list=loadBankRules(sid).filter(r=>!(r.side===rule.side&&r.sig===rule.sig));
+  const list=loadBankRules(sid).filter(r=>!(rule.sig&&!rule.contains&&!rule.minAmt&&!rule.maxAmt&&r.side===rule.side&&r.sig===rule.sig&&!r.contains&&!r.minAmt&&!r.maxAmt));
   list.push({id:'BR'+Date.now()+Math.random().toString(36).slice(2,5),...rule,by:bmapUser(),at:new Date().toISOString()});saveBankRules(sid,list);
-  try{logAuditEvent(sid,{entity:'Bank Statement',entityId:'rule',action:'Rule added',summary:rule.side+' lines like “'+rule.sig+'” → '+rule.nature+(rule.vendorOverride?' · '+rule.vendorOverride:'')});}catch(e){}
+  try{logAuditEvent(sid,{entity:'Bank Statement',entityId:'rule',action:'Rule added',summary:rule.side+' lines '+(rule.contains?'containing “'+rule.contains+'”':'like “'+rule.sig+'”')+(rule.minAmt||rule.maxAmt?' ₹'+(rule.minAmt||0)+'–'+(rule.maxAmt||'any'):'')+' → '+rule.nature+(rule.vendorOverride?' · '+rule.vendorOverride:'')});}catch(e){}
 }
 function bankRulePatch(rule,row){
   const p={nature:rule.nature};if(rule.vendorOverride)p.vendorOverride=rule.vendorOverride;
@@ -104,6 +108,76 @@ function bankMonthReadiness(sid,year,month,rows){
     unDebit:ud.length,unCredit:uc.length,unDebitAmt:ud.reduce((t,x)=>t+x.debit,0),unCreditAmt:uc.reduce((t,x)=>t+x.credit,0)};
 }
 
+
+// ── Learning from changed suggestions: {key:'side|sig|nature', rej, acc} ──
+function bankFeedbackKey(sid){return outletKey('salonos_bank_sugg_feedback',sid);}
+function loadBankFeedback(sid){try{return JSON.parse(cachedLocalGet(bankFeedbackKey(sid))||'{}')||{};}catch(e){return{};}}
+function noteBankFeedback(sid,x,nature,accepted){
+  if(!x||!nature)return;const k=x.side+'|'+bmapSig(x.description)+'|'+nature;const f=loadBankFeedback(sid);const e=f[k]||{rej:0,acc:0};
+  if(accepted)e.acc++;else e.rej++;f[k]=e;const keys=Object.keys(f);if(keys.length>600)keys.slice(0,keys.length-600).forEach(z=>delete f[z]);
+  safeLocalSet(bankFeedbackKey(sid),JSON.stringify(f));
+}
+function suggestionNature(s){return s&&(s.apply.type==='patch'?(s.apply.patch.nature||''):s.apply.type==='link'?'Vendor Payment':s.apply.type==='pay'?s.apply.plan.what:'');}
+
+// ── Bill matching by bill number in the narration, and with TDS deducted ──
+function planSmartBillLink(sid,x,ctx){
+  const R=n=>Math.round((Number(n)||0)*100)/100;const desc=String(x.description||'');const compact=desc.toLowerCase().replace(/[^a-z0-9]/g,'');
+  const nums=desc.replace(/[^0-9]/g,' ').split(/\s+/).filter(d=>d.length>=3);
+  const vendors=ctx.vendors;const v0=x.vendorOverride&&x.vendorOverride!=='__none__'?vendors.find(v=>v.name===x.vendorOverride):findVendorMatch(desc,vendors);
+  const open=ctx.inv.filter(i=>(ctx.left[i.id]||0)>0.5&&(!v0||String(i.vendorId)===String(v0.id)));
+  const byNo=open.filter(i=>{const n=String(i.invoiceNo||'').toLowerCase().replace(/[^a-z0-9]/g,'');if(n.length<3)return false;if(compact.includes(n))return true;const d=String(i.invoiceNo||'').replace(/[^0-9]/g,'');return d.length>=4&&nums.includes(d);});
+  const tdsOf=(i,v)=>{const r=Number(v&&v.tdsRate)||0;if(!(v&&v.tdsApplicable)||!r)return[];const base=[Number(i.taxable)||0,Number(i.amount)||0].filter(n=>n>0);return[...new Set(base.map(b=>Math.round(b*r/100)))];};
+  const tryBill=(i,how)=>{const v=vendors.find(z=>String(z.id)===String(i.vendorId));const bal=ctx.left[i.id];
+    if(Math.abs(x.debit-bal)<=1)return{vendor:v,how,allocations:[{id:i.id,invoiceNo:i.invoiceNo||i.id,amount:R(Math.min(x.debit,bal))}]};
+    const gap=R(bal-x.debit);if(gap>0&&tdsOf(i,v).some(t=>Math.abs(t-gap)<=1))return{vendor:v,how:how+'+tds',allocations:[{id:i.id,invoiceNo:i.invoiceNo||i.id,amount:R(x.debit),tds:gap}]};
+    if(how==='billno'&&x.debit<bal)return{vendor:v,how:'partial',allocations:[{id:i.id,invoiceNo:i.invoiceNo||i.id,amount:R(x.debit)}]};
+    return null;};
+  if(byNo.length===1){const r=tryBill(byNo[0],'billno');if(r)return r;}
+  if(v0&&v0.tdsApplicable){const hits=open.map(i=>tryBill(i,'tds')).filter(r=>r&&r.how==='tds+tds');if(hits.length===1)return{...hits[0],how:'tds'};}
+  return null;
+}
+
+// ── Card / UPI sale date by amount: the day whose Cradlee card (or UPI) sales match the credit less charges ──
+function cradleeDayTotals(sid){
+  let rows=[],inc={wallet:true,district:true,luzo:true,online:true};
+  try{rows=JSON.parse(cachedLocalGet(outletKey('salonos_cradlee_collection_rows',sid))||'[]')||[];}catch(e){}
+  try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_cs_card_include_cols',sid))||'null');if(v)inc=v;}catch(e){}
+  const t={};rows.forEach(r=>{const d=r&&r.invoiceDate;if(!d)return;const e=t[d]||(t[d]={card:0,upi:0});
+    e.card+=(Number(r.card)||0)+(inc.wallet!==false?Number(r.wallet)||0:0)+(inc.district!==false?Number(r.district)||0:0)+(inc.luzo!==false?Number(r.luzo)||0:0)+(inc.online!==false?Number(r.online)||0:0);e.upi+=Number(r.upi)||0;});
+  return t;
+}
+function cradleeDateByAmount(sid,x,kind,ctx){
+  const iso=toISO(x.date);if(!iso)return null;const base=new Date(iso+'T00:00:00');let best=null;
+  for(let k=1;k<=5;k++){const d=new Date(base.getTime()-k*864e5);const dmy=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+    const tot=(ctx.totals[dmy]||{})[kind]||0;if(!(tot>0))continue;if(ctx.claimed[kind+'|'+dmy])continue;
+    const ratio=x.credit/tot;if(ratio<0.955||ratio>1.0005)continue;const fee=1-ratio;if(!best||fee<best.fee)best={dmy,fee,tot};}
+  return best;
+}
+
+// Applies one suggestion; '' when done, else the reason. Used by ✓ Accept, Accept all and auto-map on import.
+function applyBankSuggestion(sid,x,s,onMap,rowsNow,labelPrefix){
+  const row=(rowsNow||bankRowsFor(sid)).find(r=>r.id===x.id)||{id:x.id,debit:x.debit,credit:x.credit,transactionDate:x.date,description:x.description};
+  const pre=labelPrefix||'';
+  if(s.apply.type==='patch'){const patch={...s.apply.patch,aiTagged:false};journalBankMapping(sid,row,pre+(patch.nature?'Nature: '+patch.nature:patch.vendorOverride?'Vendor: '+patch.vendorOverride:'Cradlee date '+patch.cradleeDate));
+    if(onMap)onMap(x.id,patch);else saveBankLineMapping(sid,x.id,patch);return'';}
+  if(s.apply.type==='link'){const p=s.apply.plan;const err=linkBankLineToBills(sid,row,p.vendor,p.allocations.map(a=>({id:a.id,amount:a.amount,tds:a.tds})),onMap);if(err)return err;
+    journalBankMapping(sid,row,pre+'Linked to '+p.allocations.map(a=>a.invoiceNo+(a.tds?' (+TDS '+Math.round(a.tds)+')':'')).join(', '));return'';}
+  if(s.apply.type==='pay'){const p=s.apply.plan;const err=settleBankLineToEmployees(sid,row,p.year,p.month,[{employeeId:p.emp.id,employeeName:p.emp.name,salaryAmt:p.salaryAmt,incentiveAmt:p.incentiveAmt,dailyIncentiveByCat:p.dailyIncentiveByCat}],onMap);
+    if(err)return err;journalBankMapping(sid,row,pre+p.what+': '+p.emp.name);return'';}
+  return'Nothing to apply';
+}
+// Auto-map on import: “sure” suggestions only, never possible duplicates or lines needing approval.
+function autoMapBankLines(sid,idSet,onMap){
+  const rows=bankRowsFor(sid);const vendors=loadVendors(sid)||[];
+  const list=rows.filter(r=>r&&idSet.has(r.id)&&(Number(r.debit)>0||Number(r.credit)>0)).map(r=>{const problem=bankLineProblem(r,vendors);const cr=Number(r.credit)>0;
+    return problem?{id:r.id,date:r.transactionDate,description:r.description||'',credit:cr?Number(r.credit)||0:0,debit:cr?0:Number(r.debit)||0,side:cr?'Credit':'Debit',nature:String(r.nature||'').trim(),cradleeDate:r.cradleeDate||'',vendorOverride:r.vendorOverride||'',problem}:null;}).filter(Boolean);
+  if(!list.length)return{done:0,summary:''};
+  const sugg=bankSuggestionsFor(sid,list,rows);const dups=bankDuplicateMap(sid,rows);const kinds={};let done=0;
+  list.forEach(x=>{const s=sugg[x.id];if(!s||s.conf!=='high'||dups[x.id]||mapApprovalNeeded(sid,x))return;
+    if(!applyBankSuggestion(sid,x,s,onMap,rows,'Auto: ')){done++;const k=suggestionNature(s)||'Cradlee date';kinds[k]=(kinds[k]||0)+1;}});
+  return{done,summary:Object.entries(kinds).map(([k,n])=>n+' '+k).join(', ')};
+}
+
 // ── Suggestions ──
 // {conf:'high'|'mid'|'low', label, why, apply:{type:'patch',patch}|{type:'link',plan}|{type:'pay',plan}}
 function bankSuggestionsFor(sid,list,rows){
@@ -113,18 +187,32 @@ function bankSuggestionsFor(sid,list,rows){
   const debits=list.filter(x=>x.side==='Debit'&&(!x.nature||x.nature==='Vendor Payment'||x.problem==='No vendor'));
   let lpBy={},ppBy={};
   try{planBulkBillLinks(sid,debits,false).forEach(p=>{if(p.allocations)lpBy[p.x.id]=p;});}catch(e){}
+  // bill number / TDS matches for debits without an exact-amount bill (balances reduced as bills are claimed)
+  try{const inv=(loadVendorInvoices(sid)||[]).filter(i=>i&&i.docNature!=='Performa Invoice');const left={};
+    inv.forEach(i=>{left[i.id]=Math.round(((Number(i.amount)||0)-(i.payments||[]).reduce((t,q)=>t+(Number(q.paidAmount)||0),0))*100)/100;});
+    Object.values(lpBy).forEach(p=>p.allocations.forEach(a=>{left[a.id]=Math.round((left[a.id]-a.amount)*100)/100;}));
+    const ctx={inv,left,vendors};
+    debits.filter(x=>!lpBy[x.id]).forEach(x=>{const r=planSmartBillLink(sid,x,ctx);if(r){lpBy[x.id]={x,...r};r.allocations.forEach(a=>{left[a.id]=Math.round((left[a.id]-a.amount-(a.tds||0))*100)/100;});}});}catch(e){}
+  const cTot=cradleeDayTotals(sid);const claimed={};(rows||[]).forEach(r=>{if(r&&r.cradleeDate&&(r.nature==='Card Settlement'||r.nature==='UPI Settlement'))claimed[(r.nature==='UPI Settlement'?'upi':'card')+'|'+r.cradleeDate]=1;});
+  const fb=loadBankFeedback(sid);
   try{planBulkEmployeePay(sid,list.filter(x=>x.side==='Debit'&&!x.nature&&!lpBy[x.id]),null,rows||[]).forEach(p=>{if(p.what)ppBy[p.x.id]=p;});}catch(e){}
   const m=n=>'₹'+Math.round(n).toLocaleString('en-IN');
   list.forEach(x=>{
     const d=x.description||'',lo=d.toLowerCase(),setdt=settlementDateFromNarration(d),prev=bmapPrevDay(x.date);const cr=x.side==='Credit';
     const P=(conf,label,patch,why)=>{out[x.id]={conf,label,why,apply:{type:'patch',patch}};};
-    if(x.problem==='No Date as per Cradlee'){if(setdt)P('high','Cradlee date '+setdt,{cradleeDate:setdt},'Sale date printed in the narration (SETDT)');else if(prev)P('mid','Cradlee date '+prev,{cradleeDate:prev},'Day before the bank date');return;}
+    if(x.problem==='No Date as per Cradlee'){if(setdt){P('high','Cradlee date '+setdt,{cradleeDate:setdt},'Sale date printed in the narration (SETDT)');return;}
+      const kind=x.nature==='UPI Settlement'?'upi':'card';const bd=cradleeDateByAmount(sid,x,kind,{totals:cTot,claimed});
+      if(bd){claimed[kind+'|'+bd.dmy]=1;P('mid','Cradlee date '+bd.dmy,{cradleeDate:bd.dmy},kind.toUpperCase()+' sales of '+bd.dmy+' were '+m(bd.tot)+' — this credit is that less '+(bd.fee*100).toFixed(2)+'% charges');return;}
+      if(prev)P('low','Cradlee date '+prev,{cradleeDate:prev},'Day before the bank date');return;}
     if(x.problem==='No vendor'){if(lpBy[x.id]){const p=lpBy[x.id];out[x.id]={conf:'high',label:'Link '+p.allocations.map(a=>a.invoiceNo).join(', '),why:'Bill of '+p.vendor.name+' with exactly this balance',apply:{type:'link',plan:p}};return;}
       const v=findVendorMatch(d,vendors);if(v)P('mid','Vendor '+v.name,{vendorOverride:v.name},'Vendor named in the narration');return;}
     const rule=matchBankRule(sid,{description:d,credit:x.credit,transactionDate:x.date},rules);
     if(rule){const p=bankRulePatch(rule,{description:d,transactionDate:x.date});P('high',rule.nature+(rule.vendorOverride?' · '+rule.vendorOverride:'')+(p.cradleeDate?' · '+p.cradleeDate:''),p,'Your rule for lines like “'+rule.sig+'”');return;}
     if(cr&&setdt){const n=/upi/.test(lo)?'UPI Settlement':'Card Settlement';P('high',n+' · '+setdt,{nature:n,cradleeDate:setdt},'Settlement narration with the sale date (SETDT)');return;}
-    if(!cr&&lpBy[x.id]){const p=lpBy[x.id];out[x.id]={conf:'high',label:'Vendor Payment → '+p.vendor.name+' · '+p.allocations.map(a=>a.invoiceNo).join(', '),why:'Unpaid bill of '+p.vendor.name+' with exactly this amount',apply:{type:'link',plan:p}};return;}
+    if(cr&&/card|pos|settl|mid[- ]?\d|cms/.test(lo)&&!/upi/.test(lo)){const bd=cradleeDateByAmount(sid,x,'card',{totals:cTot,claimed});if(bd){claimed['card|'+bd.dmy]=1;P('mid','Card Settlement · '+bd.dmy,{nature:'Card Settlement',cradleeDate:bd.dmy},'Card sales of '+bd.dmy+' were '+m(bd.tot)+' — this credit is that less '+(bd.fee*100).toFixed(2)+'% charges');return;}}
+    if(!cr&&lpBy[x.id]){const p=lpBy[x.id];const how=p.how||'exact';
+      out[x.id]={conf:how==='partial'?'mid':'high',label:'Vendor Payment → '+p.vendor.name+' · '+p.allocations.map(a=>a.invoiceNo+(a.tds?' + TDS '+m(a.tds):'')).join(', ')+(how==='partial'?' (part)':''),
+        why:how==='exact'?'Unpaid bill of '+p.vendor.name+' with exactly this amount':how==='billno'?'Bill number '+p.allocations[0].invoiceNo+' is in the narration':how==='billno+tds'?'Bill number in the narration; the difference is the vendor’s TDS':how==='tds'?'Bill balance less the vendor’s TDS rate equals this payment':'Bill number in the narration — part payment',apply:{type:'link',plan:p}};return;}
     if(!cr&&ppBy[x.id]){const p=ppBy[x.id];out[x.id]={conf:'high',label:p.what+' → '+p.emp.name+' ('+RPT_MONTHS[p.month].slice(0,3)+')',why:'Employee named in the narration; amount equals what is due',apply:{type:'pay',plan:p}};return;}
     const ln=typeof bankLearnedNatureFor==='function'?bankLearnedNatureFor(learned,{description:d,credit:x.credit}):null;
     if(ln&&(cr?BANK_CREDIT_NATURES.has(ln):!/Settlement$|^Collection$|^Interest$/.test(ln))){const p={nature:ln};if(ln==='Card Settlement'||ln==='UPI Settlement')p.cradleeDate=setdt||prev;
@@ -144,6 +232,10 @@ function bankSuggestionsFor(sid,list,rows){
       if(/salary|\bsal\b/.test(lo))return P('low','Salary',{nature:'Salary'},'Salary narration — use 👤 Pay to settle it');
     }
   });
+  // learn from changes: a suggestion changed by hand before (and not accepted since) is weakened, twice → dropped
+  Object.keys(out).forEach(id=>{const x=list.find(z=>String(z.id)===String(id));const s=out[id];const n=suggestionNature(s);if(!x||!n)return;
+    const f=fb[x.side+'|'+bmapSig(x.description)+'|'+n];if(!f||f.rej<=f.acc)return;
+    if(f.rej-f.acc>=2){delete out[id];return;}s.conf=s.conf==='high'?'mid':'low';s.why+=' · you changed this suggestion before';});
   return out;
 }
 
@@ -210,7 +302,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const [q,setQ]=useState('');const [minA,setMinA]=useState('');const [maxA,setMaxA]=useState('');const [missing,setMissing]=useState('All');
   const [grouped,setGrouped]=useState(false);const [openGroups,setOpenGroups]=useState(()=>new Set());
   const [cur,setCur]=useState(0);const [showKeys,setShowKeys]=useState(false);const [showRules,setShowRules]=useState(false);const [showJournal,setShowJournal]=useState(true);
-  const [rulePrompt,setRulePrompt]=useState(null);const [inclMid,setInclMid]=useState(false);
+  const [rulePrompt,setRulePrompt]=useState(null);const [newRule,setNewRule]=useState(null);const [inclMid,setInclMid]=useState(false);
   const [tallyBusy,setTallyBusy]=useState(false);
   const [narrow,setNarrow]=useState(()=>typeof window!=='undefined'&&window.innerWidth<760);
   const rootRef=useRef(null);
@@ -239,6 +331,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
 
   // ── single-line operations ──
   const map=(x,patch,opts)=>{
+    if(patch.nature&&!(opts&&opts.noRulePrompt)){const s0=sugg[x.id];const n0=suggestionNature(s0);if(n0&&n0!==patch.nature)noteBankFeedback(sid,x,n0,false);}
     if(!mapApprovalOk(sid,x,patch.nature?'Nature '+patch.nature:patch.vendorOverride?'Vendor '+patch.vendorOverride:'Cradlee date'))return false;
     journalBankMapping(sid,rowNow(x.id),patch.nature!==undefined?'Nature: '+(patch.nature||'blank'):patch.vendorOverride?'Vendor: '+patch.vendorOverride:patch.cradleeDate?'Cradlee date '+patch.cradleeDate:'Changed');
     if(patch.nature&&(patch.nature==='Card Settlement'||patch.nature==='UPI Settlement')&&!x.cradleeDate&&!patch.cradleeDate){const sd=settlementDateFromNarration(x.description);if(sd)patch={...patch,cradleeDate:sd};}
@@ -265,7 +358,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
     if(err){setLinkErr('Bill '+res.inv.invoiceNo+' was added, but not linked: '+err);refresh(true);return;}
     journalBankMapping(sid,row,'New bill '+res.inv.invoiceNo+' and linked',{createdInvoices:[res.inv.id]});closePanels();say('Bill '+res.inv.invoiceNo+' added and linked.');refresh(true);};
   const empLinesFor=(x,year,month)=>{
-    const emps=(getEmployeesForMonth(year,month,sid)||[]).filter(e=>e&&e.status!=='Inactive');const hit=findEmployeeMatch(x.description,emps);const rn=getRows?getRows():bankRowsFor(sid);
+    const emps=(getEmployeesForMonth(year,month,sid)||[]).filter(e=>e&&e.status!=='Inactive');const hit=findEmployeeSmart(x.description,emps);const rn=getRows?getRows():bankRowsFor(sid);
     const lines=emps.map(e=>{const di={};DAILY_INCENTIVE_CATEGORIES_ALL.forEach(c=>{const os=Math.max(0,employeeDailyIncentiveCategoryOutstandingFor(sid,e.id,year,month,c)-dailyIncentiveSettledOnBank(sid,e.id,year,month,c,x.id,rn));if(os>0.5)di[c]={os:Math.round(os*100)/100,sel:false,amt:''};});
       return{employeeId:e.id,employeeName:e.name,salaryOS:employeeSalaryOutstandingFor(sid,e.id,year,month),incentiveOS:employeeIncentiveOutstandingFor(sid,e.id,year,month),di,sal:false,inc:false,salAmt:'',incAmt:'',hit:!!hit&&hit.id===e.id};})
       .filter(l=>l.salaryOS>0||l.incentiveOS>0||Object.keys(l.di).length||l.hit).sort((a,b)=>(b.hit?1:0)-(a.hit?1:0)||a.employeeName.localeCompare(b.employeeName));
@@ -285,7 +378,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const advEmps=()=>{const t=new Date();return(getEmployeesForMonth(t.getFullYear(),t.getMonth(),sid)||[]).filter(e=>e&&e.status!=='Inactive').sort((a,b)=>String(a.name).localeCompare(String(b.name)));};
   const nextYM=()=>{const d=new Date();d.setMonth(d.getMonth()+1,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');};
   const advLine=(e,amt)=>{const c=advanceCandidatesForEmp(sid,e.name);return{employeeId:e.id,employeeName:e.name,amount:amt>0?String(Math.round(amt*100)/100):'',deductFrom:'Salary',deductionStart:nextYM(),reason:'',linkExistingId:c.length===1&&Math.abs((Number(c[0].outstanding!=null?c[0].outstanding:c[0].amount)||0)-amt)<1?c[0].id:''};};
-  const startAdv=x=>{closePanels();const hit=findEmployeeMatch(x.description,advEmps());setAdvErr('');setAdvFor({x,lines:hit?[advLine(hit,x.debit)]:[]});};
+  const startAdv=x=>{closePanels();const hit=findEmployeeSmart(x.description,advEmps());setAdvErr('');setAdvFor({x,lines:hit?[advLine(hit,x.debit)]:[]});};
   const setAdvLine=(id,patch)=>setAdvFor(a=>({...a,lines:a.lines.map(l=>l.employeeId===id?{...l,...patch}:l)}));
   const doAdv=()=>{const {x,lines}=advFor;if(!dupOk(x)||!mapApprovalOk(sid,x,'Advance'))return;const row=rowNow(x.id)||{id:x.id,debit:x.debit,transactionDate:x.date};
     const snap=JSON.parse(JSON.stringify(loadAdvances(sid)||[]));const err=recordBankLineAdvances(sid,row,lines,onMap);if(err){setAdvErr(err);return;}
@@ -294,15 +387,10 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   // ── suggestions ──
   const accept=(x,s,silent)=>{
     if(!s)return false;
-    if(s.apply.type==='patch')return map(x,{...s.apply.patch,aiTagged:false},{noRulePrompt:true});
-    if(!silent&&!dupOk(x))return false;
+    if(s.apply.type!=='patch'&&!silent&&!dupOk(x))return false;
     if(!mapApprovalOk(sid,x,s.label))return false;
-    const row=rowNow(x.id)||{id:x.id,debit:x.debit,transactionDate:x.date};
-    if(s.apply.type==='link'){const p=s.apply.plan;const err=linkBankLineToBills(sid,row,p.vendor,p.allocations.map(a=>({id:a.id,amount:a.amount})),onMap);if(err){say(err,'warn');return false;}
-      journalBankMapping(sid,row,'Linked to '+p.allocations.map(a=>a.invoiceNo).join(', '));refresh(true);return true;}
-    if(s.apply.type==='pay'){const p=s.apply.plan;const err=settleBankLineToEmployees(sid,row,p.year,p.month,[{employeeId:p.emp.id,employeeName:p.emp.name,salaryAmt:p.salaryAmt,incentiveAmt:p.incentiveAmt,dailyIncentiveByCat:p.dailyIncentiveByCat}],onMap);
-      if(err){say(err,'warn');return false;}journalBankMapping(sid,row,p.what+': '+p.emp.name);refresh();return true;}
-    return false;
+    const err=applyBankSuggestion(sid,x,s,onMap,getRows?getRows():bankRowsFor(sid));if(err){say(err,'warn');return false;}
+    noteBankFeedback(sid,x,suggestionNature(s),true);refresh(s.apply.type==='link');return true;
   };
   const acceptable=list.filter(x=>sugg[x.id]&&(sugg[x.id].conf==='high'||(inclMid&&sugg[x.id].conf==='mid')));
   const acceptAll=()=>{
@@ -537,10 +625,21 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
           [['↑ ↓ or j k','Move between lines'],['Space','Tick / untick the line'],['Enter','Accept the suggestion'],['N','Choose Nature'],['L','Link bill (debits)'],['P','Pay employees'],['A','Advance'],['S','Tick look-alike lines'],['Ctrl+Enter','Apply bulk Nature'],['Ctrl+Z','Undo the last mapping'],['Esc','Close the side panel'],['?','Show / hide these keys']]
             .map(([k,d])=>h('div',{key:k},h('kbd',{style:{background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:4,padding:'0 5px',fontSize:11,marginRight:6}},k),d))),
         showRules&&h('div',{style:C.panel},
-          h('b',{style:{fontSize:13}},'Remembered rules'),h('span',{style:{fontSize:11.5,color:'var(--text3)',marginLeft:8}},controlOn('bankAutoRules',sid)?'Also applied to new bank statement imports.':'Used as suggestions only (auto-apply on import is off in Controls).'),
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}},h('b',{style:{fontSize:13}},'Remembered rules'),
+            h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setNewRule(newRule?null:{side:'Debit',contains:'',minAmt:'',maxAmt:'',nature:'',vendorOverride:'',dateMode:'setdt'})},newRule?'Cancel new rule':'+ New rule')),
+          newRule&&h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'flex-end',margin:'8px 0',padding:8,border:'1px dashed var(--border2)',borderRadius:8}},
+            h('label',{style:{fontSize:11,color:'var(--text3)'}},'Side',h('select',{className:'form-control',style:{padding:'4px 6px',fontSize:12,width:90},value:newRule.side,onChange:e=>setNewRule({...newRule,side:e.target.value,nature:''})},['Debit','Credit'].map(o=>h('option',{key:o,value:o},o)))),
+            h('label',{style:{fontSize:11,color:'var(--text3)'}},'Narration contains',h('input',{className:'form-control',style:{padding:'4px 6px',fontSize:12,width:170},value:newRule.contains,placeholder:'e.g. sms, swiggy',onChange:e=>setNewRule({...newRule,contains:e.target.value})})),
+            h('label',{style:{fontSize:11,color:'var(--text3)'}},'Amount from ₹',h('input',{type:'number',className:'form-control',style:{padding:'4px 6px',fontSize:12,width:90},value:newRule.minAmt,onChange:e=>setNewRule({...newRule,minAmt:e.target.value})})),
+            h('label',{style:{fontSize:11,color:'var(--text3)'}},'to ₹',h('input',{type:'number',className:'form-control',style:{padding:'4px 6px',fontSize:12,width:90},value:newRule.maxAmt,onChange:e=>setNewRule({...newRule,maxAmt:e.target.value})})),
+            h('label',{style:{fontSize:11,color:'var(--text3)'}},'→ Nature',h('select',{className:'form-control',style:{padding:'4px 6px',fontSize:12,width:170},value:newRule.nature,onChange:e=>setNewRule({...newRule,nature:e.target.value})},h('option',{value:''},'Choose…'),BANK_MAP_NATURES.filter(n=>newRule.side==='Credit'?BANK_CREDIT_NATURES.has(n):!/Settlement$|^Collection$|^Interest$/.test(n)).map(n=>h('option',{key:n,value:n},n)))),
+            newRule.nature==='Vendor Payment'&&h('label',{style:{fontSize:11,color:'var(--text3)'}},'Vendor',h('select',{className:'form-control',style:{padding:'4px 6px',fontSize:12,width:170},value:newRule.vendorOverride,onChange:e=>setNewRule({...newRule,vendorOverride:e.target.value})},h('option',{value:''},'From narration'),vendors.map(v=>h('option',{key:v.id,value:v.name},v.name)))),
+            (newRule.nature==='Card Settlement'||newRule.nature==='UPI Settlement')&&h('label',{style:{fontSize:11,color:'var(--text3)'}},'Cradlee date',h('select',{className:'form-control',style:{padding:'4px 6px',fontSize:12,width:160},value:newRule.dateMode,onChange:e=>setNewRule({...newRule,dateMode:e.target.value})},h('option',{value:'setdt'},'From narration (SETDT)'),h('option',{value:'prev'},'Day before bank date'))),
+            h('button',{className:'btn btn-primary btn-sm',onClick:()=>{if(!newRule.contains.trim()){say('Enter the text the narration contains.','warn');return;}if(!newRule.nature){say('Choose the Nature.','warn');return;}
+              addBankRule(sid,{sig:'',side:newRule.side,contains:newRule.contains.trim(),minAmt:newRule.minAmt,maxAmt:newRule.maxAmt,nature:newRule.nature,vendorOverride:newRule.vendorOverride,dateMode:newRule.dateMode});setNewRule(null);say('Rule saved.');refresh();}},'Save rule')),h('span',{style:{fontSize:11.5,color:'var(--text3)',marginLeft:8}},controlOn('bankAutoRules',sid)?'Also applied to new bank statement imports.':'Used as suggestions only (auto-apply on import is off in Controls).'),
           !rules.length?h('div',{style:{fontSize:12,color:'var(--text3)',marginTop:6}},'No rules yet — after you set a Nature on a line, the app offers to remember it.')
           :h('table',{style:{width:'100%',fontSize:12,marginTop:6}},h('tbody',null,rules.slice().reverse().map(r=>h('tr',{key:r.id},
-            h('td',null,r.side==='Debit'?sideTag({side:'Debit'}):sideTag({side:'Credit'})),h('td',null,'“'+r.sig+'”'),h('td',null,'→ ',h('b',null,r.nature),r.vendorOverride?' · '+r.vendorOverride:''),
+            h('td',null,r.side==='Debit'?sideTag({side:'Debit'}):sideTag({side:'Credit'})),h('td',null,r.contains?'contains “'+r.contains+'”':'like “'+r.sig+'”',(r.minAmt||r.maxAmt)?h('span',{style:{color:'var(--text3)'}},' · ₹'+(r.minAmt||0)+'–'+(r.maxAmt||'any')):null),h('td',null,'→ ',h('b',null,r.nature),r.vendorOverride?' · '+r.vendorOverride:''),
             h('td',{style:{color:'var(--text3)'}},(r.by||'')+' · '+(r.at?new Date(r.at).toLocaleDateString('en-IN'):'')),
             h('td',null,h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>{if(!window.confirm('Delete this rule?'))return;saveBankRules(sid,loadBankRules(sid).filter(z=>z.id!==r.id));refresh();}},'Delete'))))))),
         rulePrompt&&h('div',{style:{...C.panel,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',background:'rgba(47,95,224,0.07)',borderColor:'rgba(47,95,224,0.3)'}},
