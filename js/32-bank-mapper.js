@@ -109,6 +109,78 @@ function bankMonthReadiness(sid,year,month,rows){
 }
 
 
+// ── Second-person review (Controls → mapReview): {rowId:{by,at,sig}} — a tick lapses when the mapping changes ──
+function bankReviewKey(sid){return outletKey('salonos_bank_map_review',sid);}
+function loadBankReview(sid){try{const v=JSON.parse(cachedLocalGet(bankReviewKey(sid))||'{}');return v&&typeof v==='object'?v:{};}catch(e){return{};}}
+function bankReviewSig(r){const ids=a=>Array.isArray(a)?a.map(z=>String(z.employeeId||'')+':'+String(z.advanceId||'')).join(','):'';
+  const s=JSON.stringify([r.nature||'',r.vendorOverride||'',r.cradleeDate||'',r.linkedInvoice||'',ids(r.linkedEmployeePay),ids(r.linkedAdvance),Array.isArray(r.splits)?r.splits.map(z=>[z.nature,Number(z.amount)||0,z.vendorOverride||'']):'']);
+  let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return String(h);}
+function bankReviewStatus(r,rv){const v=r&&rv[r.id];return v&&v.sig===bankReviewSig(r)?v:null;}
+function bankLineMapper(sid,rowId,J){const e=(J||bankMapJournal(sid)).filter(z=>z.rowId===rowId&&!z.undone).pop();return e?(e.lastBy||e.by||''):'';}
+function mappedBankLinesFor(sid,year,month,rows){
+  const pre=year+'-'+String(month+1).padStart(2,'0');const vendors=loadVendors(sid)||[];
+  return(rows||bankRowsFor(sid)).filter(r=>r&&String(toISO(r.transactionDate)||'').startsWith(pre)&&(Number(r.credit)>0||Number(r.debit)>0)&&!bankLineProblem(r,vendors));
+}
+function bankReviewProgress(sid,year,month,rows){
+  const L=mappedBankLinesFor(sid,year,month,rows);const rv=loadBankReview(sid);const pending=L.filter(r=>!bankReviewStatus(r,rv));
+  return{total:L.length,done:L.length-pending.length,pct:L.length?Math.round((L.length-pending.length)/L.length*100):100,pending};
+}
+// Marks rows checked (on) or not; with the control on, nobody checks a line they mapped themselves.
+function setBankReviewed(sid,rows,on){
+  const rv=loadBankReview(sid);const me=bmapUser();const J=bankMapJournal(sid);const strict=controlOn('mapReview',sid);let done=0,own=0;
+  (rows||[]).forEach(r=>{if(!r)return;if(!on){if(rv[r.id]){delete rv[r.id];done++;}return;}
+    if(strict&&bankLineMapper(sid,r.id,J)===me){own++;return;}
+    rv[r.id]={by:me,at:Date.now(),sig:bankReviewSig(r)};done++;});
+  const keys=Object.keys(rv);if(keys.length>4000)keys.sort((a,b)=>(rv[a].at||0)-(rv[b].at||0)).slice(0,keys.length-4000).forEach(k=>delete rv[k]);
+  safeLocalSet(bankReviewKey(sid),JSON.stringify(rv));
+  if(done)try{logAuditEvent(sid,{entity:'Bank Statement',entityId:'review',action:on?'Mapping checked':'Check removed',summary:done+' bank line(s)'});}catch(e){}
+  return{done,own};
+}
+
+// ── Exceptions (Controls → bankExceptions): unusual mappings, each can be marked “it is right” ──
+function bankExcOkKey(sid){return outletKey('salonos_bank_exc_ok',sid);}
+function loadBankExcOk(sid){try{return JSON.parse(cachedLocalGet(bankExcOkKey(sid))||'{}')||{};}catch(e){return{};}}
+function markBankExcOk(sid,key){const o=loadBankExcOk(sid);o[key]={by:bmapUser(),at:Date.now()};safeLocalSet(bankExcOkKey(sid),JSON.stringify(o));}
+function bankLineVendorName(r,vendors){
+  const ov=String(r.vendorOverride||'');if(ov&&ov!=='__none__'&&!ov.startsWith('EMP:'))return ov;
+  if(r.linkedInvoice){const vid=String(r.linkedInvoice).split(',')[0].split('|')[0];const v=vendors.find(z=>String(z.id)===vid);if(v)return v.name;}
+  if(ov==='__none__'||Number(r.credit)>0)return'';const v=findVendorMatch(r.description,vendors);return v?v.name:'';
+}
+function bankMappingExceptions(sid,year,month,rows){
+  if(!controlOn('bankExceptions',sid))return[];
+  const pre=year+'-'+String(month+1).padStart(2,'0');const vendors=loadVendors(sid)||[];const R=n=>'₹'+Math.round(Number(n)||0).toLocaleString('en-IN');
+  const all=(rows||bankRowsFor(sid)).filter(r=>r&&Number(r.debit)>0);const inM=all.filter(r=>String(toISO(r.transactionDate)||'').startsWith(pre)&&!bankLineProblem(r,vendors));
+  const ok=loadBankExcOk(sid);const out=[];const seen=new Set();
+  const add=(r,kind,text)=>{const k=kind+'|'+r.id;if(ok[k]||seen.has(k))return;seen.add(k);out.push({key:k,rowId:r.id,date:r.transactionDate||'',amount:Number(r.debit)||0,description:r.description||'',kind,text});};
+  const vp=r=>r.nature==='Vendor Payment'||!!r.linkedInvoice;
+  const byV={};inM.filter(vp).forEach(r=>{const n=bankLineVendorName(r,vendors);if(n)(byV[n]=byV[n]||[]).push(r);});
+  Object.keys(byV).forEach(n=>{const L=byV[n];const byA={};L.forEach(r=>{const a=Math.round(Number(r.debit));(byA[a]=byA[a]||[]).push(r);});
+    Object.values(byA).forEach(g=>{if(g.length>1)g.forEach(r=>add(r,'Paid twice',n+' was paid '+R(r.debit)+' '+g.length+' times this month ('+g.map(z=>z.transactionDate).join(', ')+').'));});
+    const hist=all.filter(r=>vp(r)&&!String(toISO(r.transactionDate)||'').startsWith(pre)&&bankLineVendorName(r,vendors)===n).map(r=>Number(r.debit)).sort((a,b)=>a-b);
+    if(hist.length>=3){const med=hist[Math.floor(hist.length/2)];L.forEach(r=>{if(Number(r.debit)>Math.max(med*2,med+5000))add(r,'Above usual',n+' is usually paid about '+R(med)+' (median of '+hist.length+' earlier payments) — this one is '+R(r.debit)+'.');});}});
+  const pm=month===0?{y:year-1,m:11}:{y:year,m:month-1};
+  const emps=[...(getEmployeesForMonth(year,month,sid)||[]),...(getEmployeesForMonth(pm.y,pm.m,sid)||[])].filter(Boolean);
+  const active=emps.filter(e=>e.status!=='Inactive');
+  inM.filter(r=>['Salary','Incentive','Daily Incentive','Advance Salary'].includes(r.nature)||(Array.isArray(r.linkedEmployeePay)&&r.linkedEmployeePay.length)||(Array.isArray(r.linkedAdvance)&&r.linkedAdvance.length)).forEach(r=>{
+    const linked=[...(Array.isArray(r.linkedEmployeePay)?r.linkedEmployeePay:[]),...(Array.isArray(r.linkedAdvance)?r.linkedAdvance:[])];
+    if(linked.length)linked.forEach(l=>{if(!active.some(e=>String(e.id)===String(l.employeeId)))add(r,'Not on rolls',(r.nature||'Salary')+' settled to '+(l.employeeName||'an employee')+', who is not active on the rolls for this or last month.');});
+    else if(!/bulk|batch|payroll/i.test(r.description||'')&&!findEmployeeSmart(r.description,active))add(r,'Not on rolls',(r.nature||'Salary')+' paid, but no active employee matches the narration and nothing is settled against it (settle it with 👤 Pay, or mark it right).');});
+  return out.sort((a,b)=>String(toISO(a.date)).localeCompare(String(toISO(b.date))));
+}
+
+// ── Lock mapped lines once the month is Final (Controls → bankLockFinal) ──
+const BANK_LOCK_OPEN={}; // sid|yyyy-mm → unlocked by a Super Admin for this session
+function bankLineYM(r){return String(toISO(r&&(r.transactionDate||r.date))||'').slice(0,7);}
+function bankLineLocked(sid,r){
+  if(!r||!controlOn('bankLockFinal',sid))return false;const ym=bankLineYM(r);if(ym.length!==7||BANK_LOCK_OPEN[sid+'|'+ym])return false;
+  return isMonthLockedFor(sid,Number(ym.slice(0,4)),Number(ym.slice(5,7))-1)&&!bankLineProblem(r,loadVendors(sid)||[]);
+}
+function bankLockOk(sid,r,what){
+  if(!bankLineLocked(sid,r))return true;const ym=bankLineYM(r);
+  if(!requestUnlock(sid,'the mapped bank lines of '+RPT_MONTHS[Number(ym.slice(5,7))-1]+' '+ym.slice(0,4)+' (month Final)'+(what?' — to '+what:'')))return false;
+  BANK_LOCK_OPEN[sid+'|'+ym]=Date.now();return true;
+}
+
 // ── Learning from changed suggestions: {key:'side|sig|nature', rej, acc} ──
 function bankFeedbackKey(sid){return outletKey('salonos_bank_sugg_feedback',sid);}
 function loadBankFeedback(sid){try{return JSON.parse(cachedLocalGet(bankFeedbackKey(sid))||'{}')||{};}catch(e){return{};}}
@@ -291,7 +363,7 @@ async function sendBankLinesToTally(sid,rowIds){
 }
 
 // ═══ The pop-up ═══
-function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,onMap,onMapped,onInvoicesChanged,month:monthCtx}){
+function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,onMap,onMapped,onInvoicesChanged,month:monthCtx,startView}){
   const h=React.createElement;const [,setTick]=useState(0);const [side,setSide]=useState('All');
   const [linkFor,setLinkFor]=useState(null);const [alloc,setAlloc]=useState({});const [linkErr,setLinkErr]=useState('');const [nb,setNb]=useState(null);
   const [payFor,setPayFor]=useState(null);const [payErr,setPayErr]=useState('');
@@ -305,6 +377,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const [cur,setCur]=useState(0);const [showKeys,setShowKeys]=useState(false);const [showRules,setShowRules]=useState(false);const [showJournal,setShowJournal]=useState(true);
   const [rulePrompt,setRulePrompt]=useState(null);const [newRule,setNewRule]=useState(null);const [inclMid,setInclMid]=useState(false);
   const [tallyBusy,setTallyBusy]=useState(false);
+  const [view,setView]=useState(startView||'map');const [revTicked,setRevTicked]=useState(()=>new Set());const [revPending,setRevPending]=useState(true);
   const [narrow,setNarrow]=useState(()=>typeof window!=='undefined'&&window.innerWidth<760);
   const rootRef=useRef(null);
   useEffect(()=>{const f=()=>setNarrow(window.innerWidth<760);window.addEventListener('resize',f);if(rootRef.current)rootRef.current.focus();return()=>window.removeEventListener('resize',f);},[]);
@@ -446,7 +519,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const J=bankMapJournal(sid).filter(e=>!e.undone).slice(-80).reverse();
   const pushed=loadTallyPushed(sid);
   const tallyOf=e=>{const r=rowNow(e.rowId);const p=pushed.bank[e.rowId];return !p?'Not in Tally':(r&&p.sig&&p.sig!==tallyBankSig(r)?'Changed since sent':'In Tally');};
-  const undoEntry=e=>{undoBankMapping(sid,e,rowNow(e.rowId),onMap);say('Undone: '+e.date+' '+m(e.amount)+'.');refresh(true);};
+  const undoEntry=e=>{if(!bankLockOk(sid,rowNow(e.rowId),'undo a mapping'))return;undoBankMapping(sid,e,rowNow(e.rowId),onMap);say('Undone: '+e.date+' '+m(e.amount)+'.');refresh(true);};
   const notInTally=J.filter(e=>tallyOf(e)!=='In Tally');
   const sendTally=async()=>{
     if(!notInTally.length){say('Every line mapped here is already in Tally.');return;}
@@ -457,7 +530,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
       say('Tally: '+res.sent+' voucher'+(res.sent===1?'':'s')+' sent'+(res.ledgersCreated?', '+res.ledgersCreated+' ledger(s) created':'')+(res.failed.length?' · '+res.failed.length+' rejected — see Tally Export → History':'')+'.',res.failed.length?'warn':'ok');}
     catch(err){say('Could not send to Tally: '+(err.message||err)+' — open Tally and start the SalonOS Tally Connector, then try again.','warn');}
     setTallyBusy(false);refresh();};
-  const undoAll=()=>{if(!window.confirm('Undo all '+J.length+' mapping'+(J.length===1?'':'s')+'? Bill payments, salary “Paid” and advances made by them are reversed too.'))return;J.forEach(e=>undoBankMapping(sid,e,rowNow(e.rowId),onMap));say(J.length+' mapping(s) undone.');refresh(true);};
+  const undoAll=()=>{if(!window.confirm('Undo all '+J.length+' mapping'+(J.length===1?'':'s')+'? Bill payments, salary “Paid” and advances made by them are reversed too.'))return;let n=0,kept=0;J.forEach(e=>{if(!bankLockOk(sid,rowNow(e.rowId),'undo mappings')){kept++;return;}undoBankMapping(sid,e,rowNow(e.rowId),onMap);n++;});say(n+' mapping(s) undone'+(kept?' · '+kept+' kept (month Final, locked)':'')+'.',kept?'warn':'ok');refresh(true);};
 
   // ── keyboard ──
   const curX=shown[Math.min(cur,shown.length-1)];
@@ -632,6 +705,53 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const planCell=(ok,txt)=>h('td',{style:{color:ok?'var(--green)':'var(--orange)'}},txt);
 
   const monthLbl=monthCtx?RPT_MONTHS[monthCtx.month]+' '+monthCtx.year:'';
+  // ── 🔍 review & ⚠ exceptions (need the month) ──
+  const mappedRows=monthCtx?mappedBankLinesFor(sid,monthCtx.year,monthCtx.month,rowsAll):[];
+  const rv=loadBankReview(sid);const Jall=bankMapJournal(sid);
+  const revDone=mappedRows.filter(r=>bankReviewStatus(r,rv)).length;const revPct=mappedRows.length?Math.round(revDone/mappedRows.length*100):100;
+  const excOn=controlOn('bankExceptions',sid);const exc=monthCtx&&excOn?bankMappingExceptions(sid,monthCtx.year,monthCtx.month,rowsAll):[];
+  const strictRev=controlOn('mapReview',sid);const me=bmapUser();
+  const mapText=r=>{const t=[];const sp=bankRowSplits(r);if(sp)t.push('Split: '+sp.map(z=>z.nature+' '+m(z.amount)).join(' + '));else if(r.nature)t.push(r.nature);
+    const v=bankLineVendorName(r,allVendors);if(v&&(r.nature==='Vendor Payment'||r.linkedInvoice))t.push(v);
+    if(r.linkedInvoice)t.push('bill '+String(r.linkedInvoice).split(',').map(k=>k.split('|').pop()).filter(Boolean).join(', '));
+    if(Array.isArray(r.linkedEmployeePay)&&r.linkedEmployeePay.length)t.push(r.linkedEmployeePay.map(e=>e.employeeName).join(', '));
+    if(Array.isArray(r.linkedAdvance)&&r.linkedAdvance.length)t.push('advance — '+r.linkedAdvance.map(e=>e.employeeName).join(', '));
+    if(Number(r.credit)>0&&r.cradleeDate)t.push('Cradlee '+r.cradleeDate);return t.join(' · ');};
+  const revShown=mappedRows.filter(r=>(!revPending||!bankReviewStatus(r,rv))&&(!qn||(r.description||'').toLowerCase().includes(qn)||mapText(r).toLowerCase().includes(qn))).slice(0,500);
+  const markRev=(sel,on)=>{const res=setBankReviewed(sid,sel,on);setRevTicked(new Set());refresh();
+    say((on?res.done+' line'+(res.done===1?'':'s')+' marked checked':res.done+' check(s) removed')+(res.own?' · '+res.own+' not checked — you mapped them; a second person must check those':'')+'.',res.own?'warn':'ok');};
+  const reviewPanel=h('div',null,
+    h('div',{style:{...C.panel,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',padding:'8px 12px'}},
+      h('div',{style:{flex:1,minWidth:230}},h('b',{style:{fontSize:13}},'Checked '+revDone+' of '+mappedRows.length+' mapped lines ('+revPct+'%)'),
+        h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:2}},strictRev?'A second person checks each mapping — whoever mapped a line cannot check it. The month can be marked Final only when every line is checked.':'Tick the lines you have checked. Making this a second-person check before Month Final is switched in Master Settings → 🎛 Controls.')),
+      h('input',{className:'form-control',placeholder:'Search…',value:q,onChange:e=>setQ(e.target.value),style:{width:170,padding:'5px 8px',fontSize:12}}),
+      h('label',{style:{fontSize:12,display:'flex',gap:5,alignItems:'center'}},h('input',{type:'checkbox',checked:revPending,onChange:e=>setRevPending(e.target.checked)}),'Not checked only'),
+      h('button',{className:'btn btn-primary btn-sm',disabled:!revTicked.size,onClick:()=>markRev(mappedRows.filter(r=>revTicked.has(r.id)),true)},'✓ Mark '+revTicked.size+' checked')),
+    h('div',{style:{height:6,borderRadius:6,background:'var(--bg4, rgba(0,0,0,0.08))',overflow:'hidden',marginBottom:8}},h('div',{style:{height:'100%',width:revPct+'%',background:revPct===100?'var(--green)':'#2f5fe0'}})),
+    !revShown.length?h('div',{style:{textAlign:'center',padding:'26px 10px',fontSize:13,color:'var(--text3)'}},mappedRows.length?'✓ Every mapped line is checked.':'No mapped lines this month yet.')
+    :h('div',{style:{border:'1px solid var(--border2)',borderRadius:10,overflow:'auto',maxHeight:'52vh'}},h('table',{style:{width:'100%',borderCollapse:'separate',borderSpacing:0,fontSize:12.5}},
+      h('thead',null,h('tr',null,h('th',{style:{...C.th,width:30}},h('input',{type:'checkbox',title:'Tick every unchecked line shown',checked:revShown.some(r=>!bankReviewStatus(r,rv))&&revShown.filter(r=>!bankReviewStatus(r,rv)).every(r=>revTicked.has(r.id)),onChange:e=>setRevTicked(()=>{const n=new Set();if(e.target.checked)revShown.forEach(r=>{if(!bankReviewStatus(r,rv)&&!(strictRev&&bankLineMapper(sid,r.id,Jall)===me))n.add(r.id);});return n;})})),
+        ['Date','Narration','Amount','Mapped to','Mapped by','Checked'].map((t,i)=>h('th',{key:i,style:{...C.th,textAlign:i===2?'right':'left'}},t)))),
+      h('tbody',null,revShown.map((r,i)=>{const st=bankReviewStatus(r,rv);const by=bankLineMapper(sid,r.id,Jall);const own=strictRev&&by===me;const x={side:Number(r.credit)>0?'Credit':'Debit'};
+        return h('tr',{key:r.id,style:{background:i%2?'var(--bg2)':undefined}},
+          h('td',{style:C.td},!st&&h('input',{type:'checkbox',disabled:own,title:own?'You mapped this line — a second person must check it':'',checked:revTicked.has(r.id),onChange:()=>setRevTicked(s=>{const n=new Set(s);if(n.has(r.id))n.delete(r.id);else n.add(r.id);return n;})})),
+          h('td',{style:{...C.td,whiteSpace:'nowrap',fontSize:12}},r.transactionDate,h('div',null,sideTag(x))),
+          h('td',{style:{...C.td,maxWidth:300}},h('div',{title:r.description,style:{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:300}},r.description),bankLineLocked(sid,r)&&h('span',{style:C.tag('#7a7a7a','rgba(0,0,0,0.06)')},'🔒 FINAL')),
+          h('td',{style:{...C.td,...C.amt}},m(Number(r.debit)||Number(r.credit))),
+          h('td',{style:{...C.td,fontSize:12,color:'var(--text2)',maxWidth:280}},mapText(r)),
+          h('td',{style:{...C.td,fontSize:11.5,color:'var(--text3)',whiteSpace:'nowrap'}},by||'—'),
+          h('td',{style:{...C.td,fontSize:11.5,whiteSpace:'nowrap'}},st?h('span',null,h('span',{style:{color:'var(--green)',fontWeight:600}},'✓ '+st.by),' ',h('button',{className:'btn btn-ghost btn-sm',style:{padding:'0 5px',fontSize:10.5},onClick:()=>markRev([r],false)},'undo')):h('span',{style:{color:'var(--orange)'}},own?'needs a 2nd person':'not checked')));})))));
+  const excPanel=!exc.length?h('div',{style:{textAlign:'center',padding:'26px 10px'}},h('div',{style:{fontSize:34}},'✓'),h('div',{style:{fontSize:14,fontWeight:600}},'No exceptions for '+monthLbl),
+      h('div',{style:{fontSize:12,color:'var(--text3)',marginTop:4}},'No vendor paid the same amount twice, no payment far above a vendor’s usual, no salary or advance to someone off the rolls.'))
+    :h('div',null,h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:6}},exc.length+' unusual mapping'+(exc.length===1?'':'s')+' — check each one; if it is right, mark it so it leaves the list (who and when is kept).'),
+      h('div',{style:{border:'1px solid var(--border2)',borderRadius:10,overflow:'auto',maxHeight:'52vh'}},h('table',{style:{width:'100%',borderCollapse:'separate',borderSpacing:0,fontSize:12.5}},
+        h('thead',null,h('tr',null,['Date','What','Narration','Amount','Why it is flagged',''].map((t,i)=>h('th',{key:i,style:{...C.th,textAlign:i===3?'right':'left'}},t)))),
+        h('tbody',null,exc.map((e,i)=>h('tr',{key:e.key,style:{background:i%2?'var(--bg2)':undefined}},
+          h('td',{style:{...C.td,whiteSpace:'nowrap',fontSize:12}},e.date),
+          h('td',{style:C.td},h('span',{style:C.tag('#c0392b','rgba(192,57,43,0.12)')},e.kind.toUpperCase())),
+          h('td',{style:{...C.td,maxWidth:260}},h('div',{title:e.description,style:{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:260}},e.description)),
+          h('td',{style:{...C.td,...C.amt}},m(e.amount)),h('td',{style:{...C.td,fontSize:12,color:'var(--text2)'}},e.text),
+          h('td',{style:C.td},h('button',{className:'btn btn-ghost btn-sm',style:{whiteSpace:'nowrap'},onClick:()=>{markBankExcOk(sid,e.key);say('Marked as right: '+e.date+' '+m(e.amount)+'.');refresh();}},'✓ It is right'))))))));
   const rules=loadBankRules(sid);
   const narrowDrawer=narrow&&drawer;
   return h('div',{className:'modal-overlay',style:{zIndex:3000},onClick:onClose},
@@ -649,7 +769,9 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
           h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4,gap:8,flexWrap:'wrap'}},
             h('span',null,h('b',null,monthLbl+' — '+ready.mapped+' of '+ready.total+' lines mapped ('+ready.pct+'%)')),
             h('span',{style:{color:'var(--text3)'}},ready.total-ready.mapped?(ready.unDebit+' debit ('+(m(ready.unDebitAmt)||'₹0')+') · '+ready.unCredit+' credit ('+(m(ready.unCreditAmt)||'₹0')+') left'):'Ready to mark Final ✓')),
-          h('div',{style:{height:8,borderRadius:6,background:'var(--bg4, rgba(0,0,0,0.08))',overflow:'hidden'}},h('div',{style:{height:'100%',width:ready.pct+'%',background:ready.pct===100?'var(--green)':ready.pct>=80?'#d08a12':'var(--red)',transition:'width .3s'}})))),
+          h('div',{style:{height:8,borderRadius:6,background:'var(--bg4, rgba(0,0,0,0.08))',overflow:'hidden'}},h('div',{style:{height:'100%',width:ready.pct+'%',background:ready.pct===100?'var(--green)':ready.pct>=80?'#d08a12':'var(--red)',transition:'width .3s'}}))),
+        monthCtx&&h('div',{style:{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}},
+          [['map','🧩 Map ('+list.length+')'],['review','🔍 Review ('+revDone+'/'+mappedRows.length+')'],excOn?['exc','⚠ Exceptions ('+exc.length+')']:null].filter(Boolean).map(([k,l])=>h('button',{key:k,className:'btn btn-sm '+(view===k?'btn-primary':'btn-ghost'),onClick:()=>{setView(k);closePanels();}},l)))),
       // body
       h('div',{style:{flex:1,overflowY:'auto',padding:'10px 18px'}},
         showKeys&&h('div',{style:{...C.panel,fontSize:12,display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(210px,1fr))',gap:'4px 16px'}},
@@ -681,7 +803,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
           h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRulePrompt(null)},'Not now')),
         msg&&h('div',{style:{fontSize:12.5,marginBottom:8,padding:'6px 10px',borderRadius:8,background:msg.kind==='warn'?'rgba(224,138,18,0.1)':'rgba(46,125,50,0.1)',color:msg.kind==='warn'?'#9a5b00':'var(--green)',display:'flex',justifyContent:'space-between',gap:8}},
           h('span',null,(msg.kind==='warn'?'⚠ ':'✓ ')+msg.text),h('button',{className:'btn btn-ghost btn-sm',style:{padding:'0 6px'},onClick:()=>setMsg(null)},'✕')),
-        !list.length?h('div',{style:{textAlign:'center',padding:'34px 10px'}},
+        view==='review'&&monthCtx?reviewPanel:view==='exc'&&monthCtx&&excOn?excPanel:!list.length?h('div',{style:{textAlign:'center',padding:'34px 10px'}},
           h('div',{style:{fontSize:44}},'🎉'),h('div',{style:{fontSize:18,fontWeight:700,marginTop:6}},'Every bank line is mapped'+(monthLbl?' for '+monthLbl:'')),
           h('div',{style:{fontSize:13,color:'var(--text3)',marginTop:4}},'You can mark the month Final and make its Collection Reco now.'),
           h('div',{style:{display:'flex',gap:8,justifyContent:'center',marginTop:14,flexWrap:'wrap'}},
@@ -755,7 +877,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
             h('td',{style:{...C.td,maxWidth:280}},h('div',{title:e.description,style:{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:280}},e.description)),
             h('td',{style:{...C.td,...C.amt}},m(e.amount)),h('td',{style:{...C.td,color:'var(--text2)'}},(e.labels||[]).join(' · ')),
             h('td',{style:{...C.td,color:'var(--text3)',whiteSpace:'nowrap'}},(e.lastBy||e.by||'')+' · '+new Date(e.lastAt||e.at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})),
-            h('td',{style:C.td},h('span',{style:C.tag(t==='In Tally'?'#1f7a3a':t==='Changed since sent'?'#c0392b':'#7a7a7a',t==='In Tally'?'rgba(46,125,50,0.12)':t==='Changed since sent'?'rgba(192,57,43,0.12)':'rgba(0,0,0,0.06)')},t)),
+            h('td',{style:C.td},bankLineLocked(sid,rowNow(e.rowId))&&h('span',{style:{...C.tag('#7a7a7a','rgba(0,0,0,0.06)'),marginRight:4}},'🔒'),h('span',{style:C.tag(t==='In Tally'?'#1f7a3a':t==='Changed since sent'?'#c0392b':'#7a7a7a',t==='In Tally'?'rgba(46,125,50,0.12)':t==='Changed since sent'?'rgba(192,57,43,0.12)':'rgba(0,0,0,0.06)')},t)),
             h('td',{style:C.td},h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(!window.confirm('Undo this mapping?\n\n'+e.date+' '+m(e.amount)+' — '+(e.labels||[]).join(', ')))return;undoEntry(e);}},'↶ Undo')));}))))),
         h('div',{style:{fontSize:11,color:'var(--text3)',marginTop:10,lineHeight:1.6}},'Changes save at once and mapped lines leave the list. ✓ Accept takes the suggestion (green dot = sure, amber = likely, red = guess). Tick lines or use ≈ similar / Group look-alikes to map many at once. Press ? for keyboard keys. Rules, the duplicate warning and approval above a limit are switched in Master Settings → 🎛 Controls.')),
       // footer

@@ -1144,6 +1144,34 @@
         eq('Split lines: mapped only when complete, P&L counts each part, Tally voucher has one ledger line per part, old signatures unchanged',
           [prob,sums,ents.length,/Payment/.test(xml),sig1===sig0],[['','Split incomplete'],[8000,2000,0],3,true,true]);
       }catch(err){results.push({name:'Split lines',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=921;const U0=sessionStorage.getItem('salonos_user');const A0=window.alert,P0=window.prompt;window.alert=()=>{};
+        sessionStorage.setItem('salonos_user',JSON.stringify({name:'Asha',role:'Manager'}));saveControls({});
+        saveEmployees([{id:'E1',name:'Ravi Kumar',status:'Active'}],S);
+        const V=(id,d,amt,extra)=>({id,transactionDate:d,description:'NEFT DR ACME TRADERS '+id,debit:amt,credit:0,nature:'Vendor Payment',vendorOverride:'Acme',...(extra||{})});
+        const rows=[V('H1','05/07/2026',1000),V('H2','05/08/2026',1000),V('H3','05/09/2026',1000),V('V1','05/10/2026',5000),V('V2','20/10/2026',5000),V('V3','25/10/2026',9000),
+          {id:'S1',transactionDate:'10/10/2026',description:'NEFT SALARY UNKNOWN PERSON',debit:20000,credit:0,nature:'Salary'},
+          {id:'S2',transactionDate:'10/10/2026',description:'NEFT RAVI KUMAR SAL',debit:15000,credit:0,nature:'Salary'},
+          {id:'U1',transactionDate:'11/10/2026',description:'UNMAPPED',debit:100,credit:0,nature:''}];
+        safeLocalSet('salonos_bank_statement_rows_outlet_'+S,JSON.stringify(rows));
+        safeLocalSet('salonos_bank_exc_ok_outlet_'+S,'{}');safeLocalSet('salonos_bank_map_review_outlet_'+S,'{}');safeLocalSet('salonos_bank_map_journal_outlet_'+S,'[]');
+        const ex=bankMappingExceptions(S,2026,9);const kinds=ex.map(e=>e.kind+':'+e.rowId).sort().join(',');
+        markBankExcOk(S,'Paid twice|V1');const ex2=bankMappingExceptions(S,2026,9).length;
+        saveControls({bankExceptions:{on:false}});const exOff=bankMappingExceptions(S,2026,9).length;
+        const rr=bankRowsFor(S),row=id=>bankRowsFor(S).find(r=>r.id===id);
+        journalBankMapping(S,row('V1'),'Vendor: Acme');
+        saveControls({mapReview:{on:true}});const res=setBankReviewed(S,[row('V1'),row('V2')],true);const pr1=bankReviewProgress(S,2026,9);
+        saveBankLineMapping(S,'V2',{nature:'Rent',vendorOverride:''});const pr2=bankReviewProgress(S,2026,9);
+        saveControls({bankLockFinal:{on:true}});setMonthLockFor(S,2026,9,true,'manual');
+        const lk=[bankLineLocked(S,row('V1')),bankLineLocked(S,row('U1')),bankLineLocked(S,row('H3'))];
+        const mgr=bankLockOk(S,row('V1'),'test');
+        sessionStorage.setItem('salonos_user',JSON.stringify({name:'Boss',role:'Super Admin'}));window.prompt=()=>'correction';
+        const sa=bankLockOk(S,row('V1'),'test');const after=bankLineLocked(S,row('V1'));
+        setMonthLockFor(S,2026,9,false);saveControls({});window.alert=A0;window.prompt=P0;if(U0)sessionStorage.setItem('salonos_user',U0);else sessionStorage.removeItem('salonos_user');
+        eq('Review, exceptions and lock: paid twice / above usual / off-roll salary, second-person check lapses on change, Final lock with Super Admin unlock',
+          [kinds,ex2,exOff,res.done+'/'+res.own,pr1.total+':'+pr1.done,pr2.done,lk,mgr,sa,after],
+          ['Above usual:V3,Not on rolls:S1,Paid twice:V1,Paid twice:V2',3,0,'1/1','5:1',0,[true,false,false],false,true,false]);
+      }catch(err){results.push({name:'Review, exceptions and lock',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

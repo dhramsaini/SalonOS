@@ -3462,6 +3462,7 @@ function BankStatement({salon,onNavTab}={}){
   const linkedLine=r=>!!(r&&(r.linkedInvoice||(Array.isArray(r.linkedEmployeePay)&&r.linkedEmployeePay.length)||(Array.isArray(r.linkedAdvance)&&r.linkedAdvance.length)));
   const lineApprovalOk=(r,what)=>!r||mapApprovalOk(salonId,{id:r.id,debit:r.debit,credit:r.credit,date:r.transactionDate},what);
   const update=(id,k,v)=>{const r0=rows.find(r=>r.id===id);
+    if(r0&&BANK_MAP_FIELDS.includes(k)&&JSON.stringify(r0[k]==null?'':r0[k])!==JSON.stringify(v==null?'':v)&&!bankLockOk(salonId,r0,'change a mapped line'))return;
     if(linkedLine(r0)&&['nature','vendorOverride','cradleeDate'].includes(k)&&String(r0[k]||'')!==String(v||'')&&!lineApprovalOk(r0,'Change '+(k==='vendorOverride'?'vendor':k==='cradleeDate'?'Cradlee date':'Nature')+' of a linked line to '+(v||'blank')))return;
     setRows(p=>p.map(r=>r.id===id?{...r,[k]:v}:r));};
   // Card / UPI settlements whose Date as per Cradlee disagrees with the sale date printed in the
@@ -4016,6 +4017,7 @@ function BankStatement({salon,onNavTab}={}){
     toastSuccess('Recorded '+money(total)+' across '+settlements.length+' employee'+(settlements.length===1?'':'s')+' ('+settlements.map(e=>e.employeeName).join(', ')+').');
   };
   const unlinkEmployeePay=(row)=>{
+    if(!bankLockOk(salonId,row,'unlink a mapped line'))return;
     if(!lineApprovalOk(row,'Unlink salary / incentive settlement'))return;
     const lp=row.linkedEmployeePay;
     if(!lp||!lp.length)return;
@@ -4114,6 +4116,7 @@ function BankStatement({salon,onNavTab}={}){
       (linkedCount?' ('+linkedCount+' linked to existing, '+newCount+' new)':'')+'.');
   };
   const unlinkAdvance=(row)=>{
+    if(!bankLockOk(salonId,row,'unlink a mapped line'))return;
     if(!lineApprovalOk(row,'Unlink advance'))return;
     const la=row.linkedAdvance;
     if(!la||!la.length)return;
@@ -4175,6 +4178,7 @@ function BankStatement({salon,onNavTab}={}){
     toastSuccess('Linked — '+money(totalAllocated)+' allocated across '+allocations.length+' invoice'+(allocations.length===1?'':'s')+' ('+linkedNos.join(', ')+').');
   };
   const unlinkRow=(row)=>{
+    if(!bankLockOk(salonId,row,'unlink a mapped line'))return;
     if(!lineApprovalOk(row,'Unlink vendor bill'))return;
     if(!confirm('Unlink this transaction? The matching payment record on that invoice will also be removed.'))return;
     const linkId='bank-'+row.id;

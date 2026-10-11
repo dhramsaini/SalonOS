@@ -381,18 +381,24 @@ function UnmappedCreditsPopup({sid,year,month,monthLabel,onClose,onNavTab,onMapp
     intro:'These credit lines in the bank statement for '+monthLabel+' are not mapped. Map each one below (or in Bank Statement), then the Collection Reco opens.'});
 }
 // Opens the pop-up from anywhere (no component state needed).
-function showUnmappedLinesPopup(sid,getList,title,intro,onNavTab,month){
+function showUnmappedLinesPopup(sid,getList,title,intro,onNavTab,month,startView){
   const el=document.createElement('div');document.body.appendChild(el);const root=ReactDOM.createRoot(el);
   const close=()=>{root.unmount();el.remove();};
-  root.render(React.createElement(UnmappedLinesPopup,{sid,getList,title,intro,onClose:close,onNavTab,month}));
+  root.render(React.createElement(UnmappedLinesPopup,{sid,getList,title,intro,onClose:close,onNavTab,month,startView}));
 }
 // Month Final check: true when the month may be finalised; otherwise shows the pop-up.
 function monthFinalMappingOk(sid,year,month,onNavTab){
-  const bl=monthFinalBlockedLines(sid,year,month);if(!bl.length)return true;
-  const dr=bl.filter(x=>x.side==='Debit').length,cr=bl.length-dr;
-  showUnmappedLinesPopup(sid,()=>monthFinalBlockedLines(sid,year,month),'⚠ Map every bank line before marking the month Final',
-    RPT_MONTHS[month]+' '+year+' cannot be marked Final yet: '+bl.length+' bank line'+(bl.length===1?'':'s')+' are not mapped ('+dr+' debit, '+cr+' credit). Map them below, then mark Final again.',onNavTab,{year,month});
-  return false;
+  const bl=monthFinalBlockedLines(sid,year,month);
+  if(bl.length){const dr=bl.filter(x=>x.side==='Debit').length,cr=bl.length-dr;
+    showUnmappedLinesPopup(sid,()=>monthFinalBlockedLines(sid,year,month),'⚠ Map every bank line before marking the month Final',
+      RPT_MONTHS[month]+' '+year+' cannot be marked Final yet: '+bl.length+' bank line'+(bl.length===1?'':'s')+' are not mapped ('+dr+' debit, '+cr+' credit). Map them below, then mark Final again.',onNavTab,{year,month});
+    return false;}
+  // Controls → second-person review: every mapped line checked before Final
+  if(controlOn('mapReview',sid)){const pr=bankReviewProgress(sid,year,month);
+    if(pr.pending.length){showUnmappedLinesPopup(sid,()=>monthFinalBlockedLines(sid,year,month),'⚠ Check every mapped bank line before marking the month Final',
+      RPT_MONTHS[month]+' '+year+' cannot be marked Final yet: '+pr.pending.length+' of '+pr.total+' mapped bank line'+(pr.total===1?' is':'s are')+' not checked by a second person. Check them in 🔍 Review below, then mark Final again.',onNavTab,{year,month},'review');
+      return false;}}
+  return true;
 }
 // Bank Statement strip: months with unmapped lines, each opens the list (mapped through the screen's own rows).
 function UnmappedMonthsStrip({salonId,rows,onMap,onInvoicesChanged}){
@@ -401,12 +407,15 @@ function UnmappedMonthsStrip({salonId,rows,onMap,onInvoicesChanged}){
   const all=rows||bankRowsFor(salonId);
   const months=[...new Set(all.map(r=>String(toISO(r&&r.transactionDate)||'').slice(0,7)).filter(x=>x.length===7))].sort().reverse().slice(0,6);
   const items=months.map(ym=>({ym,y:Number(ym.slice(0,4)),m:Number(ym.slice(5,7))-1})).map(x=>({...x,list:unmappedBankLinesFor(salonId,x.y,x.m,all)})).filter(x=>x.list.length);
-  if(!items.length&&!open)return null;
-  return h('div',{style:{background:'rgba(224,165,48,0.1)',border:'1px solid rgba(224,165,48,0.4)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+  if(!months.length&&!open)return null;
+  return h('div',{style:{background:items.length?'rgba(224,165,48,0.1)':'var(--bg3)',border:'1px solid '+(items.length?'rgba(224,165,48,0.4)':'var(--border)'),borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
     h('span',null,items.length?'🧩 Unmapped bank lines:':'✓ All bank lines mapped'),
     items.map(x=>{const dr=x.list.filter(l=>l.side==='Debit').length;return h('button',{key:x.ym,className:'btn btn-ghost btn-sm',onClick:()=>setOpen(x)},RPT_MONTHS[x.m].slice(0,3)+' '+x.y+' — '+dr+' debit, '+(x.list.length-dr)+' credit');}),
-    open&&h(UnmappedLinesPopup,{sid:salonId,getList:()=>unmappedBankLinesFor(salonId,open.y,open.m,all),getRows:()=>all,onMap,onInvoicesChanged,month:{year:open.y,month:open.m},
-      title:'Unmapped bank lines — '+RPT_MONTHS[open.m]+' '+open.y,
+    months.length>0&&h('select',{className:'form-control',style:{width:'auto',padding:'3px 6px',fontSize:12,marginLeft:'auto'},value:'',title:'Check mapped lines (second-person review) and unusual mappings of a month',
+      onChange:e=>{const ym=e.target.value;if(!ym)return;setOpen({ym,y:Number(ym.slice(0,4)),m:Number(ym.slice(5,7))-1,view:'review'});}},
+      h('option',{value:''},'🔍 Review / exceptions…'),months.map(ym=>h('option',{key:ym,value:ym},RPT_MONTHS[Number(ym.slice(5,7))-1]+' '+ym.slice(0,4)))),
+    open&&h(UnmappedLinesPopup,{sid:salonId,getList:()=>unmappedBankLinesFor(salonId,open.y,open.m,all),getRows:()=>all,onMap,onInvoicesChanged,month:{year:open.y,month:open.m},startView:open.view,
+      title:(open.view?'Bank mapping review — ':'Unmapped bank lines — ')+RPT_MONTHS[open.m]+' '+open.y,
       intro:'Map each line below — a Nature, the vendor for a vendor payment, the Date as per Cradlee for a card / UPI settlement. The month cannot be marked Final, nor its Collection Reco made, until they are mapped.',
       onClose:()=>setOpen(null),onNavTab:null}));
 }
