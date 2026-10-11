@@ -1049,6 +1049,14 @@
           [r1,row.nature,row.linkedEmployeePay[0].dailyIncentive,dailyIncentiveSettledOnBank(913,'E1',2026,8,'Service Commission/Incentives','P2'),dailyIncentiveSettledOnBank(913,'E1',2026,8,'Service Commission/Incentives','P1')],
           ['','Daily Incentive',1000,700,0]);
       }catch(err){results.push({name:'Daily incentive from list',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        safeLocalSet('salonos_vendors_outlet_914',JSON.stringify([{id:'V1',name:'Bulk Vendor'}]));
+        safeLocalSet('salonos_vendor_invoices_outlet_914',JSON.stringify([{id:'I1',vendorId:'V1',invoiceNo:'A',invoiceDate:'01/09/2026',amount:1000,payments:[]},{id:'I2',vendorId:'V1',invoiceNo:'B',invoiceDate:'02/09/2026',amount:1000,payments:[]},{id:'I3',vendorId:'V1',invoiceNo:'C',invoiceDate:'03/09/2026',amount:700,payments:[]}]));
+        const L=[{id:1,side:'Debit',debit:700,description:'NEFT BULK VENDOR',date:'10/09/2026'},{id:2,side:'Debit',debit:1000,description:'NEFT BULK VENDOR',date:'11/09/2026'},{id:3,side:'Debit',debit:1300,description:'NEFT BULK VENDOR',date:'12/09/2026'},{id:4,side:'Debit',debit:50,description:'NOBODY',date:'12/09/2026'}];
+        const a=planBulkBillLinks(914,L,false).map(p=>p.allocations?p.allocations.map(x=>x.invoiceNo+x.amount).join('+'):'skip');
+        const b=planBulkBillLinks(914,L,true).map(p=>p.allocations?p.allocations.map(x=>x.invoiceNo+x.amount).join('+'):'skip');
+        eq('Bulk link plan: exact single match only, two same-amount bills not guessed; with split, oldest bills first and no bill claimed twice',[a,b],[['C700','skip','skip','skip'],['C700','A1000','skip','skip']]);
+      }catch(err){results.push({name:'Bulk link plan',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

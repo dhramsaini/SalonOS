@@ -285,6 +285,30 @@ function recordBankLineAdvances(sid,row,lines,onMap){
   try{logAuditEvent(sid,{entity:'Bank Statement',entityId:String(row.id),action:'Advance recorded',summary:'₹'+Math.round(tot).toLocaleString('en-IN')+' of '+(row.transactionDate||'')+' — '+created.map(c=>c.employeeName+' '+(c.wasExisting?c.advanceId+' (linked)':c.advanceId)).join(', ')});}catch(e){}
   return'';
 }
+// Plan for linking many bank debits to vendor bills at once. Per line: its vendor (chosen or named
+// in the narration), then the one unpaid bill whose balance equals the debit; with split on, else the
+// oldest bills until the debit is used up. Balances are reduced as the plan goes, so two debits never
+// claim the same bill. [{x, vendor, allocations:[{id,invoiceNo,amount}], reason}]
+function planBulkBillLinks(sid,lines,split){
+  const vendors=loadVendors(sid)||[];const inv=(loadVendorInvoices(sid)||[]).filter(i=>i&&i.docNature!=='Performa Invoice');
+  const left={};inv.forEach(i=>{left[i.id]=Math.round(((Number(i.amount)||0)-(i.payments||[]).reduce((t,q)=>t+(Number(q.paidAmount)||0),0))*100)/100;});
+  const dateOf=i=>String(toISO(i.bookingDate||i.invoiceDate)||'');
+  return(lines||[]).map(x=>{
+    if(x.side!=='Debit')return{x,reason:'Credit line'};
+    const ov=x.vendorOverride;const v=ov&&ov!=='__none__'?vendors.find(z=>z.name===ov):(ov==='__none__'?null:findVendorMatch(x.description,vendors));
+    if(!v)return{x,reason:'No vendor — choose one for this line first'};
+    const open=inv.filter(i=>String(i.vendorId)===String(v.id)&&left[i.id]>0.5).sort((a,b)=>dateOf(a).localeCompare(dateOf(b)));
+    if(!open.length)return{x,vendor:v,reason:'No unpaid bills of '+v.name};
+    const exact=open.filter(i=>Math.abs(left[i.id]-x.debit)<=1);
+    if(exact.length===1){const lb=left[exact[0].id];left[exact[0].id]=0;return{x,vendor:v,allocations:[{id:exact[0].id,invoiceNo:exact[0].invoiceNo||exact[0].id,amount:Math.round(Math.min(x.debit,lb)*100)/100}]};}
+    if(exact.length>1&&!split)return{x,vendor:v,reason:exact.length+' bills of the same amount — link this one by hand'};
+    if(!split)return{x,vendor:v,reason:'No bill of exactly '+'₹'+Math.round(x.debit).toLocaleString('en-IN')+' (tick “split across oldest bills” to allow)'};
+    const tot=open.reduce((t,i)=>t+left[i.id],0);
+    if(tot+1<x.debit)return{x,vendor:v,reason:'Unpaid bills total only ₹'+Math.round(tot).toLocaleString('en-IN')+' — add the missing bill (+ New bill) first'};
+    let rem=x.debit;const al=[];
+    open.forEach(i=>{if(rem<=0.005)return;const a=Math.round(Math.min(left[i.id],rem)*100)/100;if(a>0){al.push({id:i.id,invoiceNo:i.invoiceNo||i.id,amount:a});left[i.id]=Math.round((left[i.id]-a)*100)/100;rem=Math.round((rem-a)*100)/100;}});
+    return{x,vendor:v,allocations:al};});
+}
 // Pop-up listing unmapped lines, each mappable in place: Nature, the vendor for a vendor payment,
 // the Date as per Cradlee for a card / UPI settlement. getList() is re-read after every change.
 //   onMap(id, patch)  — how to save (Bank Statement passes its own; default saves to storage)
@@ -297,7 +321,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const [payErr,setPayErr]=useState('');
   const [advFor,setAdvFor]=useState(null); // {x, lines:[{employeeId,employeeName,amount,deductFrom,deductionStart,reason,linkExistingId}]}
   const [advErr,setAdvErr]=useState('');
-  const [ticked,setTicked]=useState(()=>new Set());const [bulk,setBulk]=useState({nature:'',vendor:'',dateMode:'setdt',date:''});const [bulkMsg,setBulkMsg]=useState('');
+  const [ticked,setTicked]=useState(()=>new Set());const [linkPlan,setLinkPlan]=useState(null);const [splitOld,setSplitOld]=useState(false);const [bulk,setBulk]=useState({nature:'',vendor:'',dateMode:'setdt',date:''});const [bulkMsg,setBulkMsg]=useState('');
   const list=getList();const vendors=(loadVendors(sid)||[]).filter(v=>v&&v.status!=='Inactive').sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   const m=n=>n?'₹'+Number(n).toLocaleString('en-IN',{maximumFractionDigits:2}):'';
   const dr=list.filter(x=>x.side==='Debit'),cr=list.filter(x=>x.side==='Credit');const sum=(a,k)=>a.reduce((t,x)=>t+x[k],0);
@@ -331,6 +355,14 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
     setTicked(new Set());setTick(t=>t+1);if(onMapped)onMapped();
     setBulkMsg(done+' line'+(done===1?'':'s')+' set to '+n+(skipped?' · '+skipped+' skipped ('+(n&&BANK_CREDIT_NATURES.has(n)?'debits':'credits')+' cannot take this Nature)':'')+(noDate?' · '+noDate+' still need a Date as per Cradlee':'')+'.');
     try{logAuditEvent(sid,{entity:'Bank Statement',entityId:'bulk',action:'Mapped in bulk',summary:done+' line(s) set to '+n+(bulk.vendor?' — '+bulk.vendor:'')});}catch(e){}
+  };
+  const makePlan=sp=>setLinkPlan(planBulkBillLinks(sid,list.filter(x=>ticked.has(x.id)),sp));
+  const runPlan=()=>{
+    const rowsNow=getRows?getRows():bankRowsFor(sid);let ok=0;const fails=[];
+    linkPlan.filter(p=>p.allocations).forEach(p=>{const row=rowsNow.find(r=>r.id===p.x.id)||{id:p.x.id,debit:p.x.debit,transactionDate:p.x.date};
+      const err=linkBankLineToBills(sid,row,p.vendor,p.allocations.map(a=>({id:a.id,amount:a.amount})),onMap);if(err)fails.push((p.x.date||'')+' '+p.vendor.name+': '+err);else ok++;});
+    setLinkPlan(null);setTicked(new Set());setTick(t=>t+1);if(onInvoicesChanged)onInvoicesChanged();if(onMapped)onMapped();
+    setBulkMsg(ok+' payment'+(ok===1?'':'s')+' linked to bills'+(fails.length?' · not linked: '+fails.join('; '):'')+'.');
   };
   const allVendors=loadVendors(sid)||[];
   const vendorOfLine=x=>x.vendorOverride&&x.vendorOverride!=='__none__'?allVendors.find(v=>v.name===x.vendorOverride)||null:(x.vendorOverride==='__none__'?null:findVendorMatch(x.description,allVendors));
@@ -398,8 +430,19 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
           h('option',{value:'setdt'},'Cradlee date from narration (SETDT)'),h('option',{value:'prev'},'Cradlee date = day before bank date'),h('option',{value:'pick'},'Cradlee date = …')),
         (bulk.nature==='Card Settlement'||bulk.nature==='UPI Settlement')&&bulk.dateMode==='pick'&&h('input',{type:'date',className:'form-control',style:{width:140,padding:'4px 6px',fontSize:12},value:bulk.date,onChange:e=>setBulk({...bulk,date:e.target.value})}),
         h('button',{className:'btn btn-primary btn-sm',onClick:applyBulk},'Apply to '+ticked.size),
+        list.some(x=>ticked.has(x.id)&&x.side==='Debit')&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>makePlan(splitOld)},'🔗 Link bills ('+list.filter(x=>ticked.has(x.id)&&x.side==='Debit').length+' debits)'),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setTicked(new Set())},'Clear')),
       bulkMsg&&h('div',{style:{fontSize:12,color:'var(--green)',marginBottom:6}},'✓ '+bulkMsg),
+      linkPlan&&(()=>{const go=linkPlan.filter(p=>p.allocations),skip=linkPlan.filter(p=>!p.allocations);
+        return h('div',{style:{border:'1px solid var(--border2)',borderRadius:8,padding:10,marginBottom:10,background:'var(--bg3)'}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:6}},
+            h('b',{style:{fontSize:13}},'Link bills — '+go.length+' ready'+(skip.length?', '+skip.length+' skipped':'')),
+            h('label',{style:{fontSize:12,display:'flex',gap:6,alignItems:'center'}},h('input',{type:'checkbox',checked:splitOld,onChange:e=>{setSplitOld(e.target.checked);makePlan(e.target.checked);}}),'Split across oldest bills when no single bill matches')),
+          h('table',{style:{width:'100%',fontSize:12}},h('thead',null,h('tr',null,['Date','Payment','Vendor','Linked to'].map((t,i)=>h('th',{key:i,style:i===1?{textAlign:'right'}:null},t)))),
+            h('tbody',null,linkPlan.map(p=>h('tr',{key:p.x.id,style:{opacity:p.allocations?1:0.7}},
+              h('td',{style:{whiteSpace:'nowrap'}},p.x.date),h('td',{style:{textAlign:'right',whiteSpace:'nowrap'}},m(p.x.debit)),h('td',null,p.vendor?p.vendor.name:'—'),
+              h('td',{style:{color:p.allocations?'var(--green)':'var(--orange)'}},p.allocations?p.allocations.map(a=>a.invoiceNo+' '+m(a.amount)).join(' + '):p.reason))))),
+          h('div',{style:{display:'flex',gap:8,marginTop:8}},go.length>0&&h('button',{className:'btn btn-primary btn-sm',onClick:runPlan},'Link '+go.length),h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setLinkPlan(null)},'Cancel')));})(),
       h('div',{className:'table-wrap'},h('table',null,
         h('thead',null,h('tr',null,h('th',{key:'cb',style:{width:28}},h('input',{type:'checkbox',title:'Tick every line shown',checked:shown.length>0&&shown.slice(0,300).every(x=>ticked.has(x.id)),
           onChange:e=>setTicked(p=>{const n=new Set(p);shown.slice(0,300).forEach(x=>{if(e.target.checked)n.add(x.id);else n.delete(x.id);});return n;})})),
