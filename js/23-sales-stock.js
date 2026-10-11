@@ -110,7 +110,7 @@ function InventoryTools({sid,items}){
   const lastMove=id=>log.filter(x=>x.itemId===id).reduce((a,x)=>x.date>a?x.date:a,'');
   const dead=items.filter(i=>Number(i.qty)>0&&(lastMove(i.id)||'')<cutoff).map(i=>({i,last:lastMove(i.id),value:(Number(i.qty)||0)*(Number(i.rate)||0)}));
   const usage=loadStdUsage(sid);const [draft,setDraft]=useState(()=>JSON.parse(JSON.stringify(usage)));
-  const svcNames=[...new Set([...BILL_SERVICES.map(s=>s.name),...Object.keys(draft)])];
+  const svcNames=[...new Set([...(typeof fdMenu==='function'?fdMenu(sid).filter(m=>m.type==='Service').map(m=>m.name):BILL_SERVICES.map(s=>s.name)),...Object.keys(draft)])];
   const setU=(svc,idx,k,v)=>setDraft(d=>{const l=[...(d[svc]||[])];l[idx]={...l[idx],[k]:v};return{...d,[svc]:l};});
   const saveU=()=>{const c={};Object.entries(draft).forEach(([s,l])=>{const k=(l||[]).filter(u=>u&&u.itemId&&Number(u.qty)>0).map(u=>({itemId:u.itemId,qty:Number(u.qty)}));if(k.length)c[s]=k;});safeLocalSet(outletKey('salonos_std_usage',sid),JSON.stringify(c));success('Standard usage saved');setTick(x=>x+1);};
   const cons=consumptionFor(sid,cal.year,cal.month);

@@ -1206,6 +1206,7 @@ function App(){
         const favs=FAVS.map(id=>visibleSalonTabs.find(t=>t.id===id)).filter(Boolean);
         const others=visibleSalonTabs.filter(t=>!FAVS.includes(t.id));
         while(favs.length<4&&others.length)favs.push(others.shift());
+        if(controlOn('phoneQuickAdd',selectedSalon&&selectedSalon.id)&&favs.length>3)favs.length=3; // room for ＋ Add (five buttons in all)
         const onFav=favs.some(t=>t.id===salonTab);
         return React.createElement('nav',{className:'bottom-nav','aria-label':'Outlet sheets'},
           favs.map(t=>React.createElement('button',{key:t.id,type:'button',className:salonTab===t.id?'active':'',onClick:()=>setSalonTab(t.id)},

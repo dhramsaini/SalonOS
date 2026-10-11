@@ -1387,6 +1387,30 @@
           [st,pinned&&pinned.salonId,gone&&gone.page,off,[pr.revenue,pr.perChair,pr.perSqft,pr.bills,pr.repeatPct]],
           [['salon:outlet-dashboard:931','salon:bank-statement:931','insights','none'],932,'dashboard'==='x'?'':null,null,[100000,20000,100,2,50]]);
       }catch(err){results.push({name:'Owner & platform',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=932;saveControls({loyaltyPoints:{on:true,limit:5},billReducesStock:{on:true}});
+        const calc=[billCalc({items:[{qty:1,rate:1000}],discount:0}).total,billCalc({items:[{qty:1,rate:1000,gst:5},{qty:2,rate:500,gst:18}],discount:0}).gst,
+          billCalc({items:[{qty:1,rate:1180,gst:18}],inclusive:true}).taxable,billCalc({items:[{qty:1,rate:1000}],noGst:true}).total,billCalc({items:[{qty:1,rate:1000}],discount:100,pointsUsed:100,noGst:true}).total];
+        fdSaveMenu(S,[{id:'S1',name:'Cut',type:'Service',rate:500,duration:30,gst:18,active:true},{id:'P1',name:'Serum',type:'Product',rate:1200,gst:18,active:true,stockItemId:'K1'},
+          {id:'M1',name:'Gold',type:'Membership',rate:5000,gst:18,validityDays:365,discountPct:10,active:true},{id:'X1',name:'Pack 10k',type:'Package',rate:10000,gst:18,credit:12000,validityDays:180,active:true}]);
+        fdSaveClients(S,[]);saveMemberships(S,[]);fdSaveStock(S,[{id:'K1',name:'Serum',unit:'bottle',qty:5,rate:600,sell:1200,min:2,cat:'Retail'}]);safeLocalSet('salonos_inventory_log_outlet_'+S,'[]');
+        const b1={id:'INV-1',customer:'Asha',phone:'98100 55555',date:'2026-10-05',staffId:'E1',staff:'Ravi',noGst:true,items:[{name:'Pack 10k',type:'Package',qty:1,rate:10000},{name:'Gold',type:'Membership',qty:1,rate:5000},{name:'Serum',type:'Product',qty:2,rate:1200,staffId:'E2',staffName:'Sita'}],discount:0,paymentMode:'Card',status:'Paid'};
+        const n1=fdAfterBillSaved(S,b1,true);
+        const mem=fdActiveMembership(S,'9810055555');const pkg1=fdPackageLeft(S,'9810055555');const stock1=fdStock(S)[0].qty;const pts1=fdClients(S)[0].points;
+        const b2={id:'INV-2',customer:'Asha',phone:'9810055555',date:'2026-10-06',noGst:true,items:[{name:'Cut',type:'Service',qty:1,rate:500,staffId:'E1',staffName:'Ravi'}],discount:0,pointsUsed:100,packagePaid:400,paymentMode:'Package',status:'Paid'};
+        fdAfterBillSaved(S,b2,true);const pkg2=fdPackageLeft(S,'9810055555');const pts2=fdClients(S)[0].points;
+        safeLocalSet('salonos_billing_invoices_outlet_'+S,JSON.stringify([b2,b1]));
+        const st=fdClientStats(fdClients(S)[0],fdBills(S));const by=fdBilledSalesByStaff(S,2026,9);
+        fdUpsertClient(S,{name:'Asha K',phone:'9810055555'});fdSaveClients(S,[...fdClients(S),{id:'CLX',name:'Asha dup',phone:'+91 98100-55555',notes:'likes tea'}]);const merged=fdMergeDuplicates(S);
+        const imp=fdImportClientRows(S,[{Name:'Bina',Mobile:'9810066666',Birthday:'3 Mar'},{Name:'Asha',Mobile:'9810055555',Email:'a@x.in'}]);
+        const day=fdDaySummary(S,'2026-10-05');
+        const item={qty:10,batches:[{batch:'A',expiry:'2026-12-01',qty:4},{batch:'B',expiry:'2026-11-01',qty:6}]};fdTakeBatches(item,7);
+        fdSaveStock(S+1,[]);const terr=fdTransferStock(S,S+1,'K1',2);const after=[fdStock(S)[0].qty,fdStock(S+1).map(x=>x.name+':'+x.qty).join()];
+        saveControls({});
+        eq('Front desk: bill totals (per-item GST, incl. GST, no GST, points), membership & package to the register, package / points use, stock off on sale, client stats, merge, import, day-end, batches, transfer',
+          [calc,n1.length,mem&&mem.plan+':'+mem.discountPct,pkg1,stock1,pts1,pkg2,pts2,[st.visits,st.spend,st.fav,st.stylist],by.E2&&by.E2.prod,merged,[imp.added,imp.updated],[day.bills,day.modes.Card],item.batches.map(b=>b.batch+':'+b.qty).join(),terr,after],
+          [[1180,230,1000,1000,800],3,'Gold:10',12000,3,870,11600,770,[2,17800,'Cut','Ravi'],2400,1,[1,1],[1,17400],'A:3','',[1,'Serum:2']]);
+      }catch(err){results.push({name:'Front desk core',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

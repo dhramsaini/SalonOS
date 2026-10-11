@@ -2735,12 +2735,15 @@ const BILL_STAFF=['Meera Joshi','Arjun Singh','Kavya Reddy','Pooja Patel','Deepa
 const BILL_CUSTOMERS=['Anjali Mehta','Rohan Kapoor','Sneha Iyer','Vikram Rao','Neha Gupta','Aditya Jain','Priyanka Das','Karan Malhotra','Ritu Singh','Farah Khan'];
 const GST_PCT=18;
 
-// totals for one invoice
+// totals for one invoice — GST per item (old bills: 18%), prices incl. GST (inv.inclusive), no GST when
+// the outlet is not registered (inv.noGst); loyalty points redeemed count as discount.
 function billCalc(inv){
-  const subtotal=(inv.items||[]).reduce((s,it)=>s+(Number(it.qty)||0)*(Number(it.rate)||0),0);
-  const disc=Math.min(subtotal,Number(inv.discount)||0);
-  const taxable=Math.max(0,subtotal-disc);
-  const gst=Math.round(taxable*GST_PCT/100);
-  const total=taxable+gst;
-  return {subtotal,disc,taxable,gst,total};
+  const items=inv.items||[];const subtotal=items.reduce((s,it)=>s+(Number(it.qty)||0)*(Number(it.rate)||0),0);
+  const disc=Math.min(subtotal,(Number(inv.discount)||0)+(Number(inv.pointsUsed)||0));
+  let taxable=0,gst=0;
+  items.forEach(it=>{const amt=(Number(it.qty)||0)*(Number(it.rate)||0);const share=subtotal?amt*(1-disc/subtotal):0;const g=inv.noGst?0:(it.gst!=null&&it.gst!==''?Number(it.gst)||0:GST_PCT);
+    if(inv.inclusive){const t=share/(1+g/100);taxable+=t;gst+=share-t;}else{taxable+=share;gst+=share*g/100;}});
+  gst=Math.round(gst);
+  if(inv.inclusive){const total=Math.round(subtotal-disc);return{subtotal,disc,taxable:total-gst,gst,total};}
+  taxable=Math.round(taxable*100)/100;return{subtotal,disc,taxable,gst,total:Math.round(taxable+gst)};
 }

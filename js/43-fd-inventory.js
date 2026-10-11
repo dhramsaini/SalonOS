@@ -1,0 +1,132 @@
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// Inventory — add / edit / deactivate items (unit, category, purchase rate, selling price, minimum,
+// barcode), receive (against a purchase order, with batch and expiry), issue to the back bar, stock
+// count with differences valued, transfers between outlets, expiry alerts, stock value & margin
+// report, barcode search (scanner or phone camera). Same storage: salonos_inventory_items / _log.
+// The existing tools (purchase orders, dead stock, standard usage, consumption check) stay below.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+const FD_STOCK_CATS=['Back bar — colour','Back bar — hair care','Back bar — skin','Back bar — nails','Back bar — spa','Retail','Consumable','Equipment','Other'];
+function fdStockMovers(sid,days){const from=localIsoOf(new Date(Date.now()-(days||30)*864e5));const used={};(typeof loadInvLog==='function'?loadInvLog(sid):[]).forEach(x=>{if((x.type==='issue'||x.type==='sale')&&String(x.date)>=from)used[x.itemId]=(used[x.itemId]||0)+(Number(x.qty)||0);});return used;}
+function fdExpiring(sid,items){if(!controlOn('expiryAlerts',sid))return[];const lim=controlLimit('expiryAlerts')||30;const t=fdTodayIso();const until=localIsoOf(new Date(Date.now()+lim*864e5));const out=[];
+  (items||fdStock(sid)).forEach(i=>(i.batches||[]).forEach(b=>{if(b.expiry&&Number(b.qty)>0&&b.expiry<=until)out.push({i,b,expired:b.expiry<t});}));return out.sort((a,b)=>String(a.b.expiry).localeCompare(String(b.b.expiry)));}
+// Takes qty out of batches, earliest expiry first.
+function fdTakeBatches(item,qty){let need=Number(qty)||0;(item.batches||[]).slice().sort((a,b)=>String(a.expiry||'9').localeCompare(String(b.expiry||'9'))).forEach(b=>{if(need<=0)return;const use=Math.min(Number(b.qty)||0,need);b.qty=Math.round(((Number(b.qty)||0)-use)*100)/100;need-=use;});item.batches=(item.batches||[]).filter(b=>Number(b.qty)>0);}
+function fdTransferStock(fromSid,toSid,itemId,qty){
+  const A=fdStock(fromSid);const it=A.find(x=>x.id===itemId);const q=Number(qty)||0;if(!it||!(q>0))return'Choose the item and quantity.';if(q>(Number(it.qty)||0))return'Only '+it.qty+' '+it.unit+' in stock.';
+  it.qty=Math.round(((Number(it.qty)||0)-q)*100)/100;fdTakeBatches(it,q);fdSaveStock(fromSid,A);
+  const B=fdStock(toSid);let d=B.find(x=>(it.barcode&&x.barcode===it.barcode)||String(x.name).toLowerCase()===String(it.name).toLowerCase());
+  if(!d){d={...it,id:'SKU-'+toSid+'-'+Date.now().toString().slice(-6),qty:0,batches:[]};B.push(d);}d.qty=Math.round(((Number(d.qty)||0)+q)*100)/100;fdSaveStock(toSid,B);
+  if(typeof logInvMove==='function'){logInvMove(fromSid,it,'transfer-out',q,Number(it.rate)||0);logInvMove(toSid,d,'transfer-in',q,Number(it.rate)||0);}
+  try{logAuditEvent(fromSid,{entity:'Stock',entityId:it.id,action:'Transferred out',summary:q+' '+it.unit+' '+it.name+' → outlet '+toSid});logAuditEvent(toSid,{entity:'Stock',entityId:d.id,action:'Transferred in',summary:q+' '+it.unit+' '+it.name+' from outlet '+fromSid});}catch(e){}
+  return'';
+}
+function StockItemForm({sid,item,onClose,onSaved}){
+  const h=React.createElement;const {toast}=useToast();const [f,setF]=useState(()=>({name:'',unit:'piece',cat:'Back bar — hair care',rate:'',sell:'',min:'',barcode:'',qty:'',active:true,...(item||{})}));
+  const fc=k=>e=>setF(x=>({...x,[k]:e.target.type==='checkbox'?e.target.checked:e.target.value}));
+  const save=()=>{if(!String(f.name).trim())return toast('Item name is required','error');const L=fdStock(sid);
+    if(L.some(x=>x.id!==f.id&&String(x.name).trim().toLowerCase()===String(f.name).trim().toLowerCase()))return toast('An item with this name exists','error');
+    if(f.barcode&&L.some(x=>x.id!==f.id&&x.barcode===f.barcode))return toast('This barcode is on another item','error');
+    const rec={...f,name:f.name.trim(),rate:Number(f.rate)||0,sell:Number(f.sell)||0,min:Number(f.min)||0,qty:Number(f.qty)||0};
+    if(f.id)fdSaveStock(sid,L.map(x=>x.id===f.id?{...x,...rec}:x));else{rec.id='SKU-'+sid+'-'+Date.now().toString().slice(-6);rec.batches=[];L.push(rec);fdSaveStock(sid,L);if(rec.qty&&typeof logInvMove==='function')logInvMove(sid,rec,'opening',rec.qty,rec.rate);}
+    try{logAuditEvent(sid,{entity:'Stock',entityId:rec.id||f.id,action:f.id?'Item edited':'Item added',summary:rec.name});}catch(e){}toast('Saved','success');onSaved&&onSaved();onClose();};
+  const fld=(k,l,t,ph)=>h('div',{className:'form-group'},h('label',null,l),h('input',{type:t||'text',className:'form-control',value:f[k]??'',placeholder:ph||'',onChange:fc(k)}));
+  return h('div',{className:'modal-overlay',onClick:onClose},h('div',{className:'modal',style:{width:560},onClick:e=>e.stopPropagation()},
+    h('div',{className:'modal-title'},f.id?'Edit item':'New stock item'),
+    h('div',{className:'form-row cols2'},fld('name','Item name *'),h('div',{className:'form-group'},h('label',null,'Category'),h('select',{className:'form-control',value:f.cat,onChange:fc('cat')},FD_STOCK_CATS.map(c=>h('option',{key:c},c))))),
+    h('div',{className:'form-row cols3'},fld('unit','Unit','text','tube, bottle, piece'),fld('rate','Purchase rate ₹','number'),fld('sell','Selling price ₹ (retail)','number')),
+    h('div',{className:'form-row cols3'},fld('min','Minimum (reorder at)','number'),fld('barcode','Barcode','text','scan or type'),!f.id?fld('qty','Opening stock','number'):h('div',{className:'form-group'},h('label',null,'In stock'),h('div',{style:{padding:'8px 0'}},f.qty+' '+f.unit))),
+    f.id&&h('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:13}},h('input',{type:'checkbox',checked:f.active!==false,onChange:fc('active')}),'Active (untick to stop using this item; it stays in history)'),
+    h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:onClose},'Cancel'),h('button',{className:'btn btn-primary',onClick:save},'Save'))));
+}
+function BarcodeCameraButton({onCode}){
+  const h=React.createElement;const [open,setOpen]=useState(false);const vref=useRef(null);
+  useEffect(()=>{if(!open)return;let stream,stop=false,timer;
+    (async()=>{try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});if(vref.current){vref.current.srcObject=stream;await vref.current.play();}
+      const det=new window.BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']});
+      const tick=async()=>{if(stop)return;try{const r=await det.detect(vref.current);if(r&&r[0]){onCode(r[0].rawValue);setOpen(false);return;}}catch(e){}timer=setTimeout(tick,350);};tick();}catch(e){window.alert('Camera not available: '+(e.message||e));setOpen(false);}})();
+    return()=>{stop=true;clearTimeout(timer);if(stream)stream.getTracks().forEach(t=>t.stop());};},[open]);
+  if(!('BarcodeDetector' in window))return null;
+  return h(React.Fragment,null,h('button',{className:'btn btn-ghost btn-sm',title:'Scan with the camera',onClick:()=>setOpen(true)},'📷 Scan'),
+    open&&h('div',{className:'modal-overlay',onClick:()=>setOpen(false)},h('div',{className:'modal',style:{width:420},onClick:e=>e.stopPropagation()},h('div',{className:'modal-title'},'Point the camera at the barcode'),
+      h('video',{ref:vref,muted:true,playsInline:true,style:{width:'100%',borderRadius:8,background:'#000'}}),h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:()=>setOpen(false)},'Cancel')))));
+}
+function InventorySheet({salon}){
+  const h=React.createElement;const {toast}=useToast();const sid=Number(salon&&salon.id)||1;
+  const [tick,setTick]=useState(0);const refresh=()=>setTick(t=>t+1);
+  const [q,setQ]=useState('');const [cat,setCat]=useState('All');const [lowOnly,setLowOnly]=useState(false);const [showInactive,setShowInactive]=useState(false);const [tab,setTab]=useState('stock');
+  const [form,setForm]=useState(null);const [rec,setRec]=useState(null);const [iss,setIss]=useState(null);const [count,setCount]=useState({});const [tr,setTr]=useState({itemId:'',qty:'',to:''});
+  const items=fdStock(sid);const used30=fdStockMovers(sid,30);const exp=fdExpiring(sid,items);
+  const ql=q.trim().toLowerCase();
+  const list=items.filter(i=>(showInactive||i.active!==false)&&(cat==='All'||i.cat===cat)&&(!lowOnly||Number(i.qty)<=Number(i.min))&&(!ql||String(i.name).toLowerCase().includes(ql)||String(i.barcode||'')===q.trim()));
+  const value=items.filter(i=>i.active!==false).reduce((t,i)=>t+(Number(i.qty)||0)*(Number(i.rate)||0),0);const low=items.filter(i=>i.active!==false&&Number(i.qty)<=Number(i.min));
+  const onCode=code=>{const it=items.find(i=>i.barcode===code);if(it){setQ(code);setRec({...it,addQty:'',newRate:it.rate,batch:'',expiry:'',poId:''});}else{toast('No item has barcode '+code+' — add it','info');setForm({barcode:code});}};
+  const openPOs=(typeof loadPOs==='function'?loadPOs(sid):[]).filter(p=>p.status==='Approved'||p.status==='Billed');
+  const receive=()=>{const n=Number(rec.addQty);if(!(n>0))return toast('Enter a quantity','error');const L=fdStock(sid);const it=L.find(i=>i.id===rec.id);if(!it)return;const rate=Number(rec.newRate)||Number(it.rate)||0;
+    const up=typeof checkPurchaseRate==='function'?checkPurchaseRate(sid,it,rate):'';if(up)toast('⚠ '+up,'error');
+    it.qty=Math.round(((Number(it.qty)||0)+n)*100)/100;it.rate=rate||it.rate;if(rec.batch||rec.expiry)it.batches=[...(it.batches||[]),{batch:rec.batch||'',expiry:rec.expiry||'',qty:n,received:fdTodayIso()}];fdSaveStock(sid,L);
+    if(typeof logInvMove==='function')logInvMove(sid,it,'receive',n,rate);
+    if(rec.poId&&typeof savePOs==='function'){savePOs(sid,loadPOs(sid).map(p=>p.id!==rec.poId?p:{...p,lines:(p.lines||[]).map(l=>(l.itemId===it.id||String(l.name).toLowerCase()===String(it.name).toLowerCase())?{...l,received:(Number(l.received)||0)+n}:l),receivedAt:new Date().toISOString()}));}
+    toast(n+' '+it.unit+' of '+it.name+' received','success');setRec(null);refresh();};
+  const issue=()=>{const n=Number(iss.n)||0;if(!(n>0))return toast('Enter a quantity','error');const L=fdStock(sid);const it=L.find(i=>i.id===iss.id);if(!it)return;if(n>(Number(it.qty)||0))return toast('Only '+it.qty+' '+it.unit+' in stock','error');
+    it.qty=Math.round(((Number(it.qty)||0)-n)*100)/100;fdTakeBatches(it,n);fdSaveStock(sid,L);if(typeof logInvMove==='function')logInvMove(sid,it,'issue',n);setIss(null);refresh();};
+  const saveCount=()=>{const L=fdStock(sid);let n=0,val=0;L.forEach(it=>{const v=count[it.id];if(v===undefined||v==='')return;const c=Number(v);const diff=Math.round((c-(Number(it.qty)||0))*100)/100;if(!diff)return;
+      it.qty=c;if(diff<0)fdTakeBatches(it,-diff);n++;val+=diff*(Number(it.rate)||0);if(typeof logInvMove==='function')logInvMove(sid,it,'count',diff,Number(it.rate)||0);});
+    if(!n)return toast('No differences to save','info');fdSaveStock(sid,L);try{logAuditEvent(sid,{entity:'Stock',entityId:'count',action:'Stock count',summary:n+' item(s) adjusted · '+(val<0?'shortage ':'excess ')+FD_M(Math.abs(val))});}catch(e){}
+    setCount({});toast('Stock count saved — '+n+' item(s) adjusted ('+(val<0?'short ':'excess ')+FD_M(Math.abs(val))+')','success');refresh();};
+  const others=(typeof SALONS!=='undefined'?SALONS:[]).filter(s=>s&&s.id!==sid&&s.status!=='Inactive'&&userCanSeeOutlet(currentSessionUser(),s.id));
+  const stat=(l,v,s2,col)=>h('div',{className:'metric-card'},h('div',{className:'metric-label'},l),h('div',{className:'metric-value',style:col?{color:col}:null},v),h('div',{className:'metric-sub'},s2));
+  const byCat={};items.filter(i=>i.active!==false).forEach(i=>{byCat[i.cat||'Other']=(byCat[i.cat||'Other']||0)+(Number(i.qty)||0)*(Number(i.rate)||0);});
+  return h('div',{className:'fade-in',key:tick},
+    h('div',{className:'section-header'},h('div',null,h('div',{className:'page-title'},'Inventory'),h('div',{className:'page-sub'},'Back-bar and retail stock — receive, issue, count, transfer; retail sales come off stock when billed.')),
+      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},h('button',{className:'btn btn-primary btn-sm',onClick:()=>setForm({})},'+ New item'),h(BarcodeCameraButton,{onCode}))),
+    h('div',{className:'grid4',style:{marginBottom:14}},stat('Stock value',FD_M(value),items.filter(i=>i.active!==false).length+' active items'),stat('To reorder',String(low.length),low.length?'at or below minimum':'all above minimum',low.length?'var(--red)':'var(--green)'),
+      stat('Expiring',String(exp.length),exp.length?exp.filter(x=>x.expired).length+' already expired':'nothing soon',exp.length?'var(--orange)':'var(--green)'),stat('Retail items',String(items.filter(i=>i.active!==false&&(i.cat==='Retail'||Number(i.sell)>0)).length),'with a selling price')),
+    exp.length>0&&h('div',{className:'attention-card',style:{marginBottom:12,color:'var(--orange)'}},'⏰ ',exp.slice(0,5).map((x,k)=>h('span',{key:k,style:{marginRight:12}},x.i.name+' — '+x.b.qty+' '+x.i.unit+(x.b.batch?' (batch '+x.b.batch+')':'')+(x.expired?' expired ':' expires ')+x.b.expiry.split('-').reverse().join('/'))),exp.length>5?' …':''),
+    h('div',{className:'tab-bar',style:{marginBottom:10}},[['stock','Stock'],['count','Stock count'],['transfer','Transfer'],['report','Value & margin']].map(([k,l])=>h('button',{key:k,className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
+    tab==='stock'&&h('div',{className:'card'},
+      h('div',{className:'fd-toolbar'},h('input',{className:'form-control',style:{maxWidth:280},placeholder:'Search, or scan a barcode…',value:q,onChange:e=>setQ(e.target.value),onKeyDown:e=>{if(e.key==='Enter'&&q.trim()){const it=items.find(i=>i.barcode===q.trim());if(it)onCode(q.trim());}}}),
+        h('select',{className:'form-control',style:{width:'auto'},value:cat,onChange:e=>setCat(e.target.value)},h('option',{value:'All'},'All categories'),FD_STOCK_CATS.map(c=>h('option',{key:c},c))),
+        h('button',{className:'btn btn-sm '+(lowOnly?'btn-primary':'btn-ghost'),onClick:()=>setLowOnly(!lowOnly)},'To reorder'),h('label',{style:{fontSize:12,display:'flex',gap:4,alignItems:'center'}},h('input',{type:'checkbox',checked:showInactive,onChange:e=>setShowInactive(e.target.checked)}),'Show inactive')),
+      !list.length?h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'📦'),h('div',{className:'empty-title'},items.length?'No items match':'No stock items yet'),h('div',{className:'empty-sub'},items.length?'Clear the search or filters.':'Press + New item to add your back-bar and retail stock.'))
+      :h('div',{className:'table-wrap'},h('table',null,h('thead',null,h('tr',null,['Item','Category','In stock','Min','Purchase','Sell','Value','Used 30d','Days left',''].map((x,i)=>h('th',{key:i},x)))),
+        h('tbody',null,list.map(i=>{const u=used30[i.id]||0;const left=u>0?Math.floor((Number(i.qty)||0)/(u/30)):null;
+          return h('tr',{key:i.id,style:{opacity:i.active===false?0.5:1}},h('td',null,i.name,Number(i.qty)<=Number(i.min)&&i.active!==false&&h('span',{className:'badge badge-red',style:{marginLeft:6}},'Reorder'),i.barcode&&h('div',{style:{fontSize:10.5,color:'var(--text3)'}},'▮ '+i.barcode)),
+            h('td',{style:{fontSize:12}},i.cat),h('td',null,(Number(i.qty)||0)+' '+i.unit),h('td',null,i.min||'—'),h('td',null,FD_M(i.rate)),h('td',null,Number(i.sell)>0?FD_M(i.sell):'—'),h('td',null,FD_M((Number(i.qty)||0)*(Number(i.rate)||0))),
+            h('td',null,u||'—'),h('td',{style:{color:left!=null&&left<=7?'var(--red)':''}},left==null?'—':left+'d'),
+            h('td',{style:{whiteSpace:'nowrap'}},h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRec({...i,addQty:'',newRate:i.rate,batch:'',expiry:'',poId:''})},'Receive'),h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setIss({id:i.id,name:i.name,unit:i.unit,n:1})},'Issue'),h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setForm(i)},'✏')));}))))),
+    tab==='count'&&h('div',{className:'card'},h('div',{style:{fontSize:12.5,color:'var(--text3)',marginBottom:8}},'Count the shelf and enter what you find; leave blank to skip. Saving adjusts stock and logs each difference with its value.'),
+      h('div',{className:'table-wrap',style:{maxHeight:'60vh',overflowY:'auto'}},h('table',null,h('thead',null,h('tr',null,['Item','System','Counted','Difference','Value'].map((x,i)=>h('th',{key:i},x)))),
+        h('tbody',null,items.filter(i=>i.active!==false).map(i=>{const v=count[i.id];const d=v===undefined||v===''?null:Math.round((Number(v)-(Number(i.qty)||0))*100)/100;
+          return h('tr',{key:i.id},h('td',null,i.name),h('td',null,(Number(i.qty)||0)+' '+i.unit),h('td',null,h('input',{type:'number',className:'form-control',style:{width:90,padding:'3px 6px'},value:v??'',onChange:e=>setCount(c=>({...c,[i.id]:e.target.value}))})),
+            h('td',{style:{color:d<0?'var(--red)':d>0?'var(--green)':''}},d==null||d===0?'—':(d>0?'+':'')+d),h('td',null,d?FD_M(d*(Number(i.rate)||0)):'—'));})))),
+      h('button',{className:'btn btn-primary btn-sm',style:{marginTop:8},onClick:saveCount},'Save stock count')),
+    tab==='transfer'&&h('div',{className:'card',style:{maxWidth:560}},others.length?h('div',null,
+      h('div',{className:'form-row cols3'},h('div',{className:'form-group'},h('label',null,'Item'),h('select',{className:'form-control',value:tr.itemId,onChange:e=>setTr({...tr,itemId:e.target.value})},h('option',{value:''},'—'),items.filter(i=>i.active!==false&&Number(i.qty)>0).map(i=>h('option',{key:i.id,value:i.id},i.name+' ('+i.qty+' '+i.unit+')')))),
+        h('div',{className:'form-group'},h('label',null,'Quantity'),h('input',{type:'number',className:'form-control',value:tr.qty,onChange:e=>setTr({...tr,qty:e.target.value})})),
+        h('div',{className:'form-group'},h('label',null,'To outlet'),h('select',{className:'form-control',value:tr.to,onChange:e=>setTr({...tr,to:e.target.value})},h('option',{value:''},'—'),others.map(s=>h('option',{key:s.id,value:s.id},rptShort(s)))))),
+      h('button',{className:'btn btn-primary btn-sm',onClick:()=>{if(!tr.to)return toast('Choose the outlet','error');const err=fdTransferStock(sid,Number(tr.to)||tr.to,tr.itemId,tr.qty);if(err)return toast(err,'error');toast('Transferred','success');setTr({itemId:'',qty:'',to:''});refresh();}},'Transfer'),
+      h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Taken out here and added at the other outlet (the item is created there if it does not exist), both logged.'))
+      :h('div',{style:{fontSize:12.5,color:'var(--text3)'}},'No other outlets you can access.')),
+    tab==='report'&&h('div',{className:'card'},
+      h('div',{style:{fontWeight:700,marginBottom:6}},'Stock value by category'),h('div',{className:'table-wrap'},h('table',null,h('tbody',null,Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>h('tr',{key:k},h('td',null,k),h('td',{style:{textAlign:'right'}},FD_M(v)),h('td',{style:{textAlign:'right',color:'var(--text3)'}},value?Math.round(v/value*100)+'%':'—'))),h('tr',{style:{fontWeight:700}},h('td',null,'Total'),h('td',{style:{textAlign:'right'}},FD_M(value)),h('td'))))),
+      h('div',{style:{fontWeight:700,margin:'14px 0 6px'}},'Retail margin'),h('div',{className:'table-wrap'},h('table',null,h('thead',null,h('tr',null,['Item','Purchase','Sell','Margin','Sold 30d'].map((x,i)=>h('th',{key:i},x)))),
+        h('tbody',null,items.filter(i=>Number(i.sell)>0).sort((a,b)=>(Number(b.sell)-Number(b.rate))/Number(b.sell)-(Number(a.sell)-Number(a.rate))/Number(a.sell)).map(i=>{const mg=(Number(i.sell)-Number(i.rate))/Number(i.sell)*100;
+          return h('tr',{key:i.id},h('td',null,i.name),h('td',null,FD_M(i.rate)),h('td',null,FD_M(i.sell)),h('td',{style:{color:mg<30?'var(--red)':'var(--green)',fontWeight:600}},Math.round(mg)+'%'),h('td',null,used30[i.id]||'—'));})))),
+      h('div',{style:{fontWeight:700,margin:'14px 0 6px'}},'Fast and slow movers (30 days)'),
+      (()=>{const act=items.filter(i=>i.active!==false);const fast=act.filter(i=>used30[i.id]).sort((a,b)=>used30[b.id]-used30[a.id]).slice(0,6);const slow=act.filter(i=>!used30[i.id]&&Number(i.qty)>0);
+        return h('div',{style:{fontSize:12.5}},h('div',null,'🚀 Fast: '+(fast.map(i=>i.name+' ('+used30[i.id]+')').join(', ')||'—')),h('div',{style:{marginTop:4}},'🐢 Not used in 30 days: '+(slow.map(i=>i.name).join(', ')||'—')));})()),
+    h('div',{id:'inv-tools'},typeof InventoryTools==='function'&&h(InventoryTools,{sid,items:items.filter(i=>i.active!==false)})),
+    form&&h(StockItemForm,{sid,item:form,onClose:()=>setForm(null),onSaved:refresh,key:'f'+(form.id||form.barcode||'n')}),
+    rec&&h('div',{className:'modal-overlay',onClick:()=>setRec(null)},h('div',{className:'modal',style:{width:460},onClick:e=>e.stopPropagation()},
+      h('div',{className:'modal-title'},'Receive — '+rec.name),
+      h('div',{className:'form-row cols2'},h('div',{className:'form-group'},h('label',null,'Quantity ('+rec.unit+')'),h('input',{type:'number',autoFocus:true,className:'form-control',value:rec.addQty,onChange:e=>setRec({...rec,addQty:e.target.value})})),
+        h('div',{className:'form-group'},h('label',null,'Purchase rate (last '+FD_M(rec.rate)+')'),h('input',{type:'number',className:'form-control',value:rec.newRate,onChange:e=>setRec({...rec,newRate:e.target.value})}))),
+      h('div',{className:'form-row cols2'},h('div',{className:'form-group'},h('label',null,'Batch'),h('input',{className:'form-control',value:rec.batch,onChange:e=>setRec({...rec,batch:e.target.value})})),
+        h('div',{className:'form-group'},h('label',null,'Expiry'),h('input',{type:'date',className:'form-control',value:rec.expiry,onChange:e=>setRec({...rec,expiry:e.target.value})}))),
+      openPOs.length>0&&h('div',{className:'form-group'},h('label',null,'Against purchase order'),h('select',{className:'form-control',value:rec.poId,onChange:e=>setRec({...rec,poId:e.target.value})},h('option',{value:''},'— none —'),openPOs.map(p=>h('option',{key:p.id,value:p.id},p.no+' · '+p.date.split('-').reverse().join('/'))))),
+      h('div',{className:'help-note'},'Landed cost '+FD_M((Number(rec.addQty)||0)*(Number(rec.newRate)||0))),
+      h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:()=>setRec(null)},'Cancel'),h('button',{className:'btn btn-primary',onClick:receive},'Add to stock')))),
+    iss&&h('div',{className:'modal-overlay',onClick:()=>setIss(null)},h('div',{className:'modal',style:{width:380},onClick:e=>e.stopPropagation()},
+      h('div',{className:'modal-title'},'Issue to back bar — '+iss.name),h('div',{className:'form-group'},h('label',null,'Quantity ('+iss.unit+')'),h('input',{type:'number',step:'0.1',autoFocus:true,className:'form-control',value:iss.n,onChange:e=>setIss({...iss,n:e.target.value}),onKeyDown:e=>e.key==='Enter'&&issue()})),
+      h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:()=>setIss(null)},'Cancel'),h('button',{className:'btn btn-primary',onClick:issue},'Issue')))));
+}

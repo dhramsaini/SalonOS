@@ -64,7 +64,7 @@ function ClientFollowUps({salon}){
 // ── Membership / package at billing ──
 function BillingClientStrip({sid,phone,total,usePackage,onUsePackage}){
   const h=React.createElement;if(sid==null||!controlOn('membershipAtBilling',sid))return null;const c=foClientByPhone(sid,phone);if(!c)return null;
-  const bal=Number(c.packageBalance)||0;const tier=c.tier&&c.tier!=='None'?c.tier:'';const exp=c.tierValidTill||'';const expired=exp&&exp<new Date().toISOString().slice(0,10);
+  const bal=typeof fdPackageLeft==='function'?fdPackageLeft(sid,phone):(Number(c.packageBalance)||0);const tier=c.tier&&c.tier!=='None'?c.tier:'';const exp=c.tierValidTill||'';const expired=exp&&exp<new Date().toISOString().slice(0,10);
   const ns=noShowCount(sid,phone);
   return h('div',{style:{background:'rgba(47,95,224,0.07)',border:'1px solid rgba(47,95,224,0.3)',borderRadius:8,padding:'8px 10px',margin:'4px 0 10px',fontSize:12.5}},
     h('b',null,'👤 '+c.name),' · '+(c.visits||0)+' visit(s)',tier&&h('span',{style:{marginLeft:8,color:expired?'var(--red)':'var(--green)',fontWeight:600}},tier+(exp?(expired?' — ended ':' till ')+exp.split('-').reverse().join('/'):'')),
