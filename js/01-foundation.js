@@ -559,7 +559,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.10.11.150';
+const APP_VERSION='2026.10.11.151';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
@@ -1069,6 +1069,7 @@ async function cloudApplyUpdates(){
   const applied=[];
   rows.forEach(row=>{ // synchronous from here on — no await between writing and the caller's remount
     if(_cloudDirty.has(row.key)||_cloudPushTimers[row.key])return;
+    if(String(row.key).indexOf('salonos_billarchive_')===0)return; // archives stay in the cloud
     _cloudUpdatedAt[row.key]=row.updated_at;
     if(row.value==null){ // deleted in the cloud (e.g. another ID deleted an outlet)
       delete _cloudBase[row.key];
@@ -1176,7 +1177,7 @@ async function cloudPullAndHydrate(){
     if(error)throw error;
     await sheetsFromTables(supa,data||[]);
     (data||[]).forEach(row=>{
-      if(stillPending.includes(row.key)||DEVICE_ONLY_KEYS.has(row.key))return;
+      if(stillPending.includes(row.key)||DEVICE_ONLY_KEYS.has(row.key)||String(row.key).indexOf('salonos_billarchive_')===0)return; // archives stay in the cloud
       if(row.value==null){ // deleted in the cloud — drop this browser's leftover copy too
         if(localStorage.getItem(row.key)!=null)cachedLocalRemove(row.key);
         _cloudUpdatedAt[row.key]=row.updated_at;

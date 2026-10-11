@@ -1413,7 +1413,7 @@
       }catch(err){results.push({name:'Front desk core',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       try{
         const S=934;const C0=window.confirm;window.confirm=()=>true;
-        saveControls({fyInvoiceSeries:{on:true},giftVouchers:{on:true},familySharing:{on:true},referralReward:{on:true,limit:200},patchTestWarn:{on:true,limit:180},billReducesStock:{on:true}});
+        saveControls({deviceBillSeries:{on:false},fyInvoiceSeries:{on:true},giftVouchers:{on:true},familySharing:{on:true},referralReward:{on:true,limit:200},patchTestWarn:{on:true,limit:180},billReducesStock:{on:true}});
         const no=[fdNextBillNo(S,[{id:'INV/2026-27/0007'}],'2026-10-05'),fdNextBillNo(S,[{id:'INV/2026-27/0007'}],'2027-04-02')];
         fdSaveClients(S,[{id:'C1',name:'Asha',phone:'9810011111',familyId:'F1'},{id:'C2',name:'Ravi',phone:'9810022222',familyId:'F1',referredBy:'C1'},{id:'C3',name:'Mira',phone:'9810033333',patchTests:[{date:'2026-01-01',result:'Clear'}],optOut:true}]);
         saveMemberships(S,[{id:'M1',client:'Asha',phone:'9810011111',type:'Package',soldOn:'2026-09-01',paid:5000,value:6000,validTill:'2027-09-01',redemptions:[]}]);
@@ -1440,6 +1440,40 @@
           [no,fam,pt,rc,v1&&v1.left,v2,refCredit,cn.amount,stockAfter,[due0,due1],[fe,dse&&dse[0]],[pr.bills.length,pr.bills[0]&&pr.bills[0].items.length,im.added,im2.skipped,zoya],aud,[wo,fdStock(S)[0].qty],cat&&cat.code+':'+cat.rate],
           [['INV/2026-27/0008','INV/2027-28/0001'],6000,[true,true],true,1000,400,200,1000,5,[2000,1500],['',400],[1,2,1,1,true],'Asha,Ravi,Zoya',['',3],'SR-9:480']);
       }catch(err){results.push({name:'Front desk extras',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=935;let dcPrev=null;try{dcPrev=localStorage.getItem('salonos_device_code');localStorage.setItem('salonos_device_code','QZ');}catch(e){}
+        saveControls({deviceBillSeries:{on:true},renewalOffer:{on:true,limit:10},productSuggestions:{on:true},maskClientPhones:{on:true},oldDuesAlert:{on:true,limit:60}});
+        const no=fdNextBillNo(S,[{id:'INV-QZ-0004'},{id:'INV-AB-0009'}],'2026-10-05');
+        fdSaveStock(S,[{id:'K1',name:'Gel',unit:'tube',qty:5,rate:100}]);safeLocalSet('salonos_inventory_log_outlet_'+S,'[]');fdEnsureLedger(S);
+        logInvMove(S,fdStock(S)[0],'issue',2);logInvMove(S,fdStock(S)[0],'receive',3);logInvMove(S,fdStock(S)[0],'count',-1);fdRecalcStock(S);const q1=fdStock(S)[0].qty;
+        logInvMove(S,fdStock(S)[0],'issue',7);fdRecalcStock(S);const q2=fdStock(S)[0].qty;
+        fdSaveClients(S,[{id:'C1',name:'Asha',phone:'9810011111',points:50},{id:'C2',name:'Bina',phone:'9810044444'}]);
+        fdClientAdjust(S,'9810011111','points',20,'x');fdClientAdjust(S,'9810011111','points',-5,'y');const c1=fdClients(S)[0];
+        fdSaveMenu(S,[{id:'S1',name:'Cut',type:'Service',category:'Hair',rate:1000,gst:18,active:true},{id:'P1',name:'Gel',type:'Product',rate:500,gst:18,active:true},{id:'M1',name:'Gold',type:'Membership',rate:5000,gst:18,active:true}]);
+        const its=[{name:'Cut',type:'Service',qty:1,rate:800},{name:'Gel',type:'Product',qty:2,rate:500}];
+        const rd=[fdRateDiscount(S,its),fdListSubtotal(S,its)];
+        const df=Object.keys(fdBillDiff({customer:'A',items:its,paymentMode:'Cash'},{customer:'A',items:[its[0]],paymentMode:'UPI'})).sort().join(',');
+        const B=[{id:'B1',date:'2026-10-02',customer:'Kapoor Ltd',custGstin:'07ABCDE1234F1Z5',items:[{name:'Cut',type:'Service',qty:1,rate:1000,gst:18}],packagePaid:300,paymentMode:'Cash',status:'Paid'},
+          {id:'B2',date:'2026-10-01',customer:'Asha',phone:'9810011111',items:[{name:'Cut',type:'Service',qty:1,rate:1000,gst:18},{name:'Gel',type:'Product',qty:2,rate:500,gst:18}],paymentMode:'UPI',status:'Paid'},
+          {id:'B3',date:'2026-09-20',customer:'Asha',phone:'9810011111',items:[{name:'Cut',type:'Service',qty:1,rate:1000,gst:18},{name:'Gel',type:'Product',qty:1,rate:500,gst:18}],paymentMode:'UPI',status:'Paid'},
+          {id:'B4',date:'2026-07-01',customer:'Bina',phone:'9810044444',noGst:true,items:[{name:'Cut',type:'Service',qty:1,rate:1000}],paymentMode:'Cash',status:'Unpaid'}];
+        safeLocalSet('salonos_billing_invoices_outlet_'+S,JSON.stringify(B));
+        const gs=fdGstSummary(S,'2026-10');const r18=gs.rates.find(r=>r.rate===18)||{};const h1=gs.hsn.find(x=>x.code==='999721')||{};
+        const mm=fdMonthMoney(S,'2026-10');
+        const sg=fdProductSuggestions(S,[{name:'Cut',type:'Service',qty:1,rate:1000}]).map(x=>x.m.name).join(',');
+        const od=fdOldDues(S).map(e=>e.name).join(',');
+        const rt=fdReceiptText(S,B[1]);const rtOk=[rt.includes('TOTAL Rs'),rt.includes('B2'),rt.includes('2x Gel')];
+        const mk=fdShowPhone(S,'9810011111');
+        saveMemberships(S,[{id:'MM1',client:'Asha',phone:'9810011111',type:'Membership',plan:'Gold',soldOn:'2025-10-15',paid:5000,value:5000,validTill:fdAddD(fdTodayIso(),5),redemptions:[]}]);
+        const ro=fdRenewalOffer(S,'9810011111',[{name:'Gold',type:'Membership',qty:1,rate:5000}]);
+        safeLocalSet(fdBookKey(S),JSON.stringify({[S+'|2026-10-03']:[{id:'a',client:'Asha',phone:'9810011111',service:'Cut',staff:'Ravi',start:600,dur:30,status:'Done',startedAt:'2026-10-03T10:00:00.000Z',finishedAt:'2026-10-03T10:50:00.000Z'}]}));
+        const tm=fdTimings(S,'2026-10-01','2026-10-05');
+        const er=fdEraseClient(S,'C1');const erOk=[er,fdClients(S)[0].name,fdClients(S)[0].phone,fdBills(S).filter(b=>b.customer==='Erased client').length,fdLoadBook(S)[S+'|2026-10-03'][0].phone];
+        saveControls({});try{if(dcPrev)localStorage.setItem('salonos_device_code',dcPrev);else localStorage.removeItem('salonos_device_code');}catch(e){}
+        eq('Front desk safety: device bill series, stock ledger (negative allowed), points ledger, rate below menu as discount, edit diff, GST summary, new money, product suggestions, old dues, text receipt, masked phone, renewal offer, timings, erase',
+          [no,[q1,q2],[c1.points,c1.pointsBase,c1.pointsLog.length],rd,df,[r18.taxable,r18.tax,r18.b2b,gs.b2b.length,gs.b2b[0]&&gs.b2b[0].cgst,h1.taxable],[mm.billed,mm.fromPackages,mm.newMoney],sg,od,rtOk,mk,ro&&[ro.pct,ro.days,ro.amount,ro.hasLine],[tm.services[0]&&tm.services[0].n,tm.services[0]&&tm.services[0].avg],erOk],
+          ['INV-QZ-0005',[5,-2],[65,50,2],[200,2000],'items,paymentMode,total',[3000,540,1000,1,90,2000],[3540,300,3240],'Gel','Bina',[true,true,true],'98'+'••••••'+'11',[10,5,500,true],[1,50],['','Erased client','',2,'']]);
+      }catch(err){results.push({name:'Front desk safety',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

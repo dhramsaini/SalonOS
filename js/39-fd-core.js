@@ -103,9 +103,9 @@ function fdAfterBillSaved(sid,bill,isNew){
   if(Number(bill.packagePaid)>0){let need=Number(bill.packagePaid);const L=fdMemberships(sid);
     const FP=typeof fdFamilyPhones==='function'?fdFamilyPhones(sid,bill.phone):[p];
     L.filter(m=>m.type!=='Membership'&&FP.includes(fdP10(m.phone))&&(!m.validTill||m.validTill>=bill.date)).sort((a,b)=>String(a.validTill||'9').localeCompare(String(b.validTill||'9'))).forEach(m=>{if(need<=0)return;
-      const left=(Number(m.value)||Number(m.paid)||0)-(m.redemptions||[]).reduce((s,r)=>s+(Number(r.amount)||0),0);const use=Math.min(left,need);if(use>0){m.redemptions=[...(m.redemptions||[]),{date:bill.date,amount:Math.round(use*100)/100,note:'Bill '+bill.id}];need-=use;}});
+      const left=(Number(m.value)||Number(m.paid)||0)-(m.redemptions||[]).reduce((s,r)=>s+(Number(r.amount)||0),0);const use=Math.min(left,need);if(use>0){m.redemptions=[...(m.redemptions||[]),{id:typeof fdRid==='function'?fdRid():'R'+Date.now(),date:bill.date,amount:Math.round(use*100)/100,note:'Bill '+bill.id}];need-=use;}});
     if(typeof saveMemberships==='function')saveMemberships(sid,L);
-    if(need>0.5){const C=fdClients(sid);const i=C.findIndex(c=>fdP10(c.phone)===p);if(i>=0){C[i]={...C[i],packageBalance:Math.max(0,Math.round(((Number(C[i].packageBalance)||0)-need)*100)/100)};fdSaveClients(sid,C);}}
+    if(need>0.5){if(typeof fdClientAdjust==='function')fdClientAdjust(sid,bill.phone,'packageBalance',-need,'Bill '+bill.id);}
     out.push(FD_M(bill.packagePaid)+' paid from the package');}
   // gift voucher sold / used
   if(bill.voucherSale&&typeof fdSaveVouchers==='function'){fdSaveVouchers(sid,[...fdVouchers(sid),{...bill.voucherSale,soldOn:bill.date,bill:bill.id,redemptions:[]}]);out.push('Voucher '+bill.voucherSale.code+' issued');}
@@ -113,15 +113,15 @@ function fdAfterBillSaved(sid,bill,isNew){
   {const rr=typeof fdReferralReward==='function'?fdReferralReward(sid,bill):'';if(rr)out.push(rr);}
   // loyalty points
   if(controlOn('loyaltyPoints',sid)&&p.length===10){const pct=controlLimit('loyaltyPoints')||5;const earnOn=Math.max(0,t.total-(Number(bill.packagePaid)||0)-(Number(bill.voucherPaid)||0));const earned=Math.floor(earnOn*pct/100);
-    const C=fdClients(sid);const i=C.findIndex(c=>fdP10(c.phone)===p);if(i>=0){const before=Number(C[i].points)||0;C[i]={...C[i],points:Math.max(0,before-(Number(bill.pointsUsed)||0)+earned)};fdSaveClients(sid,C);if(earned)out.push(earned+' points earned');}}
+    const delta=earned-(Number(bill.pointsUsed)||0);if(delta&&typeof fdClientAdjust==='function')fdClientAdjust(sid,bill.phone,'points',delta,'Bill '+bill.id);if(earned)out.push(earned+' points earned');}
   // stock: retail sold, and back-bar use per service (standard usage)
   const stock=fdStock(sid);let changed=false;
   if(controlOn('billReducesStock',sid))(bill.items||[]).filter(it=>it.type==='Product').forEach(it=>{const m=fdMenuItem(sid,it.name)||{};
-    const s=stock.find(z=>(m.stockItemId&&z.id===m.stockItemId)||String(z.name).toLowerCase()===String(it.name).toLowerCase());if(!s)return;const q=Number(it.qty)||1;s.qty=Math.max(0,(Number(s.qty)||0)-q);changed=true;
+    const s=stock.find(z=>(m.stockItemId&&z.id===m.stockItemId)||String(z.name).toLowerCase()===String(it.name).toLowerCase());if(!s)return;const q=Number(it.qty)||1;s.qty=Math.round(((Number(s.qty)||0)-q)*100)/100;changed=true;
     if(typeof logInvMove==='function')logInvMove(sid,s,'sale',q,Number(it.rate)||0);});
   if(controlOn('autoIssueStdUsage',sid)&&typeof loadStdUsage==='function'){const U=loadStdUsage(sid);(bill.items||[]).filter(it=>it.type==='Service').forEach(it=>{(U[it.name]||[]).forEach(u=>{const s=stock.find(z=>z.id===u.itemId);if(!s)return;const q=(Number(u.qty)||0)*(Number(it.qty)||1);if(!(q>0))return;
-    s.qty=Math.max(0,Math.round(((Number(s.qty)||0)-q)*100)/100);changed=true;if(typeof logInvMove==='function')logInvMove(sid,s,'issue',q);});});}
-  if(changed)fdSaveStock(sid,stock);
+    s.qty=Math.round(((Number(s.qty)||0)-q)*100)/100;changed=true;if(typeof logInvMove==='function')logInvMove(sid,s,'issue',q,null,{staff:it.staffName||bill.staff||''});});});}
+  if(changed){fdSaveStock(sid,stock);if(typeof fdRecalcStock==='function')fdRecalcStock(sid);}
   try{logAuditEvent(sid,{entity:'Bill',entityId:bill.id,action:'Created',summary:(bill.customer||'')+' — '+FD_M(t.total)+(out.length?' · '+out.join(' · '):'')});}catch(e){}
   return out;
 }
@@ -144,9 +144,11 @@ function BillEditor({sid,initial,editId,onSave,onClose,existingIds}){
   const save=()=>{
     if(!String(form.customer).trim()){toast('Customer name is required','error');return;}
     if(!form.items.length){toast('Add at least one service or product','error');return;}
-    const sub=t.subtotal;const discPct=sub?(Number(form.discount)||0)/sub*100:0;
+    const rateDisc=typeof fdRateDiscount==='function'?fdRateDiscount(sid,form.items):0;const sub=typeof fdListSubtotal==='function'?fdListSubtotal(sid,form.items):t.subtotal;const discPct=sub?((Number(form.discount)||0)+rateDisc)/sub*100:0;
+    if(rateDisc>0&&controlOn('discountReason',sid)&&discPct>(controlLimit('discountReason')||10)&&!String(form.discountReason||'').trim()){toast('Rates below the menu price give '+FD_M(rateDisc)+' off — enter the discount reason','error');return;}
+    if(editId&&initial&&controlOn('staffChangeLock',sid)&&!isSuperAdminUser(currentSessionUser())){const was=(initial.items||[]).map(x=>x.name+'|'+(x.staffId||'')).join(';'),now=form.items.map(x=>x.name+'|'+(x.staffId||'')).join(';');if(was!==now&&(initial.items||[]).length===form.items.length&&(initial.items||[]).every((x,i)=>x.name===form.items[i].name)){toast('Changing who did a service on a saved bill needs a Super Admin (Controls → Stylist change lock)','error');return;}}
     if(controlOn('discountReason',sid)&&discPct>(controlLimit('discountReason')||10)&&!String(form.discountReason||'').trim()){toast('Discount above '+(controlLimit('discountReason')||10)+'% — enter the reason','error');return;}
-    if(!editId&&controlOn('discountApproval',sid)&&discPct>(controlLimit('discountApproval')||25)&&!requireApproval({control:'discountApproval',sid,key:sid+'|disc|'+fdP10(form.phone)+'|'+form.date+'|'+Math.round(Number(form.discount)||0),summary:'Discount of '+Math.round(discPct)+'% ('+FD_M(form.discount)+') on a '+FD_M(sub)+' bill for '+form.customer}))return;
+    if(!editId&&controlOn('discountApproval',sid)&&discPct>(controlLimit('discountApproval')||25)&&!requireApproval({control:'discountApproval',sid,key:sid+'|disc|'+fdP10(form.phone)+'|'+form.date+'|'+Math.round((Number(form.discount)||0)+rateDisc),summary:'Discount of '+Math.round(discPct)+'% ('+FD_M((Number(form.discount)||0)+rateDisc)+(rateDisc?' incl. '+FD_M(rateDisc)+' below menu price':'')+') on a '+FD_M(sub)+' bill for '+form.customer}))return;
     if(form.status==='Unpaid'&&!editId&&controlOn('creditLimit',sid)&&typeof fdClientDue==='function'){const owed=fdClientDue(sid,form.phone);const lim=controlLimit('creditLimit')||5000;if(owed+t.total>lim){toast('Credit limit '+FD_M(lim)+': '+form.customer+' already owes '+FD_M(owed)+' — take payment or raise the limit in Controls','error');return;}}
     if(form.paymentMode==='Split'){const paid=(form.payments||[]).reduce((s,x)=>s+(Number(x.amount)||0),0)+(Number(form.packagePaid)||0)+(Number(form.voucherPaid)||0);if(Math.abs(paid-t.total)>1){toast('Split payments add up to '+FD_M(paid)+' — the bill is '+FD_M(t.total),'error');return;}}
     if(form.usePackage&&pkg>0){form.packagePaid=Math.min(pkg,t.total);}
@@ -165,6 +167,9 @@ function BillEditor({sid,initial,editId,onSave,onClose,existingIds}){
       lbl('Date',h('input',{type:'date',className:'form-control',value:form.date,onChange:fc('date')}))),
     h('datalist',{id:'fd-client-phones'},fdClients(sid).slice(0,400).map(x=>h('option',{key:x.id,value:x.phone},x.name))),
     h('datalist',{id:'fd-client-names'},fdClients(sid).slice(0,400).map(x=>h('option',{key:x.id,value:x.name},x.phone))),
+    (()=>{const ro=typeof fdRenewalOffer==='function'?fdRenewalOffer(sid,form.phone,form.items):null;return ro?h('div',{style:{fontSize:12.5,margin:'0 0 8px',color:'#2f5fe0'}},'🔁 '+ro.plan+(ro.days>=0?' ends in '+ro.days+' day(s)':' ended '+(-ro.days)+' day(s) ago')+' — renewal offer '+ro.pct+'%',ro.hasLine&&!(Number(form.discount)>0)&&h('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:6},onClick:()=>setForm(f=>({...f,discount:ro.amount,discountReason:'Renewal offer '+ro.pct+'%'}))},'Apply '+FD_M(ro.amount))):null;})(),
+    fdSettings(sid).gst&&h('div',{style:{display:'flex',gap:8,alignItems:'center',margin:'0 0 8px',flexWrap:'wrap'}},h('span',{style:{fontSize:12,color:'var(--text3)'}},'Business client GSTIN (optional)'),h('input',{className:'form-control',style:{width:200,padding:'4px 6px',textTransform:'uppercase'},value:form.custGstin||'',maxLength:15,onChange:e=>setForm(f=>({...f,custGstin:e.target.value.toUpperCase().trim()}))}),
+      form.custGstin&&typeof isValidGSTINFormat==='function'&&!isValidGSTINFormat(form.custGstin)&&h('span',{style:{fontSize:11.5,color:'var(--red)'}},'GSTIN looks wrong'),form.custGstin&&typeof fdIsInterState==='function'&&fdIsInterState(sid,form)&&h('span',{style:{fontSize:11.5,color:'#2f5fe0'}},'Other state → IGST')),
     typeof BillingClientStrip==='function'&&h(BillingClientStrip,{sid,phone:form.phone,total:t.total,usePackage:form.usePackage,onUsePackage:v=>setForm(f=>({...f,usePackage:v}))}),
     mem&&Number(mem.discountPct)>0&&!(Number(form.discount)>0)&&h('div',{style:{fontSize:12.5,margin:'0 0 8px'}},h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{const svc=form.items.filter(x=>x.type==='Service').reduce((s,x)=>s+(Number(x.qty)||0)*(Number(x.rate)||0),0);setForm(f=>({...f,discount:Math.round(svc*Number(mem.discountPct)/100),discountReason:'Membership '+(mem.plan||'')+' '+mem.discountPct+'%'}));}},'Apply membership discount '+mem.discountPct+'% on services')),
     h('div',{className:'form-row cols3'},
@@ -176,6 +181,8 @@ function BillEditor({sid,initial,editId,onSave,onClose,existingIds}){
       h('datalist',{id:'fd-menu-list'},menu.map(m=>h('option',{key:m.id,value:m.name},m.type+' · '+FD_M(m.rate)))),
       h('select',{className:'form-control',style:{width:220},value:'',onChange:e=>addItem(e.target.value)},h('option',{value:''},'+ Pick from the menu…'),
         ['Service','Product','Membership','Package'].map(tp=>{const L=menu.filter(m=>m.type===tp);return L.length?h('optgroup',{key:tp,label:tp+'s'},L.map(m=>h('option',{key:m.id,value:m.name},m.name+' — '+FD_M(m.rate)))):null;}))),
+    (()=>{const sg=typeof fdProductSuggestions==='function'?fdProductSuggestions(sid,form.items):[];return sg.length?h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:8,fontSize:12}},h('span',{style:{color:'var(--text3)'}},'💡 Often bought with these services:'),sg.map(x=>h('button',{key:x.m.id,className:'btn btn-ghost btn-sm',onClick:()=>addItem(x.m.name)},'+ '+x.m.name+' ('+FD_M(x.m.rate)+')'))):null;})(),
+    (()=>{const rd=typeof fdRateDiscount==='function'?fdRateDiscount(sid,form.items):0;return rd>0?h('div',{style:{fontSize:12,color:'var(--orange)',marginBottom:6}},'⚠ Rates entered below the menu price — '+FD_M(rd)+' counts as discount.'):null;})(),
     form.items.length>0&&h('div',{className:'table-wrap',style:{marginBottom:10,border:'1px solid var(--border)',borderRadius:'var(--r)'}},h('table',null,
       h('thead',null,h('tr',null,['Item','Done by','Qty','Rate ₹','GST %','Amount',''].map((x,i)=>h('th',{key:i,style:i>=2&&i<=5?{textAlign:'right'}:null},x)))),
       h('tbody',null,form.items.map((it,i)=>h('tr',{key:i},
@@ -214,12 +221,12 @@ function BillEditor({sid,initial,editId,onSave,onClose,existingIds}){
 // ── Menu & settings (Billing → ⚙ Menu & settings) ──
 function FdMenuSettings({sid,onClose}){
   const h=React.createElement;const {toast}=useToast();const [menu,setMenu]=useState(()=>fdMenu(sid).map(x=>({...x})));const [tab,setTab]=useState('menu');const [typeF,setTypeF]=useState('All');
-  const staff=fdStaff(sid);const stock=fdStock(sid);const st=fdSettings(sid);const [s2,setS2]=useState({open:st.raw.open||'09:00',close:st.raw.close||'21:00',slot:st.slot,inclusive:st.inclusive,gst:st.gst,resources:(st.raw.resources||[]).join(', ')});
+  const staff=fdStaff(sid);const stock=fdStock(sid);const st=fdSettings(sid);const [s2,setS2]=useState({open:st.raw.open||'09:00',close:st.raw.close||'21:00',slot:st.slot,inclusive:st.inclusive,gst:st.gst,resources:(st.raw.resources||[]).join(', '),waTemplates:{...((st.raw.waTemplates)||{})}});
   const upd=(i,k,v)=>setMenu(L=>L.map((x,j)=>j===i?{...x,[k]:v}:x));
   const add=tp=>setMenu(L=>[...L,{id:(tp==='Service'?'S':tp==='Product'?'P':'X')+Date.now().toString().slice(-6),name:'',type:tp,category:tp==='Product'?'Retail product':tp==='Membership'?'Membership':tp==='Package'?'Package':'Hair',rate:0,duration:tp==='Service'?30:0,gst:18,staffIds:[],active:true,validityDays:tp==='Membership'||tp==='Package'?365:0}]);
   const saveAll=()=>{const bad=menu.find(x=>!String(x.name).trim());if(bad){toast('Every item needs a name','error');return;}const names=menu.map(x=>x.name.trim().toLowerCase());if(names.some((n,i)=>names.indexOf(n)!==i)){toast('Two items have the same name','error');return;}
     fdSaveMenu(sid,menu.map(x=>({...x,name:x.name.trim(),rate:Number(x.rate)||0,duration:Number(x.duration)||0,gst:Number(x.gst)||0,credit:Number(x.credit)||0,validityDays:Number(x.validityDays)||0,discountPct:Number(x.discountPct)||0})));
-    fdSaveSettings(sid,{open:s2.open,close:s2.close,slot:Number(s2.slot)||30,inclusive:!!s2.inclusive,gst:!!s2.gst,resources:String(s2.resources||'').split(',').map(z=>z.trim()).filter(Boolean)});try{logAuditEvent(sid,{entity:'Front desk',entityId:'menu',action:'Menu / settings saved',summary:menu.length+' items'});}catch(e){}toast('Saved','success');onClose();};
+    fdSaveSettings(sid,{open:s2.open,close:s2.close,slot:Number(s2.slot)||30,inclusive:!!s2.inclusive,gst:!!s2.gst,resources:String(s2.resources||'').split(',').map(z=>z.trim()).filter(Boolean),waTemplates:s2.waTemplates||{}});try{logAuditEvent(sid,{entity:'Front desk',entityId:'menu',action:'Menu / settings saved',summary:menu.length+' items'});}catch(e){}toast('Saved','success');onClose();};
   const copyTo=()=>{const outs=(typeof SALONS!=='undefined'?SALONS:[]).filter(s=>s&&s.id!==sid&&s.status!=='Inactive'&&userCanSeeOutlet(currentSessionUser(),s.id));if(!outs.length){toast('No other outlets','error');return;}
     if(!window.confirm('Copy this menu (prices, durations, GST) to '+outs.map(s=>rptShort(s)).join(', ')+'? Their own menu is replaced; staff and stock links are not copied.'))return;
     outs.forEach(s=>fdSaveMenu(s.id,menu.map(x=>({...x,staffIds:[],stockItemId:''}))));toast('Menu copied to '+outs.length+' outlet(s)','success');};
@@ -231,7 +238,7 @@ function FdMenuSettings({sid,onClose}){
       h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}},['All','Service','Product','Membership','Package'].map(k=>h('button',{key:k,className:'btn btn-sm '+(typeF===k?'btn-primary':'btn-ghost'),onClick:()=>setTypeF(k)},k)),
         h('span',{style:{flex:1}}),['Service','Product','Membership','Package'].map(k=>h('button',{key:'a'+k,className:'btn btn-ghost btn-sm',onClick:()=>add(k)},'+ '+k)),h('button',{className:'btn btn-ghost btn-sm',onClick:copyTo},'Copy to other outlets')),
       h('div',{className:'table-wrap',style:{maxHeight:'56vh',overflowY:'auto'}},h('table',null,
-        h('thead',null,h('tr',null,['Name','Type','Category','Price ₹','Mins','GST %','Done by','Stock item / terms','Room / patch test','Active'].map((x,i)=>h('th',{key:i},x)))),
+        h('thead',null,h('tr',null,['Name','Type','Category','Price ₹','Mins','GST %','SAC / HSN','Done by','Stock item / terms','Room / patch test','Active'].map((x,i)=>h('th',{key:i},x)))),
         h('tbody',null,shown.map(({x,i})=>h('tr',{key:x.id},
           h('td',null,h('input',{className:'form-control',style:{...inp,width:190},value:x.name,onChange:e=>upd(i,'name',e.target.value)})),
           h('td',{style:{fontSize:12}},x.type),
@@ -239,6 +246,7 @@ function FdMenuSettings({sid,onClose}){
           h('td',null,h('input',{type:'number',className:'form-control',style:{...inp,width:84},value:x.rate,onChange:e=>upd(i,'rate',e.target.value)})),
           h('td',null,x.type==='Service'?h('input',{type:'number',className:'form-control',style:{...inp,width:58},value:x.duration,onChange:e=>upd(i,'duration',e.target.value)}):'—'),
           h('td',null,h('select',{className:'form-control',style:{...inp,width:58},value:String(x.gst==null?18:x.gst),onChange:e=>upd(i,'gst',Number(e.target.value))},[0,5,12,18,28].map(g=>h('option',{key:g,value:g},g)))),
+          h('td',null,h('input',{className:'form-control',style:{...inp,width:76},value:x.sac||'',placeholder:x.type==='Product'?'HSN':(FD_SAC_DEFAULT&&FD_SAC_DEFAULT[x.category])||'',onChange:e=>upd(i,'sac',e.target.value.replace(/\D/g,'').slice(0,8))})),
           h('td',null,x.type==='Service'?h('select',{multiple:true,className:'form-control',style:{...inp,width:150,height:46},value:x.staffIds||[],title:'Leave empty = anyone; Ctrl-click for several',onChange:e=>upd(i,'staffIds',[...e.target.selectedOptions].map(o=>o.value))},staff.map(s=>h('option',{key:s.id,value:s.id},s.name))):'—'),
           h('td',null,x.type==='Product'?h('select',{className:'form-control',style:{...inp,width:170},value:x.stockItemId||'',onChange:e=>upd(i,'stockItemId',e.target.value)},h('option',{value:''},'— match by name —'),stock.map(s=>h('option',{key:s.id,value:s.id},s.name)))
             :x.type==='Package'?h('span',{style:{fontSize:11.5}},'Credit ₹ ',h('input',{type:'number',className:'form-control',style:{...inp,width:80,display:'inline-block'},value:x.credit||'',onChange:e=>upd(i,'credit',e.target.value)}),' days ',h('input',{type:'number',className:'form-control',style:{...inp,width:56,display:'inline-block'},value:x.validityDays||'',onChange:e=>upd(i,'validityDays',e.target.value)}))
@@ -255,6 +263,9 @@ function FdMenuSettings({sid,onClose}){
       h('label',{style:{display:'flex',gap:8,alignItems:'center',margin:'8px 0',fontSize:13}},h('input',{type:'checkbox',checked:s2.inclusive,disabled:!s2.gst,onChange:e=>setS2({...s2,inclusive:e.target.checked})}),'Menu prices already include GST'),
       h('div',{style:{fontSize:11.5,color:'var(--text3)'}},'Not registered → bills carry no GST. Each item’s GST rate is set in the menu.'),
       h('div',{className:'form-group',style:{marginTop:10}},h('label',null,'Rooms / equipment (comma separated)'),h('input',{className:'form-control',value:s2.resources||'',placeholder:'e.g. Spa room, Pedicure chair, Facial bed',onChange:e=>setS2({...s2,resources:e.target.value})})),
-      h('div',{style:{fontSize:11.5,color:'var(--text3)'}},'A service tied to a room (Services tab) cannot be booked twice at the same time, whoever the stylist.')),
+      h('div',{style:{fontSize:11.5,color:'var(--text3)'}},'A service tied to a room (Services tab) cannot be booked twice at the same time, whoever the stylist.'),
+      h('div',{style:{fontWeight:600,fontSize:13,marginTop:12}},'WhatsApp Business templates (when “Send through the WhatsApp API” is on in Controls)'),
+      [['reminder','Appointment reminder — {{1}} name, {{2}} service, {{3}} day & time'],['campaign','Offer / campaign — {{1}} name, {{2}} message'],['renewal','Membership renewal — {{1}} name, {{2}} plan, {{3}} end date']].map(([k,l])=>h('div',{key:k,className:'form-group'},h('label',null,l),h('input',{className:'form-control',placeholder:'approved template name',value:(s2.waTemplates||{})[k]||'',onChange:e=>setS2({...s2,waTemplates:{...(s2.waTemplates||{}),[k]:e.target.value.trim()}})}))),
+      h('div',{style:{fontSize:11.5,color:'var(--text3)'}},'Templates are created and approved in your Meta Business account; the language is the one set in Master Settings → WhatsApp.')),
     h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:onClose},'Cancel'),h('button',{className:'btn btn-primary',onClick:saveAll},'Save'))));
 }

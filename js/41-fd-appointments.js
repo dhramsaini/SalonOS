@@ -5,13 +5,13 @@
 // and “Bill now” (the bill form, prefilled; the booking turns Done).
 // Same storage as before: salonos_appointments_book_outlet_<id> → {'<sid>|<yyyy-mm-dd>':[appointment]}.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-const AP_STATUS_COLOR={'Booked':'var(--blue)','Confirmed':'var(--teal)','In chair':'var(--orange)','Done':'var(--green)','No-show':'var(--red)','Cancelled':'var(--text3)'};
+const AP_STATUS_COLOR={'Booked':'var(--blue)','Confirmed':'var(--teal)','Checked in':'#8e44ad','In chair':'var(--orange)','Done':'var(--green)','No-show':'var(--red)','Cancelled':'var(--text3)'};
 const fdHM=m=>{const hh=Math.floor(m/60),mm=m%60;const ap=hh>=12?'PM':'AM';const H=hh%12===0?12:hh%12;return H+':'+String(mm).padStart(2,'0')+' '+ap;};
 const fdAddD=(iso,n)=>{const d=new Date(iso+'T00:00:00');d.setDate(d.getDate()+n);return localIsoOf(d);};
 const fdPrettyD=iso=>new Date(iso+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
 function fdBookKey(sid){return outletKey('salonos_appointments_book',sid);}
 function fdLoadBook(sid){const v=fdJ(fdBookKey(sid),null);if(v&&typeof v==='object')return v;try{const legacy=JSON.parse(cachedLocalGet('salonos_appointments_book')||'{}')||{};const mine={};Object.keys(legacy).forEach(k=>{if(k.startsWith(sid+'|'))mine[k]=legacy[k];});return mine;}catch(e){return{};}}
-function fdMarkApptBilled(sid,dayKey,ids,billId){const B=fdLoadBook(sid);B[dayKey]=(B[dayKey]||[]).map(a=>ids.includes(a.id)?{...a,status:'Done',billId}:a);safeLocalSet(fdBookKey(sid),JSON.stringify(B));}
+function fdMarkApptBilled(sid,dayKey,ids,billId){const B=fdLoadBook(sid);B[dayKey]=(B[dayKey]||[]).map(a=>ids.includes(a.id)?{...a,status:'Done',billId,finishedAt:a.finishedAt||new Date().toISOString()}:a);safeLocalSet(fdBookKey(sid),JSON.stringify(B));}
 // Save a bill from outside the Billing screen (Appointments / Clients).
 function fdCreateBill(sid,rec){const L=fdBills(sid);const id=typeof fdNextBillNo==='function'?fdNextBillNo(sid,L,rec.date):nextPrefixedId(L,'INV-',4);const bill={...rec,id,createdBy:(currentSessionUser()||{}).name||'',createdAt:new Date().toISOString()};
   safeLocalSet(outletKey('salonos_billing_invoices',sid),JSON.stringify([bill,...L]));const notes=fdAfterBillSaved(sid,bill,true);return{bill,notes};}
@@ -24,7 +24,7 @@ function AppointmentBook({salon}){
   const h=React.createElement;const {toast}=useToast();const sid=Number(salon&&salon.id)||1;const set=fdSettings(sid);
   const [date,setDate]=useState(fdTodayIso());const [book,setBook]=useState(()=>fdLoadBook(sid));
   useEffect(()=>{safeLocalSet(fdBookKey(sid),JSON.stringify(book));},[book,sid]);
-  const [view,setView]=useState('day');const [staffF,setStaffF]=useState('All');const [modal,setModal]=useState(null);const [bill,setBill]=useState(null);const [panel,setPanel]=useState('');const [drag,setDrag]=useState(null);const [,setT]=useState(0);
+  const [view,setView]=useState('day');const [kiosk,setKiosk]=useState(false);const [staffF,setStaffF]=useState('All');const [modal,setModal]=useState(null);const [bill,setBill]=useState(null);const [panel,setPanel]=useState('');const [drag,setDrag]=useState(null);const [,setT]=useState(0);
   const staff=fdStaff(sid,date);const menu=fdMenu(sid).filter(m=>m.active!==false&&m.type==='Service');const slots=[];for(let m=set.open;m<set.close;m+=set.slot)slots.push(m);
   const key=d=>sid+'|'+d;const dayList=d=>book[key(d)]||[];const appts=dayList(date);const live=appts.filter(a=>a.status!=='Cancelled');
   const setDay=(d,fn)=>setBook(b=>({...b,[key(d)]:fn(b[key(d)]||[])}));
@@ -51,11 +51,11 @@ function AppointmentBook({salon}){
     fdUpsertClient(sid,{name:M.client.trim(),phone:M.phone,source:'Booking'});setModal(null);
     if(rep||skip.length)setTimeout(()=>toast('Repeats booked: '+rep+(skip.length?' · not booked (stylist busy / off): '+skip.map(fdPrettyD).join(', '):''),skip.length?'warning':'success'),50);
     toast(M.client.trim()+' booked '+fdPrettyD(M.date)+' at '+fdHM(Number(M.start))+(made.length>1?' ('+made.length+' services)':''),'success');};
-  const setStatus=(a,st)=>{setDay(date,L=>L.map(x=>x.id===a.id?{...x,status:st}:x));setModal(null);
+  const setStatus=(a,st)=>{const at=new Date().toISOString();setDay(date,L=>L.map(x=>x.id===a.id?{...x,status:st,...(st==='In chair'&&!x.startedAt?{startedAt:at}:{}),...(st==='Done'&&!x.finishedAt?{finishedAt:at}:{})}:x));setModal(null);
     if((st==='Cancelled'||st==='No-show')&&controlOn('apptWaitlist',sid)){const w=fdLoadWait(sid).filter(x=>x.date===date&&x.status!=='Booked');if(w.length)toast('A slot freed up — '+w.length+' on the waitlist for today (⏳ Waitlist)','info');}};
   const billNow=a=>{const grp=a.groupId?appts.filter(x=>x.groupId===a.groupId&&x.status!=='Cancelled'):[a];
     setModal(null);setBill({apptIds:grp.map(x=>x.id),initial:{customer:a.client,phone:a.phone,date,staffId:a.staffId||'',staff:a.staff,items:grp.map(x=>{const m=fdMenuItem(sid,x.service)||{};return{name:x.service,type:'Service',qty:1,rate:Number(m.rate)||x.rate||0,gst:m.gst!=null?Number(m.gst):18,staffId:x.staffId||'',staffName:x.staff};}),paymentMode:'Cash',status:'Paid',discount:0}});};
-  const onBillSaved=rec=>{const r=fdCreateBill(sid,rec);setDay(date,L=>L.map(x=>bill.apptIds.includes(x.id)?{...x,status:'Done',billId:r.bill.id}:x));setBill(null);toast('Bill '+r.bill.id+' — '+FD_M(billCalc(r.bill).total)+(r.notes.length?' · '+r.notes.join(' · '):''),'success');};
+  const onBillSaved=rec=>{const r=fdCreateBill(sid,rec);const at=new Date().toISOString();setDay(date,L=>L.map(x=>bill.apptIds.includes(x.id)?{...x,status:'Done',billId:r.bill.id,finishedAt:x.finishedAt||at}:x));setBill(null);toast('Bill '+r.bill.id+' — '+FD_M(billCalc(r.bill).total)+(r.notes.length?' · '+r.notes.join(' · '):''),'success');};
   // ── drag & drop ──
   const dropOn=(s,m)=>{if(!drag)return;const a=appts.find(x=>x.id===drag);setDrag(null);if(!a)return;if(a.staffId===s.id&&a.start===m)return;
     const off=fdStaffOff(sid,s,date);if(off)return toast(s.name+': '+off,'error');if(m+a.dur>set.close)return toast('Runs past closing','error');if(clash(date,s.name,m,a.dur,[a.id]))return toast(s.name+' is busy then','error');
@@ -76,7 +76,7 @@ function AppointmentBook({salon}){
   const week=[0,1,2,3,4,5,6].map(i=>fdAddD(date,i-((new Date(date+'T00:00:00').getDay()+6)%7)));
   const apptCard=a=>h('div',{draggable:a.status!=='Done'&&a.status!=='Cancelled',onDragStart:()=>setDrag(a.id),onClick:()=>setModal({mode:'view',a}),title:'Drag to move',
     style:{background:'var(--bg2)',borderLeft:'4px solid '+(AP_STATUS_COLOR[a.status]||'var(--blue)'),borderRadius:6,padding:'4px 6px',fontSize:11.5,cursor:'pointer',height:'100%',boxShadow:'0 1px 3px rgba(0,0,0,0.08)',overflow:'hidden'}},
-    h('b',null,a.client),h('div',null,a.service),h('div',{style:{color:'var(--text3)'}},fdHM(a.start)+' · '+a.dur+'m'+(a.billId?' · 🧾':'')+(a.reminded?' · ✓ reminded':'')));
+    h('b',null,a.client,a.status==='Checked in'?' 🙋':''),h('div',null,a.service),h('div',{style:{color:'var(--text3)'}},fdHM(a.start)+' · '+a.dur+'m'+(a.billId?' · 🧾':'')+(a.reminded?' · ✓ reminded':'')));
   return h('div',{className:'fade-in'},
     h('div',{className:'section-header'},
       h('div',null,h('div',{className:'page-title'},'Appointment Book'),h('div',{className:'page-sub'},'Click an empty slot to book, drag a booking to move it, click a booking to check in, bill or mark a no-show.')),
@@ -84,10 +84,13 @@ function AppointmentBook({salon}){
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setPanel(panel.startsWith('rem')?'':'rem-tomorrow')},'📲 Reminders'),
         controlOn('apptWaitlist',sid)&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setPanel(panel==='wait'?'':'wait')},'⏳ Waitlist'+(wait.length?' ('+wait.length+')':'')),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setPanel(panel==='sty'?'':'sty')},'👤 Stylist day'),
+        h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setPanel(panel==='time'?'':'time')},'⏱ Timings'),
+        h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setKiosk(true)},'🙋 Check-in kiosk'),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setPanel(panel==='link'?'':'link')},'🔗 Booking link'),
         h('button',{className:'btn btn-primary btn-sm',onClick:()=>openNew(null,null)},'+ New appointment'))),
     panel.startsWith('rem')&&h('div',{className:'card',style:{marginBottom:12}},
-      h('div',{style:{display:'flex',gap:6,marginBottom:8}},[['rem-today','Today'],['rem-tomorrow','Tomorrow']].map(([k,l])=>h('button',{key:k,className:'btn btn-sm '+(panel===k?'btn-primary':'btn-ghost'),onClick:()=>setPanel(k)},l)),h('span',{style:{fontSize:12,color:'var(--text3)',alignSelf:'center'}},remList.length+' booking(s) to remind')),
+      h('div',{style:{display:'flex',gap:6,marginBottom:8,flexWrap:'wrap'}},[['rem-today','Today'],['rem-tomorrow','Tomorrow']].map(([k,l])=>h('button',{key:k,className:'btn btn-sm '+(panel===k?'btn-primary':'btn-ghost'),onClick:()=>setPanel(k)},l)),
+        controlOn('waApiSend',sid)&&remList.some(a=>!a.reminded)&&h('button',{className:'btn btn-primary btn-sm',onClick:async()=>{const L=remList.filter(a=>!a.reminded&&a.phone);if(!window.confirm('Send '+L.length+' reminder(s) through the WhatsApp Business API?'))return;try{const r=await fdWaApiSend(sid,'reminder',L.map(a=>({phone:a.phone,params:[String(a.client).split(' ')[0],a.service,fdPrettyD(remDay)+' '+fdHM(a.start)]})));const okP=new Set((r.results||[]).filter(z=>z.ok).map(z=>fdP10(z.phone)));setDay(remDay,X=>X.map(x=>okP.has(fdP10(x.phone))&&L.some(y=>y.id===x.id)?{...x,reminded:new Date().toISOString()}:x));toast((r.sent||0)+' reminder(s) sent','success');}catch(e){toast(e.message||String(e),'error');}}},'Send all through WhatsApp API'),h('span',{style:{fontSize:12,color:'var(--text3)',alignSelf:'center'}},remList.length+' booking(s) to remind')),
       !remList.length?h('div',{style:{fontSize:12.5,color:'var(--text3)'}},'Nothing to remind.'):remList.map(a=>h('div',{key:a.id,style:{display:'flex',gap:8,alignItems:'center',padding:'5px 0',borderBottom:'1px solid var(--border)',fontSize:12.5}},
         h('span',{style:{flex:1}},fdHM(a.start)+' · '+a.client+' · '+a.service+' · '+a.staff),a.reminded&&h('span',{style:{color:'var(--green)',fontSize:11.5}},'✓ sent'),
         h('button',{className:'btn btn-primary btn-sm',onClick:()=>{if(fdWa(a.phone,remText(a)))markRem(a);}},a.reminded?'Send again':'📲 Send')))),
@@ -103,11 +106,17 @@ function AppointmentBook({salon}){
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(fdWa(w.phone,'Hi '+w.name.split(' ')[0]+', a slot has opened at '+salonName+' on '+fdPrettyD(w.date)+'. Reply with a time that suits you and we will book you in.'))fdSaveWait(sid,fdLoadWait(sid).map(x=>x.id===w.id?{...x,status:'Offered'}:x));setT(x=>x+1);}},'📲 Offer slot'),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setPanel('');openNew(null,null,w.date);setModal(M=>M&&{...M,client:w.name,phone:w.phone,lines:[{service:w.service||(menu[0]||{}).name||'',staffId:(staff[0]||{}).id||''}]});fdSaveWait(sid,fdLoadWait(sid).map(x=>x.id===w.id?{...x,status:'Booked'}:x));}},'Book'),
         h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>{fdSaveWait(sid,fdLoadWait(sid).filter(x=>x.id!==w.id));setT(x=>x+1);}},'✕')))),
+    kiosk&&h(FdCheckinKiosk,{sid,salonName,onClose:()=>{setKiosk(false);setBook(fdLoadBook(sid));},onCheckedIn:()=>setBook(fdLoadBook(sid))}),
+    panel==='time'&&(()=>{const to=fdTodayIso(),from=fdAddD(to,-30);const tm=fdTimings(sid,from,to);const ut=fdUtilisation(sid,date);
+      return h('div',{className:'card',style:{marginBottom:12,fontSize:12.5}},h('b',null,'Staff utilisation — '+fdPrettyD(date)),h('div',{style:{display:'flex',gap:10,flexWrap:'wrap',margin:'6px 0 10px'}},ut.map(u=>h('span',{key:u.name,className:'badge',style:{background:'var(--bg3)'}},u.name+': '+(u.off?u.off:u.pct+'% ('+Math.round(u.booked/60*10)/10+' h)')))),
+        h('b',null,'Actual service time — last 30 days'),!tm.services.length?h('div',{style:{color:'var(--text3)'}},'No timings yet — set a booking to “In chair” when the client sits down; Done / Bill now records the finish.'):
+        h('table',{style:{width:'100%',marginTop:4}},h('tbody',null,tm.services.map(x=>h('tr',{key:x.name},h('td',null,x.name),h('td',{style:{textAlign:'right'}},x.n+'×'),h('td',{style:{textAlign:'right',color:x.avg>x.planned+10?'var(--red)':x.avg<x.planned-10?'#2f5fe0':''}},'avg '+x.avg+' min (menu '+x.planned+')'))))),
+        tm.staff.length>0&&h('div',{style:{marginTop:6,color:'var(--text2)'}},tm.staff.map(x=>x.name+': avg '+x.avg+' min'+(x.over?', '+x.over+' over time':'')).join(' · ')));})(),
     panel==='sty'&&(()=>{const by=fdBilledSalesByStaff(sid,new Date(date+'T00:00:00').getFullYear(),new Date(date+'T00:00:00').getMonth());const dayBills=fdBills(sid).filter(b=>b.date===date&&b.status!=='Cancelled');
       return h('div',{className:'card',style:{marginBottom:12}},h('div',{className:'table-wrap'},h('table',null,h('thead',null,h('tr',null,['Stylist','Bookings today','Done','Billed today','Tips today','Month: services','products','memberships'].map((x,i)=>h('th',{key:i,style:i?{textAlign:'right'}:null},x)))),
         h('tbody',null,staff.map(s=>{const L=appts.filter(a=>a.staff===s.name&&a.status!=='Cancelled');const billed=dayBills.reduce((t,b)=>{const k=billCalc(b);const r=k.subtotal?k.taxable/k.subtotal:0;return t+(b.items||[]).filter(it=>(it.staffId||b.staffId)===s.id).reduce((u,it)=>u+(Number(it.qty)||0)*(Number(it.rate)||0)*r,0);},0);
           const tips=dayBills.reduce((t,b)=>t+(b.tips||[]).filter(x=>x.staffId===s.id).reduce((u,x)=>u+(Number(x.amount)||0),0),0);const mo=by[s.id]||{svc:0,prod:0,mem:0};
-          return h('tr',{key:s.id},h('td',{style:{fontWeight:600}},s.name),h('td',{style:{textAlign:'right'}},L.length),h('td',{style:{textAlign:'right'}},L.filter(a=>a.status==='Done').length),h('td',{style:{textAlign:'right'}},FD_M(billed)),h('td',{style:{textAlign:'right'}},tips?FD_M(tips):'—'),
+          return h('tr',{key:s.id},h('td',{style:{fontWeight:600}},s.name,h('button',{className:'btn btn-ghost btn-sm',style:{padding:'0 5px',marginLeft:4},title:'Monthly statement',onClick:()=>{const dd=new Date(date+'T00:00:00');const st=fdStylistStatement(sid,s,dd.getFullYear(),dd.getMonth());const emp=(loadEmployees(sid)||[]).find(e=>String(e.id)===String(s.id))||{};const txt=fdStatementText(st,salonName);if(emp.mobile||emp.phone){fdWa(emp.mobile||emp.phone,txt);}else{fdShareText(txt,'Statement');toast('No mobile for '+s.name+' — statement copied','info');}}},'📄')),h('td',{style:{textAlign:'right'}},L.length),h('td',{style:{textAlign:'right'}},L.filter(a=>a.status==='Done').length),h('td',{style:{textAlign:'right'}},FD_M(billed)),h('td',{style:{textAlign:'right'}},tips?FD_M(tips):'—'),
             h('td',{style:{textAlign:'right'}},FD_M(mo.svc)),h('td',{style:{textAlign:'right'}},FD_M(mo.prod)),h('td',{style:{textAlign:'right'}},FD_M(mo.mem)));})))),h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Billed figures are before GST; the month columns feed Incentive Working when “Sales to incentives” is used.'));})(),
     panel==='link'&&h('div',{className:'card',style:{marginBottom:12,fontSize:12.5}},
       outletPhone&&(()=>{const data={n:salonName,p:typeof waNumber==='function'?waNumber(outletPhone):'',o:set.open,c:set.close,s:menu.map(m=>[m.name,m.duration,m.rate])};const url=location.origin+location.pathname.replace(/[^/]*$/,'')+'booking.html#'+encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(data)))));
@@ -174,6 +183,8 @@ function AppointmentBook({salon}){
     modal&&modal.mode==='view'&&(()=>{const a=appts.find(x=>x.id===modal.a.id)||modal.a;return h('div',{className:'modal-overlay',onClick:()=>setModal(null)},h('div',{className:'modal',style:{width:440},onClick:e=>e.stopPropagation()},
       h('div',{className:'modal-title'},a.client),
       [['Service',a.service+((fdMenuItem(sid,a.service)||{}).resource?' · '+(fdMenuItem(sid,a.service)||{}).resource:'')],['Time',fdHM(a.start)+' – '+fdHM(a.start+a.dur)],['Stylist',a.staff],['Mobile',a.phone||'—'],['Booked via',a.source],['Value',FD_M(a.rate)],['Note',a.notes||'—'],['Status',a.status+(a.billId?' · bill '+a.billId:'')]].map(([k,v])=>h('div',{key:k,className:'kv'},h('span',null,k),h('span',null,v))),
+      a.arrivedAt&&h('div',{style:{fontSize:12,color:'#8e44ad',marginTop:4}},'🙋 Checked in at '+new Date(a.arrivedAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})),
+      a.startedAt&&h('div',{style:{fontSize:12,color:'var(--text3)'}},'⏱ Started '+new Date(a.startedAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})+(a.finishedAt?' · finished '+new Date(a.finishedAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})+' ('+Math.round((new Date(a.finishedAt)-new Date(a.startedAt))/60000)+' min)':'')),
       h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginTop:14}},['Confirmed','In chair','No-show','Cancelled'].map(s=>h('button',{key:s,className:'btn btn-sm '+(s==='No-show'||s==='Cancelled'?'btn-danger':'btn-ghost'),onClick:()=>setStatus(a,s)},s)),
         !a.billId&&a.status!=='Cancelled'&&h('button',{className:'btn btn-primary btn-sm',onClick:()=>billNow(a)},'🧾 Done → Bill now'),
         a.seriesId&&h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>{if(!window.confirm('Cancel this and every later booking of the series?'))return;setBook(b=>{const nb={};Object.keys(b).forEach(k=>{const d0=k.split('|')[1];nb[k]=(b[k]||[]).map(x=>x.seriesId===a.seriesId&&d0>=date&&x.status!=='Done'?{...x,status:'Cancelled'}:x);});return nb;});setModal(null);}},'Cancel series'),

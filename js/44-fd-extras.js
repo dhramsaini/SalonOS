@@ -57,7 +57,7 @@ function fdFindVoucher(sid,code){const c=String(code||'').trim().toUpperCase();i
   const expired=v.expiry&&v.expiry<fdTodayIso();return{...v,left:fdVoucherLeft(v),expired};}
 function fdNewVoucherCode(sid){const L=fdVouchers(sid);let c;do{c='GV'+Math.random().toString(36).slice(2,8).toUpperCase();}while(L.some(x=>x.code===c));return c;}
 function fdRedeemVoucher(sid,code,amount,billId){const L=fdVouchers(sid);const v=L.find(x=>String(x.code).toUpperCase()===String(code).toUpperCase());if(!v)return 0;const use=Math.min(fdVoucherLeft(v),Number(amount)||0);if(!(use>0))return 0;
-  v.redemptions=[...(v.redemptions||[]),{date:fdTodayIso(),amount:use,bill:billId}];fdSaveVouchers(sid,L);return use;}
+  v.redemptions=[...(v.redemptions||[]),{id:typeof fdRid==='function'?fdRid():'R'+Date.now(),date:fdTodayIso(),amount:use,bill:billId}];fdSaveVouchers(sid,L);return use;}
 function FdVouchersModal({sid,onClose,onSell}){
   const h=React.createElement;const {toast}=useToast();const [f,setF]=useState({value:'',days:'365',buyer:'',phone:'',forName:''});const L=fdVouchers(sid).slice().reverse();
   const sell=()=>{const v=Number(f.value);if(!(v>0))return toast('Enter the voucher value','error');if(!f.buyer.trim())return toast('Enter the buyer','error');
@@ -95,14 +95,14 @@ function fdCreateCreditNote(sid,orig,lines,reason,mode){
   const id=fdNextCreditNo(L,fdTodayIso());const cn={id,kind:'credit-note',refBill:orig.id,customer:orig.customer,phone:orig.phone,staff:orig.staff,staffId:orig.staffId,date:fdTodayIso(),items,discount:0,noGst:orig.noGst,inclusive:orig.inclusive,
     paymentMode:mode||'Cash',status:'Paid',refundReason:reason||'',createdBy:(currentSessionUser()||{}).name||'',createdAt:new Date().toISOString()};
   const amt=-billCalc(cn).total;const next=[cn,...L.map(b=>b.id===orig.id?{...b,refunds:[...(b.refunds||[]),{id,amount:amt,date:cn.date}]}:b)];safeLocalSet(outletKey('salonos_billing_invoices',sid),JSON.stringify(next));
-  if(mode==='Package credit'){const C=fdClients(sid);const i=C.findIndex(c=>fdP10(c.phone)===fdP10(orig.phone));if(i>=0){C[i]={...C[i],packageBalance:(Number(C[i].packageBalance)||0)+amt};fdSaveClients(sid,C);}}
+  if(mode==='Package credit'&&typeof fdClientAdjust==='function')fdClientAdjust(sid,orig.phone,'packageBalance',amt,'Credit note '+id);
   if(controlOn('billReducesStock',sid)){const S=fdStock(sid);let ch=false;items.filter(it=>it.type==='Product').forEach(it=>{const m=fdMenuItem(sid,it.name)||{};const s=S.find(z=>(m.stockItemId&&z.id===m.stockItemId)||String(z.name).toLowerCase()===String(it.name).toLowerCase());if(!s)return;
     s.qty=(Number(s.qty)||0)+Math.abs(it.qty);ch=true;if(typeof logInvMove==='function')logInvMove(sid,s,'return',Math.abs(it.qty),Number(it.rate)||0);});if(ch)fdSaveStock(sid,S);}
   try{logAuditEvent(sid,{entity:'Bill',entityId:id,action:'Credit note',summary:FD_M(amt)+' against '+orig.id+(reason?' — '+reason:'')});}catch(e){}
   return{cn,amount:amt};
 }
 function FdRefundModal({sid,bill,onClose,onDone}){
-  const h=React.createElement;const {toast}=useToast();const [lines,setLines]=useState(()=>(bill.items||[]).filter(it=>Number(it.qty)>0).map(it=>({...it,pick:false,rq:String(it.qty)})));const [reason,setReason]=useState('');const [mode,setMode]=useState(bill.paymentMode==='Card'?'Card':bill.paymentMode==='UPI'?'UPI':'Cash');
+  const h=React.createElement;const {toast}=useToast();const [lines,setLines]=useState(()=>(bill.items||[]).filter(it=>Number(it.qty)>0).map(it=>({...it,pick:false,rq:String(it.qty)})));const [reason,setReason]=useState(bill._reason||'');const [mode,setMode]=useState(bill.paymentMode==='Card'?'Card':bill.paymentMode==='UPI'?'UPI':'Cash');
   const chosen=lines.filter(l=>l.pick&&Number(l.rq)>0).map(l=>({name:l.name,type:l.type,rate:l.rate,gst:l.gst,staffId:l.staffId,staffName:l.staffName,qty:Math.min(Number(l.rq),Number(l.qty))}));
   const amt=chosen.length?-billCalc({items:chosen.map(c=>({...c,qty:-c.qty})),noGst:bill.noGst,inclusive:bill.inclusive}).total:0;
   return h('div',{className:'modal-overlay',onClick:onClose},h('div',{className:'modal',style:{width:520},onClick:e=>e.stopPropagation()},
@@ -181,7 +181,8 @@ function fdCampaignKey(sid){return outletKey('salonos_campaigns',sid);}
 function fdCampaigns(sid){const v=fdJ(fdCampaignKey(sid),[]);return Array.isArray(v)?v:[];}
 function fdCampaignAudience(sid,f){
   const bills=fdBills(sid);const t=fdTodayIso();const mon=new Date().toLocaleDateString('en-IN',{month:'short'}).toLowerCase();
-  return fdClients(sid).filter(c=>fdP10(c.phone).length===10&&!c.optOut).map(c=>({c,st:fdClientStats(c,bills)})).filter(({c,st})=>{const seg=fdSegOf(st);
+  const needConsent=controlOn('requireMarketingConsent',sid);
+  return fdClients(sid).filter(c=>fdP10(c.phone).length===10&&!c.optOut&&(!needConsent||c.marketingConsent)).map(c=>({c,st:fdClientStats(c,bills)})).filter(({c,st})=>{const seg=fdSegOf(st);
     if(f.seg&&f.seg!=='All'&&seg!==f.seg)return false;if(f.service&&!st.bills.some(b=>(b.items||[]).some(it=>it.name===f.service)))return false;
     if(f.minDays&&!(st.since!=null&&st.since>=Number(f.minDays)))return false;if(f.maxDays&&!(st.since!=null&&st.since<=Number(f.maxDays)))return false;
     if(f.bday&&!String(c.birthday||'').toLowerCase().includes(mon))return false;if(f.minSpend&&st.spend<Number(f.minSpend))return false;if(f.tag&&!String(c.tags||'').toLowerCase().includes(String(f.tag).toLowerCase()))return false;return true;});
@@ -207,7 +208,10 @@ function FdCampaignModal({sid,onClose}){
       list.length>0&&h('div',{style:{marginTop:10,fontSize:12.5}},h('b',null,'Earlier campaigns'),list.slice(0,8).map(c=>h('div',{key:c.id,style:{display:'flex',gap:8,padding:'3px 0'}},h('span',{style:{flex:1}},c.name+' · '+new Date(c.at).toLocaleDateString('en-IN')),h('span',null,c.to.filter(x=>x.sent).length+' / '+c.to.length+' sent'),h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setCamp(c)},'Open')))))
     :h('div',null,h('div',{style:{marginBottom:6}},h('b',null,camp.name),' — '+camp.to.filter(x=>x.sent).length+' of '+camp.to.length+' sent'),h('div',{style:{background:'var(--bg3)',borderRadius:8,padding:8,fontSize:12.5,marginBottom:8}},camp.msg),
       h('div',{style:{maxHeight:'50vh',overflowY:'auto'}},camp.to.map(r=>h('div',{key:r.id,style:{display:'flex',gap:8,alignItems:'center',padding:'4px 0',borderBottom:'1px solid var(--border)',fontSize:12.5}},h('span',{style:{flex:1}},r.name+' · '+r.phone),r.sent?h('span',{style:{color:'var(--green)'}},'✓ sent'):null,h('button',{className:'btn btn-'+(r.sent?'ghost':'primary')+' btn-sm',onClick:()=>send(camp,r)},r.sent?'Again':'📲 Send')))),
-      h('button',{className:'btn btn-ghost btn-sm',style:{marginTop:6},onClick:()=>setCamp(null)},'← Back')),
+      h('div',{style:{display:'flex',gap:6,marginTop:6}},h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setCamp(null)},'← Back'),
+        controlOn('waApiSend',sid)&&h('button',{className:'btn btn-primary btn-sm',onClick:async()=>{const left=camp.to.filter(r=>!r.sent);if(!left.length)return;if(!window.confirm('Send to '+left.length+' client(s) through the WhatsApp Business API now?'))return;
+          try{const r=await fdWaApiSend(sid,'campaign',left.map(x=>({phone:x.phone,params:[String(x.name).split(' ')[0],camp.msg.split('{name}').join(String(x.name).split(' ')[0])]})));const okP=new Set((r.results||[]).filter(z=>z.ok).map(z=>z.phone));
+            const L=fdCampaigns(sid).map(x=>x.id!==camp.id?x:{...x,to:x.to.map(z=>okP.has(z.phone)?{...z,sent:new Date().toISOString(),api:true}:z)});safeLocalSet(fdCampaignKey(sid),JSON.stringify(L));setCamp(L.find(x=>x.id===camp.id));toast((r.sent||0)+' sent through the API','success');}catch(e){toast(e.message||String(e),'error');}}},'Send all through WhatsApp API'))),
     h('div',{className:'modal-actions'},!camp&&h('button',{className:'btn btn-primary',disabled:!aud.length,onClick:start},'Start ('+aud.length+')'),h('button',{className:'btn btn-ghost',onClick:onClose},'Close'))));
 }
 
@@ -216,7 +220,8 @@ function fdReferralReward(sid,bill){
   if(!controlOn('referralReward',sid))return'';const p=fdP10(bill.phone);if(p.length!==10)return'';const C=fdClients(sid);const me=C.find(c=>fdP10(c.phone)===p);if(!me||!me.referredBy||me.referralRewarded)return'';
   const prior=fdBills(sid).filter(b=>fdP10(b.phone)===p&&b.id!==bill.id&&b.status!=='Cancelled'&&b.kind!=='credit-note').length;if(prior)return'';
   const ref=C.find(c=>c.id===me.referredBy);if(!ref)return'';const amt=controlLimit('referralReward')||200;
-  fdSaveClients(sid,C.map(c=>c.id===ref.id?{...c,packageBalance:(Number(c.packageBalance)||0)+amt,referralCredits:[...(c.referralCredits||[]),{date:bill.date,amount:amt,for:me.name}]}:c.id===me.id?{...c,referralRewarded:bill.id}:c));
+  fdSaveClients(sid,C.map(c=>c.id===ref.id?{...c,referralCredits:[...(c.referralCredits||[]),{id:typeof fdRid==='function'?fdRid():'R'+Date.now(),date:bill.date,amount:amt,for:me.name}]}:c.id===me.id?{...c,referralRewarded:bill.id}:c));
+  if(typeof fdClientAdjust==='function')fdClientAdjust(sid,ref.phone,'packageBalance',amt,'Referral: '+me.name);
   return FD_M(amt)+' referral credit to '+ref.name;
 }
 

@@ -11,6 +11,8 @@
 // 2. App actions (POST JSON {action, ...} with the user's login):
 //    status | save {token?, appSecret?, phoneNumberId, templates?} | remove | test {to}   (Super Admin, aal2)
 //    notify_salary {outletId, month, items:[{empId, amount}]}  (edit access to that outlet's Salary Working)
+//    notify_clients {outletId, template, items:[{phone, params:[…]}]}  (edit access to that outlet's Appointment Book) —
+//      appointment reminders, offers and renewals with an approved template named by the outlet.
 //
 // Credentials live in public.app_secrets row "whatsapp" (value = JSON {token, appSecret}; meta =
 // {phoneNumberId, verifyToken, displayPhone, tokenHint, templates}), service role only — entered from
@@ -295,6 +297,28 @@ async function appAction(req: Request) {
             components: [{ type: "body", parameters: [{ type: "text", text: String(e.name).slice(0, 60) }, { type: "text", text: month }, { type: "text", text: inr(num(it.amount)) }] }] } });
         results.push({ empId: it.empId, ok: true });
       } catch (err) { results.push({ empId: it.empId, ok: false, error: (err as Error).message }); }
+    }
+    return { results, sent: results.filter((r) => r.ok).length };
+  }
+
+  if (action === "notify_clients") {
+    const sid = Number(body.outletId);
+    if (!sid) throw new HttpError(400, "Missing outlet.");
+    const template = String(body.template ?? "");
+    if (!/^[a-z0-9_]{1,80}$/.test(template)) throw new HttpError(400, "Template names use lower-case letters, digits and _ only.");
+    await requireKeyAccess(req, `salonos_appointments_book_outlet_${sid}`);
+    const cfg = await waConfig();
+    if (!cfg) throw new HttpError(400, "WhatsApp isn't set up yet — a Super Admin can do it in Master Settings → WhatsApp.");
+    const results: Json[] = [];
+    for (const it of (Array.isArray(body.items) ? body.items : []).slice(0, 200)) {
+      const to = waNumber(it?.phone);
+      if (!to) { results.push({ phone: it?.phone, ok: false, error: "no valid mobile" }); continue; }
+      const params = (Array.isArray(it.params) ? it.params : []).slice(0, 6).map((p: unknown) => ({ type: "text", text: String(p ?? "").slice(0, 900) }));
+      try {
+        await graph(cfg, `/${cfg.phoneNumberId}/messages`, { messaging_product: "whatsapp", to, type: "template",
+          template: { name: template, language: { code: cfg.templates.lang }, components: params.length ? [{ type: "body", parameters: params }] : [] } });
+        results.push({ phone: it.phone, ok: true });
+      } catch (err) { results.push({ phone: it.phone, ok: false, error: (err as Error).message }); }
     }
     return { results, sent: results.filter((r) => r.ok).length };
   }
