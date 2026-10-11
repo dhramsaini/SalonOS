@@ -26,7 +26,8 @@ function fdImportClientRows(sid,rows){
 }
 function ClientForm({sid,client,onClose,onSaved}){
   const h=React.createElement;const {toast}=useToast();const staff=fdStaff(sid);
-  const [f,setF]=useState(()=>({name:'',phone:'',email:'',gender:'',birthday:'',anniversary:'',prefStylist:'',formula:'',allergies:'',notes:'',tags:'',optOut:false,photos:[],...(client||{})}));
+  const [f,setF]=useState(()=>({name:'',phone:'',email:'',gender:'',birthday:'',anniversary:'',prefStylist:'',formula:'',allergies:'',notes:'',tags:'',optOut:false,photos:[],patchTests:[],referredBy:'',familyId:'',...(client||{})}));const [pt,setPt]=useState({date:fdTodayIso(),service:'',result:'Clear',photo:''});
+  const others=fdClients(sid).filter(x=>x.id!==(client&&client.id));
   const fc=k=>e=>setF(x=>({...x,[k]:e.target.type==='checkbox'?e.target.checked:e.target.value}));
   const save=()=>{if(!f.name.trim())return toast('Name is required','error');const p=fdP10(f.phone);if(f.phone&&p.length!==10)return toast('Mobile must have 10 digits','error');
     const L=fdClients(sid);if(p&&L.some(c=>fdP10(c.phone)===p&&c.id!==f.id))return toast('Another client already has this mobile — open that client or merge duplicates','error');
@@ -42,6 +43,18 @@ function ClientForm({sid,client,onClose,onSaved}){
     h('div',{className:'form-row cols2'},h('div',{className:'form-group'},h('label',null,'Preferred stylist'),h('select',{className:'form-control',value:f.prefStylist||'',onChange:fc('prefStylist')},h('option',{value:''},'—'),staff.map(s=>h('option',{key:s.id,value:s.name},s.name)))),fld('tags','Tags','text','e.g. bride, corporate')),
     h('div',{className:'form-row cols2'},fld('formula','Colour formula / technical notes'),fld('allergies','Allergies / sensitivities')),
     fld('notes','Notes'),
+    h('div',{className:'form-row cols2'},h('div',{className:'form-group'},h('label',null,'Referred by'),h('select',{className:'form-control',value:f.referredBy||'',onChange:fc('referredBy')},h('option',{value:''},'—'),others.map(x=>h('option',{key:x.id,value:x.id},x.name+(x.phone?' · '+x.phone:''))))),
+      h('div',{className:'form-group'},h('label',null,'Family of'),h('select',{className:'form-control',value:'',onChange:e=>{const o=others.find(x=>x.id===e.target.value);if(!o)return;const fid=o.familyId||('FAM'+Date.now());if(!o.familyId)fdSaveClients(sid,fdClients(sid).map(x=>x.id===o.id?{...x,familyId:fid}:x));setF(x=>({...x,familyId:fid}));}},
+        h('option',{value:''},f.familyId?'Linked ('+fdClients(sid).filter(x=>x.familyId===f.familyId&&x.id!==f.id).map(x=>x.name).join(', ')+') — change…':'— link to a family member —'),others.map(x=>h('option',{key:x.id,value:x.id},x.name))),
+        f.familyId&&h('button',{className:'btn btn-ghost btn-sm',style:{padding:'0 4px'},onClick:()=>setF(x=>({...x,familyId:''}))},'Unlink'))),
+    h('div',{style:{marginTop:8}},h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:4}},'Patch tests & consent'),
+      (f.patchTests||[]).map((p,i)=>h('div',{key:i,style:{display:'flex',gap:6,alignItems:'center',fontSize:12.5,padding:'2px 0'}},h('span',{style:{flex:1}},p.date.split('-').reverse().join('/')+' · '+(p.service||'patch test')+' · ',h('b',{style:{color:p.result==='Reaction'?'var(--red)':'var(--green)'}},p.result)),
+        p.photo&&h('img',{src:p.photo,alt:'consent',style:{height:28,borderRadius:4}}),h('button',{className:'btn btn-ghost btn-sm',style:{padding:'0 4px'},onClick:()=>setF(x=>({...x,patchTests:x.patchTests.filter((_,j)=>j!==i)}))},'✕'))),
+      h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginTop:4}},h('input',{type:'date',className:'form-control',style:{width:140,padding:'3px 6px'},value:pt.date,onChange:e=>setPt({...pt,date:e.target.value})}),
+        h('input',{className:'form-control',style:{width:150,padding:'3px 6px'},placeholder:'Product / service',value:pt.service,onChange:e=>setPt({...pt,service:e.target.value})}),
+        h('select',{className:'form-control',style:{width:100,padding:'3px 6px'},value:pt.result,onChange:e=>setPt({...pt,result:e.target.value})},['Clear','Reaction'].map(r=>h('option',{key:r},r))),
+        h('label',{className:'btn btn-ghost btn-sm',style:{cursor:'pointer'}},pt.photo?'✓ Consent photo':'📷 Consent form',h('input',{type:'file',accept:'image/*',style:{display:'none'},onChange:async e=>{const file=e.target.files&&e.target.files[0];e.target.value='';if(file){try{setPt(p=>({...p,photo:''}));const d=await fdShrinkPhoto(file,600);setPt(p=>({...p,photo:d}));}catch(err){}}}})),
+        h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(!pt.date)return;setF(x=>({...x,patchTests:[...(x.patchTests||[]),{...pt,by:(currentSessionUser()||{}).name||''}]}));setPt({date:fdTodayIso(),service:'',result:'Clear',photo:''});}},'+ Add'))),
     h('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:13,margin:'6px 0'}},h('input',{type:'checkbox',checked:!!f.optOut,onChange:fc('optOut')}),'Does not want offers / marketing messages'),
     h('div',{style:{marginTop:8}},h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:4}},'Photos (before / after)'),
       h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},(f.photos||[]).map((p,i)=>h('div',{key:i,style:{position:'relative'}},h('img',{src:p.d,alt:'',style:{width:84,height:84,objectFit:'cover',borderRadius:8}}),
@@ -53,7 +66,7 @@ function ClientCRM({salon}){
   const h=React.createElement;const {toast}=useToast();const sid=Number(salon&&salon.id)||1;
   const [tick,setTick]=useState(0);const refresh=()=>setTick(t=>t+1);
   const [q,setQ]=useState('');const [seg,setSeg]=useState('All');const [sel,setSel]=useState(null);const [form,setForm]=useState(null);const [bill,setBill]=useState(null);const [wa,setWa]=useState(null);
-  const [memOpen,setMemOpen]=useState(false);const [growOpen,setGrowOpen]=useState(false);const [msgOpen,setMsgOpen]=useState(false);const importRef=useRef(null);
+  const [memOpen,setMemOpen]=useState(false);const [growOpen,setGrowOpen]=useState(false);const [msgOpen,setMsgOpen]=useState(false);const [campOpen,setCampOpen]=useState(false);const importRef=useRef(null);
   const bills=fdBills(sid);const book=fdLoadBook(sid);
   const rows=fdClients(sid).map(c=>{const st=fdClientStats(c,bills);return{c,st,seg:fdSegOf(st)};});
   const ql=q.trim().toLowerCase();const list=rows.filter(r=>(seg==='All'||r.seg===seg)&&(!ql||String(r.c.name||'').toLowerCase().includes(ql)||String(r.c.phone||'').includes(ql)||String(r.c.tags||'').toLowerCase().includes(ql))).sort((a,b)=>b.st.spend-a.st.spend);
@@ -81,9 +94,11 @@ function ClientCRM({salon}){
         h('button',{className:'btn btn-primary btn-sm',onClick:()=>setForm({})},'+ New client'),
         h('button',{className:'btn btn-ghost btn-sm',title:'Excel with columns Name, Mobile, Email, Birthday, Notes',onClick:()=>importRef.current&&importRef.current.click()},'⬆ Import Excel'),h('input',{type:'file',accept:'.xlsx,.xls,.csv',ref:importRef,style:{display:'none'},onChange:importFile}),
         dups>0&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(!window.confirm(dups+' duplicate record(s) share a mobile number. Merge them?'))return;const n=fdMergeDuplicates(sid);toast(n+' merged','success');refresh();}},'🔗 Merge '+dups+' duplicate(s)'),
+        h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setCampOpen(true)},'📣 Campaign'),
         typeof ClientGrowthModal==='function'&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setGrowOpen(true)},'🌱 Feedback & referrals'),
         typeof MembershipRegisterModal==='function'&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setMemOpen(true)},'💳 Memberships'),
         typeof ClientMessagesModal==='function'&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setMsgOpen(true)},'📣 Messages'))),
+    campOpen&&h(FdCampaignModal,{sid,onClose:()=>setCampOpen(false)}),
     memOpen&&h(MembershipRegisterModal,{salon,onClose:()=>{setMemOpen(false);refresh();}}),growOpen&&h(ClientGrowthModal,{salon,onClose:()=>setGrowOpen(false)}),
     msgOpen&&h(ClientMessagesModal,{salon,clients:rows.filter(r=>!r.c.optOut).map(r=>({...r.c,...r.st})),onClose:()=>setMsgOpen(false)}),
     h('div',{className:'grid4',style:{marginBottom:16}},stat('Clients',String(rows.length),members+' with membership / package'),stat('Active',String(active),'visited in 90 days','var(--green)'),
@@ -108,6 +123,10 @@ function ClientCRM({salon}){
               controlOn('loyaltyPoints',sid)?['Points',String(Number(c.points)||0)]:null,ns?['No-shows',String(ns)]:null,rated.length?['Rating',(rated.reduce((s,v)=>s+Number(v.rating),0)/rated.length).toFixed(1)+'★ ('+rated.length+')']:null,
               c.birthday?['Birthday',c.birthday]:null,c.anniversary?['Anniversary',c.anniversary]:null].filter(Boolean).map(([k,v])=>h('div',{key:k,className:'kv'},h('span',null,k),h('span',null,v))),
             (c.formula||c.allergies||c.notes||c.tags)&&h('div',{className:'help-note',style:{marginTop:10}},c.allergies&&h('div',{style:{color:'var(--red)'}},'⚠ '+c.allergies),c.formula&&h('div',null,'🎨 '+c.formula),c.notes&&h('div',null,'📝 '+c.notes),c.tags&&h('div',null,'🏷 '+c.tags)),
+            (()=>{const fam=c.familyId?fdClients(sid).filter(x=>x.familyId===c.familyId&&x.id!==c.id):[];const refs=fdClients(sid).filter(x=>x.referredBy===c.id);const by=c.referredBy?fdClients(sid).find(x=>x.id===c.referredBy):null;const pts=(c.patchTests||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+              return(fam.length||refs.length||by||pts.length)?h('div',{style:{fontSize:12.5,marginTop:10,display:'grid',gap:3}},fam.length>0&&h('div',null,'👪 Family: '+fam.map(x=>x.name).join(', ')+(controlOn('familySharing',sid)?' (package & membership shared)':'')),
+                by&&h('div',null,'🤝 Referred by '+by.name),refs.length>0&&h('div',null,'🤝 Referred '+refs.length+': '+refs.map(x=>x.name).join(', ')+((c.referralCredits||[]).length?' · credits '+FD_M((c.referralCredits||[]).reduce((s,x)=>s+x.amount,0)):'')),
+                pts.length>0&&h('div',{style:{color:pts[0].result==='Reaction'?'var(--red)':'var(--text2)'}},'🧪 Last patch test '+pts[0].date.split('-').reverse().join('/')+' — '+pts[0].result+(pts[0].service?' ('+pts[0].service+')':''))):null;})(),
             (c.photos||[]).length>0&&h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}},c.photos.map((p,i)=>h('img',{key:i,src:p.d,alt:'',title:p.at,style:{width:72,height:72,objectFit:'cover',borderRadius:8}}))),
             h('div',{style:{display:'flex',gap:6,marginTop:12,flexWrap:'wrap'}},
               h('button',{className:'btn btn-primary btn-sm',onClick:()=>setBill({initial:{customer:c.name,phone:c.phone,date:fdTodayIso(),items:[],paymentMode:'Cash',status:'Paid',discount:0}})},'🧾 New bill'),

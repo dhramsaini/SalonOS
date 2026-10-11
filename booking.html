@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Book an appointment</title>
+<meta name="robots" content="noindex">
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--text:#1d2433;--muted:#6b7385;--accent:#2f5fe0;--line:#e3e7f0}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1220;--card:#171c2e;--text:#e8ebf3;--muted:#9aa3b8;--accent:#6e8dff;--line:#283048}}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:560px;margin:0 auto;padding:20px 16px 40px}h1{font-size:22px;margin:4px 0 2px}.muted{color:var(--muted);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:14px}
+label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font-size:15px}
+.svc{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer}
+.svc.on{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 25%,transparent)}.svc small{color:var(--muted)}
+.slots{display:flex;flex-wrap:wrap;gap:8px}.slot{padding:8px 12px;border:1px solid var(--line);border-radius:999px;cursor:pointer;font-size:14px;background:var(--bg)}.slot.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.go{width:100%;margin-top:16px;padding:14px;border:0;border-radius:12px;background:#25d366;color:#fff;font-size:16px;font-weight:700;cursor:pointer}button.go:disabled{opacity:.5;cursor:not-allowed}
+.err{color:#c0392b;margin-top:20px}
+</style></head><body><div class="wrap" id="app"><p class="muted">Loading…</p></div>
+<script>
+// Booking request page: the outlet's name, WhatsApp number, hours and services come in the link (#…),
+// the client picks services, a date and a time, and the request opens in WhatsApp to the outlet.
+(function(){
+  var app=document.getElementById('app');var d;
+  try{d=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(location.hash.slice(1))))));}catch(e){d=null;}
+  if(!d||!d.p||!Array.isArray(d.s)){app.innerHTML='<h1>Book an appointment</h1><p class="err">This booking link is incomplete. Please ask the salon for a new link.</p>';return;}
+  var esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});};
+  var hm=function(m){var h=Math.floor(m/60),mm=m%60,ap=h>=12?'PM':'AM',H=h%12===0?12:h%12;return H+':'+(mm<10?'0':'')+mm+' '+ap;};
+  var picked={},time=null;var today=new Date();var iso=function(x){return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
+  var max=new Date(today.getTime()+60*864e5);
+  app.innerHTML='<h1>'+esc(d.n)+'</h1><div class="muted">Pick your services, a day and a time — your request goes to the salon on WhatsApp and they confirm the slot.</div>'
+    +'<div class="card"><b>Services</b><div id="svcs" style="margin-top:8px"></div></div>'
+    +'<div class="card"><label>Day</label><input type="date" id="day" min="'+iso(today)+'" max="'+iso(max)+'" value="'+iso(today)+'"><label>Preferred time</label><div class="slots" id="slots"></div></div>'
+    +'<div class="card"><label>Your name</label><input id="nm" autocomplete="name"><label>Note (optional)</label><textarea id="note" rows="2" placeholder="Preferred stylist, anything we should know"></textarea></div>'
+    +'<button class="go" id="go" disabled>Send booking request on WhatsApp</button><p class="muted" style="text-align:center;margin-top:10px">Prices are indicative; the salon confirms the final booking.</p>';
+  var sv=document.getElementById('svcs');
+  d.s.forEach(function(s,i){var el=document.createElement('div');el.className='svc';el.innerHTML='<div>'+esc(s[0])+'<br><small>'+(s[1]?s[1]+' min':'')+'</small></div><div><b>₹'+Number(s[2]||0).toLocaleString('en-IN')+'</b></div>';
+    el.onclick=function(){if(picked[i])delete picked[i];else picked[i]=s;el.classList.toggle('on');check();};sv.appendChild(el);});
+  var slots=document.getElementById('slots');var open=Number(d.o)||540,close=Number(d.c)||1260;
+  function drawSlots(){slots.innerHTML='';var day=document.getElementById('day').value;var now=new Date();var isToday=day===iso(now);
+    for(var m=open;m<close;m+=30){if(isToday&&m<=now.getHours()*60+now.getMinutes()+30)continue;(function(m){var b=document.createElement('span');b.className='slot'+(time===m?' on':'');b.textContent=hm(m);b.onclick=function(){time=m;drawSlots();check();};slots.appendChild(b);})(m);}
+    if(!slots.children.length)slots.innerHTML='<span class="muted">No times left today — pick another day.</span>';}
+  function check(){document.getElementById('go').disabled=!(Object.keys(picked).length&&time!=null&&document.getElementById('nm').value.trim());}
+  document.getElementById('day').onchange=function(){time=null;drawSlots();check();};document.getElementById('nm').oninput=check;drawSlots();
+  document.getElementById('go').onclick=function(){var list=Object.keys(picked).map(function(k){return picked[k][0];});var day=document.getElementById('day').value.split('-').reverse().join('/');
+    var msg='Hi '+d.n+', I would like to book:\n• '+list.join('\n• ')+'\nDay: '+day+'\nTime: '+hm(time)+'\nName: '+document.getElementById('nm').value.trim()+(document.getElementById('note').value.trim()?'\nNote: '+document.getElementById('note').value.trim():'')+'\n(Booking page)';
+    location.href='https://wa.me/'+encodeURIComponent(d.p)+'?text='+encodeURIComponent(msg);};
+})();
+</script></body></html>

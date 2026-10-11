@@ -2739,7 +2739,7 @@ const GST_PCT=18;
 // the outlet is not registered (inv.noGst); loyalty points redeemed count as discount.
 function billCalc(inv){
   const items=inv.items||[];const subtotal=items.reduce((s,it)=>s+(Number(it.qty)||0)*(Number(it.rate)||0),0);
-  const disc=Math.min(subtotal,(Number(inv.discount)||0)+(Number(inv.pointsUsed)||0));
+  const disc=subtotal>0?Math.min(subtotal,(Number(inv.discount)||0)+(Number(inv.pointsUsed)||0)):0; // credit notes (negative) carry no discount
   let taxable=0,gst=0;
   items.forEach(it=>{const amt=(Number(it.qty)||0)*(Number(it.rate)||0);const share=subtotal?amt*(1-disc/subtotal):0;const g=inv.noGst?0:(it.gst!=null&&it.gst!==''?Number(it.gst)||0:GST_PCT);
     if(inv.inclusive){const t=share/(1+g/100);taxable+=t;gst+=share-t;}else{taxable+=share;gst+=share*g/100;}});

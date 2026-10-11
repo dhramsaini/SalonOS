@@ -77,8 +77,8 @@ function SalesInsightsModal({salon,invoices,onClose}){
 // ── Inventory: movement log, standard usage, consumption, purchase order, dead stock, price watch ──
 function loadInvItems(sid){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_inventory_items',sid))||'[]');return Array.isArray(v)?v:[];}catch(e){return[];}}
 function loadInvLog(sid){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_inventory_log',sid))||'[]');return Array.isArray(v)?v:[];}catch(e){return[];}}
-function logInvMove(sid,item,type,qty,rate){
-  const l=loadInvLog(sid);l.push({date:localIsoOf(new Date()),itemId:item.id,name:item.name,type,qty:Number(qty)||0,rate:rate!=null?Number(rate):undefined});
+function logInvMove(sid,item,type,qty,rate,extra){
+  const l=loadInvLog(sid);l.push({date:localIsoOf(new Date()),itemId:item.id,name:item.name,type,qty:Number(qty)||0,rate:rate!=null?Number(rate):undefined,...(extra||{})});
   safeLocalSet(outletKey('salonos_inventory_log',sid),JSON.stringify(l.slice(-5000)));
 }
 function loadStdUsage(sid){try{return JSON.parse(cachedLocalGet(outletKey('salonos_std_usage',sid))||'{}')||{};}catch(e){return{};}}

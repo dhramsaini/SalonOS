@@ -18,10 +18,11 @@ function fdPushIncentive(sid,year,month){
   saveIncentiveActuals(A,sid);try{logAuditEvent(sid,{entity:'Incentive',entityId:year+'-'+(month+1),action:'Sales from Billing',summary:n+' staff'});}catch(e){}return n;
 }
 function fdDaySummary(sid,iso){
-  const L=fdBills(sid).filter(b=>b&&b.date===iso);const live=L.filter(b=>b.status!=='Cancelled');const modes={Cash:0,Card:0,UPI:0,Package:0,Unpaid:0};let gross=0,disc=0,gst=0,total=0;const tips={};
+  const L=fdBills(sid).filter(b=>b&&b.date===iso);const live=L.filter(b=>b.status!=='Cancelled');const modes={Cash:0,Card:0,UPI:0,Package:0,Voucher:0,Unpaid:0};let gross=0,disc=0,gst=0,total=0;const tips={};
   live.forEach(b=>{const t=billCalc(b);gross+=t.subtotal;disc+=t.disc;gst+=t.gst;total+=t.total;
     if(b.status==='Unpaid')modes.Unpaid+=t.total;else if(b.paymentMode==='Split'){(b.payments||[]).forEach(p=>{modes[p.mode]=(modes[p.mode]||0)+(Number(p.amount)||0);});modes.Package+=Number(b.packagePaid)||0;}
-    else if(b.paymentMode==='Package')modes.Package+=t.total;else{modes[b.paymentMode]=(modes[b.paymentMode]||0)+t.total-(Number(b.packagePaid)||0);modes.Package+=Number(b.packagePaid)||0;}
+    else if(b.paymentMode==='Package')modes.Package+=t.total;else if(b.paymentMode==='Voucher')modes.Voucher+=t.total;else{modes[b.paymentMode]=(modes[b.paymentMode]||0)+t.total-(Number(b.packagePaid)||0)-(Number(b.voucherPaid)||0);modes.Package+=Number(b.packagePaid)||0;modes.Voucher+=Number(b.voucherPaid)||0;}
+    (b.receipts||[]).forEach(r=>{if(r.date===iso)modes[r.mode]=(modes[r.mode]||0)+(Number(r.amount)||0);});
     (b.tips||[]).forEach(x=>{tips[x.staff||'—']=(tips[x.staff||'—']||0)+(Number(x.amount)||0);});});
   let cr=null;try{if(typeof cradleeDayTotals==='function'){const T=cradleeDayTotals(sid)[iso.split('-').reverse().join('/')];if(T)cr={card:Math.round(T.card),upi:Math.round(T.upi)};}}catch(e){}
   return{bills:live.length,cancelled:L.length-live.length,gross:Math.round(gross),disc:Math.round(disc),gst:Math.round(gst),total:Math.round(total),modes,tips,cradlee:cr};
@@ -50,18 +51,18 @@ function BillingSheet({salon}){
   const [invoices,setInvoices]=useState(()=>fdBills(sid));
   useEffect(()=>{safeLocalSet(outletKey('salonos_billing_invoices',sid),JSON.stringify(invoices));},[invoices,sid]);
   const [search,setSearch]=useState('');const [fMode,setFMode]=useState('All');const [fStatus,setFStatus]=useState('All');const [fStaff,setFStaff]=useState('All');
-  const [editor,setEditor]=useState(null);const [viewInv,setViewInv]=useState(null);const [menuOpen,setMenuOpen]=useState(false);const [dayOpen,setDayOpen]=useState(false);const [dayIso,setDayIso]=useState(fdTodayIso());const [insOpen,setInsOpen]=useState(false);
+  const [editor,setEditor]=useState(null);const [viewInv,setViewInv]=useState(null);const [impOpen,setImpOpen]=useState(false);const [duesOpen,setDuesOpen]=useState(false);const [vchOpen,setVchOpen]=useState(false);const [refundOf,setRefundOf]=useState(null);const [menuOpen,setMenuOpen]=useState(false);const [dayOpen,setDayOpen]=useState(false);const [dayIso,setDayIso]=useState(fdTodayIso());const [insOpen,setInsOpen]=useState(false);
   // a bill started from an appointment (js/41) — picked up once
   useEffect(()=>{try{const k='salonos_bill_draft_'+sid;const d=sessionStorage.getItem(k);if(d){sessionStorage.removeItem(k);setEditor({initial:JSON.parse(d)});}}catch(e){}},[sid]);
   const today=fdTodayIso();const cur=today.slice(0,7);const staff=fdStaff(sid);
   const T=b=>billCalc(b).total;const live=invoices.filter(b=>b.status!=='Cancelled');
   const todaySales=live.filter(b=>b.date===today).reduce((s,b)=>s+T(b),0),monthSales=live.filter(b=>String(b.date).slice(0,7)===cur).reduce((s,b)=>s+T(b),0);
-  const unpaid=live.filter(b=>b.status==='Unpaid');const lowRated=controlOn('lowRatingAlert',sid)?invoices.filter(b=>Number(b.rating)>0&&Number(b.rating)<=2&&!b.ratingSeen):[];
+  const unpaid=live.filter(b=>fdBillDue(b)>0);const reload=()=>setInvoices(fdBills(sid));const lowRated=controlOn('lowRatingAlert',sid)?invoices.filter(b=>Number(b.rating)>0&&Number(b.rating)<=2&&!b.ratingSeen):[];
   const q=search.trim().toLowerCase();
   const filtered=invoices.filter(b=>(!q||String(b.customer||'').toLowerCase().includes(q)||String(b.id).toLowerCase().includes(q)||String(b.phone||'').includes(q))&&(fMode==='All'||b.paymentMode===fMode)&&(fStatus==='All'||b.status===fStatus)&&(fStaff==='All'||b.staff===fStaff||(b.items||[]).some(it=>it.staffName===fStaff)));
   const saveBill=rec=>{
     if(editor&&editor.editId){setInvoices(L=>L.map(b=>b.id===editor.editId?{...rec,id:editor.editId}:b));try{logAuditEvent(sid,{entity:'Bill',entityId:editor.editId,action:'Edited',summary:FD_M(T(rec))});}catch(e){}toast('Bill '+editor.editId+' updated','success');setEditor(null);return;}
-    const id=nextPrefixedId(invoices,'INV-',4);const bill={...rec,id,createdBy:(currentSessionUser()||{}).name||'',createdAt:new Date().toISOString()};
+    const id=fdNextBillNo(sid,invoices,rec.date);const bill={...rec,id,createdBy:(currentSessionUser()||{}).name||'',createdAt:new Date().toISOString()};
     setInvoices(L=>[bill,...L]);setTimeout(()=>{const notes=fdAfterBillSaved(sid,bill,true);
       try{if(editor&&editor.initial&&editor.initial.apptKey&&typeof fdMarkApptBilled==='function')fdMarkApptBilled(sid,editor.initial.apptKey,editor.initial.apptIds||[],id);}catch(e){}
       toast('Bill '+id+' — '+FD_M(T(bill))+(notes.length?' · '+notes.join(' · '):''),'success');},0);
@@ -80,6 +81,9 @@ function BillingSheet({salon}){
       h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setMenuOpen(true)},'⚙ Menu & settings'),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setDayOpen(true)},'📅 Day-end'),
+        h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setDuesOpen(true)},'💳 Dues'+(unpaid.length?' ('+unpaid.length+')':'')),
+        controlOn('giftVouchers',sid)&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setVchOpen(true)},'🎁 Vouchers'),
+        h('button',{className:'btn btn-ghost btn-sm',title:'Bills from the Cradlee sales register or any Excel',onClick:()=>setImpOpen(true)},'⬆ Import bills'),
         typeof SalesInsightsModal==='function'&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setInsOpen(true)},'📊 Insights'),
         fi&&h('button',{className:'btn btn-ghost btn-sm',title:'Fill this month’s Service / Product / Membership sales in Incentive Working from the bills',onClick:()=>{if(!window.confirm('Send '+RPT_MONTHS[now.getMonth()]+' billed sales of each staff member to Incentive Working? (Used only where no staff work report is imported.)'))return;const n=fdPushIncentive(sid,now.getFullYear(),now.getMonth());toast('Sales of '+n+' staff sent to Incentive Working','success');}},'↗ Sales to incentives'),
         h('button',{className:'btn btn-primary',onClick:()=>setEditor({})},'+ New bill'))),
@@ -88,7 +92,7 @@ function BillingSheet({salon}){
     lowRated.length>0&&h('div',{className:'attention-card',style:{marginBottom:12,color:'var(--red)'}},'⭐ '+lowRated.length+' low rating(s): ',lowRated.slice(0,4).map(b=>h('button',{key:b.id,className:'btn btn-ghost btn-sm',onClick:()=>setViewInv(b)},b.customer+' ('+b.rating+'★)'))),
     h('div',{className:'grid4',style:{marginBottom:16}},metric("Today's sales",FD_M(todaySales),live.filter(b=>b.date===today).length+' bill(s)','green'),metric('This month',FD_M(monthSales),RPT_MONTHS[now.getMonth()],'blue'),
       metric('Average bill',FD_M(live.filter(b=>String(b.date).slice(0,7)===cur).length?monthSales/live.filter(b=>String(b.date).slice(0,7)===cur).length:0),'this month','amber'),
-      metric('Unpaid',FD_M(unpaid.reduce((s,b)=>s+T(b),0)),unpaid.length+' bill(s)',unpaid.length?'red':'teal')),
+      metric('Client dues',FD_M(unpaid.reduce((s,b)=>s+fdBillDue(b),0)),unpaid.length+' bill(s)',unpaid.length?'red':'teal')),
     h('div',{style:{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap',alignItems:'center'}},
       h('input',{className:'form-control',style:{flex:1,minWidth:200},placeholder:'Search bill no., customer, mobile…',value:search,onChange:e=>setSearch(e.target.value)}),
       h('select',{className:'form-control',style:{width:'auto'},value:fMode,onChange:e=>setFMode(e.target.value)},['All','Cash','Card','UPI','Split','Package'].map(m=>h('option',{key:m,value:m},m==='All'?'All payments':m))),
@@ -108,6 +112,10 @@ function BillingSheet({salon}){
             b.status!=='Cancelled'&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setEditor({initial:b,editId:b.id})},'✏')))))))),
     editor&&h(BillEditor,{sid,initial:editor.initial,editId:editor.editId,onSave:saveBill,onClose:()=>setEditor(null)}),
     menuOpen&&h(FdMenuSettings,{sid,onClose:()=>setMenuOpen(false)}),
+    impOpen&&h(FdImportBillsModal,{sid,onClose:()=>setImpOpen(false),onDone:()=>{setImpOpen(false);reload();}}),
+    duesOpen&&h(FdDuesModal,{sid,onClose:()=>{setDuesOpen(false);reload();},onChanged:reload}),
+    vchOpen&&h(FdVouchersModal,{sid,onClose:()=>setVchOpen(false),onSell:v=>{setVchOpen(false);setEditor({initial:{customer:v.buyer,phone:v.phone,items:[{name:'Gift voucher '+v.code+(v.forName?' for '+v.forName:''),type:'Voucher',qty:1,rate:v.value,gst:0}],voucherSale:v,paymentMode:'Cash',status:'Paid',discount:0}});}}),
+    refundOf&&h(FdRefundModal,{sid,bill:refundOf,onClose:()=>setRefundOf(null),onDone:()=>{setRefundOf(null);setViewInv(null);reload();}}),
     viewInv&&(()=>{const b=invoices.find(x=>x.id===viewInv.id)||viewInv;const t=billCalc(b);return h('div',{className:'modal-overlay',onClick:()=>setViewInv(null)},h('div',{className:'modal',style:{width:560},onClick:e=>e.stopPropagation()},
       h('div',{className:'modal-title'},'Bill '+b.id+' · '+b.status),
       h('div',{style:{fontSize:13,marginBottom:8}},h('b',null,b.customer),b.phone?' · '+b.phone:'',' · ',String(b.date).split('-').reverse().join('/'),b.staff?' · '+b.staff:''),
@@ -118,7 +126,9 @@ function BillingSheet({salon}){
       h('div',{style:{display:'flex',gap:4,alignItems:'center',margin:'10px 0'}},h('span',{style:{fontSize:12.5,marginRight:6}},'Client rating'),[1,2,3,4,5].map(r=>h('button',{key:r,className:'btn btn-ghost btn-sm',style:{padding:'0 6px',fontSize:16,color:Number(b.rating)>=r?'#e0a530':'var(--text3)'},onClick:()=>setRating(b,r)},'★')),
         Number(b.rating)>0&&Number(b.rating)<=2&&!b.ratingSeen&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setInvoices(L=>L.map(x=>x.id===b.id?{...x,ratingSeen:true}:x));}},'Handled')),
       h('div',{className:'modal-actions'},b.status!=='Cancelled'&&h('button',{className:'btn btn-ghost',style:{color:'var(--red)'},onClick:()=>del(b)},'Cancel bill'),h('button',{className:'btn btn-ghost',onClick:()=>sendWa(b)},'📲 WhatsApp'),
-        h('button',{className:'btn btn-ghost',onClick:()=>fdPrintBill(sid,b)},'🖨 Print'),b.status!=='Cancelled'&&h('button',{className:'btn btn-primary',onClick:()=>{setViewInv(null);setEditor({initial:b,editId:b.id});}},'✏ Edit'))));})(),
+        h('button',{className:'btn btn-ghost',onClick:()=>fdPrintBill(sid,b)},'🖨 A5'),h('button',{className:'btn btn-ghost',onClick:()=>fdPrintReceipt(sid,b,80)},'🧾 80 mm'),h('button',{className:'btn btn-ghost',onClick:()=>fdPrintReceipt(sid,b,58)},'58 mm'),
+        b.status!=='Cancelled'&&b.kind!=='credit-note'&&h('button',{className:'btn btn-ghost',onClick:()=>setRefundOf(b)},'↩ Refund'),
+        b.status!=='Cancelled'&&b.kind!=='credit-note'&&h('button',{className:'btn btn-primary',onClick:()=>{setViewInv(null);setEditor({initial:b,editId:b.id});}},'✏ Edit'))));})(),
     ds&&h('div',{className:'modal-overlay',onClick:()=>setDayOpen(false)},h('div',{className:'modal',style:{width:520},onClick:e=>e.stopPropagation()},
       h('div',{className:'modal-title',style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},'📅 Day-end summary',h('input',{type:'date',className:'form-control',style:{width:150},value:dayIso,onChange:e=>setDayIso(e.target.value)})),
       [['Bills',ds.bills+(ds.cancelled?' ('+ds.cancelled+' cancelled)':'')],['Gross',FD_M(ds.gross)],['Discounts',FD_M(ds.disc)],['GST',FD_M(ds.gst)],['Total billed',FD_M(ds.total)]].map(([k,v])=>h('div',{key:k,className:'kv'},h('span',null,k),h('b',null,v))),
@@ -126,5 +136,6 @@ function BillingSheet({salon}){
       Object.entries(ds.modes).filter(([,v])=>v).map(([k,v])=>h('div',{key:k,className:'kv'},h('span',null,k),h('span',null,FD_M(v),ds.cradlee&&(k==='Card'||k==='UPI')?h('span',{style:{marginLeft:8,fontSize:11.5,color:Math.abs(ds.cradlee[k.toLowerCase()]-v)>1?'var(--orange)':'var(--green)'}},'Cradlee '+FD_M(ds.cradlee[k.toLowerCase()])):null))),
       Object.keys(ds.tips).length>0&&h('div',{style:{fontWeight:700,margin:'10px 0 4px'}},'Tips to pay out'),Object.entries(ds.tips).map(([k,v])=>h('div',{key:k,className:'kv'},h('span',null,k),h('span',null,FD_M(v)))),
       h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'Count the cash drawer against the Cash line; Card / UPI are compared with the Cradlee sale for the day where imported.'),
+      controlOn('billingFeedsDailySales',sid)&&h('button',{className:'btn btn-primary btn-sm',style:{marginTop:8},onClick:()=>{const err=fdFillDailySales(sid,dayIso);if(err)return toast(err,err==='Cancelled.'?'info':'error');toast('Daily Sales & Exp filled for '+dayIso.split('-').reverse().join('/'),'success');}},'↗ Fill Daily Sales & Exp for this day'),
       h('div',{className:'modal-actions'},h('button',{className:'btn btn-primary',onClick:()=>setDayOpen(false)},'Close')))));
 }

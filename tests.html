@@ -1411,6 +1411,35 @@
           [calc,n1.length,mem&&mem.plan+':'+mem.discountPct,pkg1,stock1,pts1,pkg2,pts2,[st.visits,st.spend,st.fav,st.stylist],by.E2&&by.E2.prod,merged,[imp.added,imp.updated],[day.bills,day.modes.Card],item.batches.map(b=>b.batch+':'+b.qty).join(),terr,after],
           [[1180,230,1000,1000,800],3,'Gold:10',12000,3,870,11600,770,[2,17800,'Cut','Ravi'],2400,1,[1,1],[1,17400],'A:3','',[1,'Serum:2']]);
       }catch(err){results.push({name:'Front desk core',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=934;const C0=window.confirm;window.confirm=()=>true;
+        saveControls({fyInvoiceSeries:{on:true},giftVouchers:{on:true},familySharing:{on:true},referralReward:{on:true,limit:200},patchTestWarn:{on:true,limit:180},billReducesStock:{on:true}});
+        const no=[fdNextBillNo(S,[{id:'INV/2026-27/0007'}],'2026-10-05'),fdNextBillNo(S,[{id:'INV/2026-27/0007'}],'2027-04-02')];
+        fdSaveClients(S,[{id:'C1',name:'Asha',phone:'9810011111',familyId:'F1'},{id:'C2',name:'Ravi',phone:'9810022222',familyId:'F1',referredBy:'C1'},{id:'C3',name:'Mira',phone:'9810033333',patchTests:[{date:'2026-01-01',result:'Clear'}],optOut:true}]);
+        saveMemberships(S,[{id:'M1',client:'Asha',phone:'9810011111',type:'Package',soldOn:'2026-09-01',paid:5000,value:6000,validTill:'2027-09-01',redemptions:[]}]);
+        const fam=fdPackageLeft(S,'9810022222');
+        fdSaveMenu(S,[{id:'S1',name:'Colour',type:'Service',rate:2000,duration:90,gst:18,active:true,needsPatchTest:true,resource:'Colour bay'},{id:'P1',name:'Serum',type:'Product',rate:1000,gst:18,active:true}]);
+        const pt=[fdPatchTestOk(S,'9810033333','Colour')!=='',fdPatchTestOk(S,'9810011111','Colour')!==''];
+        const rc=!!fdResourceClash(S,[{id:'a',service:'Colour',start:600,dur:90,status:'Booked'}],'Colour bay',630,60);
+        fdSaveVouchers(S,[{code:'GVTEST1',value:1000,expiry:'2027-01-01',redemptions:[]}]);const v1=fdFindVoucher(S,'gvtest1');
+        fdSaveStock(S,[{id:'K1',name:'Serum',unit:'bottle',qty:5,rate:500,batches:[{batch:'X',expiry:'2026-01-01',qty:2}],suppliers:[{vendorId:'V1',code:'SR-9',rate:480}]}]);safeLocalSet('salonos_inventory_log_outlet_'+S,'[]');
+        safeLocalSet('salonos_billing_invoices_outlet_'+S,'[]');
+        const b={id:'INV/26-27/0008',customer:'Ravi',phone:'9810022222',date:'2026-10-06',noGst:true,items:[{name:'Serum',type:'Product',qty:1,rate:1000}],voucherCode:'GVTEST1',voucherPaid:600,paymentMode:'Cash',status:'Paid'};
+        safeLocalSet('salonos_billing_invoices_outlet_'+S,JSON.stringify([b]));const notes=fdAfterBillSaved(S,b,true);
+        const v2=fdFindVoucher(S,'GVTEST1').left;const refCredit=fdClients(S).find(c=>c.id==='C1').packageBalance;
+        const cn=fdCreateCreditNote(S,b,[{name:'Serum',type:'Product',qty:1,rate:1000}],'Damaged','Cash');const stockAfter=fdStock(S)[0].qty;
+        const u={id:'INV-U',customer:'Bina',phone:'9810044444',date:'2026-09-01',noGst:true,items:[{name:'Colour',type:'Service',qty:1,rate:2000}],status:'Unpaid',paymentMode:'Cash'};
+        safeLocalSet('salonos_billing_invoices_outlet_'+S,JSON.stringify([u,...fdBills(S)]));const due0=fdClientDue(S,'9810044444');fdReceivePayment(S,'INV-U',500,'UPI');const due1=fdClientDue(S,'9810044444');
+        safeLocalSet('salonos_daily_sales_collection_data_outlet_'+S,'{}');const fe=fdFillDailySales(S,'2026-10-06');const dse=JSON.parse(cachedLocalGet(outletKey('salonos_daily_sales_collection_data',S)))['2026-10-06'];
+        const pr=fdParseImportRows([{'Invoice No':'A1','Invoice Date':'05/10/2026','Guest Name':'Zoya','Mobile':'9810055555','Service':'Cut','Amount':'600','Payment Mode':'UPI'},{'Invoice No':'A1','Invoice Date':'05/10/2026','Guest Name':'Zoya','Mobile':'9810055555','Service':'Serum','Amount':'1,000','Payment Mode':'UPI'}]);
+        const im=fdImportBills(S,pr);const im2=fdImportBills(S,pr);const zoya=!!fdClients(S).find(c=>c.phone==='9810055555');
+        const aud=fdCampaignAudience(S,{seg:'All'}).map(x=>x.c.name).sort().join(',');
+        const wo=fdWriteOffBatch(S,'K1',{batch:'X',expiry:'2026-01-01'},'Expired');const cat=fdCatalogueRate(S,fdStock(S)[0],'V1');
+        saveControls({});window.confirm=C0;
+        eq('Front desk extras: FY bill series, family package, patch test, room clash, voucher, referral credit, credit note back to stock, dues and part payment, Daily Sales fill, Cradlee import (deduped), campaign opt-out, write-off, supplier rate',
+          [no,fam,pt,rc,v1&&v1.left,v2,refCredit,cn.amount,stockAfter,[due0,due1],[fe,dse&&dse[0]],[pr.bills.length,pr.bills[0]&&pr.bills[0].items.length,im.added,im2.skipped,zoya],aud,[wo,fdStock(S)[0].qty],cat&&cat.code+':'+cat.rate],
+          [['INV/2026-27/0008','INV/2027-28/0001'],6000,[true,true],true,1000,400,200,1000,5,[2000,1500],['',400],[1,2,1,1,true],'Asha,Ravi,Zoya',['',3],'SR-9:480']);
+      }catch(err){results.push({name:'Front desk extras',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

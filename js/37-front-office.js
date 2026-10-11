@@ -137,7 +137,7 @@ function PurchaseOrdersPanel({sid,items}){
   return h('div',{style:{marginTop:12}},
     h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}},h('b',null,'🧾 Purchase orders'),!draft&&h('button',{className:'btn btn-primary btn-sm',onClick:start},'+ New PO'+(low.length?' ('+low.length+' to reorder)':''))),
     draft&&h('div',{style:{border:'1px dashed var(--border2)',borderRadius:8,padding:10,marginTop:8}},
-      h('select',{className:'form-control',style:{width:260,marginBottom:8},value:draft.vendorId,onChange:e=>setDraft({...draft,vendorId:e.target.value})},h('option',{value:''},'— Vendor —'),vendors.map(v=>h('option',{key:v.id,value:v.id},v.name))),
+      h('select',{className:'form-control',style:{width:260,marginBottom:8},value:draft.vendorId,onChange:e=>{const vid=e.target.value;setDraft(d=>({...d,vendorId:vid,lines:d.lines.map(l=>{const it=(items||[]).find(z=>z.id===l.itemId);const cr=it&&typeof fdCatalogueRate==='function'?fdCatalogueRate(sid,it,vid):null;return cr?{...l,rate:cr.rate,code:cr.code,name:l.name+(cr.code&&!String(l.name).includes(cr.code)?' ['+cr.code+']':'')}:l;})}));}},h('option',{value:''},'— Vendor —'),vendors.map(v=>h('option',{key:v.id,value:v.id},v.name))),
       draft.lines.map((l,i)=>h('div',{key:i,style:{display:'flex',gap:6,marginBottom:4,flexWrap:'wrap'}},
         h('input',{className:'form-control',style:{width:220,padding:'2px 6px'},value:l.name,onChange:e=>setDraft(d=>({...d,lines:d.lines.map((z,j)=>j===i?{...z,name:e.target.value}:z)}))}),
         h('input',{type:'number',className:'form-control',style:{width:80,padding:'2px 6px'},value:l.qty,onChange:e=>setDraft(d=>({...d,lines:d.lines.map((z,j)=>j===i?{...z,qty:e.target.value}:z)}))}),
