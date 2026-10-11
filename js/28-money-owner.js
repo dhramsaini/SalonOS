@@ -115,10 +115,34 @@ function BankMappingAgeingBoard({accessibleSalons,onOpenOutletTab,cal}){
   const nudgedKey=sid=>'salonos_bank_nudged_'+sid;const nudgedAt=sid=>{try{return Number(localStorage.getItem(nudgedKey(sid)))||0;}catch(e){return 0;}};
   const doNudge=(s,info)=>{const url=bankNudgeUrl(s,info,controlLimit('bankUnmappedNudge')||7);if(!url){window.alert('Add the outlet phone number in Master Sheet → Outlets first.');return;}
     window.open(url,'_blank','noopener');try{localStorage.setItem(nudgedKey(s.id),String(Date.now()));}catch(e){}try{logAuditEvent(s.id,{entity:'Bank Statement',entityId:'nudge',action:'WhatsApp nudge',summary:info.n+' unmapped line(s)'});}catch(e){}setT(t=>t+1);};
+  const alerts=outs.flatMap(s=>loadBankChangeAlerts(s.id).filter(a=>!a.seen).map(a=>({...a,s})));const isSA=isSuperAdminUser(currentSessionUser());
+  const fc=outs.map(s=>({s,f:bankCashForecast(s.id,30),warn:controlOn('cashForecastAlert',s.id)?controlLimit('cashForecastAlert'):null}));
+  const ratios=outs.map(s=>({s,r:bankOutletRatios(s.id,cal.year,cal.month)}));const RK=['salary','rent','power','bank','fees'];const RL={salary:'Salary & incentive',rent:'Rent',power:'Electricity',bank:'Bank charges',fees:'Card / UPI fees'};
+  const maxOf=k=>Math.max(...ratios.map(x=>x.r.pct[k]==null?-1:x.r.pct[k]));
+  const prevM=new Date(new Date().getFullYear(),new Date().getMonth()-1,1);const opKey='salonos_bank_onepager_sent_'+prevM.getFullYear()+'-'+String(prevM.getMonth()+1).padStart(2,'0');
+  const opSent=(()=>{try{return !!localStorage.getItem(opKey);}catch(e){return true;}})();const opDue=new Date().getDate()>=3&&!opSent&&outs.some(s=>controlOn('bankOnePagerReminder',s.id));
+  const markOp=()=>{try{localStorage.setItem(opKey,String(Date.now()));}catch(e){}setT(t=>t+1);};
+  const shareOp=()=>{const ph0=(outletSettings(outs[0].id)||{}).ownerPhone||'';let ph=typeof waNumber==='function'?waNumber(ph0):'';
+    if(!ph){const typed=window.prompt('Owner’s WhatsApp number:','');ph=typeof waNumber==='function'?waNumber(typed):String(typed||'').replace(/\D/g,'');if(!ph)return;}
+    window.open('https://wa.me/'+ph+'?text='+encodeURIComponent(bankOnePagerText(outs,cal.year,cal.month)),'_blank','noopener');markOp();};
+  const spark=(series,low)=>{if(!series||series.length<2)return null;const mn=Math.min(...series,low==null?Infinity:low),mx=Math.max(...series);const sp=Math.max(1,mx-mn);
+    const pts=series.map((v,i)=>(i/(series.length-1)*118+1).toFixed(1)+','+(27-(v-mn)/sp*25).toFixed(1)).join(' ');
+    return h('svg',{viewBox:'0 0 120 28',style:{width:120,height:28,display:'block'}},low!=null&&low>mn&&h('line',{x1:0,x2:120,y1:27-(low-mn)/sp*25,y2:27-(low-mn)/sp*25,stroke:'#c0392b',strokeDasharray:'3 2',strokeWidth:1}),h('polyline',{points:pts,fill:'none',stroke:'#2f5fe0',strokeWidth:1.6}));};
   const cfSids=cfOutlet==='all'?outs.map(s=>s.id):[Number(cfOutlet)||cfOutlet];const cf=bankCashFlow(cfSids,cal.year,cal.month,6);
   const mLbl=ym=>RPT_MONTHS[Number(ym.slice(5,7))-1].slice(0,3)+' '+ym.slice(2,4);const mx=Math.max(1,...cf.net.map(v=>Math.abs(v)));
   const money=v=>v?(v<0?'-':'')+moMoney(Math.abs(v)):'—';
   return h('div',{style:{marginTop:18}},
+    opDue&&h('div',{style:{background:'rgba(47,95,224,0.07)',border:'1px solid rgba(47,95,224,0.3)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+      '🧾 ',h('b',null,RPT_MONTHS[prevM.getMonth()]+' '+prevM.getFullYear()+' bank one-pager'),' has not been sent to the owner yet — pick that month above, then print or share it.',h('button',{className:'btn btn-ghost btn-sm',onClick:markOp},'Mark as sent')),
+    h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}},
+      h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(printBankOnePager(outs,cal.year,cal.month))markOp();}},'🧾 One-pager for '+RPT_MONTHS[cal.month]+' '+cal.year),
+      h('button',{className:'btn btn-ghost btn-sm',onClick:shareOp},'📲 Share summary on WhatsApp')),
+    alerts.length>0&&h('div',{className:'card',style:{padding:'10px 14px',marginBottom:14,borderColor:'rgba(192,57,43,0.4)'}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}},h('b',null,'🔔 Checked / Final bank lines changed ('+alerts.length+')'),
+        isSA&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{outs.forEach(s=>markBankChangeAlertsSeen(s.id,null));setT(t=>t+1);}},'Mark all seen')),
+      h('div',{className:'table-wrap'},h('table',null,h('tbody',null,alerts.slice(-20).reverse().map(a=>h('tr',{key:a.id},h('td',null,rptShort(a.s)),h('td',null,a.date),h('td',{style:{textAlign:'right'}},moMoney(a.amount)),
+        h('td',null,a.what+' ('+a.why+')'),h('td',{style:{color:'var(--text3)',fontSize:12}},a.by+' · '+new Date(a.at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})),
+        h('td',null,isSA&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{markBankChangeAlertsSeen(a.s.id,[a.id]);setT(t=>t+1);}},'Seen')))))))),
     h('div',{className:'page-title',style:{fontSize:18}},'Unmapped bank lines by age'),
     h('div',{className:'page-sub',style:{marginBottom:8}},'Every month, counted from the bank date to today. “Checked” is the second-person review and Health the mapping health score (mapped 40%, checked 20%, ageing 25%, exceptions 15%) for '+RPT_MONTHS[cal.month]+' '+cal.year+'.'),
     h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,
@@ -146,6 +170,23 @@ function BankMappingAgeingBoard({accessibleSalons,onOpenOutletTab,cal}){
           h('tr',{style:{fontWeight:700}},h('td',null,'Money in'),cf.tin.map((v,i)=>h('td',{key:i,style:{textAlign:'right'}},money(v)))),
           h('tr',{style:{fontWeight:700}},h('td',null,'Money out'),cf.tout.map((v,i)=>h('td',{key:i,style:{textAlign:'right'}},money(v)))),
           h('tr',{style:{fontWeight:700}},h('td',null,'Net'),cf.net.map((v,i)=>h('td',{key:i,style:{textAlign:'right',color:v>=0?'var(--green)':'var(--red)'}},money(v)))))))),
+    h('div',{className:'page-title',style:{fontSize:18,marginTop:18}},'Bank balance forecast — next 30 days'),
+    h('div',{className:'page-sub',style:{marginBottom:8}},'From the last closing balance in the statement: average daily settlements in, regular payments (rent, salary, EMIs …) and unpaid bills by due date out. A guide, not a promise.'),
+    h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,
+      h('thead',null,h('tr',null,['Outlet','Balance (as of)','In per day','Payments due','Lowest point','30 days on',''].map((t,i)=>h('th',{key:i,style:i&&i<6?{textAlign:'right'}:null},t)))),
+      h('tbody',null,fc.map(({s,f,warn})=>h('tr',{key:s.id},h('td',{style:{fontWeight:600}},rptShort(s)),
+        !f?h('td',{colSpan:6,style:{color:'var(--text3)'}},'No closing balance in the statement yet'):h(React.Fragment,null,
+          h('td',{style:{textAlign:'right'}},moMoney(f.start),h('div',{style:{fontSize:11,color:'var(--text3)'}},f.startDate)),h('td',{style:{textAlign:'right'}},moMoney(f.inflowDay)),
+          h('td',{style:{textAlign:'right'},title:f.outs.slice(0,12).map(z=>z.date.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' '+z.label+' ₹'+z.amount.toLocaleString('en-IN')).join('\n')},moMoney(f.payments),h('div',{style:{fontSize:11,color:'var(--text3)'}},f.outs.length+' item(s)')),
+          h('td',{style:{textAlign:'right',fontWeight:700,color:warn!=null&&f.min<warn?'var(--red)':f.min<0?'var(--red)':'var(--text)'}},(f.min<0?'-':'')+moMoney(Math.abs(f.min)),h('div',{style:{fontSize:11,color:'var(--text3)',fontWeight:400}},f.minDate.toLocaleDateString('en-IN',{day:'numeric',month:'short'})),
+            warn!=null&&f.min<warn&&h('div',{style:{fontSize:11,color:'var(--red)'}},'⚠ below '+moMoney(warn))),
+          h('td',{style:{textAlign:'right'}},(f.end<0?'-':'')+moMoney(Math.abs(f.end))),h('td',null,spark(f.series,warn))))))))),
+    h('div',{className:'page-title',style:{fontSize:18,marginTop:18}},'Outlet comparison — '+RPT_MONTHS[cal.month]+' '+cal.year),
+    h('div',{className:'page-sub',style:{marginBottom:8}},'Costs paid from the bank as % of sales (Cradlee cash + card + UPI). Card / UPI fees = card and UPI sales of the month less their settlements. Highest in each column in red.'),
+    h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,
+      h('thead',null,h('tr',null,h('th',null,'Outlet'),h('th',{style:{textAlign:'right'}},'Sales'),RK.map(k=>h('th',{key:k,style:{textAlign:'right'}},RL[k])))),
+      h('tbody',null,ratios.map(({s,r})=>h('tr',{key:s.id},h('td',{style:{fontWeight:600}},rptShort(s)),h('td',{style:{textAlign:'right'}},r.sales?moMoney(r.sales):'—'),
+        RK.map(k=>{const v=r.pct[k];const top=ratios.length>1&&v!=null&&v>0&&v===maxOf(k);return h('td',{key:k,style:{textAlign:'right',color:top?'var(--red)':undefined,fontWeight:top?700:400},title:r.vals[k]?moMoney(r.vals[k]):''},v==null?'—':v+'%');}))))))),
     h('div',{className:'page-title',style:{fontSize:18,marginTop:18}},'Mapping by person — '+RPT_MONTHS[cal.month]+' '+cal.year),
     h('div',{className:'page-sub',style:{marginBottom:8}},'From the mapping pop-up: lines mapped, how many came from a suggestion or were mapped automatically on import, suggestions changed by hand, undone, and lines checked in review.'),
     !P.length?h('div',{className:'card',style:{fontSize:12.5,color:'var(--text3)'}},'No mapping recorded for this month yet.')

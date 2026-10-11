@@ -205,6 +205,7 @@ function linkBankLineToBills(sid,row,vendor,allocations,onMap){
   const patch={linkedInvoice:keys.join(','),nature:'Vendor Payment',vendorOverride:vendor.name};
   if(onMap)onMap(row.id,patch);else saveBankLineMapping(sid,row.id,patch);
   try{logAuditEvent(sid,{entity:'Bank Statement',entityId:String(row.id),action:'Linked to bills',summary:'₹'+Math.round(tot).toLocaleString('en-IN')+' of '+(row.transactionDate||'')+' linked to '+vendor.name+' — '+al.length+' bill(s)'});}catch(e){}
+  try{if(typeof learnPayeeTokens==='function')learnPayeeTokens(sid,'vendor',vendor.id,row.description);}catch(e){}
   return'';
 }
 // Vendor bill entered from a bank debit (bill came late / was never entered). Same checks as
@@ -256,6 +257,7 @@ function settleBankLineToEmployees(sid,row,year,month,lines,onMap){
   if(settlements.length===1)patch.vendorOverride='EMP:'+settlements[0].employeeId;
   if(onMap)onMap(row.id,patch);else saveBankLineMapping(sid,row.id,patch);
   try{logAuditEvent(sid,{entity:'Bank Statement',entityId:String(row.id),action:'Salary settled',summary:'₹'+Math.round(tot).toLocaleString('en-IN')+' of '+(row.transactionDate||'')+' — '+settlements.map(x=>x.employeeName).join(', ')+' ('+RPT_MONTHS[month]+' '+year+')'});}catch(e){}
+  try{if(settlements.length===1&&typeof learnPayeeTokens==='function')learnPayeeTokens(sid,'emp',settlements[0].employeeId,row.description);}catch(e){}
   return'';
 }
 // Advance(s) paid by a bank debit — the same as Bank Statement's "Record Advance": a new Active,
@@ -320,7 +322,7 @@ function findEmployeeByBank(desc,emps){
     return (ac.length>=6&&digits.some(t=>t===ac||(t.length>=6&&(ac.endsWith(t)||t.endsWith(ac.slice(-6))))))||(mo.length===10&&digits.some(t=>t.endsWith(mo)));});
   return hits.length===1?hits[0]:null;
 }
-function findEmployeeSmart(desc,emps){return findEmployeeMatch(desc,emps)||findEmployeeByBank(desc,emps);}
+function findEmployeeSmart(desc,emps){return findEmployeeMatch(desc,emps)||findEmployeeByBank(desc,emps)||(typeof payeeByToken==='function'?payeeByToken('emp',desc,emps):null);}
 // Plan for settling many bank debits against employees at once. Per line: the employee named in
 // the narration, the month (forced, else the month before when paid on or before the 15th), and what
 // the amount matches exactly — salary due, incentive due, both together, or all daily incentive due.

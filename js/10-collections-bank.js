@@ -3464,7 +3464,7 @@ function BankStatement({salon,onNavTab}={}){
   const update=(id,k,v)=>{const r0=rows.find(r=>r.id===id);
     if(r0&&BANK_MAP_FIELDS.includes(k)&&JSON.stringify(r0[k]==null?'':r0[k])!==JSON.stringify(v==null?'':v)&&!bankLockOk(salonId,r0,'change a mapped line'))return;
     if(linkedLine(r0)&&['nature','vendorOverride','cradleeDate'].includes(k)&&String(r0[k]||'')!==String(v||'')&&!lineApprovalOk(r0,'Change '+(k==='vendorOverride'?'vendor':k==='cradleeDate'?'Cradlee date':'Nature')+' of a linked line to '+(v||'blank')))return;
-    let extra={};if(r0&&BANK_MAP_FIELDS.includes(k)&&JSON.stringify(r0[k]==null?'':r0[k])!==JSON.stringify(v==null?'':v)){extra=bankEditGuard(salonId,r0,k,v);if(extra===null)return;}
+    let extra={};if(r0&&BANK_MAP_FIELDS.includes(k)&&JSON.stringify(r0[k]==null?'':r0[k])!==JSON.stringify(v==null?'':v)){extra=bankEditGuard(salonId,r0,k,v);if(extra===null)return;noteBankBigChange(salonId,r0,'Changed '+(k==='vendorOverride'?'vendor':k==='cradleeDate'?'Cradlee date':k)+' to '+(typeof v==='string'?(v||'blank'):'…'));}
     setRows(p=>p.map(r=>r.id===id?{...r,[k]:v,...extra}:r));};
   // Card / UPI settlements whose Date as per Cradlee disagrees with the sale date printed in the
   // bank narration (SETDT-…) — usually a date picked by hand in the wrong month.
@@ -4019,6 +4019,7 @@ function BankStatement({salon,onNavTab}={}){
   };
   const unlinkEmployeePay=(row)=>{
     if(bankEditGuard(salonId,row,'unlink','')===null)return;
+    noteBankBigChange(salonId,row,'Unlinked');
     if(!bankLockOk(salonId,row,'unlink a mapped line'))return;
     if(!lineApprovalOk(row,'Unlink salary / incentive settlement'))return;
     const lp=row.linkedEmployeePay;
@@ -4119,6 +4120,7 @@ function BankStatement({salon,onNavTab}={}){
   };
   const unlinkAdvance=(row)=>{
     if(bankEditGuard(salonId,row,'unlink','')===null)return;
+    noteBankBigChange(salonId,row,'Unlinked');
     if(!bankLockOk(salonId,row,'unlink a mapped line'))return;
     if(!lineApprovalOk(row,'Unlink advance'))return;
     const la=row.linkedAdvance;
@@ -4182,6 +4184,7 @@ function BankStatement({salon,onNavTab}={}){
   };
   const unlinkRow=(row)=>{
     if(bankEditGuard(salonId,row,'unlink','')===null)return;
+    noteBankBigChange(salonId,row,'Unlinked');
     if(!bankLockOk(salonId,row,'unlink a mapped line'))return;
     if(!lineApprovalOk(row,'Unlink vendor bill'))return;
     if(!confirm('Unlink this transaction? The matching payment record on that invoice will also be removed.'))return;
@@ -4332,6 +4335,7 @@ function BankStatement({salon,onNavTab}={}){
 
   return React.createElement('div',{className:'fade-in'},
     React.createElement(BankStaleStrip,{salonId}),
+    React.createElement(BankBalanceStrip,{salonId,rows}),
     React.createElement(UnmappedMonthsStrip,{salonId,rows,onMap:(id,patch)=>setRows(p=>p.map(r=>r.id===id?{...r,...patch}:r)),onInvoicesChanged:()=>setVendorInvoices(loadVendorInvoices(salonId))}),
     setDtMismatch.length>0&&React.createElement('div',{style:{background:'rgba(224,82,82,0.08)',border:'1px solid rgba(224,82,82,0.35)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}},
       React.createElement('span',null,'⚠ ',React.createElement('b',null,setDtMismatch.length+' settlement line'+(setDtMismatch.length===1?'':'s')),' have a Date as per Cradlee different from the sale date in the bank narration (SETDT), e.g. '+(setDtMismatch[0].transactionDate||'')+': '+(setDtMismatch[0].cradleeDate||'blank')+' instead of '+settlementDateFromNarration(setDtMismatch[0].description)+'. Collection Reco adds bank credits by this date.'),

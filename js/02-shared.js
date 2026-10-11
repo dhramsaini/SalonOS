@@ -3803,6 +3803,7 @@ function tallyAutoSyncPending(salonId,from){
   });
   const rows=loadBankStatementRows(salonId).filter(r=>{
     if(!(r.debit||r.credit))return false;
+    if(typeof bankTallyHeld==='function'&&bankTallyHeld(salonId,r))return false; // Controls → maker-checker
     const iso=tallyIsoOf(r.transactionDate);
     if(!iso||iso<from)return false;
     const p=pushed.bank[r.id];

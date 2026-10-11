@@ -1259,6 +1259,31 @@
           [['needs a reason','salary lines need Super Admin / Owner / Accountant','already in Tally',''],'Owner loan repayment',null,null,true,'Debit:11800:Acme Traders,Credit:9500:Card Settlement Receivable,Debit:20000:Mystery Ledger',
             ['T1>Vendor Payment:Acme Traders','T2>Card Settlement','Ledger'],'2026-09,2026-10',[-300,-22800],1,'number',true]);
       }catch(err){results.push({name:'Control & reporting',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=926;const U0=sessionStorage.getItem('salonos_user');sessionStorage.setItem('salonos_user',JSON.stringify({name:'Asha',role:'Manager'}));
+        saveControls({newPayeeAlert:{on:true,limit:25000},roundOddFlags:{on:true,limit:20000},tallyNeedsReview:{on:true},bankBigChangeAlert:{on:true,limit:50000}});
+        saveVendors([{id:'V1',name:'Acme Traders',status:'Active'}],S);saveVendorInvoices([],S);safeLocalSet('salonos_bank_payee_tokens','{}');
+        const rows=[{id:'A',transactionDate:'01/09/2026',description:'OPENING',credit:1000,closingBalance:101000},{id:'B',transactionDate:'02/09/2026',description:'NEFT ACME 501001234567',debit:1000,closingBalance:100000,nature:'Other'},
+          {id:'C',transactionDate:'03/09/2026',description:'X',debit:500,closingBalance:99000,nature:'Other'},
+          {id:'P1',transactionDate:'15/10/2026',description:'EPFO CHALLAN',debit:4000,nature:'PF Payment'},
+          {id:'N1',transactionDate:'05/10/2026',description:'IMPS TO NEWGUY 998877665544',debit:30000,nature:'Transfer'},{id:'N2',transactionDate:'04/10/2026',description:'NEFT ACME TRADERS',debit:2000,nature:'Other'},
+          {id:'BIG',transactionDate:'06/10/2026',description:'NEFT BIG',debit:60000,nature:'Rent'}];
+        safeLocalSet('salonos_bank_statement_rows_outlet_'+S,JSON.stringify(rows));safeLocalSet('salonos_bank_exc_ok_outlet_'+S,'{}');safeLocalSet('salonos_bank_map_review_outlet_'+S,'{}');safeLocalSet('salonos_bank_change_alerts_outlet_'+S,'[]');
+        const br=bankBalanceBreaks(S);
+        const AS=window.autoStatutoryDueItemsFor;window.autoStatutoryDueItemsFor=()=>[{type:'PF Challan',year:2026,month:8,due:'2026-10-15',amount:5000},{type:'ESIC Challan',year:2026,month:8,due:'2026-10-15',amount:800}];
+        const st=bankStatutoryCheck(S,2026,9).map(z=>z.type+':'+z.status.slice(0,8));window.autoStatutoryDueItemsFor=AS;
+        learnPayeeTokens(S,'vendor','V1','NEFT 501001234567 A');learnPayeeTokens(S,'vendor','V1','NEFT 501001234567 B');
+        const pv=payeeByToken('vendor','IMPS 501001234567 X',loadVendors(S));const offers=vendorBankOffers(S).map(o=>o.vendor.name+':'+o.accountNo);
+        const ex=bankMappingExceptions(S,2026,9).map(e=>e.kind+':'+e.rowId).sort().join(',');
+        const held=bankTallyHeld(S,bankRowsFor(S).find(r=>r.id==='BIG'));
+        setBankReviewed(S,[bankRowsFor(S).find(r=>r.id==='BIG')],true);noteBankBigChange(S,bankRowsFor(S).find(r=>r.id==='BIG'),'Unlinked');const al=loadBankChangeAlerts(S).length;
+        const cmp=compareBankWithTally(S,2026,9,[{date:'15/10/2026',side:'Debit',amount:4000,ledger:'PF'},{date:'20/10/2026',side:'Debit',amount:777,ledger:'Ghost'}]);
+        const fc=bankCashForecast(S,30);const txt=bankOnePagerText([{id:S,name:'Test Outlet'}],2026,9);
+        saveControls({});if(U0)sessionStorage.setItem('salonos_user',U0);else sessionStorage.removeItem('salonos_user');
+        eq('Month close: balance breaks, statutory dues, payee learning and vendor bank details, new payee / round / Sunday, maker-checker, owner alert, Tally compare, forecast',
+          [br.map(b=>b.rowId+':'+b.diff),st,pv&&pv.id,offers,ex,held,al,cmp.onlyTally.map(v=>v.ledger),cmp.onlyBank.length,fc&&fc.start,/net/.test(txt)],
+          [['C:-500'],['PF Challan:Short by','ESIC Challan:Due by 1'],'V1',['Acme Traders:501001234567'],'New payee:BIG,New payee:N1,Round amount:N1,Sunday payment:N2',true,1,['Ghost'],3,99000,true]);
+      }catch(err){results.push({name:'Month close',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
