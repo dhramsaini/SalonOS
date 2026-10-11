@@ -186,6 +186,18 @@ async function buildBankMappingSummaryWorkbook(sid,year,month){
   return{wb,filename:'Bank_Mapping_'+rptFile(rptShort(salon))+'_'+pre+'.xlsx'};
 }
 
+// Sends the given mapped bank lines (and the vendor bills linked to them) to Tally through the
+// Tally Connector — the same routine as Tally Export → Sync, limited to these lines.
+async function sendBankLinesToTally(sid,rowIds){
+  const cfg=loadTallyConnectorCfg();const rows=bankRowsFor(sid).filter(r=>rowIds.includes(r.id));
+  const inv=loadVendorInvoices(sid)||[];const invIds=new Set();
+  rows.forEach(r=>{String(r.linkedInvoice||'').split(',').filter(Boolean).forEach(k=>{const [vid,no]=k.split('|');const i=inv.find(z=>String(z.vendorId)===vid&&String(z.invoiceNo)===no);if(i)invIds.add(i.id);});
+    inv.forEach(i=>{if((i.payments||[]).some(q=>q.linkId==='bank-'+r.id))invIds.add(i.id);});});
+  const res=await tallySyncVouchers(sid,cfg,{company:cfg.company,only:{inv:invIds,bank:new Set(rows.map(r=>r.id))}});
+  try{addTallyLog(sid,{action:'Send from mapping pop-up',sent:res.sent,created:res.ledgersCreated,errors:res.failed.length,detail:res.failed.slice(0,10)});}catch(e){}
+  return res;
+}
+
 // ═══ The pop-up ═══
 function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,onMap,onMapped,onInvoicesChanged,month:monthCtx}){
   const h=React.createElement;const [,setTick]=useState(0);const [side,setSide]=useState('All');
@@ -199,6 +211,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const [grouped,setGrouped]=useState(false);const [openGroups,setOpenGroups]=useState(()=>new Set());
   const [cur,setCur]=useState(0);const [showKeys,setShowKeys]=useState(false);const [showRules,setShowRules]=useState(false);const [showJournal,setShowJournal]=useState(true);
   const [rulePrompt,setRulePrompt]=useState(null);const [inclMid,setInclMid]=useState(false);
+  const [tallyBusy,setTallyBusy]=useState(false);
   const [narrow,setNarrow]=useState(()=>typeof window!=='undefined'&&window.innerWidth<760);
   const rootRef=useRef(null);
   useEffect(()=>{const f=()=>setNarrow(window.innerWidth<760);window.addEventListener('resize',f);if(rootRef.current)rootRef.current.focus();return()=>window.removeEventListener('resize',f);},[]);
@@ -333,6 +346,16 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const pushed=loadTallyPushed(sid);
   const tallyOf=e=>{const r=rowNow(e.rowId);const p=pushed.bank[e.rowId];return !p?'Not in Tally':(r&&p.sig&&p.sig!==tallyBankSig(r)?'Changed since sent':'In Tally');};
   const undoEntry=e=>{undoBankMapping(sid,e,rowNow(e.rowId),onMap);say('Undone: '+e.date+' '+m(e.amount)+'.');refresh(true);};
+  const notInTally=J.filter(e=>tallyOf(e)!=='In Tally');
+  const sendTally=async()=>{
+    if(!notInTally.length){say('Every line mapped here is already in Tally.');return;}
+    const map2=loadTallyLedgerMap(sid);if(!map2.bankLedger){say('Enter the Bank ledger name on Tally Export first (Ledgers tab).','warn');return;}
+    if(!window.confirm('Send '+notInTally.length+' mapped bank line'+(notInTally.length===1?'':'s')+' (and the bills linked to them) to Tally now?\n\nTally and the SalonOS Tally Connector must be running on this computer. Missing ledgers are created first.'))return;
+    setTallyBusy(true);
+    try{const res=await sendBankLinesToTally(sid,notInTally.map(e=>e.rowId));
+      say('Tally: '+res.sent+' voucher'+(res.sent===1?'':'s')+' sent'+(res.ledgersCreated?', '+res.ledgersCreated+' ledger(s) created':'')+(res.failed.length?' · '+res.failed.length+' rejected — see Tally Export → History':'')+'.',res.failed.length?'warn':'ok');}
+    catch(err){say('Could not send to Tally: '+(err.message||err)+' — open Tally and start the SalonOS Tally Connector, then try again.','warn');}
+    setTallyBusy(false);refresh();};
   const undoAll=()=>{if(!window.confirm('Undo all '+J.length+' mapping'+(J.length===1?'':'s')+'? Bill payments, salary “Paid” and advances made by them are reversed too.'))return;J.forEach(e=>undoBankMapping(sid,e,rowNow(e.rowId),onMap));say(J.length+' mapping(s) undone.');refresh(true);};
 
   // ── keyboard ──
@@ -596,7 +619,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
         J.length>0&&h('div',{style:{marginTop:16,border:'1px solid var(--border)',borderRadius:10,padding:'8px 12px'}},
           h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}},
             h('b',{style:{fontSize:13,cursor:'pointer'},onClick:()=>setShowJournal(v=>!v)},(showJournal?'▾ ':'▸ ')+'Mapped from this screen ('+J.length+')'),
-            h('div',{style:{display:'flex',gap:6}},onNavTab&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{onClose();onNavTab('tally');}},'Tally Export →'),h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:undoAll},'Undo all'))),
+            h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},h('button',{className:'btn btn-primary btn-sm',disabled:tallyBusy||!notInTally.length,title:'Send these mapped lines to Tally through the Tally Connector',onClick:sendTally},tallyBusy?'Sending…':'📤 Send to Tally ('+notInTally.length+')'),onNavTab&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{onClose();onNavTab('tally');}},'Tally Export →'),h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:undoAll},'Undo all'))),
           showJournal&&h('div',{style:{maxHeight:220,overflowY:'auto',marginTop:6}},h('table',{style:{width:'100%',fontSize:12}},h('tbody',null,J.map(e=>{const t=tallyOf(e);return h('tr',{key:e.id||(e.rowId+'-'+e.at)},
             h('td',{style:{...C.td,whiteSpace:'nowrap'}},e.date),h('td',{style:C.td},e.side==='Debit'?sideTag({side:'Debit'}):sideTag({side:'Credit'})),
             h('td',{style:{...C.td,maxWidth:280}},h('div',{title:e.description,style:{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:280}},e.description)),

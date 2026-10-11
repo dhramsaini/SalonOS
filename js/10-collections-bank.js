@@ -3457,7 +3457,13 @@ function BankStatement({salon,onNavTab}={}){
   })();
   const onFile=(e)=>{const f=e.target.files&&e.target.files[0];if(f)loadWorkbook(f);e.target.value='';};
   const onDrop=(e)=>{e.preventDefault();setDragging(false);const f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f)loadWorkbook(f);};
-  const update=(id,k,v)=>setRows(p=>p.map(r=>r.id===id?{...r,[k]:v}:r));
+  // Changing the Nature / vendor / Cradlee date of a line that is already linked (bill, salary, advance)
+  // needs approval above the limit when Controls → Mapping approval is on.
+  const linkedLine=r=>!!(r&&(r.linkedInvoice||(Array.isArray(r.linkedEmployeePay)&&r.linkedEmployeePay.length)||(Array.isArray(r.linkedAdvance)&&r.linkedAdvance.length)));
+  const lineApprovalOk=(r,what)=>!r||mapApprovalOk(salonId,{id:r.id,debit:r.debit,credit:r.credit,date:r.transactionDate},what);
+  const update=(id,k,v)=>{const r0=rows.find(r=>r.id===id);
+    if(linkedLine(r0)&&['nature','vendorOverride','cradleeDate'].includes(k)&&String(r0[k]||'')!==String(v||'')&&!lineApprovalOk(r0,'Change '+(k==='vendorOverride'?'vendor':k==='cradleeDate'?'Cradlee date':'Nature')+' of a linked line to '+(v||'blank')))return;
+    setRows(p=>p.map(r=>r.id===id?{...r,[k]:v}:r));};
   // Card / UPI settlements whose Date as per Cradlee disagrees with the sale date printed in the
   // bank narration (SETDT-…) — usually a date picked by hand in the wrong month.
   const setDtMismatch=rows.filter(r=>{const sd=settlementDateFromNarration(r.description);return sd&&(r.nature==='Card Settlement'||r.nature==='UPI Settlement'||!r.nature)&&Number(r.credit)>0&&toISO(r.cradleeDate)!==toISO(sd);});
@@ -4010,6 +4016,7 @@ function BankStatement({salon,onNavTab}={}){
     toastSuccess('Recorded '+money(total)+' across '+settlements.length+' employee'+(settlements.length===1?'':'s')+' ('+settlements.map(e=>e.employeeName).join(', ')+').');
   };
   const unlinkEmployeePay=(row)=>{
+    if(!lineApprovalOk(row,'Unlink salary / incentive settlement'))return;
     const lp=row.linkedEmployeePay;
     if(!lp||!lp.length)return;
     if(!confirm('Unlink this payment? Salary/Incentive Payment Status will be reset to "Not Paid" for whichever part(s) this had marked Paid (Daily Incentive has no status to reset — it\'ll just be removed from this transaction\'s record), across all '+lp.length+' employee'+(lp.length===1?'':'s')+'.'))return;
@@ -4107,6 +4114,7 @@ function BankStatement({salon,onNavTab}={}){
       (linkedCount?' ('+linkedCount+' linked to existing, '+newCount+' new)':'')+'.');
   };
   const unlinkAdvance=(row)=>{
+    if(!lineApprovalOk(row,'Unlink advance'))return;
     const la=row.linkedAdvance;
     if(!la||!la.length)return;
     const createdOnes=la.filter(a=>!a.wasExisting);
@@ -4167,6 +4175,7 @@ function BankStatement({salon,onNavTab}={}){
     toastSuccess('Linked — '+money(totalAllocated)+' allocated across '+allocations.length+' invoice'+(allocations.length===1?'':'s')+' ('+linkedNos.join(', ')+').');
   };
   const unlinkRow=(row)=>{
+    if(!lineApprovalOk(row,'Unlink vendor bill'))return;
     if(!confirm('Unlink this transaction? The matching payment record on that invoice will also be removed.'))return;
     const linkId='bank-'+row.id;
     const freshInvoices=loadVendorInvoices(salonId);
