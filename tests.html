@@ -1011,6 +1011,16 @@
         const inv=loadVendorInvoices(909),row=JSON.parse(cachedLocalGet('salonos_bank_statement_rows_outlet_909'))[0];
         eq('Link bill from the list: over the debit refused; payments on bills, bank line linked and mapped',[/more than this bank debit/.test(tooMuch),ok,inv.map(i=>i.payments.map(p=>p.paidAmount+'|'+p.linkId).join()),row.nature,row.vendorOverride,!!row.linkedInvoice,unmappedBankLinesFor(909,2026,8).length],[true,'',['1000|bank-R1','500|bank-R1'],'Vendor Payment','Link Vendor',true,0]);
       }catch(err){results.push({name:'Link bill from list',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const sl0=cachedLocalGet('salonos_salons');const sl=JSON.parse(sl0||'[]');if(!sl.some(x=>x.id===910))sl.push({id:910,name:'Bill Outlet',gst:'06AAAAA1111A1Z5',status:'Active'});safeLocalSet('salonos_salons',JSON.stringify(sl));
+        safeLocalSet('salonos_vendor_invoices_outlet_910',JSON.stringify([{id:'X1',vendorId:'V1',invoiceNo:'DUP-1',invoiceDate:'01/09/2026',amount:100,payments:[]}]));
+        const u0=sessionStorage.getItem('salonos_user');sessionStorage.setItem('salonos_user',JSON.stringify({name:'Boss',role:'Super Admin'}));
+        const ven={id:'V1',name:'Out State Vendor',gst:'07BBBBB2222B2Z6'};
+        const d=createBillForBankLine(910,ven,{id:'R',transactionDate:'10/09/2026'},{invoiceNo:'DUP-1',invoiceDate:'2026-09-10',amount:500,category:'Other',gstRate:'0'});
+        const ok=createBillForBankLine(910,ven,{id:'R',transactionDate:'10/09/2026'},{invoiceNo:'NEW-9',invoiceDate:'2026-09-10',amount:1180,category:'Professional Fee',gstRate:'18'});
+        if(u0==null)sessionStorage.removeItem('salonos_user');else sessionStorage.setItem('salonos_user',u0);if(sl0==null)safeLocalSet('salonos_salons','[]');else safeLocalSet('salonos_salons',sl0);
+        eq('New bill from a bank debit: duplicate number refused; inter-state 18% split as IGST',[!!d.error,ok.inv&&[ok.inv.taxable,ok.inv.igst,ok.inv.cgst,ok.inv.invoiceDate,ok.inv.category,ok.inv.payments.length]],[true,[1000,180,'','10/09/2026','Professional Fee',0]]);
+      }catch(err){results.push({name:'New bill from bank',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
