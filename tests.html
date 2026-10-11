@@ -1071,6 +1071,23 @@
         S916.advBlock=true;const b=planBulkAdvances(916,L,'Salary').map(p=>p.line?(p.over?'over':'ok'):'skip');S916.advBlock=false;
         eq('Bulk advance plan: existing advance of the same amount linked; limit counts the batch (2nd Ravi advance over 50%); blocked when the outlet blocks',[a,b],[['new 2026-11','over','link A001','skip'],['ok','skip','ok','skip']]);
       }catch(err){results.push({name:'Bulk advance plan',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        safeLocalSet('salonos_vendors_outlet_917',JSON.stringify([{id:'V1',name:'Undo Vendor'}]));
+        safeLocalSet('salonos_vendor_invoices_outlet_917',JSON.stringify([{id:'B1',vendorId:'V1',invoiceNo:'OLD',invoiceDate:'01/10/2026',amount:300,payments:[]}]));
+        safeLocalSet('salonos_advances_outlet_917',JSON.stringify([{id:'A001',emp:'Seema',amount:200,outstanding:200,status:'Pending Approval'}]));
+        safeLocalSet('salonos_bank_statement_rows_outlet_917',JSON.stringify([{id:'R1',transactionDate:'10/10/2026',description:'NEFT UNDO VENDOR',debit:500,nature:''},{id:'R2',transactionDate:'10/10/2026',description:'IMPS SEEMA',debit:200,nature:''}]));
+        const A0=window.confirm;window.confirm=()=>true;const su0=sessionStorage.getItem('salonos_user');sessionStorage.setItem('salonos_user',JSON.stringify({name:'Boss',role:'Super Admin'}));
+        const rows=()=>JSON.parse(cachedLocalGet('salonos_bank_statement_rows_outlet_917'));
+        const r1=rows()[0];const nb=createBillForBankLine(917,{id:'V1',name:'Undo Vendor'},r1,{invoiceNo:'NEW',invoiceDate:'2026-10-10',amount:200,category:'Other',gstRate:'0'});
+        linkBankLineToBills(917,r1,{id:'V1',name:'Undo Vendor'},[{id:'B1',amount:300},{id:nb.inv.id,amount:200}],null);journalBankMapping(917,r1,'link',{createdInvoices:[nb.inv.id]});
+        const r2=rows()[1];const snap=JSON.parse(cachedLocalGet('salonos_advances_outlet_917'));recordBankLineAdvances(917,r2,[{employeeId:'E2',employeeName:'Seema',linkExistingId:'A001'}],null,{limitReviewed:true});journalBankMapping(917,r2,'adv',{advBefore:snap});
+        const J=bankMapJournal(917);J.forEach(e=>undoBankMapping(917,e,rows().find(r=>r.id===e.rowId),null));
+        window.confirm=A0;if(su0==null)sessionStorage.removeItem('salonos_user');else sessionStorage.setItem('salonos_user',su0);
+        const inv=loadVendorInvoices(917),adv=loadAdvances(917),rr=rows();
+        eq('Undo a mapping: bill payments removed, the bill created for it deleted, linked advance restored, bank lines back to unmapped',
+          [inv.map(i=>i.invoiceNo+':'+(i.payments||[]).length),adv.map(a=>a.id+':'+a.status+':'+(a.bankRowId||'')),rr.map(r=>(r.nature||'-')+':'+(r.linkedInvoice||'')+':'+(r.linkedAdvance?'adv':'')),unmappedBankLinesFor(917,2026,9).length],
+          [['OLD:0'],['A001:Pending Approval:'],['-::','-::'],2]);
+      }catch(err){results.push({name:'Undo mapping',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

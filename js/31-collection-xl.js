@@ -356,6 +356,40 @@ function planBulkAdvances(sid,lines,deductFrom){
     if(msg&&block)return{x,emp:e,reason:'Over the advance limit (the outlet blocks it): '+msg};
     return{x,emp:e,over:msg||'',line:{employeeId:e.id,employeeName:e.name,amount:String(x.debit),deductFrom:deductFrom||'Salary',deductionStart:ym,reason:'Advance — Bank Statement'}};});
 }
+// ── Undo for mappings made in the pop-up ──
+// A journal per outlet, kept while the app is open: each bank line mapped from the pop-up, with its
+// fields as they were before (the earliest state if it was changed several times), bills created for
+// it, and the Advances sheet as it was before an advance was recorded.
+const BANK_MAP_FIELDS=['nature','vendorOverride','cradleeDate','linkedInvoice','linkedEmployeePay','linkedAdvance','aiTagged','natureLearned'];
+function bankMapJournal(sid){const j=window.__bankMapJournal||(window.__bankMapJournal={});return j[sid]||(j[sid]=[]);}
+function journalBankMapping(sid,row,label,extra){
+  if(!row)return;const J=bankMapJournal(sid);let e=J.find(z=>z.rowId===row.id&&!z.undone);
+  if(!e){const before={};BANK_MAP_FIELDS.forEach(f=>{before[f]=row[f]===undefined?undefined:JSON.parse(JSON.stringify(row[f]));});
+    e={rowId:row.id,date:row.transactionDate||'',description:row.description||'',amount:Number(row.debit)||Number(row.credit)||0,side:Number(row.credit)>0?'Credit':'Debit',labels:[],before,createdInvoices:[],advBefore:null,at:Date.now()};J.push(e);}
+  if(label&&!e.labels.includes(label))e.labels.push(label);
+  if(extra&&extra.createdInvoices)e.createdInvoices.push(...extra.createdInvoices);
+  if(extra&&extra.advBefore&&!e.advBefore)e.advBefore=extra.advBefore;
+}
+// Puts a bank line back as it was before the pop-up mapped it, reversing what the mapping did.
+function undoBankMapping(sid,e,cur,onMap){
+  cur=cur||{};const b=e.before||{};const linkId='bank-'+e.rowId;
+  // bills: payments from this bank line removed; bills created for it deleted (when nothing else paid them)
+  if(!b.linkedInvoice){const inv=loadVendorInvoices(sid)||[];
+    if(inv.some(i=>(i.payments||[]).some(q=>q.linkId===linkId))||e.createdInvoices.length){
+      const kept=inv.map(i=>(i.payments||[]).some(q=>q.linkId===linkId)?{...i,payments:i.payments.filter(q=>q.linkId!==linkId)}:i)
+        .filter(i=>!(e.createdInvoices.includes(i.id)&&!(i.payments||[]).length));
+      saveVendorInvoices(kept,sid);}}
+  // salary / incentive back to Not Paid
+  if(Array.isArray(cur.linkedEmployeePay)&&!b.linkedEmployeePay)cur.linkedEmployeePay.forEach(x=>{try{unsettleEmployeePayFor(sid,x.employeeId,x.year,x.month,{salary:x.salarySettled,incentive:x.incentiveSettled});}catch(err){}});
+  // advances: new ones removed, linked ones restored
+  if(Array.isArray(cur.linkedAdvance)&&!b.linkedAdvance){const created=new Set(cur.linkedAdvance.filter(a=>!a.wasExisting).map(a=>a.advanceId)),linked=new Set(cur.linkedAdvance.filter(a=>a.wasExisting).map(a=>a.advanceId));
+    const adv=(loadAdvances(sid)||[]).filter(a=>!created.has(a.id)).map(a=>{if(!linked.has(a.id))return a;const old=(e.advBefore||[]).find(z=>z.id===a.id);if(old)return old;const n={...a};delete n.bankRowId;return n;});
+    saveAdvances(adv,sid);}
+  const patch={};BANK_MAP_FIELDS.forEach(f=>{patch[f]=b[f]===undefined?(f==='nature'||f==='vendorOverride'||f==='cradleeDate'||f==='linkedInvoice'?'':undefined):b[f];});
+  if(onMap)onMap(e.rowId,patch);else saveBankLineMapping(sid,e.rowId,patch);
+  e.undone=true;
+  try{logAuditEvent(sid,{entity:'Bank Statement',entityId:String(e.rowId),action:'Mapping undone',summary:(e.date||'')+' ₹'+Math.round(e.amount).toLocaleString('en-IN')+' — '+e.labels.join(', ')});}catch(err){}
+}
 // Pop-up listing unmapped lines, each mappable in place: Nature, the vendor for a vendor payment,
 // the Date as per Cradlee for a card / UPI settlement. getList() is re-read after every change.
 //   onMap(id, patch)  — how to save (Bank Statement passes its own; default saves to storage)
@@ -373,7 +407,12 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const m=n=>n?'₹'+Number(n).toLocaleString('en-IN',{maximumFractionDigits:2}):'';
   const dr=list.filter(x=>x.side==='Debit'),cr=list.filter(x=>x.side==='Credit');const sum=(a,k)=>a.reduce((t,x)=>t+x[k],0);
   const shown=side==='All'?list:list.filter(x=>x.side===side);
+  const rowNow=id=>(getRows?getRows():bankRowsFor(sid)).find(r=>r.id===id);
+  const jr=(id,label,extra)=>journalBankMapping(sid,rowNow(id),label,extra);
+  const [,setJTick]=useState(0);
+  const undoEntry=e=>{undoBankMapping(sid,e,rowNow(e.rowId),onMap);setJTick(t=>t+1);setTick(t=>t+1);if(onInvoicesChanged)onInvoicesChanged();if(onMapped)onMapped();};
   const map=(x,patch)=>{
+    jr(x.id,patch.nature!==undefined?'Nature: '+(patch.nature||'blank'):patch.vendorOverride?'Vendor: '+patch.vendorOverride:patch.cradleeDate?'Cradlee date '+patch.cradleeDate:'Changed');
     if(patch.nature&&(patch.nature==='Card Settlement'||patch.nature==='UPI Settlement')&&!x.cradleeDate){const sd=settlementDateFromNarration(x.description);if(sd)patch={...patch,cradleeDate:sd};}
     if(onMap)onMap(x.id,patch);else saveBankLineMapping(sid,x.id,patch);
     setTick(t=>t+1);if(onMapped)onMapped();
@@ -398,7 +437,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
         if(!d&&bulk.dateMode!=='pick'){const iso=toISO(x.date);if(iso){const t=new Date(iso+'T00:00:00');t.setDate(t.getDate()-1);d=String(t.getDate()).padStart(2,'0')+'/'+String(t.getMonth()+1).padStart(2,'0')+'/'+t.getFullYear();}}
         if(bulk.dateMode==='pick')d=bulk.date?dmyOf(bulk.date):'';
         if(d)patch.cradleeDate=d;else noDate++;}
-      if(onMap)onMap(x.id,patch);else saveBankLineMapping(sid,x.id,patch);done++;});
+      jr(x.id,'Nature: '+n+(patch.vendorOverride?' · '+patch.vendorOverride:''));if(onMap)onMap(x.id,patch);else saveBankLineMapping(sid,x.id,patch);done++;});
     setTicked(new Set());setTick(t=>t+1);if(onMapped)onMapped();
     setBulkMsg(done+' line'+(done===1?'':'s')+' set to '+n+(skipped?' · '+skipped+' skipped ('+(n&&BANK_CREDIT_NATURES.has(n)?'debits':'credits')+' cannot take this Nature)':'')+(noDate?' · '+noDate+' still need a Date as per Cradlee':'')+'.');
     try{logAuditEvent(sid,{entity:'Bank Statement',entityId:'bulk',action:'Mapped in bulk',summary:done+' line(s) set to '+n+(bulk.vendor?' — '+bulk.vendor:'')});}catch(e){}
@@ -410,7 +449,8 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const runAdvPlan=()=>{
     const rowsNow=getRows?getRows():bankRowsFor(sid);let ok=0;const fails=[];
     advPlan.filter(p=>p.line&&(!p.over||advOver)).forEach(p=>{const row=rowsNow.find(r=>r.id===p.x.id)||{id:p.x.id,debit:p.x.debit,transactionDate:p.x.date};
-      const err=recordBankLineAdvances(sid,row,[p.line],onMap,{limitReviewed:true});if(err)fails.push((p.x.date||'')+' '+p.emp.name+': '+err);else ok++;});
+      const snap=JSON.parse(JSON.stringify(loadAdvances(sid)||[]));
+      const err=recordBankLineAdvances(sid,row,[p.line],onMap,{limitReviewed:true});if(err)fails.push((p.x.date||'')+' '+p.emp.name+': '+err);else{journalBankMapping(sid,row,'Advance: '+p.emp.name,{advBefore:snap});ok++;}});
     setAdvPlan(null);setTicked(new Set());setTick(t=>t+1);if(onMapped)onMapped();
     setBulkMsg(ok+' advance'+(ok===1?'':'s')+' recorded'+(fails.length?' · not recorded: '+fails.join('; '):'')+'.');
   };
@@ -418,14 +458,14 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
     const rowsNow=getRows?getRows():bankRowsFor(sid);let ok=0;const fails=[];
     payPlan.filter(p=>p.what).forEach(p=>{const row=rowsNow.find(r=>r.id===p.x.id)||{id:p.x.id,debit:p.x.debit,transactionDate:p.x.date};
       const err=settleBankLineToEmployees(sid,row,p.year,p.month,[{employeeId:p.emp.id,employeeName:p.emp.name,salaryAmt:p.salaryAmt,incentiveAmt:p.incentiveAmt,dailyIncentiveByCat:p.dailyIncentiveByCat}],onMap);
-      if(err)fails.push((p.x.date||'')+' '+p.emp.name+': '+err);else ok++;});
+      if(err)fails.push((p.x.date||'')+' '+p.emp.name+': '+err);else{journalBankMapping(sid,row,p.what+': '+p.emp.name);ok++;}});
     setPayPlan(null);setTicked(new Set());setTick(t=>t+1);if(onMapped)onMapped();
     setBulkMsg(ok+' payment'+(ok===1?'':'s')+' settled to employees'+(fails.length?' · not settled: '+fails.join('; '):'')+'.');
   };
   const runPlan=()=>{
     const rowsNow=getRows?getRows():bankRowsFor(sid);let ok=0;const fails=[];
     linkPlan.filter(p=>p.allocations).forEach(p=>{const row=rowsNow.find(r=>r.id===p.x.id)||{id:p.x.id,debit:p.x.debit,transactionDate:p.x.date};
-      const err=linkBankLineToBills(sid,row,p.vendor,p.allocations.map(a=>({id:a.id,amount:a.amount})),onMap);if(err)fails.push((p.x.date||'')+' '+p.vendor.name+': '+err);else ok++;});
+      const err=linkBankLineToBills(sid,row,p.vendor,p.allocations.map(a=>({id:a.id,amount:a.amount})),onMap);if(err)fails.push((p.x.date||'')+' '+p.vendor.name+': '+err);else{journalBankMapping(sid,row,'Linked to '+p.allocations.map(a=>a.invoiceNo).join(', '));ok++;}});
     setLinkPlan(null);setTicked(new Set());setTick(t=>t+1);if(onInvoicesChanged)onInvoicesChanged();if(onMapped)onMapped();
     setBulkMsg(ok+' payment'+(ok===1?'':'s')+' linked to bills'+(fails.length?' · not linked: '+fails.join('; '):'')+'.');
   };
@@ -440,6 +480,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const doLink=()=>{const {x,v}=linkFor;const row=(getRows?getRows():bankRowsFor(sid)).find(r=>r.id===x.id)||{id:x.id,debit:x.debit,transactionDate:x.date};
     const err=linkBankLineToBills(sid,row,v,Object.keys(alloc).map(id=>({id,amount:Number(alloc[id])||0})),onMap);
     if(err){setLinkErr(err);return;}
+    journalBankMapping(sid,row,'Linked to bills of '+v.name);
     setLinkFor(null);setTick(t=>t+1);if(onInvoicesChanged)onInvoicesChanged();if(onMapped)onMapped();};
   const empLinesFor=(x,year,month)=>{
     const emps=(getEmployeesForMonth(year,month,sid)||[]).filter(e=>e&&e.status!=='Inactive');
@@ -461,6 +502,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
     const err=settleBankLineToEmployees(sid,row,year,month,lines.map(l=>({employeeId:l.employeeId,employeeName:l.employeeName,salaryAmt:l.sal?l.salAmt:0,incentiveAmt:l.inc?l.incAmt:0,
       dailyIncentiveByCat:Object.fromEntries(Object.entries(l.di||{}).filter(([,d])=>d.sel).map(([c,d])=>[c,Number(d.amt)||0]))})),onMap);
     if(err){setPayErr(err);return;}
+    journalBankMapping(sid,row,'Paid employees ('+RPT_MONTHS[month].slice(0,3)+' '+year+')');
     setPayFor(null);setTick(t=>t+1);if(onMapped)onMapped();};
   const advEmps=()=>{const t=new Date();return(getEmployeesForMonth(t.getFullYear(),t.getMonth(),sid)||[]).filter(e=>e&&e.status!=='Inactive').sort((a,b)=>String(a.name).localeCompare(String(b.name)));};
   const nextYM=()=>{const d=new Date();d.setMonth(d.getMonth()+1,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');};
@@ -468,7 +510,9 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const startAdv=x=>{const hit=findEmployeeMatch(x.description,advEmps());setLinkFor(null);setPayFor(null);setAdvErr('');setAdvFor({x,lines:hit?[advLine(hit,x.debit)]:[]});};
   const setAdvLine=(id,patch)=>setAdvFor(a=>({...a,lines:a.lines.map(l=>l.employeeId===id?{...l,...patch}:l)}));
   const doAdv=()=>{const {x,lines}=advFor;const row=(getRows?getRows():bankRowsFor(sid)).find(r=>r.id===x.id)||{id:x.id,debit:x.debit,transactionDate:x.date};
+    const snap=JSON.parse(JSON.stringify(loadAdvances(sid)||[]));
     const err=recordBankLineAdvances(sid,row,lines,onMap);if(err){setAdvErr(err);return;}
+    journalBankMapping(sid,row,'Advance recorded',{advBefore:snap});
     setAdvFor(null);setTick(t=>t+1);if(onMapped)onMapped();};
   const createAndLink=()=>{const {x,v}=linkFor;const amt=Number(nb.amount)||0;
     const others=Object.values(alloc).reduce((t,a)=>t+(Number(a)||0),0);
@@ -477,6 +521,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
     const res=createBillForBankLine(sid,v,row,nb);if(res.error){setLinkErr(res.error);return;}
     const err=linkBankLineToBills(sid,row,v,[...Object.keys(alloc).map(id=>({id,amount:Number(alloc[id])||0})),{id:res.inv.id,amount:amt}],onMap);
     if(err){setLinkErr('Bill '+res.inv.invoiceNo+' was added, but not linked: '+err);if(onInvoicesChanged)onInvoicesChanged();return;}
+    journalBankMapping(sid,row,'New bill '+res.inv.invoiceNo+' and linked',{createdInvoices:[res.inv.id]});
     setNb(null);setLinkFor(null);setTick(t=>t+1);if(onInvoicesChanged)onInvoicesChanged();if(onMapped)onMapped();};
   const sel={padding:'5px 6px',fontSize:11.5,minWidth:150};
   return h('div',{className:'modal-overlay',style:{zIndex:3000},onClick:onClose},h('div',{className:'modal',style:{width:1000,maxWidth:'97vw',maxHeight:'90vh',overflowY:'auto'},onClick:e=>e.stopPropagation()},
@@ -632,6 +677,16 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
                   advErr&&h('span',{style:{color:'var(--red)',fontSize:12}},advErr)),
                 h('div',{style:{display:'flex',gap:8,marginTop:8}},ap.lines.length>0&&h('button',{className:'btn btn-primary btn-sm',onClick:doAdv},'Record advance '+(m(tot)||'')),h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setAdvFor(null)},'Close')));})())));})))),
       shown.length>300&&h('div',{style:{fontSize:12,color:'var(--text3)',marginTop:6}},'…and '+(shown.length-300)+' more.')),
+    (()=>{const J=bankMapJournal(sid).filter(e=>!e.undone).slice(-60).reverse();if(!J.length)return null;
+      return h('div',{style:{marginTop:14,borderTop:'1px solid var(--border)',paddingTop:10}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6,gap:8,flexWrap:'wrap'}},
+          h('b',{style:{fontSize:13}},'Mapped in this window ('+J.length+')'),
+          h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>{if(!window.confirm('Undo all '+J.length+' mapping'+(J.length===1?'':'s')+'? Bill payments, salary “Paid” and advances made by them are reversed too.'))return;J.forEach(e=>undoBankMapping(sid,e,rowNow(e.rowId),onMap));setJTick(t=>t+1);setTick(t=>t+1);if(onInvoicesChanged)onInvoicesChanged();if(onMapped)onMapped();}},'Undo all')),
+        h('table',{style:{width:'100%',fontSize:12}},h('tbody',null,J.map(e=>h('tr',{key:e.rowId+'-'+e.at},
+          h('td',{style:{whiteSpace:'nowrap'}},e.date),h('td',{style:{color:e.side==='Debit'?'var(--orange)':'var(--green)'}},e.side),
+          h('td',{style:{maxWidth:300,fontSize:11.5}},e.description),h('td',{style:{textAlign:'right',whiteSpace:'nowrap'}},m(e.amount)),
+          h('td',{style:{color:'var(--text2)'}},e.labels.join(' · ')),
+          h('td',null,h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(!window.confirm('Undo this mapping?\n\n'+e.date+' '+m(e.amount)+' — '+e.labels.join(', ')))return;undoEntry(e);}},'↶ Undo')))))));})(),
     h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'Each change saves at once and the line leaves this list when it is mapped. Tick several lines (≈ similar ticks look-alike narrations) to map them together. 🔗 Link bill records the payment on the vendor’s bills (or enters a missing bill with + New bill); 👤 Pay employees settles salary / incentive; 💵 Advance records an advance on the Advances sheet — all the same as in Bank Statement. These rules can be switched off in Master Settings → 🎛 Controls.'),
     h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:onClose},list.length?'Close':'Done'),onNavTab&&h('button',{className:'btn btn-primary',onClick:()=>{onClose();onNavTab('bank-statement');}},'Go to Bank Statement →'))));
 }
