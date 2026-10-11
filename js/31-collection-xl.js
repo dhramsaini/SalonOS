@@ -297,6 +297,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const [payErr,setPayErr]=useState('');
   const [advFor,setAdvFor]=useState(null); // {x, lines:[{employeeId,employeeName,amount,deductFrom,deductionStart,reason,linkExistingId}]}
   const [advErr,setAdvErr]=useState('');
+  const [ticked,setTicked]=useState(()=>new Set());const [bulk,setBulk]=useState({nature:'',vendor:'',dateMode:'setdt',date:''});const [bulkMsg,setBulkMsg]=useState('');
   const list=getList();const vendors=(loadVendors(sid)||[]).filter(v=>v&&v.status!=='Inactive').sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   const m=n=>n?'₹'+Number(n).toLocaleString('en-IN',{maximumFractionDigits:2}):'';
   const dr=list.filter(x=>x.side==='Debit'),cr=list.filter(x=>x.side==='Credit');const sum=(a,k)=>a.reduce((t,x)=>t+x[k],0);
@@ -307,6 +308,30 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
     setTick(t=>t+1);if(onMapped)onMapped();
   };
   const dmyOf=iso=>iso?iso.split('-').reverse().join('/'):'';
+  const sideOk=(x,n)=>x.side==='Credit'?BANK_CREDIT_NATURES.has(n):!/Settlement$|^Collection$|^Interest$/.test(n);
+  const sigOf=d=>typeof bankNarrationSig==='function'?bankNarrationSig(d):String(d||'').toLowerCase().replace(/[^a-z]+/g,' ').trim();
+  const toggleSel=id=>setTicked(p=>{const n=new Set(p);if(n.has(id))n.delete(id);else n.add(id);return n;});
+  const selectSimilar=x=>{const sg=sigOf(x.description);setTicked(p=>{const n=new Set(p);list.forEach(y=>{if(y.side===x.side&&sigOf(y.description)===sg)n.add(y.id);});return n;});};
+  // Same mapping on every ticked line: Nature; the vendor for vendor payments; the Date as per Cradlee
+  // for card / UPI settlements (from the narration, the day before the bank date, or a chosen date).
+  const applyBulk=()=>{
+    const n=bulk.nature;if(!n){setBulkMsg('Choose the Nature to apply.');return;}
+    const picked=list.filter(x=>ticked.has(x.id));let done=0,skipped=0,noDate=0;
+    if(n==='Vendor Payment'&&!bulk.vendor&&!window.confirm('No vendor chosen — lines whose narration does not name a known vendor will stay unmapped. Continue?'))return;
+    picked.forEach(x=>{
+      if(!sideOk(x,n)){skipped++;return;}
+      const patch={nature:n,aiTagged:false};
+      if(n==='Vendor Payment'&&bulk.vendor)patch.vendorOverride=bulk.vendor;
+      if(n==='Card Settlement'||n==='UPI Settlement'){
+        let d=bulk.dateMode==='setdt'?settlementDateFromNarration(x.description):'';
+        if(!d&&bulk.dateMode!=='pick'){const iso=toISO(x.date);if(iso){const t=new Date(iso+'T00:00:00');t.setDate(t.getDate()-1);d=String(t.getDate()).padStart(2,'0')+'/'+String(t.getMonth()+1).padStart(2,'0')+'/'+t.getFullYear();}}
+        if(bulk.dateMode==='pick')d=bulk.date?dmyOf(bulk.date):'';
+        if(d)patch.cradleeDate=d;else noDate++;}
+      if(onMap)onMap(x.id,patch);else saveBankLineMapping(sid,x.id,patch);done++;});
+    setTicked(new Set());setTick(t=>t+1);if(onMapped)onMapped();
+    setBulkMsg(done+' line'+(done===1?'':'s')+' set to '+n+(skipped?' · '+skipped+' skipped ('+(n&&BANK_CREDIT_NATURES.has(n)?'debits':'credits')+' cannot take this Nature)':'')+(noDate?' · '+noDate+' still need a Date as per Cradlee':'')+'.');
+    try{logAuditEvent(sid,{entity:'Bank Statement',entityId:'bulk',action:'Mapped in bulk',summary:done+' line(s) set to '+n+(bulk.vendor?' — '+bulk.vendor:'')});}catch(e){}
+  };
   const allVendors=loadVendors(sid)||[];
   const vendorOfLine=x=>x.vendorOverride&&x.vendorOverride!=='__none__'?allVendors.find(v=>v.name===x.vendorOverride)||null:(x.vendorOverride==='__none__'?null:findVendorMatch(x.description,allVendors));
   const billBal=inv=>Math.round(((Number(inv.amount)||0)-(inv.payments||[]).reduce((t,q)=>t+(Number(q.paidAmount)||0),0))*100)/100;
@@ -363,15 +388,30 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
     !list.length?h('div',{style:{padding:'18px 0',fontSize:14,color:'var(--green)',fontWeight:600}},'✓ Everything is mapped now.'):h(React.Fragment,null,
       h('div',{style:{display:'flex',gap:6,marginBottom:8,flexWrap:'wrap',alignItems:'center'}},[['All',list.length],['Debit',dr.length],['Credit',cr.length]].map(([k,n])=>h('button',{key:k,className:'btn btn-sm '+(side===k?'btn-primary':'btn-ghost'),onClick:()=>setSide(k)},k+' ('+n+')')),
         h('span',{style:{fontSize:12,color:'var(--text3)',marginLeft:6}},'Debit '+(m(sum(dr,'debit'))||'₹0')+' · Credit '+(m(sum(cr,'credit'))||'₹0'))),
+      ticked.size>0&&h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',padding:'8px 10px',marginBottom:8,background:'rgba(47,95,224,0.08)',border:'1px solid rgba(47,95,224,0.3)',borderRadius:8,position:'sticky',top:0,zIndex:2}},
+        h('b',{style:{fontSize:12.5}},ticked.size+' ticked'),
+        h('select',{className:'form-control',style:{width:190,padding:'4px 6px',fontSize:12},value:bulk.nature,onChange:e=>setBulk({...bulk,nature:e.target.value})},h('option',{value:''},'Set Nature…'),
+          BANK_MAP_NATURES.filter(n=>list.some(x=>ticked.has(x.id)&&sideOk(x,n))).map(n=>h('option',{key:n,value:n},n))),
+        bulk.nature==='Vendor Payment'&&h('select',{className:'form-control',style:{width:200,padding:'4px 6px',fontSize:12},value:bulk.vendor,onChange:e=>setBulk({...bulk,vendor:e.target.value})},
+          h('option',{value:''},'Vendor from narration'),vendors.map(v=>h('option',{key:v.id,value:v.name},v.name))),
+        (bulk.nature==='Card Settlement'||bulk.nature==='UPI Settlement')&&h('select',{className:'form-control',style:{width:210,padding:'4px 6px',fontSize:12},value:bulk.dateMode,onChange:e=>setBulk({...bulk,dateMode:e.target.value})},
+          h('option',{value:'setdt'},'Cradlee date from narration (SETDT)'),h('option',{value:'prev'},'Cradlee date = day before bank date'),h('option',{value:'pick'},'Cradlee date = …')),
+        (bulk.nature==='Card Settlement'||bulk.nature==='UPI Settlement')&&bulk.dateMode==='pick'&&h('input',{type:'date',className:'form-control',style:{width:140,padding:'4px 6px',fontSize:12},value:bulk.date,onChange:e=>setBulk({...bulk,date:e.target.value})}),
+        h('button',{className:'btn btn-primary btn-sm',onClick:applyBulk},'Apply to '+ticked.size),
+        h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setTicked(new Set())},'Clear')),
+      bulkMsg&&h('div',{style:{fontSize:12,color:'var(--green)',marginBottom:6}},'✓ '+bulkMsg),
       h('div',{className:'table-wrap'},h('table',null,
-        h('thead',null,h('tr',null,['Date','Side','Description','Amount','Map it','What is missing'].map((t,i)=>h('th',{key:i,style:i===3?{textAlign:'right'}:null},t)))),
+        h('thead',null,h('tr',null,h('th',{key:'cb',style:{width:28}},h('input',{type:'checkbox',title:'Tick every line shown',checked:shown.length>0&&shown.slice(0,300).every(x=>ticked.has(x.id)),
+          onChange:e=>setTicked(p=>{const n=new Set(p);shown.slice(0,300).forEach(x=>{if(e.target.checked)n.add(x.id);else n.delete(x.id);});return n;})})),
+          ['Date','Side','Description','Amount','Map it','What is missing'].map((t,i)=>h('th',{key:i,style:i===3?{textAlign:'right'}:null},t)))),
         h('tbody',null,shown.slice(0,300).map(x=>{const natList=BANK_MAP_NATURES.filter(n=>x.side==='Credit'?BANK_CREDIT_NATURES.has(n)||n===x.nature:!/Settlement$|^Collection$|^Interest$/.test(n)||n===x.nature);
           const lp=linkFor&&linkFor.x.id===x.id?linkFor:null;
           const pp=payFor&&payFor.x.id===x.id?payFor:null;
           const ap=advFor&&advFor.x.id===x.id?advFor:null;
-          return h(React.Fragment,{key:x.id},h('tr',null,
+          return h(React.Fragment,{key:x.id},h('tr',{style:ticked.has(x.id)?{background:'rgba(47,95,224,0.06)'}:null},
+            h('td',null,h('input',{type:'checkbox',checked:ticked.has(x.id),onChange:()=>toggleSel(x.id)})),
             h('td',{style:{whiteSpace:'nowrap'}},x.date),h('td',{style:{color:x.side==='Debit'?'var(--orange)':'var(--green)',fontWeight:600}},x.side),
-            h('td',{style:{fontSize:12,maxWidth:320}},x.description),h('td',{style:{textAlign:'right',fontWeight:600,whiteSpace:'nowrap'}},m(x.debit||x.credit)),
+            h('td',{style:{fontSize:12,maxWidth:320}},x.description,h('button',{className:'btn btn-ghost btn-sm',title:'Tick every line with a similar narration',style:{padding:'0 6px',fontSize:10.5,marginLeft:4},onClick:()=>selectSimilar(x)},'≈ similar')),h('td',{style:{textAlign:'right',fontWeight:600,whiteSpace:'nowrap'}},m(x.debit||x.credit)),
             h('td',null,h('div',{style:{display:'flex',flexDirection:'column',gap:4}},
               h('select',{className:'form-control',style:sel,value:x.nature,onChange:e=>map(x,{nature:e.target.value,aiTagged:false})},h('option',{value:''},'Select Nature'),natList.map(n=>h('option',{key:n,value:n},n))),
               x.side==='Debit'&&x.nature==='Vendor Payment'&&h('select',{className:'form-control',style:sel,value:x.vendorOverride&&x.vendorOverride!=='__none__'?x.vendorOverride:'',onChange:e=>e.target.value&&map(x,{vendorOverride:e.target.value})},
@@ -382,7 +422,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
               x.side==='Credit'&&(x.nature==='Card Settlement'||x.nature==='UPI Settlement')&&h('input',{type:'date',className:'form-control',style:sel,value:toISO(x.cradleeDate)||'',title:'Date as per Cradlee — the sale date this settlement belongs to',
                 onChange:e=>e.target.value&&map(x,{cradleeDate:dmyOf(e.target.value)})}))),
             h('td',{style:{color:'var(--red)',fontWeight:600,whiteSpace:'nowrap'}},x.problem)),
-            lp&&h('tr',null,h('td',{colSpan:6,style:{background:'var(--bg3)',padding:'10px 12px'}},
+            lp&&h('tr',null,h('td',{colSpan:7,style:{background:'var(--bg3)',padding:'10px 12px'}},
               !lp.v?h('div',{style:{fontSize:12.5}},'Choose the vendor first: set Nature to Vendor Payment and pick the vendor, then 🔗 Link bill.')
               :(()=>{const bills=openBillsOf(lp.v);const tot=Object.values(alloc).reduce((t,v)=>t+(Number(v)||0),0);
                 return h('div',null,
@@ -409,7 +449,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
                     bills.length>0&&!nb&&h('button',{className:'btn btn-primary btn-sm',onClick:doLink},'Link '+(m(tot)||'')),
                     !nb&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setNb({invoiceNo:'',invoiceDate:toISO(x.date)||'',amount:String(Math.max(0,Math.round((x.debit-tot)*100)/100)||x.debit),category:lp.v.cat||defaultVendorCategoryFor(sid),gstRate:'0'})},'+ New bill'),
                     h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setLinkFor(null);setNb(null);}},'Close')));})())),
-            pp&&h('tr',null,h('td',{colSpan:6,style:{background:'var(--bg3)',padding:'10px 12px'}},(()=>{
+            pp&&h('tr',null,h('td',{colSpan:7,style:{background:'var(--bg3)',padding:'10px 12px'}},(()=>{
               const tot=pp.lines.reduce((t,l)=>t+(l.sal?Number(l.salAmt)||0:0)+(l.inc?Number(l.incAmt)||0:0)+Object.values(l.di||{}).reduce((u,d)=>u+(d.sel?Number(d.amt)||0:0),0),0);
               const months=[0,1,2,3].map(k=>{const d=new Date(new Date().getFullYear(),new Date().getMonth()-k,1);return{y:d.getFullYear(),m:d.getMonth()};});
               const num=(v,dis,on)=>h('input',{type:'number',className:'form-control',disabled:dis,value:v,onChange:e=>on(e.target.value),style:{width:100,padding:'3px 6px',fontSize:12,textAlign:'right',display:'inline-block'}});
@@ -435,7 +475,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
                 payErr&&h('div',{style:{color:'var(--red)',fontSize:12,marginTop:6}},payErr),
                 h('div',{style:{fontSize:11,color:'var(--text3)',marginTop:6}},'Paid in full → Salary / Incentive Working shows Paid. Daily incentive paid is kept on this bank line (and not offered again on another transfer). Advances: 💵 Advance.'),
                 h('div',{style:{display:'flex',gap:8,marginTop:8}},pp.lines.length>0&&h('button',{className:'btn btn-primary btn-sm',onClick:doPay},'Record '+(m(tot)||'')),h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setPayFor(null)},'Close')));})())),
-            ap&&h('tr',null,h('td',{colSpan:6,style:{background:'var(--bg3)',padding:'10px 12px'}},(()=>{
+            ap&&h('tr',null,h('td',{colSpan:7,style:{background:'var(--bg3)',padding:'10px 12px'}},(()=>{
               const adv=loadAdvances(sid)||[];
               const amtOf=l=>{if(l.linkExistingId){const a=adv.find(z=>z.id===l.linkExistingId);return a?Number(a.outstanding!=null?a.outstanding:a.amount)||0:0;}return Number(l.amount)||0;};
               const tot=ap.lines.reduce((t,l)=>t+amtOf(l),0);const emps=advEmps();const inp={padding:'3px 6px',fontSize:12};
@@ -457,7 +497,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
                   advErr&&h('span',{style:{color:'var(--red)',fontSize:12}},advErr)),
                 h('div',{style:{display:'flex',gap:8,marginTop:8}},ap.lines.length>0&&h('button',{className:'btn btn-primary btn-sm',onClick:doAdv},'Record advance '+(m(tot)||'')),h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setAdvFor(null)},'Close')));})())));})))),
       shown.length>300&&h('div',{style:{fontSize:12,color:'var(--text3)',marginTop:6}},'…and '+(shown.length-300)+' more.')),
-    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'Each change saves at once and the line leaves this list when it is mapped. 🔗 Link bill records the payment on the vendor’s bills (or enters a missing bill with + New bill); 👤 Pay employees settles salary / incentive; 💵 Advance records an advance on the Advances sheet — all the same as in Bank Statement. These rules can be switched off in Master Settings → 🎛 Controls.'),
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'Each change saves at once and the line leaves this list when it is mapped. Tick several lines (≈ similar ticks look-alike narrations) to map them together. 🔗 Link bill records the payment on the vendor’s bills (or enters a missing bill with + New bill); 👤 Pay employees settles salary / incentive; 💵 Advance records an advance on the Advances sheet — all the same as in Bank Statement. These rules can be switched off in Master Settings → 🎛 Controls.'),
     h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:onClose},list.length?'Close':'Done'),onNavTab&&h('button',{className:'btn btn-primary',onClick:()=>{onClose();onNavTab('bank-statement');}},'Go to Bank Statement →'))));
 }
 // Collection Reco: credits only.
