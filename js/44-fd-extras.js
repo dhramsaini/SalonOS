@@ -28,7 +28,7 @@ function fdDues(sid){
 function fdClientDue(sid,phone){const p=fdP10(phone);if(p.length!==10)return 0;return fdBills(sid).filter(b=>fdP10(b.phone)===p).reduce((s,b)=>s+fdBillDue(b),0);}
 function fdReceivePayment(sid,billId,amount,mode){
   const L=fdBills(sid);const i=L.findIndex(b=>b.id===billId);if(i<0)return'Bill not found';const due=fdBillDue(L[i]);const a=Math.min(Number(amount)||0,due);if(!(a>0))return'Enter the amount received';
-  L[i]={...L[i],receipts:[...(L[i].receipts||[]),{date:fdTodayIso(),amount:a,mode:mode||'Cash',by:(currentSessionUser()||{}).name||''}]};if(fdBillDue(L[i])<=0)L[i].status='Paid';
+  L[i]={...L[i],receipts:[...(L[i].receipts||[]),{at:new Date().toISOString(),date:fdTodayIso(),amount:a,mode:mode||'Cash',by:(currentSessionUser()||{}).name||''}]};if(fdBillDue(L[i])<=0)L[i].status='Paid';
   safeLocalSet(outletKey('salonos_billing_invoices',sid),JSON.stringify(L));try{logAuditEvent(sid,{entity:'Bill',entityId:billId,action:'Payment received',summary:FD_M(a)+' '+(mode||'Cash')});}catch(e){}return'';
 }
 function FdDuesModal({sid,onClose,onChanged}){

@@ -66,8 +66,8 @@ function fdTimings(sid,fromIso,toIso){
   return{services:Object.entries(svc).map(([name,o])=>({name,n:o.n,avg:Math.round(o.mins/o.n),planned:o.planned})).sort((a,b)=>b.n-a.n),staff:Object.entries(sty).map(([name,o])=>({name,n:o.n,avg:Math.round(o.mins/o.n),over:o.over}))};
 }
 function fdUtilisation(sid,iso){
-  const set=fdSettings(sid);const L=(fdLoadBook(sid)[sid+'|'+iso]||[]).filter(a=>a.status!=='Cancelled'&&a.status!=='No-show');
-  return fdStaff(sid,iso).map(s=>{const off=fdStaffOff(sid,s,iso);const avail=off?0:set.close-set.open;const booked=L.filter(a=>a.staff===s.name).reduce((t,a)=>t+a.dur,0);return{name:s.name,off,booked,avail,pct:avail?Math.round(booked/avail*100):null};});
+  const set=fdSettings(sid);const all=fdLoadBook(sid)[sid+'|'+iso]||[];const L=all.filter(a=>a.status!=='Cancelled'&&a.status!=='No-show'&&!a.block);
+  return fdStaff(sid,iso).map(s=>{const off=fdStaffOff(sid,s,iso);const blk=all.filter(a=>a.block&&a.staff===s.name&&a.status!=='Cancelled').reduce((t,a)=>t+a.dur,0);const avail=off?0:Math.max(0,set.close-set.open-blk);const booked=L.filter(a=>a.staff===s.name).reduce((t,a)=>t+a.dur,0);return{name:s.name,off,booked,avail,pct:avail?Math.round(booked/avail*100):null};});
 }
 
 // ── 📄 Stylist commission statement ──
@@ -122,7 +122,7 @@ function FrontDeskOwnerBoard({accessibleSalons}){
   const rows=outs.map(s=>{const B=(fdLoadBook(s.id)[s.id+'|'+iso]||[]);const L=fdBills(s.id).filter(b=>b.date===iso);const live=L.filter(b=>b.status!=='Cancelled'&&b.kind!=='credit-note');
     const disc=live.reduce((t,b)=>t+billCalc(b).disc+(typeof fdRateDiscount==='function'?fdRateDiscount(s.id,b.items):0),0);const canc=L.filter(b=>b.status==='Cancelled').reduce((t,b)=>t+billCalc(b).total,0);const ref=L.filter(b=>b.kind==='credit-note').reduce((t,b)=>t-billCalc(b).total,0);
     const mm=fdMonthMoney(s.id,ym);const dues=fdDues(s.id);const old=fdOldDues(s.id);const low=fdBills(s.id).filter(b=>Number(b.rating)>0&&Number(b.rating)<=2&&!b.ratingSeen).length;
-    return{s,bookings:B.filter(a=>a.status!=='Cancelled').length,noShow:B.filter(a=>a.status==='No-show').length,done:B.filter(a=>a.status==='Done').length,sales:live.reduce((t,b)=>t+fdNewMoney(b),0),bills:live.length,disc,canc,ref,mm,due:dues.reduce((t,e)=>t+e.due,0),old:old.length,low,closed:!!fdClosedDays(s.id)[iso]};});
+    return{s,bookings:B.filter(a=>a.status!=='Cancelled'&&!a.block).length,noShow:B.filter(a=>a.status==='No-show').length,done:B.filter(a=>a.status==='Done').length,sales:live.reduce((t,b)=>t+fdNewMoney(b),0),bills:live.length,disc,canc,ref,mm,due:dues.reduce((t,e)=>t+e.due,0),old:old.length,low,closed:!!fdClosedDays(s.id)[iso]};});
   const td=(v,c)=>h('td',{style:{textAlign:'right',color:c}},v);
   return h('div',null,h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}},
       h('div',null,h('div',{className:'page-title'},'Front desk'),h('div',{className:'page-sub'},'Bookings, sales (new money), discounts, cancellations, refunds, dues and low ratings per outlet.')),h('input',{type:'date',className:'form-control',style:{width:160},value:iso,onChange:e=>setIso(e.target.value)})),

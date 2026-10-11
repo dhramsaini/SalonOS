@@ -128,8 +128,8 @@ function fdBillDiff(a,b){
   const li=x=>(x.items||[]).map(it=>it.name+'×'+it.qty+'@'+it.rate+'/'+(it.staffName||'')).join('; ');if(li(a)!==li(b))ch.items=[li(a),li(b)];return ch;
 }
 // ── B6 · rate below menu = discount ──
-function fdRateDiscount(sid,items){return Math.round((items||[]).reduce((s,it)=>{const m=fdMenuItem(sid,it.name);if(!m||!(Number(m.rate)>0)||it.type==='Voucher')return s;return s+Math.max(0,(Number(m.rate)-(Number(it.rate)||0))*(Number(it.qty)||0));},0));}
-function fdListSubtotal(sid,items){return Math.round((items||[]).reduce((s,it)=>{const m=fdMenuItem(sid,it.name);const r=m&&Number(m.rate)>0?Math.max(Number(m.rate),Number(it.rate)||0):(Number(it.rate)||0);return s+r*(Number(it.qty)||0);},0));}
+function fdRateDiscount(sid,items){return Math.round((items||[]).reduce((s,it)=>{const m=fdMenuItem(sid,it.name);if(!m||!(Number(m.rate)>0)||it.type==='Voucher'||it.comboOf||it.feeId)return s;return s+Math.max(0,(Number(m.rate)-(Number(it.rate)||0))*(Number(it.qty)||0));},0));}
+function fdListSubtotal(sid,items){return Math.round((items||[]).reduce((s,it)=>{const m=fdMenuItem(sid,it.name);const r=m&&Number(m.rate)>0&&!it.comboOf?Math.max(Number(m.rate),Number(it.rate)||0):(Number(it.rate)||0);return s+r*(Number(it.qty)||0);},0));}
 // ── B7 · cancel / refund reason and approval ──
 function fdCancelOk(sid,bill,what){
   const reason=window.prompt((what==='refund'?'Refund':'Cancel')+' '+bill.id+' ('+FD_M(billCalc(bill).total)+') — reason:','');if(reason==null)return null;if(!String(reason).trim()){window.alert('A reason is required.');return null;}

@@ -5,7 +5,7 @@
 // and “Bill now” (the bill form, prefilled; the booking turns Done).
 // Same storage as before: salonos_appointments_book_outlet_<id> → {'<sid>|<yyyy-mm-dd>':[appointment]}.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-const AP_STATUS_COLOR={'Booked':'var(--blue)','Confirmed':'var(--teal)','Checked in':'#8e44ad','In chair':'var(--orange)','Done':'var(--green)','No-show':'var(--red)','Cancelled':'var(--text3)'};
+const AP_STATUS_COLOR={'Blocked':'#95a5a6','Booked':'var(--blue)','Confirmed':'var(--teal)','Checked in':'#8e44ad','In chair':'var(--orange)','Done':'var(--green)','No-show':'var(--red)','Cancelled':'var(--text3)'};
 const fdHM=m=>{const hh=Math.floor(m/60),mm=m%60;const ap=hh>=12?'PM':'AM';const H=hh%12===0?12:hh%12;return H+':'+String(mm).padStart(2,'0')+' '+ap;};
 const fdAddD=(iso,n)=>{const d=new Date(iso+'T00:00:00');d.setDate(d.getDate()+n);return localIsoOf(d);};
 const fdPrettyD=iso=>new Date(iso+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
@@ -24,25 +24,28 @@ function AppointmentBook({salon}){
   const h=React.createElement;const {toast}=useToast();const sid=Number(salon&&salon.id)||1;const set=fdSettings(sid);
   const [date,setDate]=useState(fdTodayIso());const [book,setBook]=useState(()=>fdLoadBook(sid));
   useEffect(()=>{safeLocalSet(fdBookKey(sid),JSON.stringify(book));},[book,sid]);
-  const [view,setView]=useState('day');const [kiosk,setKiosk]=useState(false);const [staffF,setStaffF]=useState('All');const [modal,setModal]=useState(null);const [bill,setBill]=useState(null);const [panel,setPanel]=useState('');const [drag,setDrag]=useState(null);const [,setT]=useState(0);
+  const [view,setView]=useState('day');const [kiosk,setKiosk]=useState(false);const [blk,setBlk]=useState(false);const [staffF,setStaffF]=useState('All');const [modal,setModal]=useState(null);const [bill,setBill]=useState(null);const [panel,setPanel]=useState('');const [drag,setDrag]=useState(null);const [,setT]=useState(0);
   const staff=fdStaff(sid,date);const menu=fdMenu(sid).filter(m=>m.active!==false&&m.type==='Service');const slots=[];for(let m=set.open;m<set.close;m+=set.slot)slots.push(m);
   const key=d=>sid+'|'+d;const dayList=d=>book[key(d)]||[];const appts=dayList(date);const live=appts.filter(a=>a.status!=='Cancelled');
   const setDay=(d,fn)=>setBook(b=>({...b,[key(d)]:fn(b[key(d)]||[])}));
   const cols=staffF==='All'?staff:staff.filter(s=>s.id===staffF);
-  const clash=(d,sname,start,dur,ignore)=>dayList(d).some(a=>a.status!=='Cancelled'&&a.status!=='No-show'&&a.staff===sname&&!(ignore||[]).includes(a.id)&&start<a.start+a.dur&&a.start<start+dur);
+  const clash=(d,sname,start,dur,ignore)=>dayList(d).some(a=>a.status!=='Cancelled'&&a.status!=='No-show'&&(a.staff===sname||a.assistant===sname)&&!(ignore||[]).includes(a.id)&&start<a.start+a.dur&&a.start<start+dur);
   const svcFor=s=>menu.filter(m=>!(m.staffIds&&m.staffIds.length)||m.staffIds.includes(s.id));
   // ── booking ──
   const openNew=(s,start,d)=>setModal({mode:'new',date:d||date,start:start!=null?start:set.open,client:'',phone:'',source:'Phone',notes:'',repeatEvery:0,repeatTimes:4,lines:[{service:(menu[0]||{}).name||'',staffId:s?s.id:(staff[0]||{}).id||''}]});
   const saveBooking=()=>{const M=modal;if(!String(M.client).trim())return toast('Enter the guest name','error');if(!M.lines.length||M.lines.some(l=>!l.service||!l.staffId))return toast('Choose the service and stylist for each line','error');
     const warns=M.lines.map(l=>fdPatchTestOk(sid,M.phone,l.service)).filter(Boolean);if(warns.length&&!window.confirm('⚠ '+warns.join('\n⚠ ')+'\n\nBook anyway?'))return;
+    if(controlOn('bookingAdvance',sid)&&Number(controlLimit('bookingAdvance'))>0&&!(Number(M.deposit)>0)){const amt=M.lines.reduce((s2,l)=>s2+fdRateOf(sid,l.service),0);if(amt>=Number(controlLimit('bookingAdvance'))&&!window.confirm('This booking is '+FD_M(amt)+' — take an advance?\n\nCancel = go back and enter it · OK = book without'))return;}
     let t=Number(M.start);const gid='G'+Date.now();const made=[];
     for(const l of M.lines){const s=staff.find(z=>z.id===l.staffId);const dur=fdDuration(sid,l.service);
       if(t+dur>set.close)return toast(l.service+' would run past closing ('+fdHM(set.close)+')','error');
       const off=fdStaffOff(sid,s,M.date);if(off)return toast(s.name+' is not available on '+fdPrettyD(M.date)+' ('+off+')','error');
       if(clash(M.date,s.name,t,dur))return toast(s.name+' is already booked at '+fdHM(t),'error');
+      {const as=l.assistantId?staff.find(z=>z.id===l.assistantId):null;if(as){const off2=fdStaffOff(sid,as,M.date);if(off2)return toast(as.name+' is not available ('+off2+')','error');if(clash(M.date,as.name,t,dur))return toast(as.name+' (assistant) is busy at '+fdHM(t),'error');}}
       {const rs=(fdMenuItem(sid,l.service)||{}).resource;const rc=rs?fdResourceClash(sid,dayList(M.date),rs,t,dur):null;if(rc)return toast(rs+' is in use then ('+rc.client+', '+fdHM(rc.start)+')','error');}
-      made.push({id:'AP-'+Date.now()+made.length,groupId:gid,staff:s.name,staffId:s.id,start:t,dur,service:l.service,client:M.client.trim(),phone:fdP10(M.phone)||M.phone,status:'Booked',rate:fdRateOf(sid,l.service),source:M.source,notes:M.notes||'',createdAt:new Date().toISOString()});
+      made.push({id:'AP-'+Date.now()+made.length,groupId:gid,staff:s.name,staffId:s.id,start:t,dur,service:l.service,client:M.client.trim(),phone:fdP10(M.phone)||M.phone,status:'Booked',rate:fdRateOf(sid,l.service),source:M.source,notes:M.notes||'',...(l.assistantId?{assistant:(staff.find(z=>z.id===l.assistantId)||{}).name||'',assistantId:l.assistantId}:{}),createdAt:new Date().toISOString()});
       if(!l.parallel)t+=dur;}
+    if(Number(M.deposit)>0&&typeof fdAddAdvance==='function'){const ad=fdAddAdvance(sid,{phone:M.phone,client:M.client.trim(),amount:M.deposit,mode:M.depMode||'UPI',apptId:made[0].id,forDate:M.date});if(ad)made[0].advanceId=ad.id;}
     setDay(M.date,L=>[...L,...made]);
     // repeat every N weeks (series)
     let rep=0,skip=[];if(Number(M.repeatEvery)>0){const sidR='R'+Date.now();setBook(b=>{const nb={...b};for(let k=1;k<=Math.min(26,Number(M.repeatTimes)||0);k++){const d2=fdAddD(M.date,7*Number(M.repeatEvery)*k);const L2=nb[key(d2)]||[];
@@ -52,9 +55,11 @@ function AppointmentBook({salon}){
     if(rep||skip.length)setTimeout(()=>toast('Repeats booked: '+rep+(skip.length?' · not booked (stylist busy / off): '+skip.map(fdPrettyD).join(', '):''),skip.length?'warning':'success'),50);
     toast(M.client.trim()+' booked '+fdPrettyD(M.date)+' at '+fdHM(Number(M.start))+(made.length>1?' ('+made.length+' services)':''),'success');};
   const setStatus=(a,st)=>{const at=new Date().toISOString();setDay(date,L=>L.map(x=>x.id===a.id?{...x,status:st,...(st==='In chair'&&!x.startedAt?{startedAt:at}:{}),...(st==='Done'&&!x.finishedAt?{finishedAt:at}:{})}:x));setModal(null);
+    if(st==='No-show'){let m2='';if(a.advanceId){const AL=fdAdvances(sid);const ad=AL.find(x=>x.id===a.advanceId&&!x.usedBill&&!x.refunded);if(ad){ad.forfeited={at:new Date().toISOString(),by:fdActor()};fdSaveAdvances(sid,AL);m2=FD_M(ad.amount)+' advance kept for the no-show';}}else if(typeof fdAddNoShowFee==='function')m2=fdAddNoShowFee(sid,a);if(m2)setTimeout(()=>toast(m2,'info'),60);}
+    if(st==='Cancelled'&&a.advanceId){const ad=fdAdvances(sid).find(x=>x.id===a.advanceId&&!x.usedBill&&!x.refunded&&!x.forfeited);if(ad&&window.confirm('Refund the '+FD_M(ad.amount)+' advance ('+ad.mode+')?\n\nCancel = keep it for the client’s next visit.')){fdRefundAdvance(sid,ad.id,ad.mode);setTimeout(()=>toast('Advance refunded — pay it back by '+ad.mode,'info'),60);}}
     if((st==='Cancelled'||st==='No-show')&&controlOn('apptWaitlist',sid)){const w=fdLoadWait(sid).filter(x=>x.date===date&&x.status!=='Booked');if(w.length)toast('A slot freed up — '+w.length+' on the waitlist for today (⏳ Waitlist)','info');}};
   const billNow=a=>{const grp=a.groupId?appts.filter(x=>x.groupId===a.groupId&&x.status!=='Cancelled'):[a];
-    setModal(null);setBill({apptIds:grp.map(x=>x.id),initial:{customer:a.client,phone:a.phone,date,staffId:a.staffId||'',staff:a.staff,items:grp.map(x=>{const m=fdMenuItem(sid,x.service)||{};return{name:x.service,type:'Service',qty:1,rate:Number(m.rate)||x.rate||0,gst:m.gst!=null?Number(m.gst):18,staffId:x.staffId||'',staffName:x.staff};}),paymentMode:'Cash',status:'Paid',discount:0}});};
+    setModal(null);setBill({apptIds:grp.map(x=>x.id),initial:{customer:a.client,phone:a.phone,date,staffId:a.staffId||'',staff:a.staff,items:grp.map(x=>{const m=fdMenuItem(sid,x.service)||{};return{name:x.service,type:'Service',qty:1,rate:Number(m.rate)||x.rate||0,gst:m.gst!=null?Number(m.gst):18,staffId:x.staffId||'',staffName:x.staff};}),paymentMode:'Cash',status:'Paid',discount:0,...(typeof fdOffPeakInit==='function'?fdOffPeakInit(sid,date,a.start,grp.map(x=>({type:'Service',qty:1,rate:Number((fdMenuItem(sid,x.service)||{}).rate)||x.rate||0}))):{})}});};
   const onBillSaved=rec=>{const r=fdCreateBill(sid,rec);const at=new Date().toISOString();setDay(date,L=>L.map(x=>bill.apptIds.includes(x.id)?{...x,status:'Done',billId:r.bill.id,finishedAt:x.finishedAt||at}:x));setBill(null);toast('Bill '+r.bill.id+' — '+FD_M(billCalc(r.bill).total)+(r.notes.length?' · '+r.notes.join(' · '):''),'success');};
   // ── drag & drop ──
   const dropOn=(s,m)=>{if(!drag)return;const a=appts.find(x=>x.id===drag);setDrag(null);if(!a)return;if(a.staffId===s.id&&a.start===m)return;
@@ -71,12 +76,12 @@ function AppointmentBook({salon}){
   const [wf,setWf]=useState({name:'',phone:'',service:'',date:fdTodayIso(),pref:''});
   const outletPhone=(salon&&salon.phone)||'';const linkText='https://wa.me/'+(typeof waNumber==='function'?waNumber(outletPhone):'')+'?text='+encodeURIComponent('Hi '+salonName+', I would like to book an appointment. Service: ___  Date: ___  Time: ___');
   // ── stats ──
-  const capacity=cols.filter(s=>!fdStaffOff(sid,s,date)).length*(set.close-set.open);const bookedMin=live.filter(a=>cols.some(s=>s.name===a.staff)).reduce((t,a)=>t+a.dur,0);
+  const capacity=cols.filter(s=>!fdStaffOff(sid,s,date)).length*(set.close-set.open);const bookedMin=live.filter(a=>!a.block&&cols.some(s=>s.name===a.staff)).reduce((t,a)=>t+a.dur,0);
   const stat=(l,v,s2,c)=>h('div',{className:'metric-card'},h('div',{className:'metric-label'},l),h('div',{className:'metric-value',style:c?{color:c}:null},v),h('div',{className:'metric-sub'},s2));
   const week=[0,1,2,3,4,5,6].map(i=>fdAddD(date,i-((new Date(date+'T00:00:00').getDay()+6)%7)));
-  const apptCard=a=>h('div',{draggable:a.status!=='Done'&&a.status!=='Cancelled',onDragStart:()=>setDrag(a.id),onClick:()=>setModal({mode:'view',a}),title:'Drag to move',
-    style:{background:'var(--bg2)',borderLeft:'4px solid '+(AP_STATUS_COLOR[a.status]||'var(--blue)'),borderRadius:6,padding:'4px 6px',fontSize:11.5,cursor:'pointer',height:'100%',boxShadow:'0 1px 3px rgba(0,0,0,0.08)',overflow:'hidden'}},
-    h('b',null,a.client,a.status==='Checked in'?' 🙋':''),h('div',null,a.service),h('div',{style:{color:'var(--text3)'}},fdHM(a.start)+' · '+a.dur+'m'+(a.billId?' · 🧾':'')+(a.reminded?' · ✓ reminded':'')));
+  const apptCard=a=>h('div',{draggable:a.status!=='Done'&&a.status!=='Cancelled',onDragStart:()=>setDrag(a.id),onClick:()=>a.block?(window.confirm('Remove this blocked time ('+a.service+', '+a.staff+')?')&&setDay(date,L=>L.filter(x=>x.id!==a.id))):setModal({mode:'view',a}),title:a.block?'Blocked — click to remove, drag to move':'Drag to move',
+    style:{background:a.block?'repeating-linear-gradient(45deg,var(--bg3),var(--bg3) 6px,var(--bg2) 6px,var(--bg2) 12px)':'var(--bg2)',borderLeft:'4px solid '+(AP_STATUS_COLOR[a.status]||'var(--blue)'),borderRadius:6,padding:'4px 6px',fontSize:11.5,cursor:'pointer',height:'100%',boxShadow:'0 1px 3px rgba(0,0,0,0.08)',overflow:'hidden'}},
+    h('b',null,a.client,a.status==='Checked in'?' 🙋':''),h('div',null,a.service),h('div',{style:{color:'var(--text3)'}},fdHM(a.start)+' · '+a.dur+'m'+(a.billId?' · 🧾':'')+(a.reminded?' · ✓ reminded':'')+(a.assistant?' · +'+String(a.assistant).split(' ')[0]:'')+(a.advanceId?' · 💰':'')),(()=>{const lt=typeof fdLateBy==='function'?fdLateBy(sid,date,a):0;return lt?h('div',{style:{color:'var(--red)',fontWeight:600}},'⏰ '+lt+'m late'):null;})());
   return h('div',{className:'fade-in'},
     h('div',{className:'section-header'},
       h('div',null,h('div',{className:'page-title'},'Appointment Book'),h('div',{className:'page-sub'},'Click an empty slot to book, drag a booking to move it, click a booking to check in, bill or mark a no-show.')),
@@ -87,6 +92,7 @@ function AppointmentBook({salon}){
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setPanel(panel==='time'?'':'time')},'⏱ Timings'),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setKiosk(true)},'🙋 Check-in kiosk'),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setPanel(panel==='link'?'':'link')},'🔗 Booking link'),
+        h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setBlk(true)},'⛔ Block time'),
         h('button',{className:'btn btn-primary btn-sm',onClick:()=>openNew(null,null)},'+ New appointment'))),
     panel.startsWith('rem')&&h('div',{className:'card',style:{marginBottom:12}},
       h('div',{style:{display:'flex',gap:6,marginBottom:8,flexWrap:'wrap'}},[['rem-today','Today'],['rem-tomorrow','Tomorrow']].map(([k,l])=>h('button',{key:k,className:'btn btn-sm '+(panel===k?'btn-primary':'btn-ghost'),onClick:()=>setPanel(k)},l)),
@@ -106,6 +112,9 @@ function AppointmentBook({salon}){
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(fdWa(w.phone,'Hi '+w.name.split(' ')[0]+', a slot has opened at '+salonName+' on '+fdPrettyD(w.date)+'. Reply with a time that suits you and we will book you in.'))fdSaveWait(sid,fdLoadWait(sid).map(x=>x.id===w.id?{...x,status:'Offered'}:x));setT(x=>x+1);}},'📲 Offer slot'),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setPanel('');openNew(null,null,w.date);setModal(M=>M&&{...M,client:w.name,phone:w.phone,lines:[{service:w.service||(menu[0]||{}).name||'',staffId:(staff[0]||{}).id||''}]});fdSaveWait(sid,fdLoadWait(sid).map(x=>x.id===w.id?{...x,status:'Booked'}:x));}},'Book'),
         h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>{fdSaveWait(sid,fdLoadWait(sid).filter(x=>x.id!==w.id));setT(x=>x+1);}},'✕')))),
+    h(FdSyncBanner,{sid}),h(FdRebookHost,{sid,onBooked:()=>setBook(fdLoadBook(sid))}),
+    blk&&h(FdBlockModal,{sid,date,onClose:()=>setBlk(false),onSave:(d,b)=>{if(clash(d,b.staff,b.start,b.dur))return toast(b.staff+' has a booking then — move it first','error');setDay(d,L=>[...L,b]);setBlk(false);toast(b.staff+' blocked '+fdHM(b.start)+'–'+fdHM(b.start+b.dur),'success');}}),
+    (()=>{const so=typeof fdStockOutBookings==='function'?fdStockOutBookings(sid):[];return so.length?h('div',{className:'attention-card',style:{marginBottom:12,color:'var(--orange)'}},'📦 Stock short for '+so.length+' booking(s): '+so.slice(0,4).map(x=>(x.d===fdTodayIso()?'today ':'tomorrow ')+fdHM(x.a.start)+' '+x.a.client+' ('+x.a.service+' — '+x.items.join(', ')+')').join(' · ')):null;})(),
     kiosk&&h(FdCheckinKiosk,{sid,salonName,onClose:()=>{setKiosk(false);setBook(fdLoadBook(sid));},onCheckedIn:()=>setBook(fdLoadBook(sid))}),
     panel==='time'&&(()=>{const to=fdTodayIso(),from=fdAddD(to,-30);const tm=fdTimings(sid,from,to);const ut=fdUtilisation(sid,date);
       return h('div',{className:'card',style:{marginBottom:12,fontSize:12.5}},h('b',null,'Staff utilisation — '+fdPrettyD(date)),h('div',{style:{display:'flex',gap:10,flexWrap:'wrap',margin:'6px 0 10px'}},ut.map(u=>h('span',{key:u.name,className:'badge',style:{background:'var(--bg3)'}},u.name+': '+(u.off?u.off:u.pct+'% ('+Math.round(u.booked/60*10)/10+' h)')))),
@@ -133,7 +142,7 @@ function AppointmentBook({salon}){
       h('div',{style:{display:'inline-flex',border:'1px solid var(--border2)',borderRadius:8,overflow:'hidden'}},[['day','Day'],['week','Week'],['stylist','Stylist']].map(([k,l])=>h('button',{key:k,onClick:()=>setView(k),style:{border:'none',padding:'5px 12px',fontSize:12,cursor:'pointer',background:view===k?'var(--accent)':'transparent',color:view===k?'#fff':'var(--text2)'}},l))),
       h('select',{className:'form-control',style:{width:'auto',fontSize:12,padding:'6px 10px'},value:staffF,onChange:e=>setStaffF(e.target.value)},h('option',{value:'All'},'All staff'),staff.map(s=>h('option',{key:s.id,value:s.id},s.name)))),
     !staff.length&&h('div',{className:'help-note',style:{marginBottom:12}},'No floor staff for this month — add stylists and beauticians in Master Salary to book them.'),
-    view==='day'&&h('div',{className:'grid4',style:{marginBottom:12}},stat('Appointments',String(live.length),live.filter(a=>a.source==='Online'||a.source==='WhatsApp').length+' online / WhatsApp'),
+    view==='day'&&h('div',{className:'grid4',style:{marginBottom:12}},stat('Appointments',String(live.filter(a=>!a.block).length),live.filter(a=>a.source==='Online'||a.source==='WhatsApp').length+' online / WhatsApp'),
       stat('Chair occupancy',(capacity?Math.round(bookedMin/capacity*100):0)+'%',Math.round(bookedMin/60)+' of '+Math.round(capacity/60)+' staff-hours'),
       stat('Expected revenue',FD_M(live.filter(a=>a.status!=='No-show').reduce((t,a)=>t+(Number(a.rate)||0),0)),appts.filter(a=>a.billId).length+' billed'),
       stat('No-shows',String(appts.filter(a=>a.status==='No-show').length),'today',appts.some(a=>a.status==='No-show')?'var(--red)':'var(--green)')),
@@ -143,6 +152,7 @@ function AppointmentBook({salon}){
         cols.map(s=>{const off=fdStaffOff(sid,s,date);const a=live.find(x=>x.staff===s.name&&x.start<=m&&m<x.start+x.dur);
           if(a&&a.start!==m&&!(a.start<m&&m-set.slot<a.start))return null;
           if(a&&(a.start===m||(a.start<m&&m-set.slot<a.start)))return h('td',{key:s.id,rowSpan:Math.max(1,Math.ceil((a.start+a.dur-m)/set.slot))},apptCard(a));
+          {const as=live.find(x=>x.assistant===s.name&&x.start<=m&&m<x.start+x.dur);if(as)return h('td',{key:s.id,style:{background:'var(--bg3)',fontSize:10.5,color:'var(--text3)',padding:'2px 4px'}},as.start>m-set.slot?'🤝 '+as.client:'');}
           if(off)return h('td',{key:s.id,style:{background:'repeating-linear-gradient(45deg,var(--bg3),var(--bg3) 6px,transparent 6px,transparent 12px)'}});
           return h('td',{key:s.id,onDragOver:e=>e.preventDefault(),onDrop:()=>dropOn(s,m)},h('button',{className:'slot-free',onClick:()=>openNew(s,m)},'+ book'));})))))),
     view==='week'&&h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,
@@ -168,6 +178,7 @@ function AppointmentBook({salon}){
       M.lines.map((l,i)=>h('div',{key:i,style:{display:'flex',gap:6,alignItems:'center',marginBottom:6,flexWrap:'wrap'}},
         h('select',{className:'form-control',style:{flex:'1 1 200px'},value:l.service,onChange:e=>setModal({...M,lines:M.lines.map((z,j)=>j===i?{...z,service:e.target.value}:z)})},menu.map(m=>h('option',{key:m.id,value:m.name},m.name+' · '+m.duration+'m · '+FD_M(m.rate)))),
         h('select',{className:'form-control',style:{width:170},value:l.staffId,onChange:e=>setModal({...M,lines:M.lines.map((z,j)=>j===i?{...z,staffId:e.target.value}:z)})},dayStaff.map(s=>{const off=fdStaffOff(sid,s,M.date);return h('option',{key:s.id,value:s.id,disabled:!!off},s.name+(off?' — '+off:''));})),
+        controlOn('twoStaffServices',sid)&&h('select',{className:'form-control',style:{width:150},title:'Second person for this service (optional)',value:l.assistantId||'',onChange:e=>setModal({...M,lines:M.lines.map((z,j)=>j===i?{...z,assistantId:e.target.value}:z)})},h('option',{value:''},'+ assistant'),dayStaff.filter(s=>s.id!==l.staffId&&!fdStaffOff(sid,s,M.date)).map(s=>h('option',{key:s.id,value:s.id},s.name))),
         i>0&&h('label',{style:{fontSize:11.5,display:'flex',gap:4,alignItems:'center'}},h('input',{type:'checkbox',checked:!!l.parallel,onChange:e=>setModal({...M,lines:M.lines.map((z,j)=>j===i?{...z,parallel:e.target.checked}:z)})}),'same time'),
         M.lines.length>1&&h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>setModal({...M,lines:M.lines.filter((_,j)=>j!==i)})},'✕'))),
       h('button',{className:'btn btn-ghost btn-sm',style:{marginBottom:8},onClick:()=>setModal({...M,lines:[...M.lines,{service:(menu[0]||{}).name||'',staffId:M.lines[M.lines.length-1].staffId}]})},'+ Another service'),
@@ -177,14 +188,22 @@ function AppointmentBook({salon}){
         h('div',{className:'form-group'},h('label',null,'Note'),h('input',{className:'form-control',value:M.notes,onChange:e=>setModal({...M,notes:e.target.value})}))),
       h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',fontSize:12.5,marginBottom:6}},'Repeat every',h('select',{className:'form-control',style:{width:110,padding:'3px 6px'},value:M.repeatEvery,onChange:e=>setModal({...M,repeatEvery:Number(e.target.value)})},[[0,'— no repeat —'],[1,'1 week'],[2,'2 weeks'],[3,'3 weeks'],[4,'4 weeks'],[6,'6 weeks'],[8,'8 weeks']].map(([v,l])=>h('option',{key:v,value:v},l))),
         Number(M.repeatEvery)>0&&h('span',null,'for ',h('input',{type:'number',min:1,max:26,className:'form-control',style:{width:60,padding:'3px 6px',display:'inline-block'},value:M.repeatTimes,onChange:e=>setModal({...M,repeatTimes:e.target.value})}),' more time(s)')),
+      M.lines.map(l=>({l,s:typeof fdStockShort==='function'?fdStockShort(sid,l.service):[]})).filter(x=>x.s.length).map((x,i)=>h('div',{key:'so'+i,style:{fontSize:12,color:'var(--orange)'}},'📦 '+x.l.service+' needs '+x.s.join(', '))),
       M.lines.map(l=>fdPatchTestOk(sid,M.phone,l.service)).filter(Boolean).map((w,i)=>h('div',{key:'pt'+i,style:{fontSize:12,color:'var(--red)',fontWeight:600}},'⚠ '+w)),
-      h('div',{className:'help-note'},(()=>{let tt=Number(M.start),amt=0;M.lines.forEach(l=>{if(!l.parallel)tt+=fdDuration(sid,l.service);amt+=fdRateOf(sid,l.service);});return 'Finishes about '+fdHM(tt)+' · '+FD_M(amt);})()),
+      controlOn('bookingAdvance',sid)&&h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',fontSize:12.5,marginBottom:6}},'Advance taken ₹',h('input',{type:'number',min:0,className:'form-control',style:{width:100,padding:'3px 6px'},value:M.deposit||'',onChange:e=>setModal({...M,deposit:e.target.value})}),
+        h('select',{className:'form-control',style:{width:90,padding:'3px 6px'},value:M.depMode||'UPI',onChange:e=>setModal({...M,depMode:e.target.value})},['UPI','Cash','Card'].map(x=>h('option',{key:x},x))),h('span',{style:{color:'var(--text3)',fontSize:11.5}},'adjusted in the bill; kept if they do not come')),
+      typeof FdConsultNudge==='function'&&h(FdConsultNudge,{sid,phone:M.phone}),
+      h('div',{className:'help-note'},(()=>{let tt=Number(M.start),amt=0;M.lines.forEach(l=>{if(!l.parallel)tt+=fdDuration(sid,l.service);amt+=fdRateOf(sid,l.service);});const op=typeof fdOffPeakPct==='function'?fdOffPeakPct(sid,M.date,Number(M.start)):0;return 'Finishes about '+fdHM(tt)+' · '+FD_M(amt)+(op?' · 🌙 off-peak '+op+'% off → '+FD_M(amt*(1-op/100)):'');})()),
       h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:()=>setModal(null)},'Cancel'),h('button',{className:'btn btn-primary',onClick:saveBooking},'Book'))));})(),
     modal&&modal.mode==='view'&&(()=>{const a=appts.find(x=>x.id===modal.a.id)||modal.a;return h('div',{className:'modal-overlay',onClick:()=>setModal(null)},h('div',{className:'modal',style:{width:440},onClick:e=>e.stopPropagation()},
       h('div',{className:'modal-title'},a.client),
       [['Service',a.service+((fdMenuItem(sid,a.service)||{}).resource?' · '+(fdMenuItem(sid,a.service)||{}).resource:'')],['Time',fdHM(a.start)+' – '+fdHM(a.start+a.dur)],['Stylist',a.staff],['Mobile',a.phone||'—'],['Booked via',a.source],['Value',FD_M(a.rate)],['Note',a.notes||'—'],['Status',a.status+(a.billId?' · bill '+a.billId:'')]].map(([k,v])=>h('div',{key:k,className:'kv'},h('span',null,k),h('span',null,v))),
       a.arrivedAt&&h('div',{style:{fontSize:12,color:'#8e44ad',marginTop:4}},'🙋 Checked in at '+new Date(a.arrivedAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})),
       a.startedAt&&h('div',{style:{fontSize:12,color:'var(--text3)'}},'⏱ Started '+new Date(a.startedAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})+(a.finishedAt?' · finished '+new Date(a.finishedAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})+' ('+Math.round((new Date(a.finishedAt)-new Date(a.startedAt))/60000)+' min)':'')),
+      h(FdLatePanel,{sid,date,a,list:appts,onChange:p=>{setDay(date,L=>L.map(x=>x.id===a.id?{...x,...p}:x));toast('Booking updated','success');}}),
+      a.assistant&&h('div',{style:{fontSize:12,marginTop:4}},'🤝 Assistant: '+a.assistant),
+      a.advanceId&&(()=>{const ad=fdAdvances(sid).find(x=>x.id===a.advanceId);return ad?h('div',{style:{fontSize:12,color:'var(--green)',marginTop:4}},'💰 Advance '+FD_M(ad.amount)+' '+ad.mode+(ad.usedBill?' · adjusted in '+ad.usedBill:ad.refunded?' · refunded':ad.forfeited?' · kept (no-show)':' · held')):null;})(),
+      h(FdFormulaCard,{sid,phone:a.phone,service:a.service,staffName:a.staff}),
       h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginTop:14}},['Confirmed','In chair','No-show','Cancelled'].map(s=>h('button',{key:s,className:'btn btn-sm '+(s==='No-show'||s==='Cancelled'?'btn-danger':'btn-ghost'),onClick:()=>setStatus(a,s)},s)),
         !a.billId&&a.status!=='Cancelled'&&h('button',{className:'btn btn-primary btn-sm',onClick:()=>billNow(a)},'🧾 Done → Bill now'),
         a.seriesId&&h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>{if(!window.confirm('Cancel this and every later booking of the series?'))return;setBook(b=>{const nb={};Object.keys(b).forEach(k=>{const d0=k.split('|')[1];nb[k]=(b[k]||[]).map(x=>x.seriesId===a.seriesId&&d0>=date&&x.status!=='Done'?{...x,status:'Cancelled'}:x);});return nb;});setModal(null);}},'Cancel series'),

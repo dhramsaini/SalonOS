@@ -94,9 +94,9 @@ function NoShowNote({sid,phone}){
 // ── Smarter reorder ──
 function smartReorderList(sid,items){
   const on=controlOn('smartReorder',sid);const lead=controlLimit('smartReorder')||7;const log=typeof loadInvLog==='function'?loadInvLog(sid):[];
-  const from=new Date(Date.now()-60*864e5).toISOString().slice(0,10);const used={};log.filter(x=>x.type==='issue'&&String(x.date)>=from).forEach(x=>{used[x.itemId]=(used[x.itemId]||0)+(Number(x.qty)||0);});
+  const from=new Date(Date.now()-60*864e5).toISOString().slice(0,10);const used={};log.filter(x=>(x.type==='issue'||x.type==='sale')&&String(x.date)>=from).forEach(x=>{used[x.itemId]=(used[x.itemId]||0)+(Number(x.qty)||0);});
   return(items||[]).map(i=>{const qty=Number(i.qty)||0,min=Number(i.min)||0;const perDay=(used[i.id]||0)/60;const cover=perDay>0?Math.floor(qty/perDay):null;
-    const need=qty<=min||(on&&cover!=null&&cover<=lead);const order=Math.max(Math.ceil(min*2-qty),on&&perDay>0?Math.ceil(perDay*30-qty):0,need?1:0);
+    const need=qty<=min||(on&&cover!=null&&cover<=(Number(i.leadDays)||lead));const order=Math.max(Math.ceil(min*2-qty),on&&perDay>0?Math.ceil(perDay*30-qty):0,need?1:0);
     return{i,qty,min,perDay:Math.round(perDay*100)/100,cover,need,order};}).filter(x=>x.need);
 }
 

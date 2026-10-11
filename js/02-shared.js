@@ -960,7 +960,9 @@ const SALON_SCOPED_KEY_BASES=[
   'salonos_petty_limits','salonos_petty_overrides','salonos_membership_register','salonos_gstr2b',
   'salonos_inventory_log','salonos_std_usage',
   'salonos_staff_certs','salonos_drawings_ack','salonos_feedback','salonos_referrals',
-  'salonos_close_checklist','salonos_cash_counts','salonos_sales_targets','salonos_pl_budget','salonos_exit_ticks','salonos_cash_forecast_opening'
+  'salonos_close_checklist','salonos_cash_counts','salonos_sales_targets','salonos_pl_budget','salonos_exit_ticks','salonos_cash_forecast_opening',
+  // Front desk (js/39-47).
+  'salonos_appointments_book','salonos_appt_waitlist','salonos_booking_advances','salonos_campaigns','salonos_cash_shifts','salonos_closed_days','salonos_coupons','salonos_frontdesk_settings','salonos_gift_vouchers','salonos_petty_cash','salonos_service_menu','salonos_stock_writeoffs'
 ];
 function deleteAllSalonScopedData(salonId){
   SALON_SCOPED_KEY_BASES.forEach(base=>{cachedLocalRemove(outletKey(base,salonId));});

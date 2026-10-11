@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My balance</title>
+<meta name="robots" content="noindex">
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--text:#1d2433;--muted:#6b7385;--accent:#2f5fe0;--line:#e3e7f0;--green:#1e9e5a}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1220;--card:#171c2e;--text:#e8ebf3;--muted:#9aa3b8;--accent:#6e8dff;--line:#283048;--green:#3ccf86}}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:520px;margin:0 auto;padding:20px 16px 40px}h1{font-size:22px;margin:4px 0 2px}.muted{color:var(--muted);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:14px}
+.big{display:flex;gap:12px}.big div{flex:1;background:var(--bg);border-radius:12px;padding:12px}.big b{display:block;font-size:22px;margin-top:4px;color:var(--accent)}
+.row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}.row:last-child{border-bottom:0}
+.btn{display:block;text-align:center;background:var(--accent);color:#fff;text-decoration:none;padding:12px;border-radius:10px;margin-top:16px;font-weight:600}
+</style></head>
+<body><div class="wrap" id="app"><p class="muted">Loading…</p></div>
+<script>
+(function(){
+  var el=document.getElementById('app');
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function rs(n){return '₹'+Math.round(Number(n)||0).toLocaleString('en-IN');}
+  function dmy(iso){return iso?String(iso).split('-').reverse().join('/'):'';}
+  var d=null;try{d=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(location.hash.slice(1))))));}catch(e){}
+  if(!d){el.innerHTML='<h1>Link not valid</h1><p class="muted">Ask the salon to send it again.</p>';return;}
+  var h='<p class="muted">'+esc(d.n)+'</p><h1>Hi '+esc(d.c)+'</h1><p class="muted">Your balance as on '+esc(dmy(d.at))+'</p>';
+  h+='<div class="card big"><div><span class="muted">Package balance</span><b>'+rs(d.pk)+'</b></div>'+(d.pt!=null?'<div><span class="muted">Points</span><b>'+esc(d.pt)+'</b></div>':'')+'</div>';
+  if(d.m&&d.m.length){h+='<div class="card"><b>Memberships &amp; packages</b>';d.m.forEach(function(m){h+='<div class="row"><span>'+esc(m[0])+'</span><span class="muted">'+(m[2]!=null?rs(m[2])+' left · ':'')+(m[1]?'till '+esc(dmy(m[1])):'')+'</span></div>';});h+='</div>';}
+  h+='<div class="card"><b>Upcoming appointments</b>';if(d.up&&d.up.length){d.up.forEach(function(a){h+='<div class="row"><span>'+esc(a[2])+'</span><span class="muted">'+esc(dmy(a[0]))+' · '+esc(a[1])+'</span></div>';});}else h+='<p class="muted">None booked.</p>';h+='</div>';
+  if(d.ph)h+='<a class="btn" href="https://wa.me/'+encodeURIComponent(d.ph)+'?text='+encodeURIComponent('Hi '+d.n+', I would like to book an appointment.')+'">Book on WhatsApp</a>';
+  h+='<p class="muted" style="margin-top:16px">This page shows what the salon sent on that date — ask them for an updated link any time.</p>';
+  el.innerHTML=h;
+})();
+</script></body></html>

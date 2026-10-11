@@ -1474,6 +1474,41 @@
           [no,[q1,q2],[c1.points,c1.pointsBase,c1.pointsLog.length],rd,df,[r18.taxable,r18.tax,r18.b2b,gs.b2b.length,gs.b2b[0]&&gs.b2b[0].cgst,h1.taxable],[mm.billed,mm.fromPackages,mm.newMoney],sg,od,rtOk,mk,ro&&[ro.pct,ro.days,ro.amount,ro.hasLine],[tm.services[0]&&tm.services[0].n,tm.services[0]&&tm.services[0].avg],erOk],
           ['INV-QZ-0005',[5,-2],[65,50,2],[200,2000],'items,paymentMode,total',[3000,540,1000,1,90,2000],[3540,300,3240],'Gel','Bina',[true,true,true],'98'+'••••••'+'11',[10,5,500,true],[1,50],['','Erased client','',2,'']]);
       }catch(err){results.push({name:'Front desk safety',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=936;const T=fdTodayIso();const now=new Date().toISOString();
+        saveControls({noShowFee:{on:true,limit:200},rebookPrompt:{on:true},offPeakPricing:{on:true,limit:15},coupons:{on:true},duplicateBillCheck:{on:true,limit:10},visitGapWinback:{on:true,limit:150},similarClientCheck:{on:true},countVariance:{on:true},priceRiseAlert:{on:true,limit:5},stockOutWarning:{on:true},loyaltyPoints:{on:false}});
+        fdSaveMenu(S,[{id:'S1',name:'Cut',type:'Service',category:'Hair',rate:1000,duration:45,gst:18,active:true},{id:'S2',name:'Spa',type:'Service',category:'Hair',rate:1500,duration:60,gst:18,active:true},{id:'S3',name:'Colour',type:'Service',category:'Hair',rate:2000,duration:90,gst:18,active:true},{id:'X1',name:'Cut+Spa',type:'Combo',rate:2000,parts:'Cut, Spa',gst:18,active:true}]);
+        const CL=fdComboLines(S,fdMenuItem(S,'Cut+Spa'));const combo=[CL.map(x=>x.rate).join(','),CL[0]&&CL[0].comboOf,fdRateDiscount(S,CL)];
+        fdSaveClients(S,[{id:'C1',name:'Asha',phone:'9810011111',points:10},{id:'C2',name:'Bina',phone:'9810044444'},{id:'C3',name:'ASHA.',phone:'9810099999',points:5}]);
+        safeLocalSet(fdBookKey(S),'{}');safeLocalSet(fdAdvKey(S),'[]');safeLocalSet(fdPettyKey(S),'[]');
+        const ad=fdAddAdvance(S,{phone:'9810011111',client:'Asha',amount:500,mode:'UPI'});
+        const B1={id:'B1',date:T,customer:'Asha',phone:'9810011111',noGst:true,items:[{name:'Cut',type:'Service',qty:1,rate:1000}],paymentMode:'Cash',status:'Paid',advancePaid:500,advanceIds:[ad.id],createdAt:now};
+        const B2={id:'B2',date:T,customer:'Bina',phone:'9810044444',noGst:true,items:[{name:'Spa',type:'Service',qty:1,rate:1000}],paymentMode:'Cash',status:'Unpaid',advancePaid:300,createdAt:now};
+        const B3={id:'B3',date:T,customer:'ASHA.',phone:'9810099999',noGst:true,items:[{name:'Cut',type:'Service',qty:1,rate:500}],paymentMode:'Cash',status:'Paid',createdAt:now};
+        safeLocalSet('salonos_billing_invoices_outlet_'+S,JSON.stringify([B1,B2,B3]));fdAfterBillSaved(S,B1,true);
+        const ds=fdDaySummary(S,T);const dsv=[ds.modes.Cash,ds.modes.Advance,ds.modes.UPI,ds.advancesIn,ds.modes.Unpaid];const due=fdBillDue(B2);const openAdv=fdOpenAdvances(S,'9810011111').length;
+        const f1=fdAddNoShowFee(S,{id:'a1',phone:'9810011111',client:'Asha',service:'Cut'});const f2=fdAddNoShowFee(S,{id:'a1',phone:'9810011111',client:'Asha',service:'Cut'});const fee=[f1!=='',f2==='',fdPendingFees(S,'9810011111').length];
+        const rb=fdRebookSuggest(S,{phone:'9810011111',customer:'Asha',date:'2026-10-01',items:[{name:'Cut',type:'Service'},{name:'Colour',type:'Service'}]});
+        const op=[fdOffPeakPct(S,'2026-10-13',720),fdOffPeakPct(S,'2026-10-13',960),fdOffPeakPct(S,'2026-10-17',720),fdOffPeakInit(S,'2026-10-13',720,[{type:'Service',qty:1,rate:1000}]).discount];
+        fdSaveCoupons(S,[{code:'FEST20',kind:'%',value:20,on:'All',minBill:500,maxOff:300,maxUses:0,perClient:true,uses:[],active:true}]);const its=[{name:'Cut',type:'Service',qty:1,rate:1000},{name:'Spa',type:'Service',qty:1,rate:1500}];
+        const cp1=fdCheckCoupon(S,'fest20','9810011111',its);const cp2=fdCheckCoupon(S,'FEST20','',its);fdRecordCoupon(S,{id:'X',couponCode:'FEST20',couponDisc:300,phone:'9810011111',date:T});const cp3=fdCheckCoupon(S,'FEST20','9810011111',its);
+        const cpn=[cp1.amount,!!cp2.err,!!(cp3.err&&cp3.err.includes('already'))];
+        const d1=fdDuplicateBill(S,{phone:'9810011111',items:[{name:'Cut',qty:1}]});const d2=fdDuplicateBill(S,{phone:'9810011111',items:[{name:'Spa',qty:1}]});
+        fdAddPetty(S,{amount:50,note:'milk',post:false});const ci=fdCashIn(S,new Date(Date.now()-3600000).toISOString(),new Date(Date.now()+60000).toISOString());
+        const gb=[{date:'2026-01-01'},{date:'2026-02-01'},{date:'2026-03-03'}];const gap=[fdVisitGap({bills:gb}),fdOverdueDays(S,{bills:gb,since:50}),fdOverdueDays(S,{bills:gb,since:40})];
+        const sim=fdSimilarClients(S).length;const me=fdMergeClientInto(S,'C1','C3');const mg=[sim,me,fdClients(S).length,fdClients(S).find(c=>c.id==='C1').points,fdBills(S).find(b=>b.id==='B3').phone];
+        safeLocalSet('salonos_inventory_log_outlet_'+S,JSON.stringify([{id:'x',itemId:'K1',name:'Gel',type:'count',qty:-2,rate:100,date:T},{id:'y',itemId:'K1',name:'Gel',type:'count',qty:-1,rate:100,date:T},{id:'z',itemId:'K2',name:'Oil',type:'count',qty:3,rate:50,date:T}]));
+        const cl=fdCountLosses(S,90);const loss=[cl.items.length,cl.items[0]&&cl.items[0].times,cl.items[0]&&cl.items[0].qty,cl.items[0]&&cl.items[0].value];
+        const pr=fdPriceRise(S,{name:'Gel',rate:100,suppliers:[{vendorId:'V9',rate:95}]},110,'V1');const price=[pr&&pr.pct,!!(pr&&pr.msg.includes('95')),fdPriceRise(S,{name:'Gel',rate:100},104,'V1')];
+        fdSaveStock(S,[{id:'K1',name:'Gel',unit:'tube',qty:0,rate:100}]);safeLocalSet(outletKey('salonos_std_usage',S),JSON.stringify({Colour:[{itemId:'K1',qty:1}]}));const short=fdStockShort(S,'Colour').length;
+        const rd=fdRegDates(S,T,T);const rc=fdRegClients(S,T,T);
+        saveMemberships(S,[{id:'M1',client:'Asha',phone:'9810011111',type:'Package',plan:'Spa pack',soldOn:'2026-09-01',paid:5000,value:6000,validTill:'2099-09-01',redemptions:[{date:'2026-10-01',amount:1500}]},{id:'M2',client:'Asha',phone:'9810011111',type:'Membership',plan:'Gold',soldOn:'2025-01-01',paid:3000,value:3000,validTill:'2026-01-01',redemptions:[]}]);
+        const rm=fdRegMemberships(S)[0]||{};
+        saveControls({});
+        eq('Front desk plus: combo split, advance in day summary and dues, no-show fee, rebook date, off-peak, coupon rules, duplicate bill, cash drawer, visit gap, look-alike merge, count losses, price rise, stock short, registers',
+          [combo,dsv,due,openAdv,fee,rb&&[rb.service,rb.date,rb.days],op,cpn,[(d1&&d1.id)||'',(d2&&d2.id)||''],ci,gap,mg,loss,price,short,[rd.length,rd[0]&&rd[0].total],[rc.length,rc[0]&&rc[0].name,rc[0]&&rc[0].bills,rc[0]&&rc[0].total,rc[0]&&rc[0].prepaid,rc[1]&&rc[1].due],[rm.count,rm.active,rm.paid,rm.used,rm.left]],
+          [['800,1200','Cut+Spa',0],[1000,500,500,500,1000],700,0,[true,true,1],['Colour','2026-10-31',30],[15,0,0,150],[300,true,true],['B1',''],{bills:1000,receipts:0,adv:0,petty:50,refunds:0},[31,19,0],[1,'',2,15,'9810011111'],[1,2,3,300],[10,true,null],1,[1,2500],[2,'Asha',2,1500,500,700],[2,1,8000,1500,4500]]);
+      }catch(err){results.push({name:'Front desk plus',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
