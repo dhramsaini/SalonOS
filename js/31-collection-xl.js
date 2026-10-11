@@ -230,18 +230,25 @@ function createBillForBankLine(sid,vendor,row,form){
 // Statement's "Settle Pay": Salary / Incentive Working payment status becomes Paid when the amount
 // covers the net, and the settlement is kept on the bank line. lines = [{employeeId, employeeName,
 // salaryAmt, incentiveAmt}]. Returns '' when done, else the reason.
+// Daily incentive of an employee / month / head already settled on bank lines (other than skipId).
+function dailyIncentiveSettledOnBank(sid,employeeId,year,month,cat,skipId,rows){
+  return(rows||bankRowsFor(sid)).filter(r=>r&&r.id!==skipId&&Array.isArray(r.linkedEmployeePay)).reduce((t,r)=>t+r.linkedEmployeePay
+    .filter(x=>String(x.employeeId)===String(employeeId)&&x.year===year&&x.month===month).reduce((u,x)=>u+(Number((x.dailyIncentiveByCat||{})[cat])||0),0),0);
+}
 function settleBankLineToEmployees(sid,row,year,month,lines,onMap){
-  const act=(lines||[]).filter(l=>(Number(l.salaryAmt)||0)+(Number(l.incentiveAmt)||0)>0);
-  if(!act.length)return'Tick salary or incentive for at least one employee, with an amount.';
-  const tot=act.reduce((t,l)=>t+(Number(l.salaryAmt)||0)+(Number(l.incentiveAmt)||0),0),deb=Number(row.debit)||0;
+  const diSum=l=>Object.values(l.dailyIncentiveByCat||{}).reduce((t,v)=>t+(Number(v)||0),0);
+  const act=(lines||[]).filter(l=>(Number(l.salaryAmt)||0)+(Number(l.incentiveAmt)||0)+diSum(l)>0);
+  if(!act.length)return'Tick salary, incentive or a daily incentive head for at least one employee, with an amount.';
+  const tot=act.reduce((t,l)=>t+(Number(l.salaryAmt)||0)+(Number(l.incentiveAmt)||0)+diSum(l),0),deb=Number(row.debit)||0;
   if(tot>deb+1)return'₹'+Math.round(tot).toLocaleString('en-IN')+' is more than this bank debit (₹'+deb.toLocaleString('en-IN')+').';
   if((monthLockRecordFor(sid,year,month)||{}).locked)return RPT_MONTHS[month]+' '+year+' is locked — unlock it to record salary payments.';
   const settlements=act.map(l=>{const sa=Number(l.salaryAmt)||0,ia=Number(l.incentiveAmt)||0;
-    const r=settleEmployeePayFor(sid,l.employeeId,year,month,{salaryAmt:sa,incentiveAmt:ia,dailyIncentiveByCat:{}});
-    return{employeeId:l.employeeId,employeeName:l.employeeName,year,month,salary:sa,incentive:ia,dailyIncentive:0,dailyIncentiveByCat:{},
+    const di={};Object.entries(l.dailyIncentiveByCat||{}).forEach(([c,v])=>{if(Number(v)>0)di[c]=Number(v);});
+    const r=settleEmployeePayFor(sid,l.employeeId,year,month,{salaryAmt:sa,incentiveAmt:ia,dailyIncentiveByCat:di});
+    return{employeeId:l.employeeId,employeeName:l.employeeName,year,month,salary:sa,incentive:ia,dailyIncentive:Object.values(di).reduce((t,v)=>t+v,0),dailyIncentiveByCat:di,
       salarySettled:r.salarySettled,incentiveSettled:r.incentiveSettled,dailyIncentiveSettled:r.dailyIncentiveSettled};});
-  const onlyInc=settlements.every(x=>!x.salary&&x.incentive);
-  const patch={nature:onlyInc?'Incentive':'Salary',linkedEmployeePay:settlements};
+  const has=k=>settlements.some(x=>x[k]>0);
+  const patch={nature:has('salary')?'Salary':has('incentive')?'Incentive':'Daily Incentive',linkedEmployeePay:settlements};
   if(settlements.length===1)patch.vendorOverride='EMP:'+settlements[0].employeeId;
   if(onMap)onMap(row.id,patch);else saveBankLineMapping(sid,row.id,patch);
   try{logAuditEvent(sid,{entity:'Bank Statement',entityId:String(row.id),action:'Salary settled',summary:'₹'+Math.round(tot).toLocaleString('en-IN')+' of '+(row.transactionDate||'')+' — '+settlements.map(x=>x.employeeName).join(', ')+' ('+RPT_MONTHS[month]+' '+year+')'});}catch(e){}
@@ -315,17 +322,22 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const empLinesFor=(x,year,month)=>{
     const emps=(getEmployeesForMonth(year,month,sid)||[]).filter(e=>e&&e.status!=='Inactive');
     const hit=findEmployeeMatch(x.description,emps);
-    const lines=emps.map(e=>({employeeId:e.id,employeeName:e.name,salaryOS:employeeSalaryOutstandingFor(sid,e.id,year,month),incentiveOS:employeeIncentiveOutstandingFor(sid,e.id,year,month),sal:false,inc:false,salAmt:'',incAmt:'',hit:!!hit&&hit.id===e.id}))
-      .filter(l=>l.salaryOS>0||l.incentiveOS>0||l.hit).sort((a,b)=>(b.hit?1:0)-(a.hit?1:0)||a.employeeName.localeCompare(b.employeeName));
+    const rowsNow=getRows?getRows():bankRowsFor(sid);
+    const lines=emps.map(e=>{const di={};DAILY_INCENTIVE_CATEGORIES_ALL.forEach(c=>{const os=Math.max(0,employeeDailyIncentiveCategoryOutstandingFor(sid,e.id,year,month,c)-dailyIncentiveSettledOnBank(sid,e.id,year,month,c,x.id,rowsNow));if(os>0.5)di[c]={os:Math.round(os*100)/100,sel:false,amt:''};});
+      return{employeeId:e.id,employeeName:e.name,salaryOS:employeeSalaryOutstandingFor(sid,e.id,year,month),incentiveOS:employeeIncentiveOutstandingFor(sid,e.id,year,month),di,sal:false,inc:false,salAmt:'',incAmt:'',hit:!!hit&&hit.id===e.id};})
+      .filter(l=>l.salaryOS>0||l.incentiveOS>0||Object.keys(l.di).length||l.hit).sort((a,b)=>(b.hit?1:0)-(a.hit?1:0)||a.employeeName.localeCompare(b.employeeName));
     const h0=lines.find(l=>l.hit);
-    if(h0){if(h0.salaryOS>0){h0.sal=true;h0.salAmt=String(Math.min(h0.salaryOS,x.debit));}else if(h0.incentiveOS>0){h0.inc=true;h0.incAmt=String(Math.min(h0.incentiveOS,x.debit));}}
+    if(h0){if(h0.salaryOS>0){h0.sal=true;h0.salAmt=String(Math.min(h0.salaryOS,x.debit));}else if(h0.incentiveOS>0){h0.inc=true;h0.incAmt=String(Math.min(h0.incentiveOS,x.debit));}
+      else{let left=x.debit;Object.keys(h0.di).forEach(c=>{const a=Math.min(h0.di[c].os,left);if(a>0){h0.di[c]={...h0.di[c],sel:true,amt:String(a)};left-=a;}});}}
     return lines;};
   const startPay=x=>{const iso=toISO(x.date)||'';const d=iso?new Date(iso+'T00:00:00'):new Date();
     const p=d.getDate()<=15?new Date(d.getFullYear(),d.getMonth()-1,1):new Date(d.getFullYear(),d.getMonth(),1);
     setPayErr('');setLinkFor(null);setAdvFor(null);setPayFor({x,year:p.getFullYear(),month:p.getMonth(),lines:empLinesFor(x,p.getFullYear(),p.getMonth())});};
   const setPayLine=(id,patch)=>setPayFor(pf=>({...pf,lines:pf.lines.map(l=>l.employeeId===id?{...l,...patch}:l)}));
+  const setPayDi=(id,cat,patch)=>setPayFor(pf=>({...pf,lines:pf.lines.map(l=>l.employeeId===id?{...l,di:{...l.di,[cat]:{...l.di[cat],...patch}}}:l)}));
   const doPay=()=>{const {x,year,month,lines}=payFor;const row=(getRows?getRows():bankRowsFor(sid)).find(r=>r.id===x.id)||{id:x.id,debit:x.debit,transactionDate:x.date};
-    const err=settleBankLineToEmployees(sid,row,year,month,lines.map(l=>({employeeId:l.employeeId,employeeName:l.employeeName,salaryAmt:l.sal?l.salAmt:0,incentiveAmt:l.inc?l.incAmt:0})),onMap);
+    const err=settleBankLineToEmployees(sid,row,year,month,lines.map(l=>({employeeId:l.employeeId,employeeName:l.employeeName,salaryAmt:l.sal?l.salAmt:0,incentiveAmt:l.inc?l.incAmt:0,
+      dailyIncentiveByCat:Object.fromEntries(Object.entries(l.di||{}).filter(([,d])=>d.sel).map(([c,d])=>[c,Number(d.amt)||0]))})),onMap);
     if(err){setPayErr(err);return;}
     setPayFor(null);setTick(t=>t+1);if(onMapped)onMapped();};
   const advEmps=()=>{const t=new Date();return(getEmployeesForMonth(t.getFullYear(),t.getMonth(),sid)||[]).filter(e=>e&&e.status!=='Inactive').sort((a,b)=>String(a.name).localeCompare(String(b.name)));};
@@ -365,7 +377,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
               x.side==='Debit'&&x.nature==='Vendor Payment'&&h('select',{className:'form-control',style:sel,value:x.vendorOverride&&x.vendorOverride!=='__none__'?x.vendorOverride:'',onChange:e=>e.target.value&&map(x,{vendorOverride:e.target.value})},
                 h('option',{value:''},'Select vendor'),vendors.map(v=>h('option',{key:v.id,value:v.name},v.name))),
               x.side==='Debit'&&(!x.nature||x.nature==='Advance Salary')&&h('button',{className:'btn btn-ghost btn-sm',style:{alignSelf:'flex-start'},onClick:()=>advFor&&advFor.x.id===x.id?setAdvFor(null):startAdv(x)},advFor&&advFor.x.id===x.id?'Close advance':'💵 Advance'),
-              x.side==='Debit'&&(!x.nature||x.nature==='Salary'||x.nature==='Incentive')&&h('button',{className:'btn btn-ghost btn-sm',style:{alignSelf:'flex-start'},onClick:()=>payFor&&payFor.x.id===x.id?setPayFor(null):startPay(x)},payFor&&payFor.x.id===x.id?'Close employees':'👤 Pay employees'),
+              x.side==='Debit'&&(!x.nature||x.nature==='Salary'||x.nature==='Incentive'||x.nature==='Daily Incentive')&&h('button',{className:'btn btn-ghost btn-sm',style:{alignSelf:'flex-start'},onClick:()=>payFor&&payFor.x.id===x.id?setPayFor(null):startPay(x)},payFor&&payFor.x.id===x.id?'Close employees':'👤 Pay employees'),
               x.side==='Debit'&&(!x.nature||x.nature==='Vendor Payment')&&h('button',{className:'btn btn-ghost btn-sm',style:{alignSelf:'flex-start'},onClick:()=>linkFor&&linkFor.x.id===x.id?setLinkFor(null):startLink(x)},linkFor&&linkFor.x.id===x.id?'Close bills':'🔗 Link bill'),
               x.side==='Credit'&&(x.nature==='Card Settlement'||x.nature==='UPI Settlement')&&h('input',{type:'date',className:'form-control',style:sel,value:toISO(x.cradleeDate)||'',title:'Date as per Cradlee — the sale date this settlement belongs to',
                 onChange:e=>e.target.value&&map(x,{cradleeDate:dmyOf(e.target.value)})}))),
@@ -398,7 +410,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
                     !nb&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setNb({invoiceNo:'',invoiceDate:toISO(x.date)||'',amount:String(Math.max(0,Math.round((x.debit-tot)*100)/100)||x.debit),category:lp.v.cat||defaultVendorCategoryFor(sid),gstRate:'0'})},'+ New bill'),
                     h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setLinkFor(null);setNb(null);}},'Close')));})())),
             pp&&h('tr',null,h('td',{colSpan:6,style:{background:'var(--bg3)',padding:'10px 12px'}},(()=>{
-              const tot=pp.lines.reduce((t,l)=>t+(l.sal?Number(l.salAmt)||0:0)+(l.inc?Number(l.incAmt)||0:0),0);
+              const tot=pp.lines.reduce((t,l)=>t+(l.sal?Number(l.salAmt)||0:0)+(l.inc?Number(l.incAmt)||0:0)+Object.values(l.di||{}).reduce((u,d)=>u+(d.sel?Number(d.amt)||0:0),0),0);
               const months=[0,1,2,3].map(k=>{const d=new Date(new Date().getFullYear(),new Date().getMonth()-k,1);return{y:d.getFullYear(),m:d.getMonth()};});
               const num=(v,dis,on)=>h('input',{type:'number',className:'form-control',disabled:dis,value:v,onChange:e=>on(e.target.value),style:{width:100,padding:'3px 6px',fontSize:12,textAlign:'right',display:'inline-block'}});
               return h('div',null,
@@ -407,16 +419,21 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
                   h('select',{className:'form-control',style:{width:150,padding:'4px 6px',fontSize:12},value:pp.year+'-'+pp.month,onChange:e=>{const [y,mo]=e.target.value.split('-').map(Number);setPayFor(pf=>({...pf,year:y,month:mo,lines:empLinesFor(pf.x,y,mo)}));}},
                     months.map(o=>h('option',{key:o.y+'-'+o.m,value:o.y+'-'+o.m},RPT_MONTHS[o.m]+' '+o.y))),
                   h('span',{style:{fontSize:12,color:'var(--text3)'}},'bank debit '+m(x.debit)+' · allocated '+(m(tot)||'₹0')+(x.debit-tot>0.5?' · left '+m(x.debit-tot):''))),
-                !pp.lines.length?h('div',{style:{fontSize:12,color:'var(--text3)'}},'No salary or incentive outstanding for '+RPT_MONTHS[pp.month]+' '+pp.year+' (attendance must be final for salary to show). Pick another month, or set Nature to Advance Salary in Bank Statement for an advance.')
+                !pp.lines.length?h('div',{style:{fontSize:12,color:'var(--text3)'}},'No salary, incentive or daily incentive outstanding for '+RPT_MONTHS[pp.month]+' '+pp.year+' (attendance must be final for salary to show). Pick another month, or set Nature to Advance Salary in Bank Statement for an advance.')
                 :h('table',{style:{width:'100%',fontSize:12}},h('thead',null,h('tr',null,['Employee','Salary due','Pay salary','Incentive due','Pay incentive'].map((t,i)=>h('th',{key:i,style:i?{textAlign:'right'}:null},t)))),
-                  h('tbody',null,pp.lines.map(l=>h('tr',{key:l.employeeId},
+                  h('tbody',null,pp.lines.map(l=>h(React.Fragment,{key:l.employeeId},h('tr',null,
                     h('td',null,l.employeeName,l.hit&&h('span',{style:{fontSize:10.5,color:'var(--green)',marginLeft:6}},'named in the narration')),
                     h('td',{style:{textAlign:'right'}},m(l.salaryOS)||'—'),
                     h('td',{style:{textAlign:'right',whiteSpace:'nowrap'}},h('input',{type:'checkbox',disabled:!(l.salaryOS>0),checked:l.sal,onChange:e=>setPayLine(l.employeeId,{sal:e.target.checked,salAmt:e.target.checked?String(Math.min(l.salaryOS,Math.max(0,x.debit-tot))||l.salaryOS):''}),style:{marginRight:6}}),num(l.sal?l.salAmt:'',!l.sal,v=>setPayLine(l.employeeId,{salAmt:v}))),
                     h('td',{style:{textAlign:'right'}},m(l.incentiveOS)||'—'),
-                    h('td',{style:{textAlign:'right',whiteSpace:'nowrap'}},h('input',{type:'checkbox',disabled:!(l.incentiveOS>0),checked:l.inc,onChange:e=>setPayLine(l.employeeId,{inc:e.target.checked,incAmt:e.target.checked?String(Math.min(l.incentiveOS,Math.max(0,x.debit-tot))||l.incentiveOS):''}),style:{marginRight:6}}),num(l.inc?l.incAmt:'',!l.inc,v=>setPayLine(l.employeeId,{incAmt:v}))))))),
+                    h('td',{style:{textAlign:'right',whiteSpace:'nowrap'}},h('input',{type:'checkbox',disabled:!(l.incentiveOS>0),checked:l.inc,onChange:e=>setPayLine(l.employeeId,{inc:e.target.checked,incAmt:e.target.checked?String(Math.min(l.incentiveOS,Math.max(0,x.debit-tot))||l.incentiveOS):''}),style:{marginRight:6}}),num(l.inc?l.incAmt:'',!l.inc,v=>setPayLine(l.employeeId,{incAmt:v})))),
+                    Object.keys(l.di||{}).length>0&&h('tr',null,h('td',{colSpan:5,style:{paddingLeft:18,paddingBottom:8}},
+                      h('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:3}},'Daily incentive due (Daily Incentive sheet, paid by bank)'),
+                      h('div',{style:{display:'flex',gap:12,flexWrap:'wrap'}},Object.entries(l.di).map(([c,d])=>h('label',{key:c,style:{display:'flex',alignItems:'center',gap:5,fontSize:12}},
+                        h('input',{type:'checkbox',checked:d.sel,onChange:e=>setPayDi(l.employeeId,c,{sel:e.target.checked,amt:e.target.checked?String(Math.min(d.os,Math.max(0,x.debit-tot))||d.os):''})}),
+                        c.replace(' Commission/Incentives','')+' '+m(d.os),num(d.sel?d.amt:'',!d.sel,v=>setPayDi(l.employeeId,c,{amt:v}))))))))))),
                 payErr&&h('div',{style:{color:'var(--red)',fontSize:12,marginTop:6}},payErr),
-                h('div',{style:{fontSize:11,color:'var(--text3)',marginTop:6}},'Paid in full → Salary / Incentive Working shows Paid. Daily incentive heads and advances are settled in Bank Statement.'),
+                h('div',{style:{fontSize:11,color:'var(--text3)',marginTop:6}},'Paid in full → Salary / Incentive Working shows Paid. Daily incentive paid is kept on this bank line (and not offered again on another transfer). Advances: 💵 Advance.'),
                 h('div',{style:{display:'flex',gap:8,marginTop:8}},pp.lines.length>0&&h('button',{className:'btn btn-primary btn-sm',onClick:doPay},'Record '+(m(tot)||'')),h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setPayFor(null)},'Close')));})())),
             ap&&h('tr',null,h('td',{colSpan:6,style:{background:'var(--bg3)',padding:'10px 12px'}},(()=>{
               const adv=loadAdvances(sid)||[];

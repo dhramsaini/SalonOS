@@ -1041,6 +1041,14 @@
           [/more than this bank debit/.test(over),ok,adv.map(a=>a.id+':'+a.emp+':'+a.outstanding+':'+a.status+':'+(a.bankRowId||'')),row.nature,unmappedBankLinesFor(912,2026,9).length],
           [true,'',['A005:B:2000:Active:Q1','A006:A:4000:Active:Q1'],'Advance Salary',0]);
       }catch(err){results.push({name:'Advance from list',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        safeLocalSet('salonos_bank_statement_rows_outlet_913',JSON.stringify([{id:'P1',transactionDate:'08/10/2026',description:'IMPS INC',debit:1000,nature:''},{id:'P2',transactionDate:'09/10/2026',description:'IMPS INC2',debit:500,nature:''}]));
+        const r1=settleBankLineToEmployees(913,{id:'P1',debit:1000},2026,8,[{employeeId:'E1',employeeName:'A',dailyIncentiveByCat:{'Service Commission/Incentives':700,'Product Commission/Incentives':300}}],null);
+        const row=JSON.parse(cachedLocalGet('salonos_bank_statement_rows_outlet_913'))[0];
+        eq('Daily incentive from the list: settled by head on the bank line, and counted as already paid for the next transfer',
+          [r1,row.nature,row.linkedEmployeePay[0].dailyIncentive,dailyIncentiveSettledOnBank(913,'E1',2026,8,'Service Commission/Incentives','P2'),dailyIncentiveSettledOnBank(913,'E1',2026,8,'Service Commission/Incentives','P1')],
+          ['','Daily Incentive',1000,700,0]);
+      }catch(err){results.push({name:'Daily incentive from list',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
