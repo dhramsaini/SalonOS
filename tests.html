@@ -1337,6 +1337,17 @@
           [lab('O1'),lab('P1'),lab('ST'),lab('G1'),g2,lab('F1'),lab('F2'),nv,bankPayeeName('IB FUNDS TRANSFER DR-50200046176297  -MYSHA VENTURES LLP'),miss,sla&&sla.days,help],
           ['Transfer','new:PV Marketing','-','Bank Charges GST','Bank Charges:500,Bank Charges GST:90','Fixed Deposit','Interest','PV Marketing:ICIC0006251','Mysha Ventures LLP',['2026-08'],3,true]);
       }catch(err){results.push({name:'Real-data fixes',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=929;saveLeaveRequests(S,[]);
+        const r=addLeaveRequest(S,{empId:'E1',name:'Ravi',from:'2026-10-14',to:'2026-10-16',kind:'Paid leave',reason:'Wedding'});
+        const dates=leaveDates('2026-10-30','2026-11-02');
+        safeLocalSet('salonos_advances_outlet_'+S,JSON.stringify([{id:'A1',emp:'Ravi',amount:6000,outstanding:6000,repayment:2000,status:'Active',deductFrom:'Salary'},
+          {id:'A2',emp:'Sita',amount:4000,outstanding:4000,status:'Active',schedule:[{month:'2026-10',amount:2000}]},{id:'A3',emp:'Om',amount:1000,outstanding:1000,status:'Active'}]));
+        const plan=advancePlanFor(S,2026,9).map(p=>p.name+':'+p.thisMonth+':'+(p.payoff?p.payoff.y+'-'+(p.payoff.m+1):p.schedEnds?'ends '+p.leftAfter:p.noPlan?'none':'long'));
+        eq('Staff: leave request days and dates, advance recovery plan (payoff, schedule ending short, no recovery set)',
+          [r.days,r.status,loadLeaveRequests(S).length,dates,plan],
+          [3,'pending',1,['2026-10-30','2026-10-31','2026-11-01','2026-11-02'],['Ravi:2000:2026-12','Sita:2000:ends 2000','Om:0:none']]);
+      }catch(err){results.push({name:'Staff self-service',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

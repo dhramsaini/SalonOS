@@ -267,6 +267,7 @@ function AdvanceSheet({period,salon}={}){
     }catch(err){advError(err.message||'Could not build the Excel file — please try again.');}
   };
   return React.createElement('div',{className:'fade-in'},
+    React.createElement(AdvanceRecoveryPlan,{salon,year:attYear,month:attMonth}),
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,React.createElement('div',{className:'page-title'},'Advance to Employees'),React.createElement('div',{className:'page-sub'},'Request advances against future salary, approved by an ASM — or record a Bank Transfer advance directly')),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},

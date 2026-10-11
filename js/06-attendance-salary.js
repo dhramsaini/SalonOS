@@ -668,6 +668,7 @@ function AttendanceSheet({period,salon,user}={}){
   };
   const setStatus=(empId,dayIdx,status)=>{updateDays(empId,dayIdx,status);};
   const plOn=controlOn('paidLeave',salon&&salon.id),ciOn=controlOn('phoneCheckin',salon&&salon.id);
+  const ssOn=controlOn('leaveRequests',salon&&salon.id)||controlOn('staffIncentiveView',salon&&salon.id);
   const [kiosk,setKiosk]=useState(false);
   const setPaidLeave=(empId,val)=>{
     if(attMonthLocked){warn(months[selMonth]+' '+selYear+' is locked — unlock it from Master Sheet or Salary Working to make changes.');return;}
@@ -727,10 +728,12 @@ function AttendanceSheet({period,salon,user}={}){
     );
   }
   return React.createElement('div',{className:'fade-in'},
-    ciOn&&React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:12}},
-      React.createElement('button',{className:'btn btn-sm '+(kiosk?'btn-primary':'btn-ghost'),onClick:()=>setKiosk(k=>!k)},kiosk?'← Back to register':'📲 Check-in screen'),
+    (ciOn||ssOn)&&React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:12}},
+      React.createElement('button',{className:'btn btn-sm '+(kiosk?'btn-primary':'btn-ghost'),onClick:()=>setKiosk(k=>!k)},kiosk?'← Back to register':(ciOn?'📲 Check-in screen':'📲 Staff phone screen')),
       ciPending.length>0&&React.createElement('button',{className:'btn btn-primary btn-sm',onClick:applyCheckins},'Mark '+ciPending.length+' check-in day(s) Present')),
-    kiosk&&React.createElement(CheckInKiosk,{salon}),
+    !kiosk&&React.createElement(LeaveRequestsPanel,{salon,locked:attMonthLocked,setAttStore,monthKey}),
+    kiosk&&ciOn&&React.createElement(CheckInKiosk,{salon}),
+    kiosk&&React.createElement(StaffSelfService,{salon}),
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,React.createElement('div',{className:'page-title'},'Employee Attendance'),React.createElement('div',{className:'page-sub'},'Monthly attendance register — click any cell to mark it (previous day must be marked first)')),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},

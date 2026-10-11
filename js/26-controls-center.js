@@ -64,6 +64,10 @@ const CONTROL_DEFS=[
   {id:'budgetAlert',group:'Alerts',label:'Spending ahead of budget this month',hint:'A strip on the Outlet Dashboard when an expense line runs more than 10% ahead of its budget pace (budgets in P&L → MTD).',def:false},
   {id:'missingSalesBanner',group:'Reminders',label:'Show days with no Daily Sales on the outlet screen',hint:'A red strip on Daily Sales & Exp listing this month’s missing days (the nightly 🔔 check is under Automation).',def:false},
   {id:'paidLeave',group:'Employees',label:'Paid leave balance',hint:'Leave earned each month (days below) for the financial year; in Attendance, absent days can be paid from it (Paid leave column).',def:false,limit:1,limitLabel:'Days a month'},
+  {id:'leaveRequests',group:'Employees',label:'Leave requests from the staff phone screen',hint:'Staff ask for leave on Attendance → 📲 Staff phone screen; the manager approves in Attendance (📝 Leave requests) and the days are marked.',def:false},
+  {id:'staffIncentiveView',group:'Employees',label:'Staff can see their own incentive on the phone screen',hint:'💰 My incentive: this month’s sales, target and expected incentive, behind a PIN (last 4 digits of the employee’s mobile).',def:false},
+  {id:'advanceRecoveryPlan',group:'Employees',label:'Advance recovery plan on the Advances sheet',hint:'Outstanding, this month’s recovery and the payoff month for every employee with an advance.',def:true},
+  {id:'advanceNetFloor',group:'Employees',label:'Warn when an advance recovery leaves too little net pay',hint:'Advance recovery plan: flagged when this month’s net pay is below the % of salary + incentive set here.',def:false,limit:40,limitLabel:'Keep at least %'},
   {id:'phoneCheckin',group:'Employees',label:'Phone check-in with selfie and location',hint:'Attendance → 📲 Check-in screen on the outlet phone; the manager marks check-in days Present. Distance allowed below.',def:false,limit:200,limitLabel:'Metres'},
   {id:'empStatement',group:'Employees',label:'Employee monthly statement on WhatsApp',hint:'Salary Working → Send Payslips adds days present, leave, advance balance and incentive to each message.',def:false},
 ];
