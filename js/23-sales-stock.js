@@ -102,7 +102,7 @@ function InventoryTools({sid,items}){
   const h=React.createElement;const {success}=useToast();
   const [tab,setTab]=useState('po');const [tick,setTick]=useState(0);
   const now=new Date();const [cal,setCal]=useState({year:now.getFullYear(),month:now.getMonth()});
-  const low=items.filter(i=>Number(i.qty)<=Number(i.min));
+  const low=smartReorderList(sid,items).map(x=>x.i);
   const [poText,setPoText]=useState('');
   const buildPo=()=>{const lines=low.map(i=>{const q=Math.max(Number(i.min)||1,Math.ceil((Number(i.min)||0)*2-(Number(i.qty)||0)));return'• '+i.name+' — '+q+' '+i.unit+' (≈ '+S5M(q*(Number(i.rate)||0))+')';});
     setPoText('Purchase order — '+String(outletSettings(sid).name||'').split('—')[0].trim()+' ('+localIsoOf(new Date()).split('-').reverse().join('/')+')\n'+lines.join('\n')+'\nPlease confirm rates and delivery date.');};
@@ -124,7 +124,8 @@ function InventoryTools({sid,items}){
           h('textarea',{className:'form-control',rows:Math.min(14,low.length+4),value:poText,onChange:e=>setPoText(e.target.value),style:{fontSize:12.5,fontFamily:'inherit'}}),
           h('div',{style:{display:'flex',gap:8,marginTop:8}},h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{try{navigator.clipboard.writeText(poText);success('Copied');}catch(e){}}},'Copy'),
             h('button',{className:'btn btn-primary btn-sm',onClick:()=>window.open('https://wa.me/?text='+encodeURIComponent(poText),'_blank')},'📤 Send on WhatsApp'))))
-      :h('div',{style:{fontSize:12.5,color:'var(--green)'}},'✓ Nothing below its minimum.')),
+      :h('div',{style:{fontSize:12.5,color:'var(--green)'}},'✓ Nothing below its minimum.'),
+      h(PurchaseOrdersPanel,{sid,items})),
     tab==='dead'&&h('div',null,h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:6}},'In stock with no issue or receipt in 90 days (movements are logged from today on).'),
       dead.length?tbl(['Item','On hand','Value','Last movement'],dead.map(x=>h('tr',{key:x.i.id},h('td',null,x.i.name),h('td',null,x.i.qty+' '+x.i.unit),h('td',null,S5M(x.value)),h('td',null,x.last?x.last.split('-').reverse().join('/'):'none logged'))))
         :h('div',{style:{fontSize:12.5,color:'var(--green)'}},'✓ No dead stock.')),

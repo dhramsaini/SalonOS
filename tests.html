@@ -1348,6 +1348,29 @@
           [r.days,r.status,loadLeaveRequests(S).length,dates,plan],
           [3,'pending',1,['2026-10-30','2026-10-31','2026-11-01','2026-11-02'],['Ravi:2000:2026-12','Sita:2000:ends 2000','Om:0:none']]);
       }catch(err){results.push({name:'Staff self-service',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=930;const P0=window.prompt,A0=window.alert,C0=window.confirm;window.alert=()=>{};window.confirm=()=>true;saveControls({billNeedsPo:{on:true,limit:10000}});
+        const today=new Date(2026,9,11);const iso=d=>d.toISOString().slice(0,10);const daysAgo=n=>{const d=new Date(2026,9,11-n);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+        safeLocalSet('salonos_clients_outlet_'+S,JSON.stringify([
+          {id:'C1',name:'Anjali Mehta',phone:'98100 11111',last:daysAgo(44),fav:'Hair Colour (Global)',birthday:'13 Oct',tier:'Gold membership',tierValidTill:'2026-10-20',packageBalance:3000},
+          {id:'C2',name:'Rohan Kapoor',phone:'9810022222',last:daysAgo(120),fav:'Haircut & Styling',birthday:'01 Jan',tier:'None'},
+          {id:'C3',name:'Sneha Iyer',phone:'9810033333',last:daysAgo(5),fav:'Facial — Gold',birthday:'',tier:'None'}]));
+        safeLocalSet('salonos_billing_invoices_outlet_'+S,'[]');safeLocalSet('salonos_client_followups_outlet_'+S,'{}');
+        const fu=clientFollowUps(S,today).map(x=>x.kind+':'+x.c.id).sort().join(',');
+        safeLocalSet('salonos_appointments_book_outlet_'+S,JSON.stringify({'2026-10-01':[{phone:'9810011111',status:'No-show'}],'2026-10-05':[{phone:'+91 98100 11111',status:'No-show'},{phone:'9810022222',status:'Done'}]}));
+        const ns=[noShowCount(S,'9810011111'),noShowCount(S,'9810022222')];
+        const used=redeemPackage(S,'9810011111',1200,'INV-1');const bal=foClientByPhone(S,'9810011111').packageBalance;
+        safeLocalSet('salonos_inventory_log_outlet_'+S,JSON.stringify([{date:daysAgo(10),itemId:'I1',type:'issue',qty:30},{date:daysAgo(5),itemId:'I1',type:'issue',qty:30}]));
+        const items=[{id:'I1',name:'Developer',unit:'bottle',qty:5,min:2,rate:400},{id:'I2',name:'Foil',unit:'roll',qty:1,min:3,rate:380},{id:'I3',name:'Towels',unit:'pack',qty:50,min:5,rate:260}];
+        const re=smartReorderList(S,items).map(x=>x.i.id+':'+x.cover+':'+x.order).join(',');
+        savePOs(S,[]);saveVendors([{id:'V1',name:'Acme',status:'Active'}],S);const po=createPO(S,'V1',[{name:'Developer',qty:10,rate:400},{name:'Foil',qty:5,rate:380}]);approvePO(S,po);
+        window.prompt=()=>'1';const okBill=billPoOk(S,'V1',12000,'B-77');const noPo=billPoOk(S,'V9',20000,'B-78');const small=billPoOk(S,'V9',5000,'B-79');window.prompt=P0;
+        const pos=loadPOs(S).map(p=>p.no+':'+p.total+':'+p.status+':'+(p.bills||[]).map(b=>b.invoiceNo).join('|'));
+        saveControls({});window.alert=A0;window.confirm=C0;
+        eq('Front office: follow-ups (birthday, membership ending, repeat due, lapsed), no-shows by phone, package redemption, reorder by days of stock, PO approve and bill link',
+          [fu,ns,[used,bal],re,[okBill,noPo,small],pos],
+          ['Birthday:C1,Lapsed:C2,Membership ending:C1,Repeat due:C1',[2,0],[1200,1800],'I1:5:25,I2:null:5',[true,false,true],['PO-0001:5900:Billed:B-77']]);
+      }catch(err){results.push({name:'Front office',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

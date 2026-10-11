@@ -1095,6 +1095,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     if(invForm.docNature!=='Performa Invoice'&&editInvoiceId===null&&piPrompt==='unanswered'){alert('This vendor has a pending Performa Invoice — please answer whether this '+invForm.docNature+' is against it before saving.');return;}
     if(invForm.docNature!=='Performa Invoice'&&piPrompt==='yes'&&!invForm.linkedPI){alert('Select which Performa Invoice this '+invForm.docNature+' is booked against, or choose "No — standalone '+invForm.docNature+'" above.');return;}
     const amount=Math.round(computedTotal);
+    if(invForm.docNature!=='Performa Invoice'&&editInvoiceId===null&&!billPoOk(salonId,invForm.vendorId,amount,invForm.invoiceNo))return;
     const dmy=(iso)=>{const p=String(iso||'').split('-');return p.length===3&&p[0].length===4?p[2]+'/'+p[1]+'/'+p[0]:iso;};
     // "+ Add New Vendor": create the vendor (or reuse one with the same name) and book against it.
     let vendorId=invForm.vendorId;
@@ -2503,7 +2504,7 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
   const vendorRows=useMemo(()=>invoices.filter(inv=>!invoiceNeedsApproval(inv,salonId)).map(inv=>{ // bills awaiting approval can't go in a payment file
     const bal=Math.round((Number(inv.amount)||0)-paidOfInv(inv));
     const v=vendors.find(x=>x.id===inv.vendorId);
-    return{invId:inv.id||inv.invoiceNo,invoiceNo:inv.invoiceNo,balance:bal,vendor:v,desc:inv.desc||inv.category||''};
+    return{invId:inv.id||inv.invoiceNo,invoiceNo:inv.invoiceNo,balance:bal,vendor:v,desc:inv.desc||inv.category||'',due:toISO(inv.dueDate)||''};
   }).filter(r=>r.balance>0&&r.vendor),[invoices,vendors]);
 
   // ── Salary rows ──
@@ -2693,6 +2694,7 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
     missingBankCount>0&&React.createElement('div',{className:'attention-card attention-card-sm',style:{marginBottom:14,color:'var(--orange)'}},
       '⚠ '+missingBankCount+' payee(s) are missing bank details and can\'t be included — add Bank Name/Account/IFSC under '+(subTab==='vendor'?'Vendors':'Master Salary')+' first.'),
 
+    subTab==='vendor'&&eligible.length>0&&React.createElement(PaymentRunBar,{sid:salonId,rows:vendorRows,onSelect:ids=>setSelVendor(new Set(ids))}),
     subTab==='vendor'&&eligible.length>0&&React.createElement('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:12.5,color:'var(--text2)',marginBottom:10,cursor:'pointer'}},
       React.createElement('input',{type:'checkbox',checked:combineVendor,onChange:e=>setCombineVendor(e.target.checked)}),
       React.createElement('span',null,React.createElement('b',null,'One transfer per vendor'),' — the ticked invoices of the same vendor go to the bank as ONE payment (total amount, all invoice nos. in the remarks). Untick for a separate transfer per invoice.')),

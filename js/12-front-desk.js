@@ -88,7 +88,8 @@ function BillingSheet({salon}){
       toast('Invoice '+editId+' updated','success');
     }else{
       const id=invNo();
-      setInvoices(prev=>[{...form,id},...prev]);
+      let rec={...form,id};if(form.usePackage){const used=redeemPackage(Number(salon&&salon.id)||1,form.phone,billCalc(form).total,id);rec={...rec,usePackage:false,packagePaid:used,paymentMode:used>=billCalc(form).total?'Package':rec.paymentMode};}
+      setInvoices(prev=>[rec,...prev]);
       toast('Invoice '+id+' created — ₹'+billCalc(form).total.toLocaleString('en-IN'),'success');
     }
     setShowModal(false);
@@ -299,6 +300,7 @@ function BillingSheet({salon}){
         React.createElement('div',{className:'form-row cols3'},
           FG('Customer Name *',INP({value:form.customer,onChange:fc('customer'),placeholder:'Walk-in customer name'})),
           FG('Phone',INP({value:form.phone,onChange:fc('phone'),placeholder:'98xxxxxxxx'})),
+          React.createElement('div',{style:{gridColumn:'1 / -1'}},React.createElement(BillingClientStrip,{sid:Number(salon&&salon.id)||1,phone:form.phone,total:billCalc(form).total,usePackage:form.usePackage,onUsePackage:v=>setForm(f=>({...f,usePackage:v}))})),
           FG('Date',INP({type:'date',value:form.date,onChange:fc('date')}))
         ),
         React.createElement('div',{className:'form-row cols3'},
@@ -619,7 +621,7 @@ function AppointmentBook({salon}){
             h('input',{className:'form-control',autoFocus:true,value:modal.client,placeholder:'Anjali Mehta',
               onChange:e=>setModal({...modal,client:e.target.value}),onKeyDown:e=>e.key==='Enter'&&save()})),
           h('div',{className:'form-group'},h('label',null,'Mobile'),
-            h('input',{className:'form-control',value:modal.phone,placeholder:'98765 43210',onChange:e=>setModal({...modal,phone:e.target.value})}))),
+            h('input',{className:'form-control',value:modal.phone,placeholder:'98765 43210',onChange:e=>setModal({...modal,phone:e.target.value})}),h(NoShowNote,{sid,phone:modal.phone}))),
         h('div',{className:'form-row'},
           h('div',{className:'form-group'},h('label',null,'Service'),
             h('select',{className:'form-control',value:modal.service,onChange:e=>setModal({...modal,service:e.target.value})},
@@ -745,6 +747,7 @@ function ClientCRM({salon}){
     h('div',{className:'crm'},
       h('div',{className:'card'},
         h('input',{className:'form-control',placeholder:'Search by name or mobile…',value:q,onChange:e=>setQ(e.target.value),style:{marginBottom:12}}),
+        h(ClientFollowUps,{salon}),
         h('div',{className:'seg'},['All','VIP','Regular','New','Lapsed'].map(s=>
           h('button',{key:s,className:seg===s?'on':'',onClick:()=>setSeg(s)},s,
             s!=='All'?' · '+clients.filter(x=>segOf(x)===s).length:''))),
@@ -773,6 +776,8 @@ function ClientCRM({salon}){
           h('div',{className:'kv'},h('span',null,'Preferred stylist'),h('span',null,c.stylist)),
           c.tier&&c.tier!=='None'&&h('div',{className:'kv'},h('span',null,c.tier+' valid till'),h('input',{type:'date',className:'form-control',style:{width:150,padding:'2px 6px'},value:c.tierValidTill||'',onChange:e=>{const v=e.target.value;setClients(l=>l.map(x=>x.id===c.id?{...x,tierValidTill:v}:x));}})),
           h('div',{className:'kv'},h('span',null,'Membership'),h('span',null,c.tier)),
+          controlOn('membershipAtBilling',sid)&&h('div',{className:'kv'},h('span',null,'Package balance ₹'),h('input',{type:'number',className:'form-control',style:{width:120,padding:'2px 6px'},value:c.packageBalance||'',onChange:e=>{const v=Number(e.target.value)||0;setClients(l=>l.map(x=>x.id===c.id?{...x,packageBalance:v}:x));}})),
+          controlOn('noShowWarn',sid)&&noShowCount(sid,c.phone)>0&&h('div',{className:'kv'},h('span',null,'No-shows'),h('span',{style:{color:'var(--red)'}},noShowCount(sid,c.phone))),
           h('div',{className:'kv'},h('span',null,'Birthday'),h('span',null,c.birthday)),
           c.notes?h('div',{className:'help-note',style:{marginTop:12}},'Note: '+c.notes):null,
           h('div',{style:{display:'flex',gap:8,marginTop:16,flexWrap:'wrap'}},

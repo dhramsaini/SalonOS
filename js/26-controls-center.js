@@ -7,6 +7,7 @@
 // Stored in one shared record (salonos_controls) so every user and device follows the same rules.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 const CONTROL_DEFS=[
+  {id:'billNeedsPo',group:'Entry checks',label:'A vendor bill above the limit needs an approved purchase order',hint:'Vendors: saving such a bill asks which approved PO of that vendor it is against (a bill more than 10% above the PO is confirmed).',def:false,limit:25000},
   {id:'dupInvoice',group:'Entry checks',label:'Block a vendor invoice number entered twice',hint:'Same vendor + same invoice no. (Vendors, Daily Sales & Exp, Bank Statement).',def:true},
   {id:'gstLock',group:'Entry checks',label:'Lock CGST/SGST or IGST by state',hint:'Outlet and vendor in the same state → only CGST + SGST; different states → only IGST.',def:true},
   {id:'idChecks',group:'Entry checks',label:'Check PAN, GSTN, IFSC, Aadhaar, UAN, ESIC, account no., phone & email',hint:'Wrong formats are stopped before saving employees and vendors.',def:true},
@@ -52,9 +53,15 @@ const CONTROL_DEFS=[
   {id:'bankChargeGst',group:'Bank mapping',label:'Separate the GST on bank charges (input credit)',hint:'GST lines on bank charges are suggested as “Bank Charges GST” (own Tally ledger); a charge “incl. GST” is split 100 : 18.',def:true},
   {id:'fdLines',group:'Bank mapping',label:'Recognise fixed deposits (booking, maturity, sweep) and FD interest',hint:'FD lines are suggested as Fixed Deposit (Tally: Fixed Deposits under Investments), FD interest as Interest.',def:true},
   {id:'mappingSla',group:'Bank mapping',label:'Mapping time target — lines mapped within the days below',hint:'On-time % per outlet on Dashboard → 🏦 Bank Reco and in the ✅ Close tab (a line mapped on import counts as on time).',def:false,limit:3,limitLabel:'Days to map'},
+  {id:'clientFollowUps',group:'Clients & stock',label:'Client follow-ups in the Client CRM',hint:'📅 Follow-ups: repeat service due, birthdays this week, lapsed clients and memberships ending — each with a ready WhatsApp message.',def:true},
+  {id:'membershipAtBilling',group:'Clients & stock',label:'Show membership and package balance when billing',hint:'Billing: the client found by phone, their membership and expiry, no-shows and package balance — with “pay from the package”.',def:true},
+  {id:'noShowWarn',group:'Clients & stock',label:'Warn about past no-shows when booking',hint:'Appointment Book: the number of earlier no-shows on the phone number; 2 or more suggests asking for an advance.',def:true},
+  {id:'smartReorder',group:'Clients & stock',label:'Reorder by days of stock left, not only the minimum',hint:'Inventory: items whose stock covers fewer days than the lead time below (from the last 60 days’ use) are added to the reorder list.',def:true,limit:7,limitLabel:'Lead time (days)'},
+  {id:'paymentRun',group:'Approvals',label:'Payment run in Bank Payment → Vendor',hint:'Tick every bill due by a chosen date in one click; the bank file then pays them.',def:true},
   {id:'collRecoNeedsMapping',group:'Month close',label:'Collection Reco only after every bank credit of the month is mapped',hint:'Each credit line needs a Nature, and card / UPI settlements a Date as per Cradlee, before the month’s Collection Reco is shown or downloaded.',def:true},
   {id:'monthFinalNeedsMapping',group:'Month close',label:'Mark Month Final only after every bank line of the month is mapped',hint:'Debits need a Nature (vendor payments a vendor or linked bill); credits a Nature (card / UPI settlements a Date as per Cradlee). Applies to P&L Final and Daily Sales & Exp Month Final.',def:true},
   {id:'monthFinalRule',group:'Month close',label:'Mark Month Final only from the month’s last day',hint:'Daily Sales & Exp and Attendance cannot be finalised before the month ends.',def:true},
+  {id:'poApproval',group:'Approvals',label:'Purchase order above the limit needs Super Admin approval',hint:'Inventory → 🧾 Purchase orders: a PO above the limit is sent for approval before it can be used for a bill.',def:false,limit:25000},
   {id:'invoiceApproval',group:'Approvals',label:'Vendor bill above the limit needs Super Admin approval',hint:'The person entering it sends a request; it saves once a Super Admin approves.',def:false,limit:50000},
   {id:'bankFileApproval',group:'Approvals',label:'Bank payment file above the limit needs Super Admin approval',hint:'Bank Payment → download of the bank upload file (total of the file).',def:false,limit:200000},
   {id:'deleteApproval',group:'Approvals',label:'Deleting a vendor bill or payment needs Super Admin approval',hint:'Anyone else gets a request instead; once approved they can delete that one entry.',def:false},
