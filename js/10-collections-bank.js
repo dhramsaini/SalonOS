@@ -3303,6 +3303,7 @@ function BankStatement({salon,onNavTab}={}){
       if(debitNature)cls={nature:debitNature,cradleeDate:''};
     }
     // No rule matched — use the Nature given earlier to lines with the same narration pattern.
+    if(!cls&&!r.nature&&controlOn('bankAutoRules',salonId)){const rl=matchBankRule(salonId,r);if(rl)return{...r,...bankRulePatch(rl,r),natureRule:rl.id};}
     if(!cls&&!r.nature){const ln=bankLearnedNatureFor(learned,r);if(ln)return{...r,nature:ln,natureLearned:true};}
     if(!cls)return r;
     // Default (force=false, used on fresh import): only fill in blanks.
