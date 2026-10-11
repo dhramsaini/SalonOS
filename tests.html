@@ -1057,6 +1057,10 @@
         const b=planBulkBillLinks(914,L,true).map(p=>p.allocations?p.allocations.map(x=>x.invoiceNo+x.amount).join('+'):'skip');
         eq('Bulk link plan: exact single match only, two same-amount bills not guessed; with split, oldest bills first and no bill claimed twice',[a,b],[['C700','skip','skip','skip'],['C700','A1000','skip','skip']]);
       }catch(err){results.push({name:'Bulk link plan',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const pl=planBulkEmployeePay(915,[{id:1,side:'Credit',credit:100,description:'X',date:'07/10/2026'},{id:2,side:'Debit',debit:100,description:'IMPS NOBODY',date:'07/10/2026'},{id:3,side:'Debit',debit:100,description:'IMPS NOBODY',date:'20/10/2026'}],null,[]);
+        eq('Bulk pay plan: credits skipped, no employee in the narration skipped, month by payment date (≤15th → last month)',[pl.map(p=>!!p.what),pl[1].month,pl[2].month],[[false,false,false],8,9]);
+      }catch(err){results.push({name:'Bulk pay plan',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

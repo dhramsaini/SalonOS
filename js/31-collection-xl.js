@@ -309,6 +309,32 @@ function planBulkBillLinks(sid,lines,split){
     open.forEach(i=>{if(rem<=0.005)return;const a=Math.round(Math.min(left[i.id],rem)*100)/100;if(a>0){al.push({id:i.id,invoiceNo:i.invoiceNo||i.id,amount:a});left[i.id]=Math.round((left[i.id]-a)*100)/100;rem=Math.round((rem-a)*100)/100;}});
     return{x,vendor:v,allocations:al};});
 }
+// Plan for settling many bank debits against employees at once. Per line: the employee named in
+// the narration, the month (forced, else the month before when paid on or before the 15th), and what
+// the amount matches exactly — salary due, incentive due, both together, or all daily incentive due.
+// Nothing is guessed: any other amount is skipped. Items already planned are not used twice.
+// [{x, emp, year, month, salaryAmt, incentiveAmt, dailyIncentiveByCat, what, reason}]
+function planBulkEmployeePay(sid,lines,forceYM,rows){
+  const used={};const R=n=>Math.round((Number(n)||0)*100)/100;
+  return(lines||[]).map(x=>{
+    if(x.side!=='Debit')return{x,reason:'Credit line'};
+    let y,m;if(forceYM){y=forceYM.year;m=forceYM.month;}else{const iso=toISO(x.date);const d=iso?new Date(iso+'T00:00:00'):null;if(!d)return{x,reason:'No bank date'};
+      const p=d.getDate()<=15?new Date(d.getFullYear(),d.getMonth()-1,1):new Date(d.getFullYear(),d.getMonth(),1);y=p.getFullYear();m=p.getMonth();}
+    const emps=(getEmployeesForMonth(y,m,sid)||[]).filter(e=>e&&e.status!=='Inactive');
+    const e=findEmployeeMatch(x.description,emps);
+    if(!e)return{x,year:y,month:m,reason:'No employee named in the narration — use 👤 Pay employees on this line'};
+    const k=e.id+'|'+y+'|'+m;const u=used[k]||(used[k]={sal:false,inc:false,di:false});
+    const sal=u.sal?0:R(employeeSalaryOutstandingFor(sid,e.id,y,m)),inc=u.inc?0:R(employeeIncentiveOutstandingFor(sid,e.id,y,m));
+    const di={};if(!u.di)DAILY_INCENTIVE_CATEGORIES_ALL.forEach(c=>{const os=R(employeeDailyIncentiveCategoryOutstandingFor(sid,e.id,y,m,c)-dailyIncentiveSettledOnBank(sid,e.id,y,m,c,x.id,rows));if(os>0.5)di[c]=os;});
+    const diTot=R(Object.values(di).reduce((t,v)=>t+v,0)),near=(a,b)=>b>0&&Math.abs(a-b)<=1;
+    const base={x,emp:e,year:y,month:m,salaryAmt:0,incentiveAmt:0,dailyIncentiveByCat:{}};
+    if(near(x.debit,sal)){u.sal=true;return{...base,salaryAmt:sal,what:'Salary'};}
+    if(near(x.debit,inc)){u.inc=true;return{...base,incentiveAmt:inc,what:'Incentive'};}
+    if(sal>0&&inc>0&&near(x.debit,sal+inc)){u.sal=u.inc=true;return{...base,salaryAmt:sal,incentiveAmt:inc,what:'Salary + incentive'};}
+    if(near(x.debit,diTot)){u.di=true;return{...base,dailyIncentiveByCat:di,what:'Daily incentive'};}
+    const due=[sal?'salary ₹'+Math.round(sal).toLocaleString('en-IN'):'',inc?'incentive ₹'+Math.round(inc).toLocaleString('en-IN'):'',diTot?'daily incentive ₹'+Math.round(diTot).toLocaleString('en-IN'):''].filter(Boolean).join(', ');
+    return{x,emp:e,year:y,month:m,reason:due?'Amount matches nothing due ('+due+') — use 👤 Pay employees on this line':'Nothing due for '+RPT_MONTHS[m]+' '+y};});
+}
 // Pop-up listing unmapped lines, each mappable in place: Nature, the vendor for a vendor payment,
 // the Date as per Cradlee for a card / UPI settlement. getList() is re-read after every change.
 //   onMap(id, patch)  — how to save (Bank Statement passes its own; default saves to storage)
@@ -321,7 +347,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const [payErr,setPayErr]=useState('');
   const [advFor,setAdvFor]=useState(null); // {x, lines:[{employeeId,employeeName,amount,deductFrom,deductionStart,reason,linkExistingId}]}
   const [advErr,setAdvErr]=useState('');
-  const [ticked,setTicked]=useState(()=>new Set());const [linkPlan,setLinkPlan]=useState(null);const [splitOld,setSplitOld]=useState(false);const [bulk,setBulk]=useState({nature:'',vendor:'',dateMode:'setdt',date:''});const [bulkMsg,setBulkMsg]=useState('');
+  const [ticked,setTicked]=useState(()=>new Set());const [linkPlan,setLinkPlan]=useState(null);const [payPlan,setPayPlan]=useState(null);const [payYM,setPayYM]=useState('auto');const [splitOld,setSplitOld]=useState(false);const [bulk,setBulk]=useState({nature:'',vendor:'',dateMode:'setdt',date:''});const [bulkMsg,setBulkMsg]=useState('');
   const list=getList();const vendors=(loadVendors(sid)||[]).filter(v=>v&&v.status!=='Inactive').sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   const m=n=>n?'₹'+Number(n).toLocaleString('en-IN',{maximumFractionDigits:2}):'';
   const dr=list.filter(x=>x.side==='Debit'),cr=list.filter(x=>x.side==='Credit');const sum=(a,k)=>a.reduce((t,x)=>t+x[k],0);
@@ -356,7 +382,17 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
     setBulkMsg(done+' line'+(done===1?'':'s')+' set to '+n+(skipped?' · '+skipped+' skipped ('+(n&&BANK_CREDIT_NATURES.has(n)?'debits':'credits')+' cannot take this Nature)':'')+(noDate?' · '+noDate+' still need a Date as per Cradlee':'')+'.');
     try{logAuditEvent(sid,{entity:'Bank Statement',entityId:'bulk',action:'Mapped in bulk',summary:done+' line(s) set to '+n+(bulk.vendor?' — '+bulk.vendor:'')});}catch(e){}
   };
-  const makePlan=sp=>setLinkPlan(planBulkBillLinks(sid,list.filter(x=>ticked.has(x.id)),sp));
+  const makePlan=sp=>{setPayPlan(null);setLinkPlan(planBulkBillLinks(sid,list.filter(x=>ticked.has(x.id)),sp));};
+  const makePayPlan=ym=>{const f=ym&&ym!=='auto'?{year:Number(ym.split('-')[0]),month:Number(ym.split('-')[1])}:null;
+    setLinkPlan(null);setPayPlan(planBulkEmployeePay(sid,list.filter(x=>ticked.has(x.id)),f,getRows?getRows():bankRowsFor(sid)));};
+  const runPayPlan=()=>{
+    const rowsNow=getRows?getRows():bankRowsFor(sid);let ok=0;const fails=[];
+    payPlan.filter(p=>p.what).forEach(p=>{const row=rowsNow.find(r=>r.id===p.x.id)||{id:p.x.id,debit:p.x.debit,transactionDate:p.x.date};
+      const err=settleBankLineToEmployees(sid,row,p.year,p.month,[{employeeId:p.emp.id,employeeName:p.emp.name,salaryAmt:p.salaryAmt,incentiveAmt:p.incentiveAmt,dailyIncentiveByCat:p.dailyIncentiveByCat}],onMap);
+      if(err)fails.push((p.x.date||'')+' '+p.emp.name+': '+err);else ok++;});
+    setPayPlan(null);setTicked(new Set());setTick(t=>t+1);if(onMapped)onMapped();
+    setBulkMsg(ok+' payment'+(ok===1?'':'s')+' settled to employees'+(fails.length?' · not settled: '+fails.join('; '):'')+'.');
+  };
   const runPlan=()=>{
     const rowsNow=getRows?getRows():bankRowsFor(sid);let ok=0;const fails=[];
     linkPlan.filter(p=>p.allocations).forEach(p=>{const row=rowsNow.find(r=>r.id===p.x.id)||{id:p.x.id,debit:p.x.debit,transactionDate:p.x.date};
@@ -430,9 +466,23 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
           h('option',{value:'setdt'},'Cradlee date from narration (SETDT)'),h('option',{value:'prev'},'Cradlee date = day before bank date'),h('option',{value:'pick'},'Cradlee date = …')),
         (bulk.nature==='Card Settlement'||bulk.nature==='UPI Settlement')&&bulk.dateMode==='pick'&&h('input',{type:'date',className:'form-control',style:{width:140,padding:'4px 6px',fontSize:12},value:bulk.date,onChange:e=>setBulk({...bulk,date:e.target.value})}),
         h('button',{className:'btn btn-primary btn-sm',onClick:applyBulk},'Apply to '+ticked.size),
+        list.some(x=>ticked.has(x.id)&&x.side==='Debit')&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>makePayPlan(payYM)},'👤 Pay employees ('+list.filter(x=>ticked.has(x.id)&&x.side==='Debit').length+' debits)'),
         list.some(x=>ticked.has(x.id)&&x.side==='Debit')&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>makePlan(splitOld)},'🔗 Link bills ('+list.filter(x=>ticked.has(x.id)&&x.side==='Debit').length+' debits)'),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setTicked(new Set())},'Clear')),
       bulkMsg&&h('div',{style:{fontSize:12,color:'var(--green)',marginBottom:6}},'✓ '+bulkMsg),
+      payPlan&&(()=>{const go=payPlan.filter(p=>p.what),skip=payPlan.filter(p=>!p.what);
+        const months=[0,1,2,3].map(k=>{const d=new Date(new Date().getFullYear(),new Date().getMonth()-k,1);return d.getFullYear()+'-'+d.getMonth();});
+        return h('div',{style:{border:'1px solid var(--border2)',borderRadius:8,padding:10,marginBottom:10,background:'var(--bg3)'}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:6}},
+            h('b',{style:{fontSize:13}},'Pay employees — '+go.length+' ready'+(skip.length?', '+skip.length+' skipped':'')),
+            h('label',{style:{fontSize:12,display:'flex',gap:6,alignItems:'center'}},'Pay for',h('select',{className:'form-control',style:{width:200,padding:'3px 6px',fontSize:12},value:payYM,onChange:e=>{setPayYM(e.target.value);makePayPlan(e.target.value);}},
+              h('option',{value:'auto'},'By payment date (≤15th → last month)'),months.map(k=>{const [yy,mm]=k.split('-').map(Number);return h('option',{key:k,value:k},RPT_MONTHS[mm]+' '+yy);})))),
+          h('table',{style:{width:'100%',fontSize:12}},h('thead',null,h('tr',null,['Date','Payment','Employee','Month','Settles'].map((t,i)=>h('th',{key:i,style:i===1?{textAlign:'right'}:null},t)))),
+            h('tbody',null,payPlan.map(p=>h('tr',{key:p.x.id,style:{opacity:p.what?1:0.7}},
+              h('td',{style:{whiteSpace:'nowrap'}},p.x.date),h('td',{style:{textAlign:'right',whiteSpace:'nowrap'}},m(p.x.debit)),h('td',null,p.emp?p.emp.name:'—'),
+              h('td',{style:{whiteSpace:'nowrap'}},p.month!=null?RPT_MONTHS[p.month].slice(0,3)+' '+p.year:'—'),
+              h('td',{style:{color:p.what?'var(--green)':'var(--orange)'}},p.what?p.what+' '+m(p.salaryAmt+p.incentiveAmt+Object.values(p.dailyIncentiveByCat||{}).reduce((t,v)=>t+v,0)):p.reason))))),
+          h('div',{style:{display:'flex',gap:8,marginTop:8}},go.length>0&&h('button',{className:'btn btn-primary btn-sm',onClick:runPayPlan},'Settle '+go.length),h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setPayPlan(null)},'Cancel')));})(),
       linkPlan&&(()=>{const go=linkPlan.filter(p=>p.allocations),skip=linkPlan.filter(p=>!p.allocations);
         return h('div',{style:{border:'1px solid var(--border2)',borderRadius:8,padding:10,marginBottom:10,background:'var(--bg3)'}},
           h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:6}},
