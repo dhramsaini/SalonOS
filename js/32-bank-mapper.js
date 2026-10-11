@@ -181,11 +181,82 @@ function bankLockOk(sid,r,what){
   BANK_LOCK_OPEN[sid+'|'+ym]=Date.now();return true;
 }
 
+// ── Reports: unmapped ageing, payee summaries, productivity ──
+function bankUnmappedAgeing(sid,rows){
+  const vendors=loadVendors(sid)||[];const today=new Date();today.setHours(0,0,0,0);const out={a:{n:0,amt:0},b:{n:0,amt:0},c:{n:0,amt:0},oldest:''};
+  (rows||bankRowsFor(sid)).forEach(r=>{if(!r||!(Number(r.debit)>0||Number(r.credit)>0))return;const iso=toISO(r.transactionDate);if(!iso||!bankLineProblem(r,vendors))return;
+    const d=Math.floor((today-new Date(iso+'T00:00:00'))/864e5);const k=d<=7?'a':d<=30?'b':'c';out[k].n++;out[k].amt+=Number(r.debit)||Number(r.credit)||0;if(!out.oldest||iso<out.oldest)out.oldest=iso;});
+  return out;
+}
+function bankPayeeSummary(sid,year,month,rows){
+  const pre=year+'-'+String(month+1).padStart(2,'0');const vendors=loadVendors(sid)||[];
+  const L=(rows||bankRowsFor(sid)).filter(r=>r&&Number(r.debit)>0&&String(toISO(r.transactionDate)||'').startsWith(pre));
+  const V={},E={};const R2=n=>Math.round((Number(n)||0)*100)/100;
+  const ev=k=>E[k]=E[k]||{name:k,lines:0,salary:0,incentive:0,daily:0,advance:0,other:0,total:0};
+  L.forEach(r=>{const amt=Number(r.debit)||0;const sp=bankRowSplits(r);
+    if(Array.isArray(r.linkedEmployeePay)&&r.linkedEmployeePay.length){r.linkedEmployeePay.forEach(x=>{const e=ev(x.employeeName||'—');e.lines++;e.salary+=Number(x.salary)||0;e.incentive+=Number(x.incentive)||0;e.daily+=Number(x.dailyIncentive)||0;});return;}
+    if(Array.isArray(r.linkedAdvance)&&r.linkedAdvance.length){r.linkedAdvance.forEach(x=>{const e=ev(x.employeeName||'—');e.lines++;e.advance+=Number(x.amount)||0;});return;}
+    if(['Salary','Incentive','Daily Incentive','Advance Salary'].includes(r.nature)){const e=ev('(not settled to an employee)');e.lines++;e.other+=amt;return;}
+    const parts=sp?sp.filter(z=>z.nature==='Vendor Payment').map(z=>({name:z.vendorOverride||'',amt:Number(z.amount)||0})):(r.nature==='Vendor Payment'||r.linkedInvoice)?[{name:bankLineVendorName(r,vendors),amt}]:[];
+    parts.forEach(z=>{const k=z.name||'(vendor not identified)';const v=V[k]=V[k]||{name:k,lines:0,amount:0,bills:new Set()};v.lines++;v.amount+=z.amt;
+      String(r.linkedInvoice||'').split(',').filter(Boolean).forEach(b=>v.bills.add(b.split('|').pop()));});});
+  const vendorsOut=Object.values(V).map(v=>({...v,amount:R2(v.amount),bills:[...v.bills]})).sort((a,b)=>b.amount-a.amount);
+  const empOut=Object.values(E).map(e=>({...e,total:R2(e.salary+e.incentive+e.daily+e.advance+e.other)})).sort((a,b)=>b.total-a.total);
+  return{vendors:vendorsOut,employees:empOut};
+}
+// Per person: lines mapped (from the undo journal), of them taken from a suggestion / automatic, undone, suggestions changed, lines checked.
+function bankMappingProductivity(sid,fromMs,toMs){
+  const to=toMs||Date.now();const by={};const u=k=>by[k]=by[k]||{user:k,mapped:0,fromSugg:0,auto:0,undone:0,amount:0,changed:0,checked:0};
+  bankMapJournal(sid).forEach(e=>{const t=e.at||0;if(t<fromMs||t>to)return;const o=u(e.by||'—');
+    if((e.labels||[]).some(l=>/^Auto: /.test(l)))o.auto++;else if((e.labels||[]).some(l=>/^✨ /.test(l)))o.fromSugg++;
+    if(e.undone)o.undone++;else{o.mapped++;o.amount+=Number(e.amount)||0;}});
+  const rv=loadBankReview(sid);Object.values(rv).forEach(v=>{if(v&&v.at>=fromMs&&v.at<=to)u(v.by||'—').checked++;});
+  try{const U=JSON.parse(cachedLocalGet(outletKey('salonos_bank_sugg_users',sid))||'{}')||{};const m0=new Date(fromMs).toISOString().slice(0,7),m1=new Date(to).toISOString().slice(0,7);
+    Object.keys(U).forEach(k=>{const i=k.lastIndexOf('|');const mo=k.slice(i+1);if(mo>=m0&&mo<=m1)u(k.slice(0,i)).changed+=U[k].rej||0;});}catch(err){}
+  return Object.values(by).filter(o=>o.user!=='—'||o.mapped||o.checked).sort((a,b)=>b.mapped-a.mapped);
+}
+
+// ── Paste from Excel: header row with Narration / Ref and Nature (Date, Amount, Vendor, Date as per Cradlee optional) ──
+function parseBankPaste(text){
+  const lines=String(text||'').replace(/\r/g,'').split('\n').filter(l=>l.trim());if(!lines.length)return{rows:[],error:'Paste the rows first.'};
+  const split=l=>l.includes('\t')?l.split('\t'):l.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(c=>c.replace(/^"|"$/g,''));
+  const H=split(lines[0]).map(c=>c.trim().toLowerCase());const find=re=>H.findIndex(c=>re.test(c));
+  const col={cradlee:find(/cradlee/)};col.date=H.findIndex((c,i)=>/date/.test(c)&&i!==col.cradlee);col.key=find(/ref|narration|description|particular|remark/);
+  col.amount=find(/amount/);col.debit=find(/debit|withdraw/);col.credit=find(/credit|deposit/);col.nature=find(/nature|head|ledger/);col.vendor=find(/vendor|party/);
+  let start=1;
+  if(col.nature<0){if(split(lines[0]).length===2){Object.keys(col).forEach(k=>col[k]=-1);col.key=0;col.nature=1;start=0;}else return{rows:[],error:'Add a header row with at least a “Narration” (or “Ref”) and a “Nature” column.'};}
+  if(col.key<0&&col.amount<0&&col.debit<0&&col.credit<0)return{rows:[],error:'Add a “Narration” / “Ref” or an “Amount” column so each row can be matched to a bank line.'};
+  const num=v=>{const n=Number(String(v==null?'':v).replace(/[₹,\s]/g,''));return isFinite(n)&&n>0?n:0;};
+  const cell=(c,i)=>i>=0?String(c[i]==null?'':c[i]).trim():'';
+  const rows=lines.slice(start).map(l=>{const c=split(l);return{date:cell(c,col.date),key:cell(c,col.key),amount:num(cell(c,col.amount))||num(cell(c,col.debit))||num(cell(c,col.credit)),nature:cell(c,col.nature),vendor:cell(c,col.vendor),cradlee:cell(c,col.cradlee)};}).filter(r=>r.nature||r.key);
+  return{rows,error:rows.length?'':'No rows found under the header.'};
+}
+function planBankPaste(sid,list,rowsAll,parsed){
+  const vendors=loadVendors(sid)||[];const used=new Set();const rows=rowsAll||bankRowsFor(sid);
+  return(parsed.rows||[]).map((p,i)=>{const base={i,p};
+    const nat=BANK_MAP_NATURES.find(n=>n.toLowerCase()===String(p.nature||'').trim().toLowerCase());
+    if(!nat)return{...base,status:'Nature “'+(p.nature||'')+'” is not in the list'};
+    const k=String(p.key||'').trim().toLowerCase();const iso=p.date?toISO(p.date):'';
+    const c=list.filter(x=>{if(used.has(x.id))return false;const r=rows.find(z=>z.id===x.id)||{};
+      if(k&&!(String(r.refNo||'').trim().toLowerCase()===k||(x.description||'').toLowerCase().includes(k)))return false;
+      if(p.amount&&Math.abs((x.debit||x.credit)-p.amount)>0.5)return false;
+      if(iso&&toISO(x.date)!==iso)return false;return !!(k||p.amount);});
+    if(!c.length)return{...base,status:'No unmapped line matches'};
+    if(c.length>1)return{...base,status:c.length+' lines match — add the amount or date'};
+    const x=c[0];
+    if(!(x.side==='Credit'?BANK_CREDIT_NATURES.has(nat):!/Settlement$|^Collection$|^Interest$/.test(nat)))return{...base,x,status:nat+' is not for a '+x.side.toLowerCase()};
+    const patch={nature:nat,aiTagged:false};
+    if(nat==='Vendor Payment'&&p.vendor){const v=vendors.find(z=>String(z.name||'').trim().toLowerCase()===String(p.vendor).trim().toLowerCase());if(!v)return{...base,x,status:'Vendor “'+p.vendor+'” not found'};patch.vendorOverride=v.name;}
+    if(nat==='Card Settlement'||nat==='UPI Settlement'){const ci=p.cradlee?toISO(p.cradlee):'';const d=ci?ci.split('-').reverse().join('/'):settlementDateFromNarration(x.description)||'';if(d)patch.cradleeDate=d;}
+    used.add(x.id);return{...base,x,patch,status:'ok'};});
+}
+
 // ── Learning from changed suggestions: {key:'side|sig|nature', rej, acc} ──
 function bankFeedbackKey(sid){return outletKey('salonos_bank_sugg_feedback',sid);}
 function loadBankFeedback(sid){try{return JSON.parse(cachedLocalGet(bankFeedbackKey(sid))||'{}')||{};}catch(e){return{};}}
 function noteBankFeedback(sid,x,nature,accepted){
   if(!x||!nature)return;const k=x.side+'|'+bmapSig(x.description)+'|'+nature;const f=loadBankFeedback(sid);const e=f[k]||{rej:0,acc:0};
+  try{const uk=outletKey('salonos_bank_sugg_users',sid);const U=JSON.parse(cachedLocalGet(uk)||'{}')||{};const me=bmapUser();const mo=new Date().toISOString().slice(0,7);const z=U[me+'|'+mo]||{acc:0,rej:0};if(accepted)z.acc++;else z.rej++;U[me+'|'+mo]=z;safeLocalSet(uk,JSON.stringify(U));}catch(err){}
   if(accepted)e.acc++;else e.rej++;f[k]=e;const keys=Object.keys(f);if(keys.length>600)keys.slice(0,keys.length-600).forEach(z=>delete f[z]);
   safeLocalSet(bankFeedbackKey(sid),JSON.stringify(f));
 }
@@ -337,6 +408,20 @@ async function buildBankMappingSummaryWorkbook(sid,year,month){
   const end=r-1;K.put(ws,r,1,'Total');K.put(ws,r,4,{f:'SUM(D'+st+':D'+end+')',r:0},N2);K.put(ws,r,5,{f:'SUM(E'+st+':E'+end+')',r:0},N2);K.style(ws,r,COLS,'grand');
   ws.autoFilter={from:{row:4,column:1},to:{row:Math.max(4,end),column:COLS}};
   ws.columns=[{width:11},{width:42},{width:14},{width:12},{width:12},{width:24},{width:18},{width:20},{width:18},{width:24},{width:11},{width:14},{width:17},{width:14}];K.setup(ws,true,4);
+  // Vendor-wise and employee-wise
+  {const ps=bankPayeeSummary(sid,year,month,bankRowsFor(sid));
+    const wv=K.sheet('By vendor','FF2F5FE0');K.banner(wv,'Vendor-wise bank payments — '+rptShort(salon)+' · '+lbl,'Debits mapped as Vendor Payment (or linked to bills), split parts included.',4);
+    K.head(wv,4,['Vendor','Lines','Bills linked','Paid ₹'],4);let rv2=5;const sv=rv2;
+    ps.vendors.forEach(v=>{K.put(wv,rv2,1,v.name);K.put(wv,rv2,2,v.lines);K.put(wv,rv2,3,v.bills.join(', '));K.put(wv,rv2,4,R2(v.amount),N2);K.style(wv,rv2,4);rv2++;});
+    if(rv2===sv){K.put(wv,rv2,1,'No vendor payments');K.style(wv,rv2,4);rv2++;}
+    K.put(wv,rv2,1,'Total');K.put(wv,rv2,2,{f:'SUM(B'+sv+':B'+(rv2-1)+')',r:0});K.put(wv,rv2,4,{f:'SUM(D'+sv+':D'+(rv2-1)+')',r:0},N2);K.style(wv,rv2,4,'grand');
+    wv.columns=[{width:34},{width:8},{width:36},{width:14}];K.setup(wv,false,4);
+    const we=K.sheet('By employee','FF6A1B9A');K.banner(we,'Employee-wise bank payments — '+rptShort(salon)+' · '+lbl,'Salary, incentive, daily incentive and advances paid from the bank and settled to each employee.',8);
+    K.head(we,4,['Employee','Lines','Salary ₹','Incentive ₹','Daily inc. ₹','Advance ₹','Other ₹','Total ₹'],4);let re=5;const se=re;
+    ps.employees.forEach(e=>{K.put(we,re,1,e.name);K.put(we,re,2,e.lines);['salary','incentive','daily','advance','other'].forEach((k,i)=>K.put(we,re,3+i,R2(e[k]),N2));K.put(we,re,8,{f:'SUM(C'+re+':G'+re+')',r:R2(e.total)},N2);K.style(we,re,8);re++;});
+    if(re===se){K.put(we,re,1,'No employee payments');K.style(we,re,8);re++;}
+    K.put(we,re,1,'Total');['B','C','D','E','F','G','H'].forEach((col,i)=>K.put(we,re,2+i,{f:'SUM('+col+se+':'+col+(re-1)+')',r:0},i?N2:undefined));K.style(we,re,8,'grand');
+    we.columns=[{width:30},{width:8},{width:13},{width:13},{width:13},{width:13},{width:13},{width:14}];K.setup(we,false,4);}
   // Summary by nature
   const natures=[...new Set(rows.map(x=>x.nature||'(no Nature)'))].sort();const bl="'Bank lines'!";
   K.banner(wsS,'Bank mapping — '+rptShort(salon)+' · '+lbl,rows.length+' bank lines. Totals by Nature are SUMIF formulas on the Bank lines sheet.',6);
@@ -377,6 +462,10 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const [cur,setCur]=useState(0);const [showKeys,setShowKeys]=useState(false);const [showRules,setShowRules]=useState(false);const [showJournal,setShowJournal]=useState(true);
   const [rulePrompt,setRulePrompt]=useState(null);const [newRule,setNewRule]=useState(null);const [inclMid,setInclMid]=useState(false);
   const [tallyBusy,setTallyBusy]=useState(false);
+  const [pv,setPv]=useState(null);const [pasteOpen,setPasteOpen]=useState(false);const [pasteText,setPasteText]=useState('');const [pastePlan,setPastePlan]=useState(null);
+  const VIEWS_KEY='salonos_bank_map_views';
+  const [views,setViews]=useState(()=>{try{const v=JSON.parse(localStorage.getItem(VIEWS_KEY)||'[]');return Array.isArray(v)?v:[];}catch(e){return[];}});
+  const saveViews=v=>{setViews(v);try{localStorage.setItem(VIEWS_KEY,JSON.stringify(v));}catch(e){}};
   const [view,setView]=useState(startView||'map');const [revTicked,setRevTicked]=useState(()=>new Set());const [revPending,setRevPending]=useState(true);
   const [narrow,setNarrow]=useState(()=>typeof window!=='undefined'&&window.innerWidth<760);
   const rootRef=useRef(null);
@@ -475,7 +564,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
     if(!s)return false;
     if(s.apply.type!=='patch'&&!silent&&!dupOk(x))return false;
     if(!mapApprovalOk(sid,x,s.label))return false;
-    const err=applyBankSuggestion(sid,x,s,onMap,getRows?getRows():bankRowsFor(sid));if(err){say(err,'warn');return false;}
+    const err=applyBankSuggestion(sid,x,s,onMap,getRows?getRows():bankRowsFor(sid),'✨ ');if(err){say(err,'warn');return false;}
     noteBankFeedback(sid,x,suggestionNature(s),true);refresh(s.apply.type==='link');return true;
   };
   const acceptable=list.filter(x=>sugg[x.id]&&(sugg[x.id].conf==='high'||(inclMid&&sugg[x.id].conf==='mid')));
@@ -612,6 +701,39 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
       h('td',{style:C.td},h('select',{className:'form-control',style:C.sel,value:'',onChange:e=>{const n=e.target.value;if(!n)return;const r=applyBulkTo(g.items,n,'', 'setdt','');refresh();say(r.done+' line(s) of the group set to '+n+(r.needAppr?' · '+r.needAppr+' need approval':'')+'.',r.needAppr?'warn':'ok');}},
         h('option',{value:''},'Set Nature for all '+g.items.length+'…'),BANK_MAP_NATURES.filter(n=>sideOk(g.items[0],n)).map(n=>h('option',{key:n,value:n},n)))));};
 
+  // 👁 bill preview in the link drawer (hover a bill, or tap its number)
+  const fd=v=>toISO(v)?dmyOf(toISO(v)):(v||'');
+  const billPreview=b=>{const att=b.attachment&&typeof b.attachment==='object'?b.attachment:null;const img=att&&/^data:image\//.test(att.dataUrl||'');const gst=(Number(b.cgst)||0)+(Number(b.sgst)||0)+(Number(b.igst)||0);
+    return h('div',{style:{marginTop:8,padding:10,border:'1px solid var(--border2)',borderRadius:8,background:'var(--bg3)',fontSize:12}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}},h('b',null,'👁 Bill '+(b.invoiceNo||'—')+(b.docNature?' · '+b.docNature:'')),h('button',{className:'btn btn-ghost btn-sm',style:{padding:'0 6px'},onClick:()=>setPv(null)},'✕')),
+      h('div',{style:{display:'grid',gridTemplateColumns:'auto 1fr',gap:'2px 12px',marginTop:4}},
+        ...[['Bill date',fd(b.invoiceDate)],['Due date',fd(b.dueDate)],['Category',b.category],['Amount',m(b.amount)],['Taxable',m(b.taxable)],['GST',m(gst)],['Paid so far',m((Number(b.amount)||0)-billBal(b))],['Balance',m(billBal(b))],['Note',b.desc]].filter(([,v])=>v)
+          .flatMap(([k,v])=>[h('span',{key:k+'k',style:{color:'var(--text3)'}},k),h('span',{key:k+'v'},v)])),
+      (b.payments||[]).length>0&&h('div',{style:{marginTop:6,color:'var(--text3)'}},'Payments: '+b.payments.map(q=>fd(q.paidDate)+' '+m(q.paidAmount)+(q.mode?' ('+q.mode+')':'')).join(' · ')),
+      att&&att.dataUrl?(img?h('img',{src:att.dataUrl,alt:'Bill attachment',title:'Click to download',style:{display:'block',marginTop:8,maxWidth:'100%',maxHeight:240,borderRadius:6,border:'1px solid var(--border)',cursor:'zoom-in'},onClick:()=>downloadAttachment(att,b.invoiceNo||'bill')})
+        :h('button',{className:'btn btn-ghost btn-sm',style:{marginTop:8},onClick:()=>downloadAttachment(att,b.invoiceNo||'bill')},'📎 Open attachment'+(att.name?' — '+att.name:'')))
+      :h('div',{style:{marginTop:6,color:'var(--text3)'}},'No attachment on this bill.'));};
+  // 📋 paste from Excel
+  const pasteOk=pastePlan?pastePlan.filter(z=>z.status==='ok'):[];
+  const runPaste=()=>{let ok=0,appr=0;
+    pasteOk.forEach(z=>{if(mapApprovalNeeded(sid,z.x)){appr++;return;}journalBankMapping(sid,rowNow(z.x.id),'Pasted: '+z.patch.nature+(z.patch.vendorOverride?' · '+z.patch.vendorOverride:''));
+      if(onMap)onMap(z.x.id,z.patch);else saveBankLineMapping(sid,z.x.id,z.patch);ok++;});
+    try{logAuditEvent(sid,{entity:'Bank Statement',entityId:'paste',action:'Mapped from pasted rows',summary:ok+' line(s)'});}catch(e){}
+    setPastePlan(null);setPasteText('');setPasteOpen(false);refresh();say(ok+' line'+(ok===1?'':'s')+' mapped from the pasted rows'+(appr?' · '+appr+' need approval — map them one by one':'')+'.',appr?'warn':'ok');};
+  const pastePanel=h('div',{style:C.panel},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},h('b',{style:{fontSize:13}},'📋 Paste from Excel'),h('button',{className:'btn btn-ghost btn-sm',style:{padding:'0 6px'},onClick:()=>{setPasteOpen(false);setPastePlan(null);}},'✕')),
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',margin:'4px 0 6px',lineHeight:1.5}},'Copy rows from Excel with their header row — Narration (or Ref) and Nature, plus Date, Amount, Vendor or Date as per Cradlee if you have them — and paste here. Each row is matched to one unmapped line; nothing changes until you press Map.'),
+    h('textarea',{className:'form-control',rows:5,value:pasteText,onChange:e=>{setPasteText(e.target.value);setPastePlan(null);},placeholder:'Narration\tAmount\tNature\tVendor',style:{fontFamily:'ui-monospace,Consolas,monospace',fontSize:12,width:'100%'}}),
+    h('div',{style:{display:'flex',gap:8,marginTop:6,flexWrap:'wrap'}},
+      h('button',{className:'btn btn-primary btn-sm',onClick:()=>{const pr=parseBankPaste(pasteText);if(pr.error){say(pr.error,'warn');return;}setPastePlan(planBankPaste(sid,list,rowsAll,pr));}},'Check rows'),
+      pasteOk.length>0&&h('button',{className:'btn btn-primary btn-sm',onClick:runPaste},'Map '+pasteOk.length+' line'+(pasteOk.length===1?'':'s')),
+      pastePlan&&h('span',{style:{fontSize:12,color:'var(--text3)',alignSelf:'center'}},pasteOk.length+' of '+pastePlan.length+' rows matched')),
+    pastePlan&&h('div',{style:{maxHeight:220,overflowY:'auto',marginTop:8}},h('table',{style:{width:'100%',fontSize:12}},
+      h('thead',null,h('tr',null,['Pasted row','Bank line','Result'].map((t,i)=>h('th',{key:i,style:{textAlign:'left',fontSize:10.5,color:'var(--text3)'}},t)))),
+      h('tbody',null,pastePlan.map(z=>h('tr',{key:z.i},h('td',null,[z.p.date,z.p.key,z.p.amount?m(z.p.amount):'',z.p.nature,z.p.vendor].filter(Boolean).join(' · ')),
+        h('td',null,z.x?z.x.date+' '+m(z.x.debit||z.x.credit)+' — '+String(z.x.description||'').slice(0,40):'—'),
+        h('td',{style:{color:z.status==='ok'?'var(--green)':'var(--orange)'}},z.status==='ok'?'→ '+z.patch.nature+(z.patch.vendorOverride?' · '+z.patch.vendorOverride:'')+(z.patch.cradleeDate?' · Cradlee '+z.patch.cradleeDate:''):z.status)))))));
+
   // ── drawer (link / pay / advance) ──
   const drawer=(()=>{
     if(splitFor){const sf=splitFor,x=sf.x;const amt=x.debit||x.credit;const tot=sf.parts.reduce((t,p)=>t+(Number(p.amount)||0),0);
@@ -639,11 +761,12 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
           h('div',{style:{fontSize:12.5,fontWeight:600,marginBottom:6}},lp.v.name+' — allocated '+(m(tot)||'₹0')+(Math.abs(tot-x.debit)>0.5?' · left '+m(Math.max(0,x.debit-tot)):' ✓')),
           !bills.length?h('div',{style:{fontSize:12,color:'var(--text3)'}},'No unpaid bills for this vendor — enter the bill below.')
           :h('table',{style:{width:'100%',fontSize:12}},h('thead',null,h('tr',null,['','Bill','Date','Balance','Pay'].map((t,i)=>h('th',{key:i,style:{textAlign:i>=3?'right':'left',fontSize:10.5,color:'var(--text3)'}},t)))),
-            h('tbody',null,bills.map(b=>{const on=alloc[b.id]!=null;return h('tr',{key:b.id},
+            h('tbody',null,bills.map(b=>{const on=alloc[b.id]!=null;return h('tr',{key:b.id,onMouseEnter:()=>setPv(b.id),style:{background:pv===b.id?'rgba(47,95,224,0.06)':undefined}},
               h('td',null,h('input',{type:'checkbox',checked:on,onChange:e=>setAlloc(a=>{const n={...a};if(e.target.checked){const used=Object.values(n).reduce((t,v)=>t+(Number(v)||0),0);n[b.id]=String(Math.max(0,Math.min(billBal(b),Math.round((x.debit-used)*100)/100)));}else delete n[b.id];return n;})})),
-              h('td',null,b.invoiceNo||'—',(b.payments||[]).length>0&&h('div',{style:{fontSize:10.5,color:'var(--text3)'}},'paid '+m((Number(b.amount)||0)-billBal(b))+' of '+m(b.amount)+' · '+(b.payments||[]).length+' payment'+((b.payments||[]).length===1?'':'s'))),
+              h('td',null,h('span',{title:'Hover or tap to preview the bill',style:{cursor:'pointer',borderBottom:'1px dotted var(--text3)'},onClick:()=>setPv(pv===b.id?null:b.id)},b.invoiceNo||'—'),(b.payments||[]).length>0&&h('div',{style:{fontSize:10.5,color:'var(--text3)'}},'paid '+m((Number(b.amount)||0)-billBal(b))+' of '+m(b.amount)+' · '+(b.payments||[]).length+' payment'+((b.payments||[]).length===1?'':'s'))),
               h('td',null,toISO(b.invoiceDate)?dmyOf(toISO(b.invoiceDate)):(b.invoiceDate||'—')),h('td',{style:C.amt},m(billBal(b))),
               h('td',{style:{textAlign:'right'}},h('input',{type:'number',className:'form-control',disabled:!on,value:on?alloc[b.id]:'',onChange:e=>setAlloc(a=>({...a,[b.id]:e.target.value})),style:{width:96,padding:'3px 6px',fontSize:12,textAlign:'right',display:'inline-block'}})));}))),
+          (()=>{const pb=bills.find(b=>b.id===pv);return pb?billPreview(pb):null;})(),
           nb&&h('div',{style:{marginTop:10,padding:10,border:'1px dashed var(--border2)',borderRadius:8}},
             h('div',{style:{fontSize:12.5,fontWeight:600,marginBottom:6}},'New bill — added paid by this debit'),
             h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}},
@@ -711,6 +834,24 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const revDone=mappedRows.filter(r=>bankReviewStatus(r,rv)).length;const revPct=mappedRows.length?Math.round(revDone/mappedRows.length*100):100;
   const excOn=controlOn('bankExceptions',sid);const exc=monthCtx&&excOn?bankMappingExceptions(sid,monthCtx.year,monthCtx.month,rowsAll):[];
   const strictRev=controlOn('mapReview',sid);const me=bmapUser();
+  const payees=monthCtx&&view==='payees'?bankPayeeSummary(sid,monthCtx.year,monthCtx.month,rowsAll):null;
+  const prod=monthCtx&&view==='payees'?bankMappingProductivity(sid,new Date(monthCtx.year,monthCtx.month,1).getTime()-0,Date.now()):[];
+  const miniTable=(heads,rowsT,rightFrom)=>h('div',{style:{border:'1px solid var(--border2)',borderRadius:10,overflow:'auto',maxHeight:'34vh',marginBottom:12}},h('table',{style:{width:'100%',borderCollapse:'separate',borderSpacing:0,fontSize:12.5}},
+    h('thead',null,h('tr',null,heads.map((t,i)=>h('th',{key:i,style:{...C.th,textAlign:i>=rightFrom?'right':'left'}},t)))),h('tbody',null,rowsT)));
+  const payeesPanel=payees&&h('div',null,
+    h('div',{style:{fontSize:13,fontWeight:700,margin:'2px 0 6px'}},'🏢 Vendor-wise bank payments — '+monthLbl),
+    !payees.vendors.length?h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:12}},'No vendor payments this month.')
+    :miniTable(['Vendor','Lines','Bills linked','Paid ₹'],[...payees.vendors.map((v,i)=>h('tr',{key:v.name,style:{background:i%2?'var(--bg2)':undefined}},h('td',{style:C.td},v.name),h('td',{style:{...C.td,textAlign:'right'}},v.lines),h('td',{style:{...C.td,fontSize:11.5,color:'var(--text3)',textAlign:'right'}},v.bills.join(', ')||'—'),h('td',{style:{...C.td,...C.amt}},m(v.amount)))),
+      h('tr',{key:'t'},h('td',{style:{...C.td,fontWeight:700}},'Total'),h('td',{style:{...C.td,textAlign:'right',fontWeight:700}},payees.vendors.reduce((t,v)=>t+v.lines,0)),h('td',{style:C.td}),h('td',{style:{...C.td,...C.amt}},m(payees.vendors.reduce((t,v)=>t+v.amount,0))))],1),
+    h('div',{style:{fontSize:13,fontWeight:700,margin:'2px 0 6px'}},'👥 Employee-wise bank payments — '+monthLbl),
+    !payees.employees.length?h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:12}},'No salary, incentive or advance paid from the bank this month.')
+    :miniTable(['Employee','Lines','Salary','Incentive','Daily inc.','Advance','Other','Total ₹'],[...payees.employees.map((e,i)=>h('tr',{key:e.name,style:{background:i%2?'var(--bg2)':undefined}},h('td',{style:C.td},e.name),h('td',{style:{...C.td,textAlign:'right'}},e.lines),
+        ...['salary','incentive','daily','advance','other','total'].map(k=>h('td',{key:k,style:{...C.td,...C.amt}},m(e[k])||'–')))),
+      h('tr',{key:'t'},h('td',{style:{...C.td,fontWeight:700}},'Total'),h('td',{style:{...C.td,textAlign:'right',fontWeight:700}},payees.employees.reduce((t,e)=>t+e.lines,0)),...['salary','incentive','daily','advance','other','total'].map(k=>h('td',{key:k,style:{...C.td,...C.amt}},m(payees.employees.reduce((t,e)=>t+e[k],0))||'–')))],1),
+    h('div',{style:{fontSize:13,fontWeight:700,margin:'2px 0 6px'}},'📈 Mapping by person — since 1 '+monthLbl),
+    !prod.length?h('div',{style:{fontSize:12,color:'var(--text3)'}},'Nobody has mapped from the mapping pop-up since then.')
+    :miniTable(['Person','Lines mapped','From a suggestion','Automatic','Suggestions changed','Undone','Lines checked','Amount ₹'],prod.map((o,i)=>h('tr',{key:o.user,style:{background:i%2?'var(--bg2)':undefined}},h('td',{style:C.td},o.user),
+      ...['mapped','fromSugg','auto','changed','undone','checked'].map(k=>h('td',{key:k,style:{...C.td,textAlign:'right'}},o[k]||'–')),h('td',{style:{...C.td,...C.amt}},m(o.amount)||'–'))),1));
   const mapText=r=>{const t=[];const sp=bankRowSplits(r);if(sp)t.push('Split: '+sp.map(z=>z.nature+' '+m(z.amount)).join(' + '));else if(r.nature)t.push(r.nature);
     const v=bankLineVendorName(r,allVendors);if(v&&(r.nature==='Vendor Payment'||r.linkedInvoice))t.push(v);
     if(r.linkedInvoice)t.push('bill '+String(r.linkedInvoice).split(',').map(k=>k.split('|').pop()).filter(Boolean).join(', '));
@@ -762,6 +903,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
           h('div',{style:{minWidth:0}},h('div',{className:'modal-title',style:{margin:0}},title),h('div',{style:{fontSize:12.5,color:'var(--text3)',marginTop:3,lineHeight:1.5,maxWidth:760}},intro)),
           h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
             monthCtx&&h('button',{className:'btn btn-ghost btn-sm',title:'Every bank line of the month with its mapping',onClick:async()=>{try{const {wb,filename}=await buildBankMappingSummaryWorkbook(sid,monthCtx.year,monthCtx.month);await xlDownload(wb,filename);}catch(e){say(e.message||String(e),'warn');}}},'⬇ Summary'),
+            list.length>0&&h('button',{className:'btn btn-ghost btn-sm',title:'Map many lines from rows copied out of Excel',onClick:()=>{setPasteOpen(v=>!v);setView('map');}},'📋 Paste'),
             h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowRules(v=>!v)},'⚙ Rules ('+rules.length+')'),
             h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowKeys(v=>!v)},'⌨ Keys'),
             h('button',{className:'btn btn-ghost btn-sm',onClick:onClose,title:'Close'},'✕'))),
@@ -771,7 +913,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
             h('span',{style:{color:'var(--text3)'}},ready.total-ready.mapped?(ready.unDebit+' debit ('+(m(ready.unDebitAmt)||'₹0')+') · '+ready.unCredit+' credit ('+(m(ready.unCreditAmt)||'₹0')+') left'):'Ready to mark Final ✓')),
           h('div',{style:{height:8,borderRadius:6,background:'var(--bg4, rgba(0,0,0,0.08))',overflow:'hidden'}},h('div',{style:{height:'100%',width:ready.pct+'%',background:ready.pct===100?'var(--green)':ready.pct>=80?'#d08a12':'var(--red)',transition:'width .3s'}}))),
         monthCtx&&h('div',{style:{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}},
-          [['map','🧩 Map ('+list.length+')'],['review','🔍 Review ('+revDone+'/'+mappedRows.length+')'],excOn?['exc','⚠ Exceptions ('+exc.length+')']:null].filter(Boolean).map(([k,l])=>h('button',{key:k,className:'btn btn-sm '+(view===k?'btn-primary':'btn-ghost'),onClick:()=>{setView(k);closePanels();}},l)))),
+          [['map','🧩 Map ('+list.length+')'],['review','🔍 Review ('+revDone+'/'+mappedRows.length+')'],excOn?['exc','⚠ Exceptions ('+exc.length+')']:null,['payees','📊 Payees & team']].filter(Boolean).map(([k,l])=>h('button',{key:k,className:'btn btn-sm '+(view===k?'btn-primary':'btn-ghost'),onClick:()=>{setView(k);closePanels();}},l)))),
       // body
       h('div',{style:{flex:1,overflowY:'auto',padding:'10px 18px'}},
         showKeys&&h('div',{style:{...C.panel,fontSize:12,display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(210px,1fr))',gap:'4px 16px'}},
@@ -803,7 +945,8 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
           h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRulePrompt(null)},'Not now')),
         msg&&h('div',{style:{fontSize:12.5,marginBottom:8,padding:'6px 10px',borderRadius:8,background:msg.kind==='warn'?'rgba(224,138,18,0.1)':'rgba(46,125,50,0.1)',color:msg.kind==='warn'?'#9a5b00':'var(--green)',display:'flex',justifyContent:'space-between',gap:8}},
           h('span',null,(msg.kind==='warn'?'⚠ ':'✓ ')+msg.text),h('button',{className:'btn btn-ghost btn-sm',style:{padding:'0 6px'},onClick:()=>setMsg(null)},'✕')),
-        view==='review'&&monthCtx?reviewPanel:view==='exc'&&monthCtx&&excOn?excPanel:!list.length?h('div',{style:{textAlign:'center',padding:'34px 10px'}},
+        pasteOpen&&view==='map'&&list.length>0&&pastePanel,
+        view==='payees'&&payeesPanel?payeesPanel:view==='review'&&monthCtx?reviewPanel:view==='exc'&&monthCtx&&excOn?excPanel:!list.length?h('div',{style:{textAlign:'center',padding:'34px 10px'}},
           h('div',{style:{fontSize:44}},'🎉'),h('div',{style:{fontSize:18,fontWeight:700,marginTop:6}},'Every bank line is mapped'+(monthLbl?' for '+monthLbl:'')),
           h('div',{style:{fontSize:13,color:'var(--text3)',marginTop:4}},'You can mark the month Final and make its Collection Reco now.'),
           h('div',{style:{display:'flex',gap:8,justifyContent:'center',marginTop:14,flexWrap:'wrap'}},
@@ -820,6 +963,12 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
             h('select',{className:'form-control',value:missing,onChange:e=>setMissing(e.target.value),style:{width:190,padding:'5px 8px',fontSize:12}},
               [['All','All lines'],['Suggested','With a suggestion'],['No Nature','Missing: Nature'],['No vendor','Missing: vendor'],['No Date as per Cradlee','Missing: Cradlee date'],['Duplicate','Possible duplicates']].map(([v,l])=>h('option',{key:v,value:v},l))),
             h('label',{style:{fontSize:12,display:'flex',gap:5,alignItems:'center',marginLeft:4}},h('input',{type:'checkbox',checked:grouped,onChange:e=>setGrouped(e.target.checked)}),'Group look-alikes'),
+            h('select',{className:'form-control',value:'',title:'Saved views of these filters (kept on this device)',style:{width:140,padding:'5px 8px',fontSize:12},onChange:e=>{const v=e.target.value;
+                if(v==='__save'){const n=window.prompt('Name this view — the side, search, amount range, “missing” filter and grouping are saved:','');if(!n||!n.trim())return;saveViews([...views.filter(z=>z.name!==n.trim()),{name:n.trim(),side,q,minA,maxA,missing,grouped}]);say('View “'+n.trim()+'” saved.');return;}
+                if(v.startsWith('del:')){const n=v.slice(4);if(window.confirm('Delete the view “'+n+'”?'))saveViews(views.filter(z=>z.name!==n));return;}
+                const z=views.find(y=>y.name===v);if(z){setSide(z.side||'All');setQ(z.q||'');setMinA(z.minA||'');setMaxA(z.maxA||'');setMissing(z.missing||'All');setGrouped(!!z.grouped);setCur(0);}}},
+              h('option',{value:''},'★ Views'+(views.length?' ('+views.length+')':'')),views.map(z=>h('option',{key:z.name,value:z.name},z.name)),h('option',{value:'__save'},'+ Save current view…'),
+              views.length>0&&h('optgroup',{label:'Delete a view'},views.map(z=>h('option',{key:'d'+z.name,value:'del:'+z.name},'✕ '+z.name)))),
             h('span',{style:{fontSize:11.5,color:'var(--text3)',marginLeft:'auto'}},'Debit '+(m(sum(dr,'debit'))||'₹0')+' · Credit '+(m(sum(cr,'credit'))||'₹0'))),
           // suggestions banner
           Object.keys(sugg).length>0&&h('div',{style:{...C.panel,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',padding:'8px 12px'}},

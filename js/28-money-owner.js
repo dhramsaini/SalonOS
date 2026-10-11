@@ -96,7 +96,38 @@ function BankRecoBoard({accessibleSalons,onOpenOutletTab}){
         h('td',{style:{textAlign:'right',color:r.stale?'var(--red)':''}},r.stale?r.stale+' · '+moMoney(r.staleAmt):'—'),
         h('td',{style:{textAlign:'right',color:!r.last||r.last<lastMonthEnd?'var(--orange)':''}},r.last?moDmy(r.last):'Never imported'),
         h('td',null,onOpenOutletTab&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>onOpenOutletTab(s,'bank-statement')},'Open')))))))),
-    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Orange date = no statement imported up to the end of last month.'));
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Orange date = no statement imported up to the end of last month.'),
+    h(BankMappingAgeingBoard,{accessibleSalons,onOpenOutletTab,cal}));
+}
+// Unmapped bank lines by age across outlets + mapping productivity (Controls → bankAgeingBoard, outlet-wise)
+function BankMappingAgeingBoard({accessibleSalons,onOpenOutletTab,cal}){
+  const h=React.createElement;
+  const outs=(accessibleSalons||[]).filter(s=>s&&s.id!=null&&s.status!=='Inactive'&&controlOn('bankAgeingBoard',s.id));
+  if(!outs.length)return null;
+  const list=outs.map(s=>({s,a:bankUnmappedAgeing(s.id),rv:bankReviewProgress(s.id,cal.year,cal.month)}));
+  const from=new Date(cal.year,cal.month,1).getTime(),to=new Date(cal.year,cal.month+1,1).getTime()-1;
+  const prod={};outs.forEach(s=>bankMappingProductivity(s.id,from,to).forEach(x=>{const k=x.user;const z=prod[k]=prod[k]||{user:k,mapped:0,fromSugg:0,auto:0,changed:0,undone:0,checked:0,outlets:new Set()};
+    ['mapped','fromSugg','auto','changed','undone','checked'].forEach(f=>z[f]+=x[f]||0);if(x.mapped||x.checked)z.outlets.add(rptShort(s));}));
+  const P=Object.values(prod).sort((a,b)=>b.mapped-a.mapped);
+  const cell=(n,amt,col)=>h('td',{style:{textAlign:'right',color:n?col:'var(--text3)',fontWeight:n?600:400}},n?n+' · '+moMoney(amt):'—');
+  const tot=k=>list.reduce((t,x)=>t+x.a[k].n,0);
+  return h('div',{style:{marginTop:18}},
+    h('div',{className:'page-title',style:{fontSize:18}},'Unmapped bank lines by age'),
+    h('div',{className:'page-sub',style:{marginBottom:8}},'Every month, counted from the bank date to today. Lines need a Nature (vendor payments a vendor, card / UPI settlements a Date as per Cradlee). “Checked” is the second-person review for '+RPT_MONTHS[cal.month]+' '+cal.year+'.'),
+    h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,
+      h('thead',null,h('tr',null,['Outlet','0–7 days','8–30 days','Over 30 days','Oldest','Checked',''].map((t,i)=>h('th',{key:i,style:i&&i<6?{textAlign:'right'}:null},t)))),
+      h('tbody',null,list.map(({s,a,rv})=>h('tr',{key:s.id},h('td',{style:{fontWeight:600}},rptShort(s)),cell(a.a.n,a.a.amt,'var(--text)'),cell(a.b.n,a.b.amt,'var(--orange)'),cell(a.c.n,a.c.amt,'var(--red)'),
+        h('td',{style:{textAlign:'right',color:'var(--text3)'}},a.oldest?moDmy(a.oldest):'—'),
+        h('td',{style:{textAlign:'right',color:rv.total&&rv.pct<100?'var(--orange)':'var(--green)'}},rv.total?rv.done+'/'+rv.total+' ('+rv.pct+'%)':'—'),
+        h('td',null,onOpenOutletTab&&(a.a.n+a.b.n+a.c.n)>0&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>onOpenOutletTab(s,'bank-statement')},'Map')))),
+        list.length>1&&h('tr',{key:'tot',style:{fontWeight:700}},h('td',null,'All outlets'),...['a','b','c'].map(k=>h('td',{key:k,style:{textAlign:'right'}},tot(k)||'—')),h('td'),h('td'),h('td')))))),
+    h('div',{className:'page-title',style:{fontSize:18,marginTop:18}},'Mapping by person — '+RPT_MONTHS[cal.month]+' '+cal.year),
+    h('div',{className:'page-sub',style:{marginBottom:8}},'From the mapping pop-up: lines mapped, how many came from a suggestion or were mapped automatically on import, suggestions changed by hand, undone, and lines checked in review.'),
+    !P.length?h('div',{className:'card',style:{fontSize:12.5,color:'var(--text3)'}},'No mapping recorded for this month yet.')
+    :h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,
+      h('thead',null,h('tr',null,['Person','Lines mapped','From a suggestion','Automatic','Suggestions changed','Undone','Lines checked','Outlets'].map((t,i)=>h('th',{key:i,style:i&&i<7?{textAlign:'right'}:null},t)))),
+      h('tbody',null,P.map(x=>h('tr',{key:x.user},h('td',{style:{fontWeight:600}},x.user),...['mapped','fromSugg','auto','changed','undone','checked'].map(k=>h('td',{key:k,style:{textAlign:'right'}},x[k]||'—')),
+        h('td',{style:{fontSize:12,color:'var(--text3)'}},[...x.outlets].join(', ')))))))));
 }
 function BankStaleStrip({salonId}){
   const h=React.createElement;if(!salonId||!controlOn('bankRecoAlert',salonId))return null;

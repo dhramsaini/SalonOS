@@ -1172,6 +1172,37 @@
           [kinds,ex2,exOff,res.done+'/'+res.own,pr1.total+':'+pr1.done,pr2.done,lk,mgr,sa,after],
           ['Above usual:V3,Not on rolls:S1,Paid twice:V1,Paid twice:V2',3,0,'1/1','5:1',0,[true,false,false],false,true,false]);
       }catch(err){results.push({name:'Review, exceptions and lock',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=922;const U0=sessionStorage.getItem('salonos_user');sessionStorage.setItem('salonos_user',JSON.stringify({name:'Asha',role:'Manager'}));saveControls({});
+        const dmy=n=>{const d=new Date();d.setDate(d.getDate()-n);return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();};
+        const rows=[{id:'A1',transactionDate:dmy(2),description:'X1',debit:100,nature:''},{id:'A2',transactionDate:dmy(15),description:'X2',credit:300,nature:''},{id:'A3',transactionDate:dmy(45),description:'X3',debit:50,nature:''},{id:'A4',transactionDate:dmy(3),description:'X4',debit:70,nature:'Rent'},
+          {id:'P1',transactionDate:'05/10/2026',description:'NEFT ACME',debit:5000,nature:'Vendor Payment',vendorOverride:'Acme'},
+          {id:'P2',transactionDate:'06/10/2026',description:'NEFT LANDLORD',debit:10000,nature:'Split',splits:[{nature:'Rent',amount:6000},{nature:'Vendor Payment',amount:4000,vendorOverride:'Acme'}]},
+          {id:'P3',transactionDate:'07/10/2026',description:'SAL RAVI',debit:12000,nature:'Salary',linkedEmployeePay:[{employeeId:'E1',employeeName:'Ravi',salary:10000,incentive:2000,dailyIncentive:0}]},
+          {id:'P4',transactionDate:'08/10/2026',description:'ADV RAVI',debit:3000,nature:'Advance Salary',linkedAdvance:[{advanceId:'AD1',employeeId:'E1',employeeName:'Ravi',amount:3000}]}];
+        safeLocalSet('salonos_bank_statement_rows_outlet_'+S,JSON.stringify(rows));safeLocalSet('salonos_bank_map_journal_outlet_'+S,'[]');safeLocalSet('salonos_bank_map_review_outlet_'+S,'{}');safeLocalSet('salonos_bank_sugg_users_outlet_'+S,'{}');
+        const ag=bankUnmappedAgeing(S);const ps=bankPayeeSummary(S,2026,9);
+        journalBankMapping(S,rows[4],'✨ Nature: Vendor Payment');journalBankMapping(S,rows[5],'Auto: Nature: Split');noteBankFeedback(S,{side:'Debit',description:'NEFT ACME'},'Rent',false);
+        setBankReviewed(S,[rows[6]],true);const pr=bankMappingProductivity(S,Date.now()-864e5);const a=pr.find(x=>x.user==='Asha')||{};
+        let sheets='';try{const r=await buildBankMappingSummaryWorkbook(S,2026,9);sheets=r.wb.worksheets.map(w=>w.name).join(',');}catch(e){sheets='ERR '+e.message;}
+        if(U0)sessionStorage.setItem('salonos_user',U0);else sessionStorage.removeItem('salonos_user');
+        eq('Bank reports: unmapped ageing, vendor- and employee-wise payments (split parts included), mapping by person, workbook sheets',
+          [[ag.a.n,ag.b.n,ag.c.n,ag.b.amt],ps.vendors.map(v=>v.name+':'+v.amount+':'+v.lines).join(','),ps.employees.map(e=>e.name+':'+e.salary+'/'+e.incentive+'/'+e.advance+'='+e.total).join(','),[a.mapped,a.fromSugg,a.auto,a.changed,a.checked],/By vendor,By employee/.test(sheets)],
+          [[1,1,1,300],'Acme:9000:2','Ravi:10000/2000/3000=15000',[2,1,1,1,1],true]);
+      }catch(err){results.push({name:'Bank reports',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=923;const T=String.fromCharCode(9),NL=String.fromCharCode(10);
+        saveVendors([{id:'V1',name:'Acme Traders',status:'Active'}],S);
+        const rows=[{id:'Q1',transactionDate:'05/10/2026',description:'NEFT ACME TRADERS INV 77',debit:5000,nature:'',refNo:'N123'},{id:'Q2',transactionDate:'06/10/2026',description:'SMS CHARGES',debit:59,nature:''},
+          {id:'Q3',transactionDate:'07/10/2026',description:'SMS CHARGES',debit:59,nature:''},{id:'Q4',transactionDate:'08/10/2026',description:'CARD PMT MID SETDT-07102026',credit:900,nature:''}];
+        safeLocalSet('salonos_bank_statement_rows_outlet_'+S,JSON.stringify(rows));
+        const txt=['Ref / Narration','Date','Amount','Nature','Vendor'].join(T)+NL+['N123','','5000','vendor payment','Acme Traders'].join(T)+NL+['sms','06/10/2026','59','Bank Charges',''].join(T)+NL+['sms','','59','Bank Charges',''].join(T)+NL+['card pmt','','900','Card Settlement',''].join(T)+NL+['xyz','','1','Rent',''].join(T)+NL+['sms','','','Shopping',''].join(T);
+        const pr=parseBankPaste(txt);const pl=planBankPaste(S,unmappedBankLinesFor(S,2026,9),bankRowsFor(S),pr);
+        const two=parseBankPaste('SMS CHARGES'+T+'Bank Charges');const bad=parseBankPaste('a'+T+'b'+T+'c');
+        eq('Paste from Excel: header columns found, each row matched to one unmapped line, vendor and Cradlee date set, unknown Nature / no match reported',
+          [pr.rows.length,pl.map(z=>z.status==='ok'?z.x.id+'>'+z.patch.nature+(z.patch.vendorOverride?':'+z.patch.vendorOverride:'')+(z.patch.cradleeDate?':'+z.patch.cradleeDate:''):z.status.slice(0,12)),two.rows.length+':'+two.rows[0].nature,!!bad.error],
+          [6,['Q1>Vendor Payment:Acme Traders','Q2>Bank Charges','Q3>Bank Charges','Q4>Card Settlement:07/10/2026','No unmapped ','Nature “Shop'],'1:Bank Charges',true]);
+      }catch(err){results.push({name:'Paste from Excel',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
