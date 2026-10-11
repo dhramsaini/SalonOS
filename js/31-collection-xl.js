@@ -177,12 +177,39 @@ function saveBankLineMapping(sid,id,patch){
 }
 const BANK_MAP_NATURES=['Collection','Cash Deposit','Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','EazyDiner Settlement','Ownly Settlement','Eatby Minutes Settlement','Bank Charges','Interest','Vendor Payment','Salary','Incentive','Daily Incentive','Advance Salary','TDS','GST','PF Payment','ESIC Payment','PT Payment','Electricity Expenses','Drycleaning Expenses','Telephone & Internet Expenses','DG Rent','Royalty','Rent','Tax Payment','Transfer','Refund','Other'];
 const BANK_CREDIT_NATURES=new Set(['Collection','Cash Deposit','Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','EazyDiner Settlement','Ownly Settlement','Eatby Minutes Settlement','Interest','Transfer','Refund','Other']);
+// Links a bank debit to vendor bills the same way Bank Statement's 🔗 Link does: a payment on each
+// bill (linkId bank-<row id>) and the bill keys on the bank line. allocations = [{id, amount}].
+// Returns '' when done, else the reason it was not linked.
+function linkBankLineToBills(sid,row,vendor,allocations,onMap){
+  const al=(allocations||[]).filter(a=>Number(a.amount)>0);
+  if(!al.length)return'Enter an amount for at least one bill.';
+  const bal=inv=>(Number(inv.amount)||0)-(inv.payments||[]).reduce((t,x)=>t+(Number(x.paidAmount)||0),0);
+  const tot=al.reduce((t,a)=>t+Number(a.amount),0),deb=Number(row.debit)||0;
+  if(tot>deb+1)return'₹'+Math.round(tot).toLocaleString('en-IN')+' is more than this bank debit (₹'+deb.toLocaleString('en-IN')+').';
+  const fresh=loadVendorInvoices(sid)||[];
+  const over=fresh.find(inv=>{const a=al.find(x=>x.id===inv.id);return a&&Number(a.amount)>bal(inv)+1;});
+  if(over)return'Bill '+(over.invoiceNo||over.id)+' would get more than its balance (₹'+Math.round(bal(over)).toLocaleString('en-IN')+').';
+  const blocked=fresh.filter(inv=>al.some(a=>a.id===inv.id)&&invoiceNeedsApproval(inv,sid));
+  if(blocked.length)return'Not approved yet: '+blocked.map(i=>i.invoiceNo||i.id).join(', ')+' — a Super Admin has to approve these bills first.';
+  const linkId='bank-'+row.id,paidDate=toISO(row.transactionDate);
+  for(const inv of fresh){const a=al.find(x=>x.id===inv.id);
+    if(a&&!confirmNoDuplicatePayment(inv,{...inv,payments:[...(inv.payments||[]),{id:'__new',paidAmount:Number(a.amount),paidDate,mode:'Bank Transfer'}]}))return'Cancelled.';}
+  const keys=[];
+  const updated=fresh.map(inv=>{const a=al.find(x=>x.id===inv.id);if(!a)return inv;keys.push(invoiceKeyFor(inv));
+    return{...inv,payments:[...(inv.payments||[]),{paidAmount:Number(a.amount),paidDate,mode:'Bank Transfer',ref:row.refNo||'',note:'Auto-linked from Bank Statement'+(al.length>1?' (split payment)':''),linkId}]};});
+  saveVendorInvoices(updated,sid);
+  const patch={linkedInvoice:keys.join(','),nature:'Vendor Payment',vendorOverride:vendor.name};
+  if(onMap)onMap(row.id,patch);else saveBankLineMapping(sid,row.id,patch);
+  try{logAuditEvent(sid,{entity:'Bank Statement',entityId:String(row.id),action:'Linked to bills',summary:'₹'+Math.round(tot).toLocaleString('en-IN')+' of '+(row.transactionDate||'')+' linked to '+vendor.name+' — '+al.length+' bill(s)'});}catch(e){}
+  return'';
+}
 // Pop-up listing unmapped lines, each mappable in place: Nature, the vendor for a vendor payment,
 // the Date as per Cradlee for a card / UPI settlement. getList() is re-read after every change.
 //   onMap(id, patch)  — how to save (Bank Statement passes its own; default saves to storage)
 //   onMapped()        — tells the opening screen to refresh
-function UnmappedLinesPopup({sid,getList,title,intro,onClose,onNavTab,onMap,onMapped}){
+function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,onMap,onMapped,onInvoicesChanged}){
   const h=React.createElement;const [,setTick]=useState(0);const [side,setSide]=useState('All');
+  const [linkFor,setLinkFor]=useState(null);const [alloc,setAlloc]=useState({});const [linkErr,setLinkErr]=useState('');
   const list=getList();const vendors=(loadVendors(sid)||[]).filter(v=>v&&v.status!=='Inactive').sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   const m=n=>n?'₹'+Number(n).toLocaleString('en-IN',{maximumFractionDigits:2}):'';
   const dr=list.filter(x=>x.side==='Debit'),cr=list.filter(x=>x.side==='Credit');const sum=(a,k)=>a.reduce((t,x)=>t+x[k],0);
@@ -193,6 +220,18 @@ function UnmappedLinesPopup({sid,getList,title,intro,onClose,onNavTab,onMap,onMa
     setTick(t=>t+1);if(onMapped)onMapped();
   };
   const dmyOf=iso=>iso?iso.split('-').reverse().join('/'):'';
+  const allVendors=loadVendors(sid)||[];
+  const vendorOfLine=x=>x.vendorOverride&&x.vendorOverride!=='__none__'?allVendors.find(v=>v.name===x.vendorOverride)||null:(x.vendorOverride==='__none__'?null:findVendorMatch(x.description,allVendors));
+  const billBal=inv=>Math.round(((Number(inv.amount)||0)-(inv.payments||[]).reduce((t,q)=>t+(Number(q.paidAmount)||0),0))*100)/100;
+  const openBillsOf=v=>(loadVendorInvoices(sid)||[]).filter(inv=>inv&&String(inv.vendorId)===String(v.id)&&inv.docNature!=='Performa Invoice'&&billBal(inv)>0.5)
+    .sort((a,b)=>String(toISO(a.invoiceDate)||'').localeCompare(String(toISO(b.invoiceDate)||'')));
+  const startLink=x=>{const v=vendorOfLine(x);if(!v){setLinkErr('');setLinkFor({x,v:null});return;}
+    const bills=openBillsOf(v);const a={};allocateOldestFirst(bills.map(b=>({id:b.id,balance:billBal(b)})),x.debit).forEach(r=>{if(r.alloc>0)a[r.id]=String(r.alloc);});
+    setAlloc(a);setLinkErr('');setLinkFor({x,v});};
+  const doLink=()=>{const {x,v}=linkFor;const row=(getRows?getRows():bankRowsFor(sid)).find(r=>r.id===x.id)||{id:x.id,debit:x.debit,transactionDate:x.date};
+    const err=linkBankLineToBills(sid,row,v,Object.keys(alloc).map(id=>({id,amount:Number(alloc[id])||0})),onMap);
+    if(err){setLinkErr(err);return;}
+    setLinkFor(null);setTick(t=>t+1);if(onInvoicesChanged)onInvoicesChanged();if(onMapped)onMapped();};
   const sel={padding:'5px 6px',fontSize:11.5,minWidth:150};
   return h('div',{className:'modal-overlay',style:{zIndex:3000},onClick:onClose},h('div',{className:'modal',style:{width:1000,maxWidth:'97vw',maxHeight:'90vh',overflowY:'auto'},onClick:e=>e.stopPropagation()},
     h('div',{className:'modal-title'},title),
@@ -203,18 +242,33 @@ function UnmappedLinesPopup({sid,getList,title,intro,onClose,onNavTab,onMap,onMa
       h('div',{className:'table-wrap'},h('table',null,
         h('thead',null,h('tr',null,['Date','Side','Description','Amount','Map it','What is missing'].map((t,i)=>h('th',{key:i,style:i===3?{textAlign:'right'}:null},t)))),
         h('tbody',null,shown.slice(0,300).map(x=>{const natList=BANK_MAP_NATURES.filter(n=>x.side==='Credit'?BANK_CREDIT_NATURES.has(n)||n===x.nature:!/Settlement$|^Collection$|^Interest$/.test(n)||n===x.nature);
-          return h('tr',{key:x.id},
+          const lp=linkFor&&linkFor.x.id===x.id?linkFor:null;
+          return h(React.Fragment,{key:x.id},h('tr',null,
             h('td',{style:{whiteSpace:'nowrap'}},x.date),h('td',{style:{color:x.side==='Debit'?'var(--orange)':'var(--green)',fontWeight:600}},x.side),
             h('td',{style:{fontSize:12,maxWidth:320}},x.description),h('td',{style:{textAlign:'right',fontWeight:600,whiteSpace:'nowrap'}},m(x.debit||x.credit)),
             h('td',null,h('div',{style:{display:'flex',flexDirection:'column',gap:4}},
               h('select',{className:'form-control',style:sel,value:x.nature,onChange:e=>map(x,{nature:e.target.value,aiTagged:false})},h('option',{value:''},'Select Nature'),natList.map(n=>h('option',{key:n,value:n},n))),
               x.side==='Debit'&&x.nature==='Vendor Payment'&&h('select',{className:'form-control',style:sel,value:x.vendorOverride&&x.vendorOverride!=='__none__'?x.vendorOverride:'',onChange:e=>e.target.value&&map(x,{vendorOverride:e.target.value})},
                 h('option',{value:''},'Select vendor'),vendors.map(v=>h('option',{key:v.id,value:v.name},v.name))),
+              x.side==='Debit'&&(!x.nature||x.nature==='Vendor Payment')&&h('button',{className:'btn btn-ghost btn-sm',style:{alignSelf:'flex-start'},onClick:()=>linkFor&&linkFor.x.id===x.id?setLinkFor(null):startLink(x)},linkFor&&linkFor.x.id===x.id?'Close bills':'🔗 Link bill'),
               x.side==='Credit'&&(x.nature==='Card Settlement'||x.nature==='UPI Settlement')&&h('input',{type:'date',className:'form-control',style:sel,value:toISO(x.cradleeDate)||'',title:'Date as per Cradlee — the sale date this settlement belongs to',
                 onChange:e=>e.target.value&&map(x,{cradleeDate:dmyOf(e.target.value)})}))),
-            h('td',{style:{color:'var(--red)',fontWeight:600,whiteSpace:'nowrap'}},x.problem));})))),
+            h('td',{style:{color:'var(--red)',fontWeight:600,whiteSpace:'nowrap'}},x.problem)),
+            lp&&h('tr',null,h('td',{colSpan:6,style:{background:'var(--bg3)',padding:'10px 12px'}},
+              !lp.v?h('div',{style:{fontSize:12.5}},'Choose the vendor first: set Nature to Vendor Payment and pick the vendor, then 🔗 Link bill.')
+              :(()=>{const bills=openBillsOf(lp.v);const tot=Object.values(alloc).reduce((t,v)=>t+(Number(v)||0),0);
+                return h('div',null,
+                  h('div',{style:{fontSize:12.5,fontWeight:600,marginBottom:6}},'Open bills of '+lp.v.name+' — bank debit '+m(x.debit)+' · allocated '+(m(tot)||'₹0')+(Math.abs(tot-x.debit)>0.5?' · left '+m(Math.max(0,x.debit-tot)):'')),
+                  !bills.length?h('div',{style:{fontSize:12,color:'var(--text3)'}},'No unpaid bills for this vendor. Add the bill in Vendors (or Bank Statement → 🔗 Link → add invoice), then link.')
+                  :h('table',{style:{width:'100%',fontSize:12}},h('thead',null,h('tr',null,['','Bill no.','Bill date','Amount','Balance','Pay from this debit'].map((t,i)=>h('th',{key:i,style:i>=3?{textAlign:'right'}:null},t)))),
+                    h('tbody',null,bills.map(b=>{const on=alloc[b.id]!=null;return h('tr',{key:b.id},
+                      h('td',null,h('input',{type:'checkbox',checked:on,onChange:e=>setAlloc(a=>{const n={...a};if(e.target.checked){const used=Object.entries(n).reduce((t,[k,v])=>t+(Number(v)||0),0);n[b.id]=String(Math.max(0,Math.min(billBal(b),Math.round((x.debit-used)*100)/100)));}else delete n[b.id];return n;})})),
+                      h('td',null,b.invoiceNo||'—'),h('td',null,toISO(b.invoiceDate)?toISO(b.invoiceDate).split('-').reverse().join('/'):(b.invoiceDate||'—')),h('td',{style:{textAlign:'right'}},m(b.amount)),h('td',{style:{textAlign:'right'}},m(billBal(b))),
+                      h('td',{style:{textAlign:'right'}},h('input',{type:'number',className:'form-control',disabled:!on,value:on?alloc[b.id]:'',onChange:e=>setAlloc(a=>({...a,[b.id]:e.target.value})),style:{width:110,padding:'3px 6px',fontSize:12,textAlign:'right',display:'inline-block'}})));}))),
+                  linkErr&&h('div',{style:{color:'var(--red)',fontSize:12,marginTop:6}},linkErr),
+                  bills.length>0&&h('div',{style:{display:'flex',gap:8,marginTop:8}},h('button',{className:'btn btn-primary btn-sm',onClick:doLink},'Link '+(m(tot)||'')),h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setLinkFor(null)},'Cancel')));})())));})))),
       shown.length>300&&h('div',{style:{fontSize:12,color:'var(--text3)',marginTop:6}},'…and '+(shown.length-300)+' more.')),
-    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'Each change saves at once and the line leaves this list when it is mapped. Linking a payment to a specific bill is done in Bank Statement. These rules can be switched off in Master Settings → 🎛 Controls.'),
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'Each change saves at once and the line leaves this list when it is mapped. 🔗 Link bill records the payment on the vendor’s bills, the same as Bank Statement’s Link. These rules can be switched off in Master Settings → 🎛 Controls.'),
     h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:onClose},list.length?'Close':'Done'),onNavTab&&h('button',{className:'btn btn-primary',onClick:()=>{onClose();onNavTab('bank-statement');}},'Go to Bank Statement →'))));
 }
 // Collection Reco: credits only.
@@ -238,7 +292,7 @@ function monthFinalMappingOk(sid,year,month,onNavTab){
   return false;
 }
 // Bank Statement strip: months with unmapped lines, each opens the list (mapped through the screen's own rows).
-function UnmappedMonthsStrip({salonId,rows,onMap}){
+function UnmappedMonthsStrip({salonId,rows,onMap,onInvoicesChanged}){
   const h=React.createElement;const [open,setOpen]=useState(null);
   if(salonId==null)return null;
   const all=rows||bankRowsFor(salonId);
@@ -248,7 +302,7 @@ function UnmappedMonthsStrip({salonId,rows,onMap}){
   return h('div',{style:{background:'rgba(224,165,48,0.1)',border:'1px solid rgba(224,165,48,0.4)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
     h('span',null,items.length?'🧩 Unmapped bank lines:':'✓ All bank lines mapped'),
     items.map(x=>{const dr=x.list.filter(l=>l.side==='Debit').length;return h('button',{key:x.ym,className:'btn btn-ghost btn-sm',onClick:()=>setOpen(x)},RPT_MONTHS[x.m].slice(0,3)+' '+x.y+' — '+dr+' debit, '+(x.list.length-dr)+' credit');}),
-    open&&h(UnmappedLinesPopup,{sid:salonId,getList:()=>unmappedBankLinesFor(salonId,open.y,open.m,all),onMap,
+    open&&h(UnmappedLinesPopup,{sid:salonId,getList:()=>unmappedBankLinesFor(salonId,open.y,open.m,all),getRows:()=>all,onMap,onInvoicesChanged,
       title:'Unmapped bank lines — '+RPT_MONTHS[open.m]+' '+open.y,
       intro:'Map each line below — a Nature, the vendor for a vendor payment, the Date as per Cradlee for a card / UPI settlement. The month cannot be marked Final, nor its Collection Reco made, until they are mapped.',
       onClose:()=>setOpen(null),onNavTab:null}));

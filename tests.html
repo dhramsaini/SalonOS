@@ -1001,6 +1001,16 @@
         const b=unmappedBankLinesFor(908,2026,8).map(x=>x.id+':'+x.problem);saveBankLineMapping(908,2,{cradleeDate:'05/09/2026'});
         eq('Map from the list: each saved mapping clears the line; settlement still needs its Cradlee date',[a,b,unmappedBankLinesFor(908,2026,8).length],[2,['2:No Date as per Cradlee'],0]);
       }catch(err){results.push({name:'Map from list',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        safeLocalSet('salonos_vendors_outlet_909',JSON.stringify([{id:'V1',name:'Link Vendor'}]));
+        safeLocalSet('salonos_vendor_invoices_outlet_909',JSON.stringify([{id:'B1',vendorId:'V1',invoiceNo:'B-1',invoiceDate:'01/09/2026',amount:1000,payments:[]},{id:'B2',vendorId:'V1',invoiceNo:'B-2',invoiceDate:'02/09/2026',amount:800,payments:[]}]));
+        safeLocalSet('salonos_bank_statement_rows_outlet_909',JSON.stringify([{id:'R1',transactionDate:'10/09/2026',description:'NEFT LINK VENDOR',debit:1500,nature:''}]));
+        const A=window.confirm;window.confirm=()=>true;
+        const tooMuch=linkBankLineToBills(909,{id:'R1',debit:1500,transactionDate:'10/09/2026'},{name:'Link Vendor'},[{id:'B1',amount:1000},{id:'B2',amount:800}],null);
+        const ok=linkBankLineToBills(909,{id:'R1',debit:1500,transactionDate:'10/09/2026'},{name:'Link Vendor'},[{id:'B1',amount:1000},{id:'B2',amount:500}],null);window.confirm=A;
+        const inv=loadVendorInvoices(909),row=JSON.parse(cachedLocalGet('salonos_bank_statement_rows_outlet_909'))[0];
+        eq('Link bill from the list: over the debit refused; payments on bills, bank line linked and mapped',[/more than this bank debit/.test(tooMuch),ok,inv.map(i=>i.payments.map(p=>p.paidAmount+'|'+p.linkId).join()),row.nature,row.vendorOverride,!!row.linkedInvoice,unmappedBankLinesFor(909,2026,8).length],[true,'',['1000|bank-R1','500|bank-R1'],'Vendor Payment','Link Vendor',true,0]);
+      }catch(err){results.push({name:'Link bill from list',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
