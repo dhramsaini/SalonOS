@@ -296,6 +296,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const [linkFor,setLinkFor]=useState(null);const [alloc,setAlloc]=useState({});const [linkErr,setLinkErr]=useState('');const [nb,setNb]=useState(null);
   const [payFor,setPayFor]=useState(null);const [payErr,setPayErr]=useState('');
   const [advFor,setAdvFor]=useState(null);const [advErr,setAdvErr]=useState('');
+  const [splitFor,setSplitFor]=useState(null);const [splitErr,setSplitErr]=useState('');
   const [ticked,setTicked]=useState(()=>new Set());const [linkPlan,setLinkPlan]=useState(null);const [payPlan,setPayPlan]=useState(null);const [advPlan,setAdvPlan]=useState(null);
   const [advDeduct,setAdvDeduct]=useState('Salary');const [advOver,setAdvOver]=useState(false);const [payYM,setPayYM]=useState('auto');const [splitOld,setSplitOld]=useState(false);
   const [bulk,setBulk]=useState({nature:'',vendor:'',dateMode:'setdt',date:''});const [msg,setMsg]=useState(null); // {text, kind:'ok'|'warn'}
@@ -342,7 +343,19 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const billBal=inv=>Math.round(((Number(inv.amount)||0)-(inv.payments||[]).reduce((t,q2)=>t+(Number(q2.paidAmount)||0),0))*100)/100;
   const vendorOfLine=x=>x.vendorOverride&&x.vendorOverride!=='__none__'?allVendors.find(v=>v.name===x.vendorOverride)||null:(x.vendorOverride==='__none__'?null:findVendorMatch(x.description,allVendors));
   const openBillsOf=v=>(loadVendorInvoices(sid)||[]).filter(inv=>inv&&String(inv.vendorId)===String(v.id)&&inv.docNature!=='Performa Invoice'&&billBal(inv)>0.5).sort((a,b)=>String(toISO(a.invoiceDate)||'').localeCompare(String(toISO(b.invoiceDate)||'')));
-  const closePanels=()=>{setLinkFor(null);setPayFor(null);setAdvFor(null);setNb(null);};
+  const closePanels=()=>{setLinkFor(null);setPayFor(null);setAdvFor(null);setNb(null);setSplitFor(null);};
+  // ✂ Split: one bank line across several natures (no settlements — those need their own Cradlee date)
+  const startSplit=x=>{closePanels();const amt=x.debit||x.credit;const r0=rowNow(x.id)||{};
+    const parts=Array.isArray(r0.splits)&&r0.splits.length?r0.splits.map(p=>({...p,amount:String(p.amount)})):[{nature:x.nature&&x.nature!=='Split'?x.nature:'',amount:String(amt),vendorOverride:''},{nature:'',amount:'',vendorOverride:''}];
+    setSplitErr('');setSplitFor({x,parts});};
+  const splitNatures=x=>BANK_MAP_NATURES.filter(n=>sideOk(x,n)&&!/Settlement$/.test(n)&&!['Salary','Incentive','Daily Incentive','Advance Salary'].includes(n));
+  const saveSplit=()=>{const {x,parts}=splitFor;const amt=x.debit||x.credit;const P=parts.filter(p=>p.nature||Number(p.amount)>0).map(p=>({nature:p.nature,amount:Math.round((Number(p.amount)||0)*100)/100,vendorOverride:p.nature==='Vendor Payment'?(p.vendorOverride||''):''}));
+    if(P.length<2){setSplitErr('Add at least two parts.');return;}if(P.some(p=>!p.nature||!(p.amount>0))){setSplitErr('Each part needs a Nature and an amount.');return;}
+    const tot=P.reduce((t,p)=>t+p.amount,0);if(Math.abs(tot-amt)>0.5){setSplitErr('Parts add up to '+m(tot)+' — the line is '+m(amt)+'.');return;}
+    if(!dupOk(x)||!mapApprovalOk(sid,x,'Split into '+P.map(p=>p.nature).join(' + ')))return;
+    journalBankMapping(sid,rowNow(x.id),'Split: '+P.map(p=>p.nature+' '+m(p.amount)).join(' + '));
+    const patch={nature:'Split',splits:P,aiTagged:false};if(onMap)onMap(x.id,patch);else saveBankLineMapping(sid,x.id,patch);
+    closePanels();say('Split into '+P.length+' parts.');refresh();};
   const startLink=x=>{closePanels();const v=vendorOfLine(x);if(!v){setLinkErr('');setLinkFor({x,v:null});return;}
     const bills=openBillsOf(v);const a={};allocateOldestFirst(bills.map(b=>({id:b.id,balance:billBal(b)})),x.debit).forEach(r=>{if(r.alloc>0)a[r.id]=String(r.alloc);});
     setAlloc(a);setLinkErr('');setNb(bills.length?null:{invoiceNo:'',invoiceDate:toISO(x.date)||'',amount:String(x.debit),category:v.cat||defaultVendorCategoryFor(sid),gstRate:'0'});setLinkFor({x,v});};
@@ -451,7 +464,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const onKey=e=>{
     const tag=(e.target&&e.target.tagName)||'';const typing=/INPUT|SELECT|TEXTAREA/.test(tag);
     // Esc: leaves a field / closes the side panel or key list first (stopped here so the app does not close the pop-up); otherwise closes the pop-up as usual.
-    if(e.key==='Escape'){if(typing){e.stopPropagation();e.target.blur();return;}if(linkFor||payFor||advFor){e.stopPropagation();closePanels();e.preventDefault();return;}if(showKeys||showRules){e.stopPropagation();setShowKeys(false);setShowRules(false);return;}return;}
+    if(e.key==='Escape'){if(typing){e.stopPropagation();e.target.blur();return;}if(linkFor||payFor||advFor||splitFor){e.stopPropagation();closePanels();e.preventDefault();return;}if(showKeys||showRules){e.stopPropagation();setShowKeys(false);setShowRules(false);return;}return;}
     if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){if(ticked.size&&bulk.nature){e.preventDefault();applyBulk();}return;}
     if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')&&!typing){if(J[0]&&window.confirm('Undo the last mapping?\n\n'+J[0].date+' '+m(J[0].amount)+' — '+J[0].labels.join(', '))){e.preventDefault();undoEntry(J[0]);}return;}
     if(typing||e.ctrlKey||e.metaKey||e.altKey)return;
@@ -483,7 +496,8 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
       h('span',{title:BMAP_CONF_LABEL[s.conf]+' — '+s.why,style:{...C.chip,background:'var(--bg3)',border:'1px solid var(--border2)',color:'var(--text2)',maxWidth:compact?'100%':280,overflow:'hidden',textOverflow:'ellipsis'}},
         h('span',{style:{width:8,height:8,borderRadius:'50%',background:BMAP_DOT[s.conf],flexShrink:0}}),s.label),
       h('button',{className:'btn btn-primary btn-sm',style:{padding:'2px 9px',fontSize:11},title:'Accept (Enter)',onClick:()=>accept(x,s)},'✓ Accept'));};
-  const actionBtns=x=>x.side!=='Debit'?null:h('div',{style:{display:'flex',gap:4}},
+  const actionBtns=x=>x.side!=='Debit'?h('div',{style:{display:'flex',gap:4}},h('button',{className:'btn btn-ghost btn-sm',style:{padding:'2px 7px',fontSize:11},title:'Split across natures',onClick:()=>startSplit(x)},'✂ Split')):h('div',{style:{display:'flex',gap:4,flexWrap:'wrap'}},
+    h('button',{className:'btn btn-ghost btn-sm',style:{padding:'2px 7px',fontSize:11},title:'Split across natures',onClick:()=>startSplit(x)},'✂ Split'),
     (!x.nature||x.nature==='Vendor Payment')&&h('button',{className:'btn btn-ghost btn-sm',style:{padding:'2px 7px',fontSize:11},title:'Link bill (L)',onClick:()=>startLink(x)},'🔗 Bill'),
     (!x.nature||['Salary','Incentive','Daily Incentive'].includes(x.nature))&&h('button',{className:'btn btn-ghost btn-sm',style:{padding:'2px 7px',fontSize:11},title:'Pay employees (P)',onClick:()=>startPay(x)},'👤 Pay'),
     (!x.nature||x.nature==='Advance Salary')&&h('button',{className:'btn btn-ghost btn-sm',style:{padding:'2px 7px',fontSize:11},title:'Advance (A)',onClick:()=>startAdv(x)},'💵 Adv'));
@@ -492,7 +506,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
     x.side==='Debit'&&x.nature==='Vendor Payment'&&h('select',{className:'form-control',style:C.sel,value:x.vendorOverride&&x.vendorOverride!=='__none__'?x.vendorOverride:'',onChange:e=>e.target.value&&map(x,{vendorOverride:e.target.value})},h('option',{value:''},'Vendor…'),vendors.map(v=>h('option',{key:v.id,value:v.name},v.name))),
     x.side==='Credit'&&(x.nature==='Card Settlement'||x.nature==='UPI Settlement')&&h('input',{type:'date',className:'form-control',style:C.sel,value:toISO(x.cradleeDate)||'',title:'Date as per Cradlee',onChange:e=>e.target.value&&map(x,{cradleeDate:dmyOf(e.target.value)})}));
   const dupBadge=x=>dups[x.id]&&h('span',{title:'Possible duplicate of '+dups[x.id].map(r=>r.transactionDate+' '+m(Number(r.debit)||Number(r.credit))+' — '+r.description).join(' | '),style:{...C.tag('#c0392b','rgba(192,57,43,0.12)'),marginLeft:6}},'⚠ DUPLICATE?');
-  const activeId=(linkFor||payFor||advFor||{}).x&&(linkFor||payFor||advFor).x.id;
+  const activeId=(linkFor||payFor||advFor||splitFor||{}).x&&(linkFor||payFor||advFor||splitFor).x.id;
 
   const rowEl=(x,i)=>h('tr',{key:x.id,'data-bm-row':x.id,onClick:()=>setCur(shown.indexOf(x)),style:{background:x.id===activeId?'rgba(47,95,224,0.10)':ticked.has(x.id)?'rgba(47,95,224,0.05)':(i%2?'var(--bg2)':undefined),outline:curX&&curX.id===x.id?'2px solid rgba(47,95,224,0.45)':'none',outlineOffset:-2}},
     h('td',{style:{...C.td,width:30}},h('input',{type:'checkbox',checked:ticked.has(x.id),onChange:()=>toggleSel(x.id)})),
@@ -527,6 +541,22 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
 
   // ── drawer (link / pay / advance) ──
   const drawer=(()=>{
+    if(splitFor){const sf=splitFor,x=sf.x;const amt=x.debit||x.credit;const tot=sf.parts.reduce((t,p)=>t+(Number(p.amount)||0),0);
+      const setPart=(i,patch)=>setSplitFor(f=>({...f,parts:f.parts.map((p,j)=>j===i?{...p,...patch}:p)}));
+      return h('div',null,
+        h('div',{style:{fontSize:15,fontWeight:700,marginBottom:2}},'✂ Split across natures'),
+        h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:10}},x.date+' · '+m(amt)+' · '+x.description),
+        sf.parts.map((p,i)=>h('div',{key:i,style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',padding:'6px 0',borderBottom:'1px solid var(--border)'}},
+          h('select',{className:'form-control',style:{width:170,padding:'4px 6px',fontSize:12},value:p.nature,onChange:e=>setPart(i,{nature:e.target.value})},h('option',{value:''},'Nature…'),splitNatures(x).map(n=>h('option',{key:n,value:n},n))),
+          h('input',{type:'number',className:'form-control',style:{width:110,padding:'4px 6px',fontSize:12,textAlign:'right'},value:p.amount,placeholder:'₹',onChange:e=>setPart(i,{amount:e.target.value})}),
+          p.nature==='Vendor Payment'&&h('select',{className:'form-control',style:{width:150,padding:'4px 6px',fontSize:12},value:p.vendorOverride||'',onChange:e=>setPart(i,{vendorOverride:e.target.value})},h('option',{value:''},'Vendor…'),vendors.map(v=>h('option',{key:v.id,value:v.name},v.name))),
+          sf.parts.length>2&&h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)',padding:'0 6px'},onClick:()=>setSplitFor(f=>({...f,parts:f.parts.filter((_,j)=>j!==i)}))},'✕'))),
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8,gap:8,flexWrap:'wrap'}},
+          h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setSplitFor(f=>({...f,parts:[...f.parts,{nature:'',amount:String(Math.max(0,Math.round((amt-tot)*100)/100)||''),vendorOverride:''}]}))},'+ Add part'),
+          h('span',{style:{fontSize:12,color:Math.abs(amt-tot)<=0.5?'var(--green)':'var(--orange)',fontWeight:600}},'Total '+(m(tot)||'₹0')+(Math.abs(amt-tot)<=0.5?' ✓':' · left '+m(amt-tot)))),
+        h('div',{style:{fontSize:11,color:'var(--text3)',marginTop:6}},'Each part goes to its own P&L line and becomes one ledger line of the Tally voucher. Card / UPI settlements, salary and advances are mapped on their own, not split.'),
+        splitErr&&h('div',{style:{color:'var(--red)',fontSize:12,marginTop:6}},splitErr),
+        h('div',{style:{display:'flex',gap:8,marginTop:10}},h('button',{className:'btn btn-primary btn-sm',onClick:saveSplit},'Save split')));}
     if(linkFor){const lp=linkFor,x=lp.x;const bills=lp.v?openBillsOf(lp.v):[];const tot=Object.values(alloc).reduce((t,v)=>t+(Number(v)||0),0);
       return h('div',null,
         h('div',{style:{fontSize:15,fontWeight:700,marginBottom:2}},'🔗 Link vendor bill'),
@@ -538,7 +568,8 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
           :h('table',{style:{width:'100%',fontSize:12}},h('thead',null,h('tr',null,['','Bill','Date','Balance','Pay'].map((t,i)=>h('th',{key:i,style:{textAlign:i>=3?'right':'left',fontSize:10.5,color:'var(--text3)'}},t)))),
             h('tbody',null,bills.map(b=>{const on=alloc[b.id]!=null;return h('tr',{key:b.id},
               h('td',null,h('input',{type:'checkbox',checked:on,onChange:e=>setAlloc(a=>{const n={...a};if(e.target.checked){const used=Object.values(n).reduce((t,v)=>t+(Number(v)||0),0);n[b.id]=String(Math.max(0,Math.min(billBal(b),Math.round((x.debit-used)*100)/100)));}else delete n[b.id];return n;})})),
-              h('td',null,b.invoiceNo||'—'),h('td',null,toISO(b.invoiceDate)?dmyOf(toISO(b.invoiceDate)):(b.invoiceDate||'—')),h('td',{style:C.amt},m(billBal(b))),
+              h('td',null,b.invoiceNo||'—',(b.payments||[]).length>0&&h('div',{style:{fontSize:10.5,color:'var(--text3)'}},'paid '+m((Number(b.amount)||0)-billBal(b))+' of '+m(b.amount)+' · '+(b.payments||[]).length+' payment'+((b.payments||[]).length===1?'':'s'))),
+              h('td',null,toISO(b.invoiceDate)?dmyOf(toISO(b.invoiceDate)):(b.invoiceDate||'—')),h('td',{style:C.amt},m(billBal(b))),
               h('td',{style:{textAlign:'right'}},h('input',{type:'number',className:'form-control',disabled:!on,value:on?alloc[b.id]:'',onChange:e=>setAlloc(a=>({...a,[b.id]:e.target.value})),style:{width:96,padding:'3px 6px',fontSize:12,textAlign:'right',display:'inline-block'}})));}))),
           nb&&h('div',{style:{marginTop:10,padding:10,border:'1px dashed var(--border2)',borderRadius:8}},
             h('div',{style:{fontSize:12.5,fontWeight:600,marginBottom:6}},'New bill — added paid by this debit'),

@@ -123,9 +123,9 @@ function TallyExportSheet({salon,onNavTab}={}){
     });
     filteredBankRows.forEach(r=>{
       const p=pushed.bank[r.id];
-      const cp=tallyBankCounterparty(r,vendors,vendorLedgerNameFor,map);
-      list.push({key:'b'+r.id,kind:'bank',id:r.id,date:r.transactionDate||'',iso:dmyToIso(r.transactionDate),type:tallyBankVoucherType(r,cp),
-        party:cp.ledger,other:map.bankLedger||'(bank ledger not set)',ref:r.refNo||'',narr:r.description||'',amount:Number(r.debit)||Number(r.credit)||0,
+      const cp=tallyBankCounterparty(r,vendors,vendorLedgerNameFor,map);const parts=tallyBankSplitParts(r,vendors,vendorLedgerNameFor,map);
+      list.push({key:'b'+r.id,kind:'bank',id:r.id,date:r.transactionDate||'',iso:dmyToIso(r.transactionDate),type:parts?(Number(r.debit)>0?'Payment':'Receipt'):tallyBankVoucherType(r,cp),
+        party:parts?'Split: '+parts.map(q=>q.ledger+' '+Math.round(q.amount)).join(' + '):cp.ledger,other:map.bankLedger||'(bank ledger not set)',ref:r.refNo||'',narr:r.description||'',amount:Number(r.debit)||Number(r.credit)||0,
         status:p?(p.sig===tallyBankSig(r)?'sent':'changed'):'new',sentAt:p&&p.at,suspense:cp.kind==='suspense',via:cp.kind==='nature'?'Type: '+cp.nature:cp.kind==='vendor'?'Supplier':'No match'});
     });
     payrollItems.forEach(e=>{

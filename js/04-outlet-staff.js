@@ -1611,11 +1611,13 @@ function bankStatementNatureDebitSumFor(salonId,year,month,natureValue){
   try{rows=JSON.parse(cachedLocalGet(outletKey('salonos_bank_statement_rows',salonId))||'[]');}catch(e){}
   let sum=0;
   rows.forEach(r=>{
-    if(r.nature!==natureValue)return;
+    const sp=typeof bankRowSplits==='function'?bankRowSplits(r):null; // a split line counts only its part of this Nature
+    if(!sp&&(r.nature!==natureValue||r.nature==='Split'))return; // an incomplete split counts nowhere until its parts add up
     const iso=toISO(r.transactionDate);
     if(!iso)return;
     const d=new Date(iso+'T00:00:00');
     if(isNaN(d)||d.getFullYear()!==year||d.getMonth()!==month)return;
+    if(sp){if(Number(r.debit)>0)sum+=sp.filter(p=>p.nature===natureValue).reduce((t,p)=>t+(Number(p.amount)||0),0);return;}
     sum+=Number(r.debit)||0;
   });
   return sum;

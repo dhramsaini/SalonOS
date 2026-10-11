@@ -1714,6 +1714,20 @@ function tallyBankLedgerSuggestions(salonId,ledgers,statementBank){
   }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
 }
 function tallyNatureLedgerName(map,nature){return(map&&map.natures&&map.natures[nature])||(TALLY_NATURE_LEDGERS[nature]||[])[0]||'';}
+// A bank line divided across several natures (bank mapper → ✂ Split): [{nature, amount, vendorOverride}]
+// when the parts are complete and add up to the line, else null.
+function bankRowSplits(r){
+  if(!r||!Array.isArray(r.splits)||r.splits.length<2)return null;
+  const amt=Number(r.debit)>0?Number(r.debit):Number(r.credit)||0;const tot=r.splits.reduce((t,p)=>t+(Number(p.amount)||0),0);
+  if(Math.abs(tot-amt)>0.5||r.splits.some(p=>!p.nature||!(Number(p.amount)>0)))return null;
+  return r.splits;
+}
+// Tally ledger for each part of a split line: [{ledger, parent, kind, nature, amount}]
+function tallyBankSplitParts(r,vendors,vendorLedgerNameFor,map){
+  const sp=bankRowSplits(r);if(!sp)return null;
+  return sp.map(p=>{const cp=tallyBankCounterparty({...r,splits:undefined,nature:p.nature,linkedInvoice:'',vendorOverride:p.vendorOverride||(p.nature==='Vendor Payment'?r.vendorOverride:'')},vendors,vendorLedgerNameFor,map);
+    return{...cp,nature:p.nature,amount:Math.round((Number(p.amount)||0)*100)/100};});
+}
 function tallyBankCounterparty(r,vendors,vendorLedgerNameFor,map){
   const vName=vendorLedgerNameFor||(id=>{const v=vendors.find(x=>x.id===id);return v?v.name:id;});
   let v=null;
@@ -1738,11 +1752,13 @@ function buildTallyBankVouchersXml(rows,bankLedgerName,vendors,opts){
     const isDebit=Number(r.debit)>0;
     const amt=isDebit?Number(r.debit):Number(r.credit);
     const cp=tallyBankCounterparty(r,vendors,o.vendorLedgerNameFor,o.map);
-    const counterparty=cp.ledger;
-    const vtype=tallyBankVoucherType(r,cp);
+    const parts=tallyBankSplitParts(r,vendors,o.vendorLedgerNameFor,o.map);
+    const counterparty=parts?parts[0].ledger:cp.ledger;
+    const vtype=parts?(isDebit?'Payment':'Receipt'):tallyBankVoucherType(r,cp);
     const p=String(r.transactionDate||'').split('/');
     const iso=p.length===3?p[2]+'-'+p[1]+'-'+p[0]:'';
-    const entries=isDebit
+    const L=(name,pos,a)=>'<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(name)+'</LEDGERNAME><ISDEEMEDPOSITIVE>'+(pos?'Yes':'No')+'</ISDEEMEDPOSITIVE><AMOUNT>'+(pos?'':'-')+a.toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>';
+    const entries=parts?(isDebit?[...parts.map(q=>L(q.ledger,true,q.amount)),L(bankLedgerName,false,amt)]:[L(bankLedgerName,true,amt),...parts.map(q=>L(q.ledger,false,q.amount))]):isDebit
       ?[ '<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(counterparty)+'</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+amt.toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>',
          '<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(bankLedgerName)+'</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>-'+amt.toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>' ]
       :[ '<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(bankLedgerName)+'</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+amt.toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>',
@@ -1860,9 +1876,9 @@ function tallyVoucherEntries(o){
   });
   (o.bankRows||[]).filter(r=>r.debit||r.credit).forEach(r=>{
     const cp=tallyBankCounterparty(r,o.vendors,o.vName,o.map),isDr=Number(r.debit)>0,amt=isDr?Number(r.debit):Number(r.credit);
-    const bank=(o.map&&o.map.bankLedger)||'Bank';
-    out.push({iso:tallyIsoOf(r.transactionDate),date:dmy(r.transactionDate),type:tallyBankVoucherType(r,cp),ref:r.refNo||'',refDate:'',narr:tallyBankNarration(r),
-      lines:isDr?[[cp.ledger,amt],[bank,-amt]]:[[bank,amt],[cp.ledger,-amt]]});
+    const bank=(o.map&&o.map.bankLedger)||'Bank';const parts=tallyBankSplitParts(r,o.vendors,o.vName,o.map);
+    out.push({iso:tallyIsoOf(r.transactionDate),date:dmy(r.transactionDate),type:parts?(isDr?'Payment':'Receipt'):tallyBankVoucherType(r,cp),ref:r.refNo||'',refDate:'',narr:tallyBankNarration(r),
+      lines:parts?(isDr?[...parts.map(q=>[q.ledger,q.amount]),[bank,-amt]]:[[bank,amt],...parts.map(q=>[q.ledger,-q.amount])]):isDr?[[cp.ledger,amt],[bank,-amt]]:[[bank,amt],[cp.ledger,-amt]]});
   });
   (o.payroll||[]).forEach(e=>out.push(e));
   (o.payItems||[]).forEach(g=>{
@@ -1957,6 +1973,8 @@ function tallyExtraLedgers(invoices,bankRows,vendors,vendorLedgerNameFor,map,gst
   const add=(name,parent,type,note)=>{const k=String(name||'').toLowerCase();if(!name||seen.has(k))return;seen.add(k);out.push({name,parent,type,note});};
   if(!gstInputBlocked&&invoices.some(i=>i.docNature!=='Performa Invoice'&&Number(i.roundOff)))add('Round Off','Indirect Expenses','System','Purchase round-off');
   bankRows.filter(r=>r.debit||r.credit).forEach(r=>{
+    const parts=tallyBankSplitParts(r,vendors,vendorLedgerNameFor,map);
+    if(parts){parts.forEach(q=>{if(q.kind==='nature')add(q.ledger,q.parent,'Bank type','Bank Statement: '+q.nature);});return;}
     const cp=tallyBankCounterparty(r,vendors,vendorLedgerNameFor,map);
     if(cp.kind==='nature')add(cp.ledger,cp.parent,'Bank type','Bank Statement: '+cp.nature);
     else if(cp.kind==='suspense')add(cp.ledger,cp.parent,'System','Bank lines with no supplier or type — reclassify in Tally');
@@ -3769,7 +3787,7 @@ function loadTallyPushed(salonId){try{const v=JSON.parse(cachedLocalGet(outletKe
 function saveTallyPushed(salonId,v){safeLocalSet(outletKey('salonos_tally_pushed',salonId),JSON.stringify(v));}
 function tallyItemSig(o){const s=JSON.stringify(o);let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return String(h);}
 function tallyInvSig(inv){return tallyItemSig([inv.vendorId,inv.invoiceNo,inv.invoiceDate,inv.bookingDate,inv.amount,inv.taxable,inv.igst,inv.cgst,inv.sgst,inv.roundOff,inv.category]);}
-function tallyBankSig(r){return tallyItemSig([r.transactionDate,r.description,r.debit,r.credit,r.refNo]);}
+function tallyBankSig(r){const a=[r.transactionDate,r.description,r.debit,r.credit,r.refNo];if(Array.isArray(r.splits)&&r.splits.length)a.push(r.splits.map(p=>[p.nature,p.amount,p.vendorOverride||'']));return tallyItemSig(a);}
 function tallyIsoOf(d){const p=parseInvoiceDateFlexible(d);return p?p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0'):'';}
 // What would go in the next sync: {invs, rows, changed:[labels]}.
 function tallyAutoSyncPending(salonId,from){

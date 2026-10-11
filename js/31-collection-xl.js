@@ -155,6 +155,7 @@ function CollectionRecoExcelButton({salon,onNavTab}){
 function bankRowsFor(sid){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_bank_statement_rows',sid))||'[]');return Array.isArray(v)?v:[];}catch(e){return[];}}
 function bankLineProblem(r,vendors){
   const nat=String(r.nature||'').trim();const credit=Number(r.credit)>0;
+  if(nat==='Split'||(Array.isArray(r.splits)&&r.splits.length))return bankRowSplits(r)?'':'Split incomplete';
   if(!nat)return'No Nature';
   if(credit&&(nat==='Card Settlement'||nat==='UPI Settlement')&&!String(r.cradleeDate||'').trim())return'No Date as per Cradlee';
   if(!credit&&nat==='Vendor Payment'&&!r.linkedInvoice){const ov=r.vendorOverride;
@@ -371,7 +372,7 @@ function planBulkAdvances(sid,lines,deductFrom){
 // A journal per outlet, kept while the app is open: each bank line mapped from the pop-up, with its
 // fields as they were before (the earliest state if it was changed several times), bills created for
 // it, and the Advances sheet as it was before an advance was recorded.
-const BANK_MAP_FIELDS=['nature','vendorOverride','cradleeDate','linkedInvoice','linkedEmployeePay','linkedAdvance','aiTagged','natureLearned'];
+const BANK_MAP_FIELDS=['nature','vendorOverride','cradleeDate','linkedInvoice','linkedEmployeePay','linkedAdvance','aiTagged','natureLearned','splits'];
 // The pop-up itself (UnmappedLinesPopup) is in js/32-bank-mapper.js.
 // Collection Reco: credits only.
 function UnmappedCreditsPopup({sid,year,month,monthLabel,onClose,onNavTab,onMapped}){

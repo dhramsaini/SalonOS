@@ -1133,6 +1133,17 @@
             before.C1&&before.C1.conf,mid.C1&&mid.C1.conf,!!gone.C1,am.done,rr.find(r=>r.id==='C2').nature+'|'+rr.find(r=>r.id==='C2').cradleeDate,rr.find(r=>r.id==='C1').nature||'-'],
           ['tds',1000,'partial:INV-7781','Bank Transfer:10800,TDS:1000','E1','14/10/2026',true,false,'mid','low',false,1,'Card Settlement|15/10/2026','-']);
       }catch(err){results.push({name:'Smarter mapping',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=920;const row={id:'SP',transactionDate:'12/10/2026',description:'NEFT DR LANDLORD',debit:10000,credit:0,nature:'Split',splits:[{nature:'Rent',amount:8000},{nature:'Electricity Expenses',amount:2000}]};
+        safeLocalSet('salonos_bank_statement_rows_outlet_'+S,JSON.stringify([row,{id:'BAD',transactionDate:'12/10/2026',description:'X',debit:500,nature:'Split',splits:[{nature:'Rent',amount:300}]}]));
+        const prob=[bankLineProblem(row,[]),bankLineProblem({...row,id:'BAD',debit:500,splits:[{nature:'Rent',amount:300}]},[])];
+        const sums=[bankStatementNatureDebitSumFor(S,2026,9,'Rent'),bankStatementNatureDebitSumFor(S,2026,9,'Electricity Expenses'),bankStatementNatureDebitSumFor(S,2026,9,'Split')];
+        const xml=buildTallyBankVouchersXml([row],'HDFC Bank',[],{map:{}});
+        const ents=xml.split('<ALLLEDGERENTRIES.LIST>').slice(1);
+        const sig1=tallyBankSig({...row,splits:undefined}),sig0=tallyBankSig({transactionDate:row.transactionDate,description:row.description,debit:row.debit,credit:0,refNo:undefined});
+        eq('Split lines: mapped only when complete, P&L counts each part, Tally voucher has one ledger line per part, old signatures unchanged',
+          [prob,sums,ents.length,/Payment/.test(xml),sig1===sig0],[['','Split incomplete'],[8000,2000,0],3,true,true]);
+      }catch(err){results.push({name:'Split lines',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
