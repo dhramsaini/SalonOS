@@ -1021,6 +1021,16 @@
         if(u0==null)sessionStorage.removeItem('salonos_user');else sessionStorage.setItem('salonos_user',u0);if(sl0==null)safeLocalSet('salonos_salons','[]');else safeLocalSet('salonos_salons',sl0);
         eq('New bill from a bank debit: duplicate number refused; inter-state 18% split as IGST',[!!d.error,ok.inv&&[ok.inv.taxable,ok.inv.igst,ok.inv.cgst,ok.inv.invoiceDate,ok.inv.category,ok.inv.payments.length]],[true,[1000,180,'','10/09/2026','Professional Fee',0]]);
       }catch(err){results.push({name:'New bill from bank',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        safeLocalSet('salonos_bank_statement_rows_outlet_911',JSON.stringify([{id:'S1',transactionDate:'07/10/2026',description:'IMPS SALARY',debit:10000,nature:''}]));
+        const none=settleBankLineToEmployees(911,{id:'S1',debit:10000},2026,8,[{employeeId:'E1',employeeName:'A',salaryAmt:0,incentiveAmt:0}],null);
+        const over=settleBankLineToEmployees(911,{id:'S1',debit:10000},2026,8,[{employeeId:'E1',employeeName:'A',salaryAmt:8000,incentiveAmt:0},{employeeId:'E2',employeeName:'B',salaryAmt:3000,incentiveAmt:0}],null);
+        const ok=settleBankLineToEmployees(911,{id:'S1',debit:10000},2026,8,[{employeeId:'E1',employeeName:'A',salaryAmt:6000,incentiveAmt:0},{employeeId:'E2',employeeName:'B',salaryAmt:0,incentiveAmt:4000}],null);
+        const row=JSON.parse(cachedLocalGet('salonos_bank_statement_rows_outlet_911'))[0];
+        eq('Pay employees from the list: nothing ticked / over the debit refused; settlement kept on the bank line and it counts as mapped',
+          [/at least one/.test(none),/more than this bank debit/.test(over),ok,row.nature,(row.linkedEmployeePay||[]).map(x=>x.employeeName+':'+x.salary+'/'+x.incentive),unmappedBankLinesFor(911,2026,9).length],
+          [true,true,'','Salary',['A:6000/0','B:0/4000'],0]);
+      }catch(err){results.push({name:'Pay employees from list',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
