@@ -1696,7 +1696,7 @@ function ReportsSheet({salon,period}={}){
      {id:'pf',label:'PF Summary',hint:'Provident Fund — a retirement savings scheme both the employee (12% of wages) and employer contribute to every month.'},
      {id:'esic',label:'ESIC Summary',hint:'Employees\' State Insurance — medical/injury insurance for lower-wage employees (Gross ≤ ₹21,000), funded by small employee + employer contributions.'},
      {id:'pt',label:'PT Summary',hint:'Professional Tax — a small state-government tax on salaries, only in states that levy it (deducted from the employee, no employer share).'},
-     {id:'fund',label:'Fund Position'}].map(t=>
+     {id:'fund',label:'Fund Position'},{id:'bankmap',label:'Bank Mapping',hint:'Bank mapping of a month — review, exceptions, month close, payees and the certificate (read-only for Reviewers).'}].map(t=>
       React.createElement('button',{key:t.id,title:t.hint,className:`tab-btn ${subTab===t.id?'active':''}`,onClick:()=>setSubTab(t.id)},t.label)
     )
   );
@@ -1709,7 +1709,8 @@ function ReportsSheet({salon,period}={}){
     React.createElement('div',{style:{display:subTab==='pf'?'block':'none'}},React.createElement(PfSummaryReport,{salon})),
     React.createElement('div',{style:{display:subTab==='esic'?'block':'none'}},React.createElement(EsicSummaryReport,{salon})),
     React.createElement('div',{style:{display:subTab==='pt'?'block':'none'}},React.createElement(PtSummaryReport,{salon})),
-    React.createElement('div',{style:{display:subTab==='fund'?'block':'none'}},React.createElement(FundPositionReport,{salon}))
+    React.createElement('div',{style:{display:subTab==='fund'?'block':'none'}},React.createElement(FundPositionReport,{salon})),
+    subTab==='bankmap'&&React.createElement(BankMappingReportPanel,{salon})
   );
 }
 

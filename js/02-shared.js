@@ -1660,6 +1660,9 @@ const TALLY_NATURE_LEDGERS={
   'Ownly Settlement':['Ownly Receivable','Current Assets'],
   'Eatby Minutes Settlement':['Eatby Minutes Receivable','Current Assets'],
   'Bank Charges':['Bank Charges','Indirect Expenses'],
+  'Cash Withdrawal':['Cash','Cash-in-Hand'],
+  'Loan Principal':['Loan Account','Secured Loans'],
+  'Loan Interest':['Interest on Loan','Indirect Expenses'],
   'Interest':['Bank Interest','Indirect Incomes'],
   'Salary':['Salary Payable','Current Liabilities'],      // booked monthly by the Salary journal
   'Incentive':['Incentive Payable','Current Liabilities'],// booked monthly by the Incentive journal

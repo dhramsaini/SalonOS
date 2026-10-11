@@ -126,6 +126,40 @@ ${r.f.entered ? `<tr><td style="color:#5e6a82">Cash / Card / UPI / Luzo</td><td 
   return { key: `daily:${iso}`, title, html, line };
 }
 
+// Controls (Master Settings → 🎛 Controls) as the app stores them: outlet switch, then all-outlets, then default.
+function ctlOn(kv: KV, id: string, sid: number, def: boolean): boolean {
+  const all: any = kv.get("salonos_controls") ?? {};
+  const c: any = all[id] ?? {};
+  if (c.outlets && typeof c.outlets[String(sid)] === "boolean") return c.outlets[String(sid)];
+  return typeof c.on === "boolean" ? c.on : def;
+}
+function bankIso(v: any): string {
+  const s = String(v ?? "").trim();
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (m) return `${m[3]}-${pad(Number(m[2]))}-${pad(Number(m[1]))}`;
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : "";
+}
+// Bank lines for the morning brief (Controls → bankDailyDigest): yesterday's new lines, unmapped, unmapped over 7 days.
+export function bankDigest(kv: KV, sid: number, y: Date): string {
+  if (!ctlOn(kv, "bankDailyDigest", sid, false)) return "";
+  const rows: any[] = kv.get(`salonos_bank_statement_rows_outlet_${sid}`) ?? [];
+  const yIso = isoOf(y);
+  const old = isoOf(new Date(y.getTime() - 6 * 864e5));
+  let fresh = 0, un = 0, stale = 0;
+  for (const r of rows) {
+    const iso = bankIso(r && r.transactionDate);
+    if (!iso || !(num(r.debit) || num(r.credit))) continue;
+    if (iso === yIso) fresh++;
+    const nat = String(r.nature ?? "").trim();
+    const cr = num(r.credit) > 0;
+    const unm = (!nat && !r.linkedInvoice) || (cr && (nat === "Card Settlement" || nat === "UPI Settlement") && !String(r.cradleeDate ?? "").trim());
+    if (unm) { un++; if (iso < old) stale++; }
+  }
+  if (!fresh && !un) return "";
+  return `bank: ${fresh} new line${fresh === 1 ? "" : "s"} yesterday, ${un} unmapped${stale ? ` (${stale} over 7 days)` : ""}`;
+}
+
 // 9 AM owner brief: yesterday's figures per outlet, days still missing this month, cash differences
 // over the outlet's limit, and approvals waiting (Master Settings → Controls → Approvals).
 export function buildMorning(kv: KV) {
@@ -144,17 +178,18 @@ export function buildMorning(kv: KV) {
     const cc = (kv.get(`salonos_cash_counts_outlet_${sid}`) ?? {})[yIso];
     const lim = o.cashDiffLimit !== "" && o.cashDiffLimit != null && Number(o.cashDiffLimit) >= 0 ? Number(o.cashDiffLimit) : 100;
     const cashDiff = cc && cc.count != null && cc.closing != null ? num(cc.count) - num(cc.closing) : null;
-    return { name: String(o.name).split("—")[0].trim(), f, mtd, missing, cashDiff: cashDiff != null && Math.abs(cashDiff) > lim ? cashDiff : null };
+    return { name: String(o.name).split("—")[0].trim(), f, mtd, missing, cashDiff: cashDiff != null && Math.abs(cashDiff) > lim ? cashDiff : null, bank: bankDigest(kv, sid, y) };
   });
   const tot = rows.reduce((s: number, r: any) => s + r.f.sales, 0);
   const html = `<h2 style="margin:0 0 4px;color:#14335e">${escapeHtml(title)}</h2>
 <p style="margin:0 0 12px;color:#5e6a82">All outlets yesterday: <b>${inr(tot)}</b> sales${pending ? ` · <b style="color:#c06a12">${pending} approval${pending === 1 ? "" : "s"} waiting</b>` : ""}</p>
 <table cellpadding="6" style="border-collapse:collapse;width:100%;max-width:600px;font:14px Arial,sans-serif;border:1px solid #d9e1f0">
 <tr style="background:#14335e;color:#fff"><th align="left">Outlet</th><th align="right">Sales</th><th align="right">Expenses</th><th align="right">Month so far</th><th align="left">Needs attention</th></tr>
-${rows.map((r: any) => `<tr><td>${escapeHtml(r.name)}</td><td align="right">${r.f.entered ? inr(r.f.sales) : "—"}</td><td align="right">${inr(r.f.exp)}</td><td align="right">${inr(r.mtd.sales)}</td><td style="color:#c06a12">${[!r.f.entered ? "sales not entered" : "", r.missing ? `${r.missing} day${r.missing === 1 ? "" : "s"} missing` : "", r.cashDiff != null ? `cash difference ${inr(r.cashDiff)}` : ""].filter(Boolean).join(" · ")}</td></tr>`).join("")}
+${rows.map((r: any) => `<tr><td>${escapeHtml(r.name)}</td><td align="right">${r.f.entered ? inr(r.f.sales) : "—"}</td><td align="right">${inr(r.f.exp)}</td><td align="right">${inr(r.mtd.sales)}</td><td style="color:#c06a12">${[!r.f.entered ? "sales not entered" : "", r.missing ? `${r.missing} day${r.missing === 1 ? "" : "s"} missing` : "", r.cashDiff != null ? `cash difference ${inr(r.cashDiff)}` : "", r.bank || ""].filter(Boolean).join(" · ")}</td></tr>`).join("")}
 </table>`;
   const line = `Yesterday ${inr(tot)}` + (pending ? `, ${pending} approval(s) waiting` : "") + " | " + rows.map((r: any) => `${r.name}: ${r.f.entered ? inr(r.f.sales) : "not entered"}${r.missing ? `, ${r.missing}d missing` : ""}${r.cashDiff != null ? `, cash diff ${inr(r.cashDiff)}` : ""}`).join(" | ");
-  return { key: `morning:${yIso}`, title, html, line };
+  const bankTxt = rows.filter((r: any) => r.bank).map((r: any) => `${r.name} ${r.bank}`).join(" | ");
+  return { key: `morning:${yIso}`, title, html, line: bankTxt ? line + " | " + bankTxt : line };
 }
 
 function buildMonthly(kv: KV) {

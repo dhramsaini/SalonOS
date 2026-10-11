@@ -1284,6 +1284,39 @@
           [br.map(b=>b.rowId+':'+b.diff),st,pv&&pv.id,offers,ex,held,al,cmp.onlyTally.map(v=>v.ledger),cmp.onlyBank.length,fc&&fc.start,/net/.test(txt)],
           [['C:-500'],['PF Challan:Short by','ESIC Challan:Due by 1'],'V1',['Acme Traders:501001234567'],'New payee:BIG,New payee:N1,Round amount:N1,Sunday payment:N2',true,1,['Ghost'],3,99000,true]);
       }catch(err){results.push({name:'Month close',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=927;const U0=sessionStorage.getItem('salonos_user');const C0=window.confirm;sessionStorage.setItem('salonos_user',JSON.stringify({name:'Asha',role:'Salon Manager',outletIds:[927]}));saveControls({});
+        saveVendors([{id:'V1',name:'Acme Traders',status:'Active'},{id:'V2',name:'Kumar Supplies',status:'Active'}],S);
+        saveVendorInvoices([{id:'I1',vendorId:'V1',invoiceNo:'A1',invoiceDate:'01/10/2026',amount:3000,payments:[]},{id:'I2',vendorId:'V1',invoiceNo:'A2',invoiceDate:'02/10/2026',amount:4500,payments:[]},
+          {id:'I3',vendorId:'V1',invoiceNo:'A3',invoiceDate:'03/10/2026',amount:9999,payments:[]},{id:'I4',vendorId:'V2',invoiceNo:'K1',invoiceDate:'01/10/2026',amount:10000,payments:[]}],S);
+        saveBankLoans(S,[{id:'LN1',name:'HDFC loan',contains:'emi 4471',emi:10000,rate:12,opening:500000,asOn:'2026-01-01'}]);
+        const rows=[{id:'D1',transactionDate:'05/10/2026',description:'NEFT ACME TRADERS',debit:7500,nature:''},
+          {id:'D2',transactionDate:'06/10/2026',description:'NEFT KUMAR SUPPLIES',debit:6000,nature:''},{id:'D3',transactionDate:'09/10/2026',description:'NEFT KUMAR SUPPLIES',debit:4000,nature:''},
+          {id:'E1',transactionDate:'07/10/2026',description:'ACH HDFC EMI 4471',debit:10000,nature:''},{id:'W1',transactionDate:'08/10/2026',description:'ATM WDL MG ROAD',debit:5000,nature:''},
+          {id:'S1',transactionDate:'09/10/2026',description:'NEFT SWIGGY',credit:9000,nature:'Swiggy Settlement'}];
+        safeLocalSet('salonos_bank_statement_rows_outlet_'+S,JSON.stringify(rows));safeLocalSet('salonos_bank_map_journal_outlet_'+S,'[]');
+        const L=unmappedBankLinesFor(S,2026,9);const sg=bankSuggestionsFor(S,L,bankRowsFor(S));
+        const combo=sg.D1&&sg.D1.apply.plan&&sg.D1.apply.plan.allocations.map(a=>a.invoiceNo).join('+');
+        const pair=[sg.D2&&sg.D2.apply.plan&&sg.D2.apply.plan.how,sg.D3&&sg.D3.apply.plan&&sg.D3.apply.plan.allocations[0].amount];
+        const emi=sg.E1&&sg.E1.apply.patch&&sg.E1.apply.patch.splits.map(z=>z.nature+':'+z.amount).join(',');
+        const wd=sg.W1&&suggestionNature(sg.W1);
+        saveBankLineMapping(S,'W1',{nature:'Cash Withdrawal'});const cw=bankCashWithdrawals(S,2026,9);
+        const AM=window.aggregatorMonthFor;window.aggregatorMonthFor=(sid,y,m,pf)=>pf==='Swiggy'?{gross:12000,commission:2400,charges:300,tds:120,net:9180,orders:40}:{gross:0,net:0};
+        const agg=aggregatorPayoutCheck(S,2026,9).map(a=>a.platform+':'+a.got+':'+a.diff+':'+a.ok);window.aggregatorMonthFor=AM;
+        const x1=unmappedBankLinesFor(S,2026,9).find(z=>z.id==='D2');saveBankLineMapping(S,'D2',{nature:'Rent'});journalBankMapping(S,{...bankRowsFor(S).find(r=>r.id==='D2')},'Nature: Rent');
+        const J=bankMapJournal(S);J[J.length-1].by='Ravi';J[J.length-1].lastBy='Ravi';safeLocalSet('salonos_bank_map_journal_outlet_'+S,JSON.stringify(J));
+        let asked='';window.confirm=msg=>{asked=msg;return false;};const cf=bankConflictOk(S,x1);window.confirm=C0;
+        const sig1=bankRowsSig(bankRowsFor(S));saveBankLineMapping(S,'D3',{nature:'Other'});const sig2=bankRowsSig(bankRowsFor(S));
+        const ro1=bankMapReadOnly(S);sessionStorage.setItem('salonos_user',JSON.stringify({name:'CA',role:'Reviewer'}));const ro2=bankMapReadOnly(S);
+        sessionStorage.setItem('salonos_user',JSON.stringify({name:'Boss',role:'Super Admin'}));const ro3=bankMapReadOnly(S);
+        const rep=tsMod(window.__REP_TS);const y=new Date(Date.now()+5.5*3600e3-864e5);const yd=String(y.getUTCDate()).padStart(2,'0')+'/'+String(y.getUTCMonth()+1).padStart(2,'0')+'/'+y.getUTCFullYear();
+        const k2=new Map();k2.set('salonos_salons',[{id:8,name:'Digest Outlet',status:'Active'}]);k2.set('salonos_bank_statement_rows_outlet_8',[{transactionDate:yd,debit:100,nature:''},{transactionDate:'01/01/2026',debit:50,nature:''},{transactionDate:yd,credit:70,nature:'Interest'}]);
+        const off=rep.buildMorning(k2).line;k2.set('salonos_controls',{bankDailyDigest:{on:true}});const on=rep.buildMorning(k2).line;
+        saveControls({});if(U0)sessionStorage.setItem('salonos_user',U0);else sessionStorage.removeItem('salonos_user');
+        eq('Smarter matching & reach: bills combo, two payments for one bill, EMI split, cash withdrawals, aggregator payouts, conflict warning, read-only, memo key, morning brief',
+          [combo,pair,emi,wd,cw&&[cw.total,cw.gap>0],agg,[cf,/Ravi/.test(asked)],sig1!==sig2,[ro1,ro2,ro3],off.includes('bank:'),on.includes('bank: 2 new lines yesterday, 2 unmapped (1 over 7 days)')],
+          ['A1+A2',['pair',4000],'Loan Interest:5000,Loan Principal:5000','Cash Withdrawal',[5000,true],['Swiggy:9000:-180:false'],[false,true],true,[false,true,false],false,true]);
+      }catch(err){results.push({name:'Smarter matching & reach',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 
