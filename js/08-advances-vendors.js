@@ -1497,6 +1497,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
           React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowVendorList(false)},'Close')))),
 
     React.createElement(PayablesDueStrip,{salon}),
+    React.createElement(BillBankMatchStrip,{salonId,onChanged:()=>setInvoices(loadVendorInvoices(salonId))}),
     // ── Tab bar ──
     React.createElement('div',{className:'tab-bar',style:{marginBottom:16}},
       [{id:'invoices',label:'🧾 Invoices & Payments'},{id:'messages',label:'📣 Messages'},{id:'outstanding',label:'⏳ Outstanding Invoices'},{id:'ageing',label:'⏱ Ageing'},{id:'performa',label:'📝 Performa Invoice'},{id:'dashboard',label:'📊 Dashboard'},{id:'ledger',label:'📒 Vendor Ledger'},{id:'master',label:'📋 Master Vendor List'}].map(t=>

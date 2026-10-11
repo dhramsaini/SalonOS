@@ -3303,7 +3303,7 @@ function BankStatement({salon,onNavTab}={}){
       if(debitNature)cls={nature:debitNature,cradleeDate:''};
     }
     // No rule matched — use the Nature given earlier to lines with the same narration pattern.
-    if(!cls&&!r.nature&&controlOn('bankAutoRules',salonId)){const rl=matchBankRule(salonId,r);if(rl)return{...r,...bankRulePatch(rl,r),natureRule:rl.id};}
+    if(!cls&&!r.nature&&controlOn('bankAutoRules',salonId)){const rl=matchBankRule(salonId,r);if(rl&&!bankRulePaused(salonId,rl,rows))return{...r,...bankRulePatch(rl,r),natureRule:rl.id};}
     if(!cls&&!r.nature){const ln=bankLearnedNatureFor(learned,r);if(ln)return{...r,nature:ln,natureLearned:true};}
     if(!cls)return r;
     // Default (force=false, used on fresh import): only fill in blanks.
@@ -3464,7 +3464,8 @@ function BankStatement({salon,onNavTab}={}){
   const update=(id,k,v)=>{const r0=rows.find(r=>r.id===id);
     if(r0&&BANK_MAP_FIELDS.includes(k)&&JSON.stringify(r0[k]==null?'':r0[k])!==JSON.stringify(v==null?'':v)&&!bankLockOk(salonId,r0,'change a mapped line'))return;
     if(linkedLine(r0)&&['nature','vendorOverride','cradleeDate'].includes(k)&&String(r0[k]||'')!==String(v||'')&&!lineApprovalOk(r0,'Change '+(k==='vendorOverride'?'vendor':k==='cradleeDate'?'Cradlee date':'Nature')+' of a linked line to '+(v||'blank')))return;
-    setRows(p=>p.map(r=>r.id===id?{...r,[k]:v}:r));};
+    let extra={};if(r0&&BANK_MAP_FIELDS.includes(k)&&JSON.stringify(r0[k]==null?'':r0[k])!==JSON.stringify(v==null?'':v)){extra=bankEditGuard(salonId,r0,k,v);if(extra===null)return;}
+    setRows(p=>p.map(r=>r.id===id?{...r,[k]:v,...extra}:r));};
   // Card / UPI settlements whose Date as per Cradlee disagrees with the sale date printed in the
   // bank narration (SETDT-…) — usually a date picked by hand in the wrong month.
   const setDtMismatch=rows.filter(r=>{const sd=settlementDateFromNarration(r.description);return sd&&(r.nature==='Card Settlement'||r.nature==='UPI Settlement'||!r.nature)&&Number(r.credit)>0&&toISO(r.cradleeDate)!==toISO(sd);});
@@ -4017,6 +4018,7 @@ function BankStatement({salon,onNavTab}={}){
     toastSuccess('Recorded '+money(total)+' across '+settlements.length+' employee'+(settlements.length===1?'':'s')+' ('+settlements.map(e=>e.employeeName).join(', ')+').');
   };
   const unlinkEmployeePay=(row)=>{
+    if(bankEditGuard(salonId,row,'unlink','')===null)return;
     if(!bankLockOk(salonId,row,'unlink a mapped line'))return;
     if(!lineApprovalOk(row,'Unlink salary / incentive settlement'))return;
     const lp=row.linkedEmployeePay;
@@ -4116,6 +4118,7 @@ function BankStatement({salon,onNavTab}={}){
       (linkedCount?' ('+linkedCount+' linked to existing, '+newCount+' new)':'')+'.');
   };
   const unlinkAdvance=(row)=>{
+    if(bankEditGuard(salonId,row,'unlink','')===null)return;
     if(!bankLockOk(salonId,row,'unlink a mapped line'))return;
     if(!lineApprovalOk(row,'Unlink advance'))return;
     const la=row.linkedAdvance;
@@ -4178,6 +4181,7 @@ function BankStatement({salon,onNavTab}={}){
     toastSuccess('Linked — '+money(totalAllocated)+' allocated across '+allocations.length+' invoice'+(allocations.length===1?'':'s')+' ('+linkedNos.join(', ')+').');
   };
   const unlinkRow=(row)=>{
+    if(bankEditGuard(salonId,row,'unlink','')===null)return;
     if(!bankLockOk(salonId,row,'unlink a mapped line'))return;
     if(!lineApprovalOk(row,'Unlink vendor bill'))return;
     if(!confirm('Unlink this transaction? The matching payment record on that invoice will also be removed.'))return;

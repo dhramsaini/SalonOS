@@ -101,26 +101,51 @@ function BankRecoBoard({accessibleSalons,onOpenOutletTab}){
 }
 // Unmapped bank lines by age across outlets + mapping productivity (Controls → bankAgeingBoard, outlet-wise)
 function BankMappingAgeingBoard({accessibleSalons,onOpenOutletTab,cal}){
-  const h=React.createElement;
+  const h=React.createElement;const [cfOutlet,setCfOutlet]=useState('all');const [,setT]=useState(0);
   const outs=(accessibleSalons||[]).filter(s=>s&&s.id!=null&&s.status!=='Inactive'&&controlOn('bankAgeingBoard',s.id));
   if(!outs.length)return null;
-  const list=outs.map(s=>({s,a:bankUnmappedAgeing(s.id),rv:bankReviewProgress(s.id,cal.year,cal.month)}));
+  const list=outs.map(s=>({s,a:bankUnmappedAgeing(s.id),rv:bankReviewProgress(s.id,cal.year,cal.month),hs:bankHealthScore(s.id,cal.year,cal.month),
+    nudge:controlOn('bankUnmappedNudge',s.id)?bankUnmappedOlderThan(s.id,controlLimit('bankUnmappedNudge')||7):null}));
   const from=new Date(cal.year,cal.month,1).getTime(),to=new Date(cal.year,cal.month+1,1).getTime()-1;
   const prod={};outs.forEach(s=>bankMappingProductivity(s.id,from,to).forEach(x=>{const k=x.user;const z=prod[k]=prod[k]||{user:k,mapped:0,fromSugg:0,auto:0,changed:0,undone:0,checked:0,outlets:new Set()};
     ['mapped','fromSugg','auto','changed','undone','checked'].forEach(f=>z[f]+=x[f]||0);if(x.mapped||x.checked)z.outlets.add(rptShort(s));}));
   const P=Object.values(prod).sort((a,b)=>b.mapped-a.mapped);
   const cell=(n,amt,col)=>h('td',{style:{textAlign:'right',color:n?col:'var(--text3)',fontWeight:n?600:400}},n?n+' · '+moMoney(amt):'—');
   const tot=k=>list.reduce((t,x)=>t+x.a[k].n,0);
+  const nudgedKey=sid=>'salonos_bank_nudged_'+sid;const nudgedAt=sid=>{try{return Number(localStorage.getItem(nudgedKey(sid)))||0;}catch(e){return 0;}};
+  const doNudge=(s,info)=>{const url=bankNudgeUrl(s,info,controlLimit('bankUnmappedNudge')||7);if(!url){window.alert('Add the outlet phone number in Master Sheet → Outlets first.');return;}
+    window.open(url,'_blank','noopener');try{localStorage.setItem(nudgedKey(s.id),String(Date.now()));}catch(e){}try{logAuditEvent(s.id,{entity:'Bank Statement',entityId:'nudge',action:'WhatsApp nudge',summary:info.n+' unmapped line(s)'});}catch(e){}setT(t=>t+1);};
+  const cfSids=cfOutlet==='all'?outs.map(s=>s.id):[Number(cfOutlet)||cfOutlet];const cf=bankCashFlow(cfSids,cal.year,cal.month,6);
+  const mLbl=ym=>RPT_MONTHS[Number(ym.slice(5,7))-1].slice(0,3)+' '+ym.slice(2,4);const mx=Math.max(1,...cf.net.map(v=>Math.abs(v)));
+  const money=v=>v?(v<0?'-':'')+moMoney(Math.abs(v)):'—';
   return h('div',{style:{marginTop:18}},
     h('div',{className:'page-title',style:{fontSize:18}},'Unmapped bank lines by age'),
-    h('div',{className:'page-sub',style:{marginBottom:8}},'Every month, counted from the bank date to today. Lines need a Nature (vendor payments a vendor, card / UPI settlements a Date as per Cradlee). “Checked” is the second-person review for '+RPT_MONTHS[cal.month]+' '+cal.year+'.'),
+    h('div',{className:'page-sub',style:{marginBottom:8}},'Every month, counted from the bank date to today. “Checked” is the second-person review and Health the mapping health score (mapped 40%, checked 20%, ageing 25%, exceptions 15%) for '+RPT_MONTHS[cal.month]+' '+cal.year+'.'),
     h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,
-      h('thead',null,h('tr',null,['Outlet','0–7 days','8–30 days','Over 30 days','Oldest','Checked',''].map((t,i)=>h('th',{key:i,style:i&&i<6?{textAlign:'right'}:null},t)))),
-      h('tbody',null,list.map(({s,a,rv})=>h('tr',{key:s.id},h('td',{style:{fontWeight:600}},rptShort(s)),cell(a.a.n,a.a.amt,'var(--text)'),cell(a.b.n,a.b.amt,'var(--orange)'),cell(a.c.n,a.c.amt,'var(--red)'),
+      h('thead',null,h('tr',null,['Outlet','0–7 days','8–30 days','Over 30 days','Oldest','Checked','Health',''].map((t,i)=>h('th',{key:i,style:i&&i<7?{textAlign:'right'}:null},t)))),
+      h('tbody',null,list.map(({s,a,rv,hs,nudge})=>h('tr',{key:s.id},h('td',{style:{fontWeight:600}},rptShort(s)),cell(a.a.n,a.a.amt,'var(--text)'),cell(a.b.n,a.b.amt,'var(--orange)'),cell(a.c.n,a.c.amt,'var(--red)'),
         h('td',{style:{textAlign:'right',color:'var(--text3)'}},a.oldest?moDmy(a.oldest):'—'),
         h('td',{style:{textAlign:'right',color:rv.total&&rv.pct<100?'var(--orange)':'var(--green)'}},rv.total?rv.done+'/'+rv.total+' ('+rv.pct+'%)':'—'),
-        h('td',null,onOpenOutletTab&&(a.a.n+a.b.n+a.c.n)>0&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>onOpenOutletTab(s,'bank-statement')},'Map')))),
-        list.length>1&&h('tr',{key:'tot',style:{fontWeight:700}},h('td',null,'All outlets'),...['a','b','c'].map(k=>h('td',{key:k,style:{textAlign:'right'}},tot(k)||'—')),h('td'),h('td'),h('td')))))),
+        h('td',{style:{textAlign:'right',fontWeight:700,color:hs.score>=90?'var(--green)':hs.score>=70?'var(--orange)':'var(--red)'},title:'Mapped '+hs.mapped+'% · checked '+hs.reviewed+'% · ageing '+hs.ageing+' · '+hs.exceptions+' exception(s)'},hs.score),
+        h('td',{style:{whiteSpace:'nowrap'}},onOpenOutletTab&&(a.a.n+a.b.n+a.c.n)>0&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>onOpenOutletTab(s,'bank-statement')},'Map'),
+          nudge&&nudge.n>0&&h('button',{className:'btn btn-ghost btn-sm',title:nudgedAt(s.id)?'Last nudged '+new Date(nudgedAt(s.id)).toLocaleString('en-IN'):'Send a WhatsApp reminder to the outlet phone',onClick:()=>doNudge(s,nudge)},'📲 Nudge ('+nudge.n+')'+(nudgedAt(s.id)&&Date.now()-nudgedAt(s.id)<864e5?' ✓':''))))),
+        list.length>1&&h('tr',{key:'tot',style:{fontWeight:700}},h('td',null,'All outlets'),...['a','b','c'].map(k=>h('td',{key:k,style:{textAlign:'right'}},tot(k)||'—')),h('td'),h('td'),h('td'),h('td')))))),
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end',gap:8,flexWrap:'wrap',marginTop:18}},
+      h('div',null,h('div',{className:'page-title',style:{fontSize:18}},'Cash flow by Nature — 6 months to '+RPT_MONTHS[cal.month]+' '+cal.year),
+        h('div',{className:'page-sub'},'From the bank statement: money in less money out for each Nature (split lines by part). Unmapped lines show as “(not mapped)”.')),
+      h('select',{className:'form-control',style:{width:'auto'},value:cfOutlet,onChange:e=>setCfOutlet(e.target.value)},h('option',{value:'all'},'All outlets'),outs.map(s=>h('option',{key:s.id,value:String(s.id)},rptShort(s))))),
+    h('div',{className:'card',style:{padding:'10px 14px',marginTop:8}},
+      h('svg',{viewBox:'0 0 600 120',style:{width:'100%',height:120,display:'block'},role:'img','aria-label':'Net cash flow by month'},
+        h('line',{x1:0,x2:600,y1:60,y2:60,stroke:'currentColor',strokeOpacity:0.2}),
+        cf.months.map((ym,i)=>{const v=cf.net[i];const hgt=Math.round(Math.abs(v)/mx*52);const x0=i*100+25;
+          return h('g',{key:ym},h('rect',{x:x0,width:50,y:v>=0?60-hgt:60,height:Math.max(1,hgt),rx:4,fill:v>=0?'#2e7d32':'#c0392b',opacity:0.85},h('title',null,mLbl(ym)+': net '+money(v))),
+            h('text',{x:x0+25,y:118,textAnchor:'middle',fontSize:11,fill:'currentColor',opacity:0.7},mLbl(ym)));})),
+      h('div',{className:'table-wrap',style:{marginTop:6}},h('table',null,
+        h('thead',null,h('tr',null,h('th',null,'Nature'),cf.months.map(ym=>h('th',{key:ym,style:{textAlign:'right'}},mLbl(ym))))),
+        h('tbody',null,cf.rows.map(e=>h('tr',{key:e.nature},h('td',{style:{color:e.nature==='(not mapped)'?'var(--red)':undefined}},e.nature),e.net.map((v,i)=>h('td',{key:i,style:{textAlign:'right',color:v>0?'var(--green)':v<0?'var(--red)':'var(--text3)'}},money(v))))),
+          h('tr',{style:{fontWeight:700}},h('td',null,'Money in'),cf.tin.map((v,i)=>h('td',{key:i,style:{textAlign:'right'}},money(v)))),
+          h('tr',{style:{fontWeight:700}},h('td',null,'Money out'),cf.tout.map((v,i)=>h('td',{key:i,style:{textAlign:'right'}},money(v)))),
+          h('tr',{style:{fontWeight:700}},h('td',null,'Net'),cf.net.map((v,i)=>h('td',{key:i,style:{textAlign:'right',color:v>=0?'var(--green)':'var(--red)'}},money(v)))))))),
     h('div',{className:'page-title',style:{fontSize:18,marginTop:18}},'Mapping by person — '+RPT_MONTHS[cal.month]+' '+cal.year),
     h('div',{className:'page-sub',style:{marginBottom:8}},'From the mapping pop-up: lines mapped, how many came from a suggestion or were mapped automatically on import, suggestions changed by hand, undone, and lines checked in review.'),
     !P.length?h('div',{className:'card',style:{fontSize:12.5,color:'var(--text3)'}},'No mapping recorded for this month yet.')

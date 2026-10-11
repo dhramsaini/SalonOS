@@ -1203,6 +1203,62 @@
           [pr.rows.length,pl.map(z=>z.status==='ok'?z.x.id+'>'+z.patch.nature+(z.patch.vendorOverride?':'+z.patch.vendorOverride:'')+(z.patch.cradleeDate?':'+z.patch.cradleeDate:''):z.status.slice(0,12)),two.rows.length+':'+two.rows[0].nature,!!bad.error],
           [6,['Q1>Vendor Payment:Acme Traders','Q2>Bank Charges','Q3>Bank Charges','Q4>Card Settlement:07/10/2026','No unmapped ','Nature “Shop'],'1:Bank Charges',true]);
       }catch(err){results.push({name:'Paste from Excel',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=924;saveControls({mdrCheck:{on:true,limit:2}});
+        saveVendors([{id:'V1',name:'Acme Traders',status:'Active',gst:''},{id:'V2',name:'Sharma Properties',status:'Active'}],S);
+        saveVendorInvoices([{id:'I1',vendorId:'V1',invoiceNo:'AC-55',invoiceDate:'01/10/2026',amount:11800,cgst:900,sgst:900,payments:[]},{id:'I2',vendorId:'V1',invoiceNo:'AC-60',invoiceDate:'02/10/2026',amount:2360,cgst:180,sgst:180,payments:[{paidAmount:2360,linkId:'bank-L2'}]}],S);
+        safeLocalSet('salonos_cradlee_collection_rows_outlet_'+S,JSON.stringify([{invoiceDate:'09/10/2026',card:10000,upi:0,cash:0}]));
+        const rent=(id,d)=>({id,transactionDate:d,description:'NEFT SHARMA PROPERTIES RENT',debit:50000,nature:'Rent'});
+        const rows=[rent('R6','05/06/2026'),rent('R7','05/07/2026'),rent('R8','05/08/2026'),rent('R9','04/09/2026'),
+          {id:'B1',transactionDate:'08/10/2026',description:'NEFT ACME TRADERS PAYMENT',debit:11800,nature:''},
+          {id:'L2',transactionDate:'09/10/2026',description:'NEFT ACME TRADERS AC-60',debit:2360,nature:'Vendor Payment',vendorOverride:'Acme Traders',linkedInvoice:'V1|AC-60'},
+          {id:'D1',transactionDate:'03/10/2026',description:'NEFT TO RAMESH',debit:7000,nature:''},{id:'C1',transactionDate:'05/10/2026',description:'NEFT RETURN RAMESH',credit:7000,nature:''},
+          {id:'K1',transactionDate:'10/10/2026',description:'CARD SETTL',credit:9500,nature:'Card Settlement',cradleeDate:'09/10/2026'},
+          {id:'Q1',transactionDate:'11/10/2026',description:'SMS CHRGS',debit:59,nature:'Bank Charges',natureRule:'BRX'},{id:'Q2',transactionDate:'11/10/2026',description:'SMS CHRGS',debit:59,nature:'Other',natureRule:'BRX'},
+          {id:'Q3',transactionDate:'11/10/2026',description:'SMS CHRGS',debit:59,nature:'Other',natureRule:'BRX'},{id:'Q4',transactionDate:'11/10/2026',description:'SMS CHRGS',debit:59,nature:'Other',natureRule:'BRX'}];
+        safeLocalSet('salonos_bank_statement_rows_outlet_'+S,JSON.stringify(rows));safeLocalSet('salonos_bank_exc_ok_outlet_'+S,'{}');
+        const bm=billBankMatches(S).map(z=>z.inv.invoiceNo+'>'+z.row.id).join(',');
+        const L=unmappedBankLinesFor(S,2026,9);const sg=bankSuggestionsFor(S,L,bankRowsFor(S));
+        const rv=[sg.C1&&sg.C1.apply.type,sg.D1&&sg.D1.apply.type];
+        applyBankSuggestion(S,L.find(z=>z.id==='C1'),sg.C1,null,bankRowsFor(S));const rr=bankRowsFor(S);
+        const rule={id:'BRX',nature:'Bank Charges'};const st=bankRuleStats(S,rule,rr);const paused=bankRulePaused(S,rule,rr);
+        const ex=bankMappingExceptions(S,2026,9).map(e=>e.kind+':'+e.rowId).sort().join(',');
+        const exp=bankRecurringExpected(S,2026,9).map(e=>e.nature+':'+e.amount+':'+e.day);
+        const qp=bankQuickParse(S,'acme 11800',unmappedBankLinesFor(S,2026,9));const qp2=bankQuickParse(S,'charges',[]);
+        saveControls({});
+        eq('Accuracy & speed: bill → bank payment, reversal pair, rule history and pause, high card charges, GSTIN check, recurring watch, quick map',
+          [bm,rv,[rr.find(r=>r.id==='C1').nature,rr.find(r=>r.id==='D1').reversalOf],[st.used,st.changed,paused],ex,exp,qp&&qp.cands.length+':'+qp.patch.nature+':'+qp.patch.vendorOverride,qp2.nature],
+          ['AC-55>B1',['reversal','reversal'],['Refund','C1'],[1,3,true],'GSTIN missing:L2,High charges:K1',['Rent:50000:5'],'1:Vendor Payment:Acme Traders','Bank Charges']);
+      }catch(err){results.push({name:'Accuracy & speed',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=925;const U0=sessionStorage.getItem('salonos_user');const A0=window.alert,P0=window.prompt,C0=window.confirm;window.alert=()=>{};window.confirm=()=>true;
+        sessionStorage.setItem('salonos_user',JSON.stringify({name:'Asha',role:'Manager'}));
+        saveControls({vagueNatureReason:{on:true,limit:10000},mapRoleLimits:{on:true},tallyChangeGuard:{on:true}});
+        saveVendors([{id:'V1',name:'Acme Traders',status:'Active'}],S);
+        const rows=[{id:'T1',transactionDate:'05/10/2026',description:'NEFT ACME TRADERS',debit:11800,nature:''},{id:'T2',transactionDate:'06/10/2026',description:'CMS CARD SETTL',credit:9500,nature:''},
+          {id:'T3',transactionDate:'07/10/2026',description:'NEFT XYZ',debit:20000,nature:''},{id:'T4',transactionDate:'08/10/2026',description:'SENT',debit:500,nature:'Bank Charges'},
+          {id:'T5',transactionDate:'02/09/2026',description:'OLD',debit:300,nature:''}];
+        safeLocalSet('salonos_bank_statement_rows_outlet_'+S,JSON.stringify(rows));
+        const pushed=loadTallyPushed(S);pushed.bank.T4={at:'x',sig:'y'};saveTallyPushed(S,pushed);
+        const r=id=>bankRowsFor(S).find(z=>z.id===id);
+        const bl=[bankEditBlocker(S,r('T3'),'Other'),bankEditBlocker(S,r('T3'),'Salary'),bankEditBlocker(S,r('T4'),'Rent'),bankEditBlocker(S,r('T1'),'Rent')];
+        window.prompt=()=>'Owner loan repayment';const g1=bankEditGuard(S,r('T3'),'nature','Other');window.prompt=()=>'';const g2=bankEditGuard(S,r('T3'),'nature','Other');
+        const g3=bankEditGuard(S,r('T4'),'undo','');
+        sessionStorage.setItem('salonos_user',JSON.stringify({name:'Boss',role:'Super Admin'}));const g4=bankEditGuard(S,r('T4'),'nature','Rent');
+        const xml='<ENVELOPE><BODY><DATA><TALLYMESSAGE><VOUCHER><DATE>20261005</DATE><VOUCHERTYPENAME>Payment</VOUCHERTYPENAME><VOUCHERNUMBER>12</VOUCHERNUMBER><NARRATION>bill</NARRATION>'
+          +'<ALLLEDGERENTRIES.LIST><LEDGERNAME>Acme Traders</LEDGERNAME><AMOUNT>-11800.00</AMOUNT></ALLLEDGERENTRIES.LIST><ALLLEDGERENTRIES.LIST><LEDGERNAME>HDFC Bank</LEDGERNAME><AMOUNT>11800.00</AMOUNT></ALLLEDGERENTRIES.LIST></VOUCHER>'
+          +'<VOUCHER><DATE>20261006</DATE><VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME><LEDGERENTRIES.LIST><LEDGERNAME>HDFC Bank</LEDGERNAME><AMOUNT>-9500.00</AMOUNT></LEDGERENTRIES.LIST><LEDGERENTRIES.LIST><LEDGERNAME>Card Settlement Receivable</LEDGERNAME><AMOUNT>9500.00</AMOUNT></LEDGERENTRIES.LIST></VOUCHER>'
+          +'<VOUCHER><DATE>20261007</DATE><VOUCHERTYPENAME>Payment</VOUCHERTYPENAME><ALLLEDGERENTRIES.LIST><LEDGERNAME>Mystery Ledger</LEDGERNAME><AMOUNT>-20000</AMOUNT></ALLLEDGERENTRIES.LIST><ALLLEDGERENTRIES.LIST><LEDGERNAME>HDFC Bank</LEDGERNAME><AMOUNT>20000</AMOUNT></ALLLEDGERENTRIES.LIST></VOUCHER></TALLYMESSAGE></DATA></BODY></ENVELOPE>';
+        const vs=parseTallyBankVouchers(xml,'hdfc bank');const plan=planTallyPull(S,unmappedBankLinesFor(S,2026,9),bankRowsFor(S),vs,{bankLedger:'HDFC Bank'});
+        const cf=bankCashFlow([S],2026,9,2);const old=bankUnmappedOlderThan(S,7);
+        const hs=bankHealthScore(S,2026,9);const req=buildTallyDayBookRequestXml('2026-10-01','2026-10-31');
+        saveControls({});window.alert=A0;window.prompt=P0;window.confirm=C0;if(U0)sessionStorage.setItem('salonos_user',U0);else sessionStorage.removeItem('salonos_user');
+        eq('Control & reporting: reason for Other, salary roles, changes after Tally, pull from Tally, cash flow, ageing, health score',
+          [bl,g1&&g1.mapNote,g2,g3,!!g4,vs.map(v=>v.side+':'+v.amount+':'+v.ledger).join(','),plan.map(z=>z.status==='ok'?z.x.id+'>'+z.patch.nature+(z.patch.vendorOverride?':'+z.patch.vendorOverride:''):z.status.slice(0,6)),
+            cf.months.join(','),cf.net,old.n,typeof hs.score,req.indexOf('20261031')>0],
+          [['needs a reason','salary lines need Super Admin / Owner / Accountant','already in Tally',''],'Owner loan repayment',null,null,true,'Debit:11800:Acme Traders,Credit:9500:Card Settlement Receivable,Debit:20000:Mystery Ledger',
+            ['T1>Vendor Payment:Acme Traders','T2>Card Settlement','Ledger'],'2026-09,2026-10',[-300,-22800],1,'number',true]);
+      }catch(err){results.push({name:'Control & reporting',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

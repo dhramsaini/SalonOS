@@ -372,7 +372,7 @@ function planBulkAdvances(sid,lines,deductFrom){
 // A journal per outlet, kept while the app is open: each bank line mapped from the pop-up, with its
 // fields as they were before (the earliest state if it was changed several times), bills created for
 // it, and the Advances sheet as it was before an advance was recorded.
-const BANK_MAP_FIELDS=['nature','vendorOverride','cradleeDate','linkedInvoice','linkedEmployeePay','linkedAdvance','aiTagged','natureLearned','splits'];
+const BANK_MAP_FIELDS=['nature','vendorOverride','cradleeDate','linkedInvoice','linkedEmployeePay','linkedAdvance','aiTagged','natureLearned','splits','reversalOf','natureRule','mapNote'];
 // The pop-up itself (UnmappedLinesPopup) is in js/32-bank-mapper.js.
 // Collection Reco: credits only.
 function UnmappedCreditsPopup({sid,year,month,monthLabel,onClose,onNavTab,onMapped}){
