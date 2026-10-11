@@ -1371,6 +1371,22 @@
           [fu,ns,[used,bal],re,[okBill,noPo,small],pos],
           ['Birthday:C1,Lapsed:C2,Membership ending:C1,Repeat due:C1',[2,0],[1200,1800],'I1:5:25,I2:null:5',[true,false,true],['PO-0001:5900:Billed:B-77']]);
       }catch(err){results.push({name:'Front office',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=931;saveControls({});const acc=[{id:931,name:'A'},{id:932,name:'B'}];
+        const mgr={email:'m@x.in',role:'Salon Manager'},acct={email:'a@x.in',role:'Accountant'},own={email:'o@x.in',role:'Owner'},sa={email:'s@x.in',role:'Super Admin'};
+        [mgr,acct,own,sa].forEach(u=>saveStartPin(u,null));
+        const st=[startPageFor(mgr,acc),startPageFor(acct,acc),startPageFor(own,acc),startPageFor(sa,acc)].map(x=>x?x.page+(x.tab?':'+x.tab:'')+(x.salonId?':'+x.salonId:''):'none');
+        saveStartPin(sa,{page:'salon',salonId:932,tab:'vendor'});const pinned=startPageFor(sa,acc);saveStartPin(sa,{page:'salon',salonId:999,tab:'vendor'});const gone=startPageFor(sa,acc);saveStartPin(sa,null);
+        saveControls({roleHomeScreens:{on:false}});const off=startPageFor(mgr,acc);saveControls({});
+        safeLocalSet('salonos_outlet_capacity_outlet_'+S,JSON.stringify({chairs:5,sqft:1000}));
+        safeLocalSet('salonos_cradlee_collection_rows_outlet_'+S,JSON.stringify([{invoiceDate:'05/10/2026',cash:20000,card:30000,upi:50000}]));
+        safeLocalSet('salonos_billing_invoices_outlet_'+S,JSON.stringify([{id:'B1',date:'2026-09-20',phone:'9810011111',items:[{name:'Cut',rate:1000,qty:1}],discount:0,status:'Paid'},
+          {id:'B2',date:'2026-10-03',phone:'9810011111',items:[{name:'Cut',rate:1000,qty:1}],discount:0,status:'Paid'},{id:'B3',date:'2026-10-04',phone:'9810022222',items:[{name:'Colour',rate:3000,qty:1}],discount:0,status:'Paid'}]));
+        const pr=outletProductivity(S,2026,9);
+        eq('Owner & platform: start page by role and pinned (and its fallback), outlet productivity per chair / sq ft, repeat clients',
+          [st,pinned&&pinned.salonId,gone&&gone.page,off,[pr.revenue,pr.perChair,pr.perSqft,pr.bills,pr.repeatPct]],
+          [['salon:outlet-dashboard:931','salon:bank-statement:931','insights','none'],932,'dashboard'==='x'?'':null,null,[100000,20000,100,2,50]]);
+      }catch(err){results.push({name:'Owner & platform',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

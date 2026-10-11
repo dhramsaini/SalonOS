@@ -78,6 +78,7 @@ function monthCloseStepsFor(sid,year,month){
     ...(rest?[]:[{key:'coll-diff',label:'Collection differences explained',tab:'outlet-pnl',done:coll.hasCradle&&coll.unexplained.length===0,
       detail:!coll.hasCradle?'Waiting for CRADLE import':coll.unexplained.length?coll.unexplained.length+' of '+coll.flagged.length+' flagged day(s) need a reason':(coll.flagged.length?coll.flagged.length+' flagged, all explained':'No differences over ₹'+coll.limit)}]),
     {key:'bank',label:'Bank statement imported',tab:'bank-statement',done:bankN>0,detail:bankN?bankN+' entries':'Nothing imported for this month'},
+    ...(bankN>0&&typeof bankMonthReadiness==='function'?(()=>{const rd=bankMonthReadiness(sid,year,month);return[{key:'bank-map',label:'Bank lines mapped',tab:'bank-statement',done:rd.pct===100,detail:rd.mapped+' of '+rd.total+' mapped'}];})():[]),
     {key:'pnl',label:'P&L marked Final',tab:'outlet-pnl',done:isPnlFinal(sid,fy,mi),detail:''},
   ];
   return steps;
@@ -126,7 +127,7 @@ function MonthCloseBoard({accessibleSalons,onOpenOutletTab}){
   const data=outlets.map(s=>({s,steps:monthCloseStepsFor(s.id,cal.year,cal.month)}));
   const keys=[];const labels={};
   data.forEach(d=>d.steps.forEach(st=>{if(!labels[st.key]){keys.push(st.key);labels[st.key]=st.label;}}));
-  const short={'sales':'Daily Sales','dse-final':'DSR Final','att-final':'Attendance Final','salary':'Salary','incentive':'Incentive','cradle':'CRADLE','coll-diff':'Coll. diffs','bank':'Bank','pnl':'P&L Final'};
+  const short={'sales':'Daily Sales','dse-final':'DSR Final','att-final':'Attendance Final','salary':'Salary','incentive':'Incentive','cradle':'CRADLE','coll-diff':'Coll. diffs','bank':'Bank','bank-map':'Bank mapped','pnl':'P&L Final'};
   return h('div',null,
     h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}},
       h('div',null,h('div',{className:'page-title'},'Month-End Close'),h('div',{className:'page-sub'},'Where every outlet stands on closing the month — click a red step to open it')),

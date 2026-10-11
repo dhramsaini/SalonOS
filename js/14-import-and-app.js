@@ -879,6 +879,16 @@ function App(){
     return()=>{clearTimeout(first);clearInterval(t);};
   },[loggedIn,syncing,user&&user.id]);
 
+  // Start page by role / pinned (js/38) — once per sign-in, after the cloud data has loaded.
+  const startDone=useRef(null);
+  useEffect(()=>{
+    if(!loggedIn||syncing||!user){if(!loggedIn)startDone.current=null;return;}
+    if(startDone.current===user.id)return;startDone.current=user.id;
+    try{const acc=salons.filter(s=>userCanSeeOutlet(user,s.id));const sp=typeof startPageFor==='function'?startPageFor(user,acc):null;if(!sp)return;
+      if(sp.page==='salon'){const sn=acc.find(s=>String(s.id)===String(sp.salonId))||acc[0];if(!sn)return;handleSelectSalon(sn);if(sp.tab&&defaultPeriods[sn.id])setTimeout(()=>{try{navToSalonTab(sp.tab);}catch(e){}},0);}
+      else setActivePage(sp.page);}catch(e){}
+  },[loggedIn,syncing,user&&user.id,salons.length]);
+  const [quickOpen,setQuickOpen]=useState(false);
   if(CLOUD_SYNC_ENABLED&&isPasswordRecoveryLink())return React.createElement(ResetPasswordPage,null);
   if(!loggedIn)return React.createElement(LoginPage,{onLogin:handleLogin});
   if(syncing)return React.createElement('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100vh',gap:14,color:'var(--text2)',fontSize:13}},
@@ -1089,6 +1099,8 @@ function App(){
             React.createElement('div',{className:'user-role'},roleLabelForUser(user))
           )
         ),
+        React.createElement(StartPagePin,{user,activePage,selectedSalon,salonTab}),
+        React.createElement(InstallAppButton,null),
         React.createElement('div',{style:{fontSize:9.5,color:'var(--text3)',textAlign:'center',marginTop:10,paddingTop:10,borderTop:'1px solid var(--border)',letterSpacing:'0.02em'}},'Developed By CA Dharmender Saini, Gurugram')
       )
     ),
@@ -1198,9 +1210,12 @@ function App(){
         return React.createElement('nav',{className:'bottom-nav','aria-label':'Outlet sheets'},
           favs.map(t=>React.createElement('button',{key:t.id,type:'button',className:salonTab===t.id?'active':'',onClick:()=>setSalonTab(t.id)},
             React.createElement('span',{className:'bn-icon'},t.icon),SHORT[t.id]||t.label)),
+          controlOn('phoneQuickAdd',selectedSalon&&selectedSalon.id)&&React.createElement('button',{type:'button',className:quickOpen?'active':'',onClick:()=>setQuickOpen(true)},
+            React.createElement('span',{className:'bn-icon'},'＋'),'Add'),
           React.createElement('button',{type:'button',className:!onFav||modulePickerOpen?'active':'',onClick:()=>{setModuleQuery('');setModulePickerOpen(true);}},
             React.createElement('span',{className:'bn-icon'},'▦'),'All sheets'));
       })(),
+      quickOpen&&activePage==='salon'&&React.createElement(QuickAddSheet,{visibleTabs:visibleSalonTabs,onGo:id=>{setSalonTab(id);const el=document.querySelector('.content');if(el)el.scrollTop=0;},onClose:()=>setQuickOpen(false)}),
       modulePickerOpen&&activePage==='salon'&&React.createElement('div',{className:'module-sheet',role:'dialog','aria-label':'All sheets'},
         React.createElement('div',{className:'module-sheet-head'},
           React.createElement('input',{className:'form-control',placeholder:'Search sheets…',value:moduleQuery,onChange:e=>setModuleQuery(e.target.value)}),

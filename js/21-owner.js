@@ -103,7 +103,7 @@ function OutletRankingBoard({accessibleSalons}){
         h('td',{style:{textAlign:'right'}},f(r.ebitdaPct,'%')),h('td',{style:{textAlign:'right'}},f(r.salPct,'%')),
         h('td',{style:{textAlign:'right'}},f(r.tgtPct,'%')),
         h('td',{style:{textAlign:'right',color:r.diffs?'var(--orange)':''}},r.diffs),h('td',{style:{textAlign:'right',color:r.missing?'var(--orange)':''}},r.missing))))))),
-    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Growth compares revenue so far with last month’s revenue scaled to the same number of days. Set monthly sales targets in P&L → MTD P&L.'));
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Growth compares revenue so far with last month’s revenue scaled to the same number of days. Set monthly sales targets in P&L → MTD P&L.'),h(OutletProductivityTable,{accessibleSalons,cal}));
 }
 
 // ── 17 · Budget ──
