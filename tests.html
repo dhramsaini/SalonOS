@@ -1061,6 +1061,16 @@
         const pl=planBulkEmployeePay(915,[{id:1,side:'Credit',credit:100,description:'X',date:'07/10/2026'},{id:2,side:'Debit',debit:100,description:'IMPS NOBODY',date:'07/10/2026'},{id:3,side:'Debit',debit:100,description:'IMPS NOBODY',date:'20/10/2026'}],null,[]);
         eq('Bulk pay plan: credits skipped, no employee in the narration skipped, month by payment date (≤15th → last month)',[pl.map(p=>!!p.what),pl[1].month,pl[2].month],[[false,false,false],8,9]);
       }catch(err){results.push({name:'Bulk pay plan',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S916=SALONS.find(x=>x.id===916)||(SALONS.push({id:916,name:'Adv Outlet',status:'Active'}),SALONS[SALONS.length-1]);S916.advMaxPct='50';S916.advBlock=false;
+        safeLocalSet(empKeyFor(916),JSON.stringify([{id:'E1',name:'Ravi Kumar',status:'Active',gross:20000},{id:'E2',name:'Seema Rani',status:'Active',gross:20000}]));
+        safeLocalSet('salonos_advances_outlet_916',JSON.stringify([{id:'A001',emp:'Seema Rani',amount:4000,outstanding:4000,status:'Pending Approval'}]));
+        const L=[{id:1,side:'Debit',debit:6000,description:'IMPS RAVI KUMAR ADV',date:'05/10/2026'},{id:2,side:'Debit',debit:6000,description:'IMPS RAVI KUMAR ADV',date:'06/10/2026'},
+          {id:3,side:'Debit',debit:4000,description:'IMPS SEEMA RANI',date:'06/10/2026'},{id:4,side:'Debit',debit:100,description:'IMPS NOBODY',date:'06/10/2026'}];
+        const a=planBulkAdvances(916,L,'Salary').map(p=>p.linked?'link '+p.linked:p.line?(p.over?'over':'new '+p.line.deductionStart):'skip');
+        S916.advBlock=true;const b=planBulkAdvances(916,L,'Salary').map(p=>p.line?(p.over?'over':'ok'):'skip');S916.advBlock=false;
+        eq('Bulk advance plan: existing advance of the same amount linked; limit counts the batch (2nd Ravi advance over 50%); blocked when the outlet blocks',[a,b],[['new 2026-11','over','link A001','skip'],['ok','skip','ok','skip']]);
+      }catch(err){results.push({name:'Bulk advance plan',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

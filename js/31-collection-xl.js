@@ -259,7 +259,7 @@ function settleBankLineToEmployees(sid,row,year,month,lines,onMap){
 // transfer), kept on the bank line. Honours the outlet's advance limit (block or warn).
 // lines = [{employeeId, employeeName, amount, deductFrom, deductionStart, reason, linkExistingId}]
 function advanceCandidatesForEmp(sid,empName){return(loadAdvances(sid)||[]).filter(a=>a&&a.emp===empName&&!a.bankRowId&&(a.status==='Active'||a.status==='Pending Approval'));}
-function recordBankLineAdvances(sid,row,lines,onMap){
+function recordBankLineAdvances(sid,row,lines,onMap,opts){
   const adv=loadAdvances(sid)||[];
   const use=(lines||[]).filter(l=>l.linkExistingId||Number(l.amount)>0);
   if(!use.length)return'Enter an amount (or pick an existing advance) for at least one employee.';
@@ -267,7 +267,7 @@ function recordBankLineAdvances(sid,row,lines,onMap){
   const tot=use.reduce((t,l)=>t+amtOf(l),0),deb=Number(row.debit)||0;
   if(tot>deb+1)return'₹'+Math.round(tot).toLocaleString('en-IN')+' is more than this bank debit (₹'+deb.toLocaleString('en-IN')+').';
   const warn=use.filter(l=>!l.linkExistingId).map(l=>advanceLimitMessage(sid,l.employeeName,Number(l.amount)||0)).filter(Boolean);
-  if(warn.length){if(outletSettings(sid).advBlock)return warn.join(' ')+' (the outlet blocks advances above the limit).';if(!window.confirm(warn.join('\n\n')+'\n\nRecord anyway?'))return'Cancelled.';}
+  if(warn.length&&!(opts&&opts.limitReviewed)){if(outletSettings(sid).advBlock)return warn.join(' ')+' (the outlet blocks advances above the limit).';if(!window.confirm(warn.join('\n\n')+'\n\nRecord anyway?'))return'Cancelled.';}
   let n=Math.max(0,...adv.map(a=>Number(String(a.id||'').replace(/\D/g,''))||0));
   const updated=[...adv],fresh=[],created=[];
   use.forEach(l=>{
@@ -335,6 +335,27 @@ function planBulkEmployeePay(sid,lines,forceYM,rows){
     const due=[sal?'salary ₹'+Math.round(sal).toLocaleString('en-IN'):'',inc?'incentive ₹'+Math.round(inc).toLocaleString('en-IN'):'',diTot?'daily incentive ₹'+Math.round(diTot).toLocaleString('en-IN'):''].filter(Boolean).join(', ');
     return{x,emp:e,year:y,month:m,reason:due?'Amount matches nothing due ('+due+') — use 👤 Pay employees on this line':'Nothing due for '+RPT_MONTHS[m]+' '+y};});
 }
+// Plan for recording many bank debits as advances at once. Per line: the employee named in the
+// narration; an advance already on the Advances sheet (not tied to a bank payment) of the same amount
+// is linked, else a new advance of the debit amount is planned (recover from deductFrom, starting the
+// month after the payment). The outlet's advance limit is checked counting the batch itself.
+// [{x, emp, line, linked, over, reason}]
+function planBulkAdvances(sid,lines,deductFrom){
+  const t=new Date();const emps=(getEmployeesForMonth(t.getFullYear(),t.getMonth(),sid)||[]).filter(e=>e&&e.status!=='Inactive');
+  const takenIds=new Set(),batch={};const block=!!outletSettings(sid).advBlock;
+  return(lines||[]).map(x=>{
+    if(x.side!=='Debit')return{x,reason:'Credit line'};
+    const e=findEmployeeMatch(x.description,emps);
+    if(!e)return{x,reason:'No employee named in the narration — use 💵 Advance on this line'};
+    const cand=advanceCandidatesForEmp(sid,e.name).filter(a=>!takenIds.has(a.id)&&Math.abs((Number(a.outstanding!=null?a.outstanding:a.amount)||0)-x.debit)<=1);
+    if(cand.length===1){takenIds.add(cand[0].id);return{x,emp:e,linked:cand[0].id,line:{employeeId:e.id,employeeName:e.name,linkExistingId:cand[0].id}};}
+    const iso=toISO(x.date);const d=iso?new Date(iso+'T00:00:00'):new Date();const nx=new Date(d.getFullYear(),d.getMonth()+1,1);
+    const ym=nx.getFullYear()+'-'+String(nx.getMonth()+1).padStart(2,'0');
+    const before=batch[e.name]||0;batch[e.name]=before+x.debit;
+    const msg=advanceLimitMessage(sid,e.name,before+x.debit);
+    if(msg&&block)return{x,emp:e,reason:'Over the advance limit (the outlet blocks it): '+msg};
+    return{x,emp:e,over:msg||'',line:{employeeId:e.id,employeeName:e.name,amount:String(x.debit),deductFrom:deductFrom||'Salary',deductionStart:ym,reason:'Advance — Bank Statement'}};});
+}
 // Pop-up listing unmapped lines, each mappable in place: Nature, the vendor for a vendor payment,
 // the Date as per Cradlee for a card / UPI settlement. getList() is re-read after every change.
 //   onMap(id, patch)  — how to save (Bank Statement passes its own; default saves to storage)
@@ -347,7 +368,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
   const [payErr,setPayErr]=useState('');
   const [advFor,setAdvFor]=useState(null); // {x, lines:[{employeeId,employeeName,amount,deductFrom,deductionStart,reason,linkExistingId}]}
   const [advErr,setAdvErr]=useState('');
-  const [ticked,setTicked]=useState(()=>new Set());const [linkPlan,setLinkPlan]=useState(null);const [payPlan,setPayPlan]=useState(null);const [payYM,setPayYM]=useState('auto');const [splitOld,setSplitOld]=useState(false);const [bulk,setBulk]=useState({nature:'',vendor:'',dateMode:'setdt',date:''});const [bulkMsg,setBulkMsg]=useState('');
+  const [ticked,setTicked]=useState(()=>new Set());const [linkPlan,setLinkPlan]=useState(null);const [payPlan,setPayPlan]=useState(null);const [advPlan,setAdvPlan]=useState(null);const [advDeduct,setAdvDeduct]=useState('Salary');const [advOver,setAdvOver]=useState(false);const [payYM,setPayYM]=useState('auto');const [splitOld,setSplitOld]=useState(false);const [bulk,setBulk]=useState({nature:'',vendor:'',dateMode:'setdt',date:''});const [bulkMsg,setBulkMsg]=useState('');
   const list=getList();const vendors=(loadVendors(sid)||[]).filter(v=>v&&v.status!=='Inactive').sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   const m=n=>n?'₹'+Number(n).toLocaleString('en-IN',{maximumFractionDigits:2}):'';
   const dr=list.filter(x=>x.side==='Debit'),cr=list.filter(x=>x.side==='Credit');const sum=(a,k)=>a.reduce((t,x)=>t+x[k],0);
@@ -382,9 +403,17 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
     setBulkMsg(done+' line'+(done===1?'':'s')+' set to '+n+(skipped?' · '+skipped+' skipped ('+(n&&BANK_CREDIT_NATURES.has(n)?'debits':'credits')+' cannot take this Nature)':'')+(noDate?' · '+noDate+' still need a Date as per Cradlee':'')+'.');
     try{logAuditEvent(sid,{entity:'Bank Statement',entityId:'bulk',action:'Mapped in bulk',summary:done+' line(s) set to '+n+(bulk.vendor?' — '+bulk.vendor:'')});}catch(e){}
   };
-  const makePlan=sp=>{setPayPlan(null);setLinkPlan(planBulkBillLinks(sid,list.filter(x=>ticked.has(x.id)),sp));};
-  const makePayPlan=ym=>{const f=ym&&ym!=='auto'?{year:Number(ym.split('-')[0]),month:Number(ym.split('-')[1])}:null;
+  const makePlan=sp=>{setPayPlan(null);setAdvPlan(null);setLinkPlan(planBulkBillLinks(sid,list.filter(x=>ticked.has(x.id)),sp));};
+  const makePayPlan=ym=>{setAdvPlan(null);const f=ym&&ym!=='auto'?{year:Number(ym.split('-')[0]),month:Number(ym.split('-')[1])}:null;
     setLinkPlan(null);setPayPlan(planBulkEmployeePay(sid,list.filter(x=>ticked.has(x.id)),f,getRows?getRows():bankRowsFor(sid)));};
+  const makeAdvPlan=df=>{setLinkPlan(null);setPayPlan(null);setAdvOver(false);setAdvPlan(planBulkAdvances(sid,list.filter(x=>ticked.has(x.id)),df));};
+  const runAdvPlan=()=>{
+    const rowsNow=getRows?getRows():bankRowsFor(sid);let ok=0;const fails=[];
+    advPlan.filter(p=>p.line&&(!p.over||advOver)).forEach(p=>{const row=rowsNow.find(r=>r.id===p.x.id)||{id:p.x.id,debit:p.x.debit,transactionDate:p.x.date};
+      const err=recordBankLineAdvances(sid,row,[p.line],onMap,{limitReviewed:true});if(err)fails.push((p.x.date||'')+' '+p.emp.name+': '+err);else ok++;});
+    setAdvPlan(null);setTicked(new Set());setTick(t=>t+1);if(onMapped)onMapped();
+    setBulkMsg(ok+' advance'+(ok===1?'':'s')+' recorded'+(fails.length?' · not recorded: '+fails.join('; '):'')+'.');
+  };
   const runPayPlan=()=>{
     const rowsNow=getRows?getRows():bankRowsFor(sid);let ok=0;const fails=[];
     payPlan.filter(p=>p.what).forEach(p=>{const row=rowsNow.find(r=>r.id===p.x.id)||{id:p.x.id,debit:p.x.debit,transactionDate:p.x.date};
@@ -466,10 +495,23 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
           h('option',{value:'setdt'},'Cradlee date from narration (SETDT)'),h('option',{value:'prev'},'Cradlee date = day before bank date'),h('option',{value:'pick'},'Cradlee date = …')),
         (bulk.nature==='Card Settlement'||bulk.nature==='UPI Settlement')&&bulk.dateMode==='pick'&&h('input',{type:'date',className:'form-control',style:{width:140,padding:'4px 6px',fontSize:12},value:bulk.date,onChange:e=>setBulk({...bulk,date:e.target.value})}),
         h('button',{className:'btn btn-primary btn-sm',onClick:applyBulk},'Apply to '+ticked.size),
+        list.some(x=>ticked.has(x.id)&&x.side==='Debit')&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>makeAdvPlan(advDeduct)},'💵 Advances ('+list.filter(x=>ticked.has(x.id)&&x.side==='Debit').length+' debits)'),
         list.some(x=>ticked.has(x.id)&&x.side==='Debit')&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>makePayPlan(payYM)},'👤 Pay employees ('+list.filter(x=>ticked.has(x.id)&&x.side==='Debit').length+' debits)'),
         list.some(x=>ticked.has(x.id)&&x.side==='Debit')&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>makePlan(splitOld)},'🔗 Link bills ('+list.filter(x=>ticked.has(x.id)&&x.side==='Debit').length+' debits)'),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setTicked(new Set())},'Clear')),
       bulkMsg&&h('div',{style:{fontSize:12,color:'var(--green)',marginBottom:6}},'✓ '+bulkMsg),
+      advPlan&&(()=>{const ready=advPlan.filter(p=>p.line),over=ready.filter(p=>p.over),go=ready.filter(p=>!p.over||advOver),skip=advPlan.filter(p=>!p.line);
+        return h('div',{style:{border:'1px solid var(--border2)',borderRadius:8,padding:10,marginBottom:10,background:'var(--bg3)'}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:6}},
+            h('b',{style:{fontSize:13}},'Advances — '+go.length+' ready'+(skip.length?', '+skip.length+' skipped':'')+(over.length&&!advOver?', '+over.length+' over the limit':'')),
+            h('div',{style:{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}},
+              h('label',{style:{fontSize:12,display:'flex',gap:6,alignItems:'center'}},'New advances recover from',h('select',{className:'form-control',style:{width:110,padding:'3px 6px',fontSize:12},value:advDeduct,onChange:e=>{setAdvDeduct(e.target.value);makeAdvPlan(e.target.value);}},['Salary','Incentive'].map(o=>h('option',{key:o,value:o},o)))),
+              over.length>0&&h('label',{style:{fontSize:12,display:'flex',gap:6,alignItems:'center',color:'var(--orange)'}},h('input',{type:'checkbox',checked:advOver,onChange:e=>setAdvOver(e.target.checked)}),'Include the '+over.length+' over the limit'))),
+          h('table',{style:{width:'100%',fontSize:12}},h('thead',null,h('tr',null,['Date','Payment','Employee','Records'].map((t,i)=>h('th',{key:i,style:i===1?{textAlign:'right'}:null},t)))),
+            h('tbody',null,advPlan.map(p=>h('tr',{key:p.x.id,style:{opacity:p.line&&(!p.over||advOver)?1:0.7}},
+              h('td',{style:{whiteSpace:'nowrap'}},p.x.date),h('td',{style:{textAlign:'right',whiteSpace:'nowrap'}},m(p.x.debit)),h('td',null,p.emp?p.emp.name:'—'),
+              h('td',{style:{color:!p.line?'var(--orange)':p.over?'var(--orange)':'var(--green)'}},!p.line?p.reason:p.linked?'Links '+p.linked+' already on the Advances sheet':'New advance, recover from '+p.line.deductFrom+' from '+RPT_MONTHS[Number(p.line.deductionStart.slice(5,7))-1].slice(0,3)+' '+p.line.deductionStart.slice(0,4)+(p.over?' — ⚠ '+p.over:'')))))),
+          h('div',{style:{display:'flex',gap:8,marginTop:8}},go.length>0&&h('button',{className:'btn btn-primary btn-sm',onClick:runAdvPlan},'Record '+go.length),h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setAdvPlan(null)},'Cancel')));})(),
       payPlan&&(()=>{const go=payPlan.filter(p=>p.what),skip=payPlan.filter(p=>!p.what);
         const months=[0,1,2,3].map(k=>{const d=new Date(new Date().getFullYear(),new Date().getMonth()-k,1);return d.getFullYear()+'-'+d.getMonth();});
         return h('div',{style:{border:'1px solid var(--border2)',borderRadius:8,padding:10,marginBottom:10,background:'var(--bg3)'}},
