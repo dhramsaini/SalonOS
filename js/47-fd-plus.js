@@ -111,7 +111,7 @@ function fdSaveCoupons(sid,L){safeLocalSet(fdCouponKey(sid),JSON.stringify(L||[]
 function fdCheckCoupon(sid,code,phone,items){
   const c=fdCoupons(sid).find(x=>String(x.code).toUpperCase()===String(code||'').trim().toUpperCase());if(!c)return{err:'No such coupon'};if(c.active===false)return{err:c.code+' is switched off'};
   if(c.expiry&&c.expiry<fdTodayIso())return{err:c.code+' expired on '+fdDmy(c.expiry)};const uses=c.uses||[];if(Number(c.maxUses)>0&&uses.length>=Number(c.maxUses))return{err:c.code+' has reached its limit of '+c.maxUses+' use(s)'};
-  const p=fdP10(phone);if(c.perClient!==false){if(p.length!==10)return{err:'Enter the client’s mobile — '+c.code+' is one per client'};if(uses.some(u=>u.phone===p))return{err:'This client has already used '+c.code};}
+  const p=fdP10(phone);if(c.onlyPhone&&c.onlyPhone!==p)return{err:c.code+' is for another client'};if(c.perClient!==false){if(p.length!==10)return{err:'Enter the client’s mobile — '+c.code+' is one per client'};if(uses.some(u=>u.phone===p))return{err:'This client has already used '+c.code};}
   const base=(items||[]).filter(it=>c.on==='Services'?it.type==='Service':c.on==='Products'?it.type==='Product':it.type==='Service'||it.type==='Product').reduce((s,it)=>s+(Number(it.qty)||0)*(Number(it.rate)||0),0);
   if(Number(c.minBill)>0&&base<Number(c.minBill))return{err:'Minimum bill for '+c.code+' is '+FD_M(c.minBill)};
   let amt=c.kind==='₹'?Number(c.value)||0:base*(Number(c.value)||0)/100;if(Number(c.maxOff)>0)amt=Math.min(amt,Number(c.maxOff));return{coupon:c,amount:Math.round(Math.min(amt,base))};

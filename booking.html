@@ -29,8 +29,8 @@ button.go{width:100%;margin-top:16px;padding:14px;border:0;border-radius:12px;ba
   app.innerHTML='<h1>'+esc(d.n)+'</h1><div class="muted">Pick your services, a day and a time — your request goes to the salon on WhatsApp and they confirm the slot.</div>'
     +'<div class="card"><b>Services</b><div id="svcs" style="margin-top:8px"></div></div>'
     +'<div class="card"><label>Day</label><input type="date" id="day" min="'+iso(today)+'" max="'+iso(max)+'" value="'+iso(today)+'"><label>Preferred time</label><div class="slots" id="slots"></div></div>'
-    +'<div class="card"><label>Your name</label><input id="nm" autocomplete="name"><label>Note (optional)</label><textarea id="note" rows="2" placeholder="Preferred stylist, anything we should know"></textarea></div>'
-    +'<button class="go" id="go" disabled>Send booking request on WhatsApp</button><p class="muted" style="text-align:center;margin-top:10px">Prices are indicative; the salon confirms the final booking.</p>';
+    +'<div class="card"><label>Your name</label><input id="nm" autocomplete="name">'+(d.u&&d.k?'<label>Mobile</label><input id="ph" inputmode="tel" autocomplete="tel" placeholder="10-digit mobile">':'')+'<label>Note (optional)</label><textarea id="note" rows="2" placeholder="Preferred stylist, anything we should know"></textarea></div>'
+    +'<button class="go" id="go" disabled>'+(d.u&&d.k?'Send booking request':'Send booking request on WhatsApp')+'</button><div id="res"></div><p class="muted" style="text-align:center;margin-top:10px">Prices are indicative; the salon confirms the final booking.</p>';
   var sv=document.getElementById('svcs');
   d.s.forEach(function(s,i){var el=document.createElement('div');el.className='svc';el.innerHTML='<div>'+esc(s[0])+'<br><small>'+(s[1]?s[1]+' min':'')+'</small></div><div><b>₹'+Number(s[2]||0).toLocaleString('en-IN')+'</b></div>';
     el.onclick=function(){if(picked[i])delete picked[i];else picked[i]=s;el.classList.toggle('on');check();};sv.appendChild(el);});
@@ -38,9 +38,17 @@ button.go{width:100%;margin-top:16px;padding:14px;border:0;border-radius:12px;ba
   function drawSlots(){slots.innerHTML='';var day=document.getElementById('day').value;var now=new Date();var isToday=day===iso(now);
     for(var m=open;m<close;m+=30){if(isToday&&m<=now.getHours()*60+now.getMinutes()+30)continue;(function(m){var b=document.createElement('span');b.className='slot'+(time===m?' on':'');b.textContent=hm(m);b.onclick=function(){time=m;drawSlots();check();};slots.appendChild(b);})(m);}
     if(!slots.children.length)slots.innerHTML='<span class="muted">No times left today — pick another day.</span>';}
-  function check(){document.getElementById('go').disabled=!(Object.keys(picked).length&&time!=null&&document.getElementById('nm').value.trim());}
-  document.getElementById('day').onchange=function(){time=null;drawSlots();check();};document.getElementById('nm').oninput=check;drawSlots();
-  document.getElementById('go').onclick=function(){var list=Object.keys(picked).map(function(k){return picked[k][0];});var day=document.getElementById('day').value.split('-').reverse().join('/');
+  function check(){var ph=document.getElementById('ph');document.getElementById('go').disabled=!(Object.keys(picked).length&&time!=null&&document.getElementById('nm').value.trim()&&(!ph||ph.value.replace(/\D/g,'').length>=10));}
+  document.getElementById('day').onchange=function(){time=null;drawSlots();check();};document.getElementById('nm').oninput=check;if(document.getElementById('ph'))document.getElementById('ph').oninput=check;drawSlots();
+  function toWa(list){var day=document.getElementById('day').value.split('-').reverse().join('/');
+    var msg='Hi '+d.n+', I would like to book:\n• '+list.join('\n• ')+'\nDay: '+day+'\nTime: '+hm(time)+'\nName: '+document.getElementById('nm').value.trim()+(document.getElementById('note').value.trim()?'\nNote: '+document.getElementById('note').value.trim():'');
+    location.href='https://wa.me/'+encodeURIComponent(d.p)+'?text='+encodeURIComponent(msg);}
+  if(d.u&&d.k)document.getElementById('go').onclick=function(){var list=Object.keys(picked).map(function(k){return picked[k][0];});var go=document.getElementById('go'),res=document.getElementById('res');go.disabled=true;go.textContent='Sending…';
+    fetch(d.u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sid:d.sid,token:d.k,name:document.getElementById('nm').value.trim(),phone:document.getElementById('ph').value,services:list,day:document.getElementById('day').value,time:time,note:document.getElementById('note').value.trim()})})
+      .then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});}).then(function(x){if(x.ok&&x.j.ok){app.innerHTML='<h1>'+esc(d.n)+'</h1><div class="card"><b>Request sent ✓</b><p class="muted">The salon will confirm your slot on WhatsApp or by phone. You can close this page.</p></div>';}
+        else{res.innerHTML='<p class="err">'+esc((x.j&&x.j.error)||'Could not send.')+'</p>';go.disabled=false;go.textContent='Send booking request';}})
+      .catch(function(){res.innerHTML='<p class="err">No connection. <a href="#" id="wa">Send on WhatsApp instead</a></p>';document.getElementById('wa').onclick=function(e){e.preventDefault();toWa(list);};go.disabled=false;go.textContent='Send booking request';});};
+  else document.getElementById('go').onclick=function(){var list=Object.keys(picked).map(function(k){return picked[k][0];});var day=document.getElementById('day').value.split('-').reverse().join('/');
     var msg='Hi '+d.n+', I would like to book:\n• '+list.join('\n• ')+'\nDay: '+day+'\nTime: '+hm(time)+'\nName: '+document.getElementById('nm').value.trim()+(document.getElementById('note').value.trim()?'\nNote: '+document.getElementById('note').value.trim():'')+'\n(Booking page)';
     location.href='https://wa.me/'+encodeURIComponent(d.p)+'?text='+encodeURIComponent(msg);};
 })();

@@ -1509,6 +1509,46 @@
           [combo,dsv,due,openAdv,fee,rb&&[rb.service,rb.date,rb.days],op,cpn,[(d1&&d1.id)||'',(d2&&d2.id)||''],ci,gap,mg,loss,price,short,[rd.length,rd[0]&&rd[0].total],[rc.length,rc[0]&&rc[0].name,rc[0]&&rc[0].bills,rc[0]&&rc[0].total,rc[0]&&rc[0].prepaid,rc[1]&&rc[1].due],[rm.count,rm.active,rm.paid,rm.used,rm.left]],
           [['800,1200','Cut+Spa',0],[1000,500,500,500,1000],700,0,[true,true,1],['Colour','2026-10-31',30],[15,0,0,150],[300,true,true],['B1',''],{bills:1000,receipts:0,adv:0,petty:50,refunds:0},[31,19,0],[1,'',2,15,'9810011111'],[1,2,3,300],[10,true,null],1,[1,2500],[2,'Asha',2,1500,500,700],[2,1,8000,1500,4500]]);
       }catch(err){results.push({name:'Front desk plus',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=937,S2=938,S3=939;const T=fdTodayIso();
+        saveControls({staffHours:{on:true},unconfirmedAlert:{on:true,limit:120},addonSuggest:{on:true},sessionPackages:{on:true},splitService:{on:true,limit:50},upiQr:{on:true},scheduledPrices:{on:true},corporateAccounts:{on:true},clientPrefs:{on:true},birthdayVoucher:{on:true,limit:300},coupons:{on:true},stockRequests:{on:true},spotCheck:{on:true,limit:5},slowStock:{on:true,limit:90},loyaltyPoints:{on:false},billReducesStock:{on:false},rebookPrompt:{on:false}});
+        fdSaveSettings(S,{staffHours:{E1:{from:'10:00',to:'19:00',brFrom:'14:00',brTo:'15:00'}},upiId:'salon@okhdfc'});const E1={id:'E1',name:'Ravi'};
+        const hrs=[fdStaffHoursMsg(S,E1,540,30)!=='',fdStaffHoursMsg(S,E1,660,60),fdStaffHoursMsg(S,E1,810,60)!=='',fdOutsideHours(S,E1,870),fdStaffHoursMsg(S,{id:'E9',name:'X'},540,30)];
+        const nm=fdNowMin();const unc=fdUnconfirmed(S,[{id:'a',status:'Booked',start:nm+30,dur:30},{id:'b',status:'Confirmed',start:nm+30,dur:30},{id:'c',status:'Booked',start:nm+300,dur:30}],T).map(x=>x.id).join(',');
+        fdSaveMenu(S,[{id:'S1',name:'Cut',type:'Service',category:'Hair',rate:1000,duration:45,gst:18,active:true,nextRate:1200,nextFrom:fdAddD(T,-1)},{id:'S2',name:'Spa',type:'Service',category:'Hair',rate:1500,duration:60,gst:18,active:true},{id:'S3',name:'Facial',type:'Service',category:'Skin',rate:1500,duration:60,gst:18,active:true},{id:'P1',name:'Facial x6',type:'Package',rate:9000,gst:18,active:true,sessions:6,sessionService:'Facial',validityDays:365}]);
+        const sch=fdApplyScheduledPrices(S);const schV=[sch,fdMenuItem(S,'Cut').rate,(fdMenuItem(S,'Cut').priceHistory||[]).length];
+        const cs={customer:'Asha',phone:'9810011111',noGst:true,paymentMode:'Cash',status:'Paid'};
+        safeLocalSet('salonos_billing_invoices_outlet_'+S,JSON.stringify([1,2,3].map(i=>({...cs,id:'A'+i,date:'2026-09-0'+i,items:[{name:'Cut',type:'Service',qty:1,rate:1000},{name:'Spa',type:'Service',qty:1,rate:1500}]}))));
+        const add=fdAddons(S,'Cut').map(m=>m.name).join(',');
+        fdSaveClients(S,[{id:'C1',name:'Asha',phone:'9810011111',birthday:'12 Jan',prefs:{drink:'Tea',chat:'quiet'}},{id:'C2',name:'Bina',phone:'9810044444'}]);saveMemberships(S,[]);
+        fdAfterBillSaved(S,{...cs,id:'PK1',date:T,items:[{name:'Facial x6',type:'Package',qty:1,rate:9000}]},true);
+        const sp1=fdSessionPacks(S,'9810011111');const pkId=sp1[0]&&sp1[0].id;
+        fdAfterBillSaved(S,{...cs,id:'U1',date:T,items:[{name:'Facial',type:'Service',qty:1,rate:1500,sessionPkgId:pkId}],sessionPaid:1500,paymentMode:'Package'},true);
+        const m1=fdMemberships(S).find(m=>m.id===pkId)||{};const sess=[sp1.length,fdSessionLeft(m1),(m1.redemptions||[]).map(r=>r.amount).join(','),fdPackageLeft(S,'9810011111'),fdBillDue({status:'Unpaid',noGst:true,items:[{name:'Facial',qty:1,rate:1500}],sessionPaid:1500})];
+        safeLocalSet('salonos_billing_invoices_outlet_'+S,JSON.stringify([{...cs,id:'SP1',date:'2026-08-05',staffId:'E1',staff:'Ravi',items:[{name:'Cut',type:'Service',qty:1,rate:1000,staffId:'E1',staffName:'Ravi',split:{staffId:'E2',staffName:'Sita',pct:30}}]}]));
+        const by=fdBilledSalesByStaff(S,2026,7);const spl=[by.E1&&by.E1.svc,by.E2&&by.E2.svc];const sc=fdScorecard(S,'2026-08');
+        const upi=[fdUpiUri(S,1180.5,'B1').includes('pa=salon%40okhdfc'),fdUpiUri(S,1180.5,'B1').includes('am=1180.50'),fdUpiUri(S2,100,'')];
+        fdSaveCorps(S,[{id:'CO1',name:'Acme'}]);safeLocalSet('salonos_billing_invoices_outlet_'+S,JSON.stringify([{...cs,id:'K1B',date:'2026-10-01',status:'Unpaid',corpId:'CO1',items:[{name:'Cut',type:'Service',qty:1,rate:1000}]},{...cs,id:'K2B',date:'2026-10-02',status:'Unpaid',corpId:'CO1',items:[{name:'Spa',type:'Service',qty:1,rate:500}]}]));
+        const cp=fdCorpPay(S,'CO1',1200,'UPI');const corp=[cp,fdBillDue(fdBills(S).find(b=>b.id==='K1B')),fdBillDue(fdBills(S).find(b=>b.id==='K2B')),fdCorpStatement(S,'CO1','2026-10').due];
+        const pref=fdPrefsText(fdClients(S)[0]);
+        const bd=[fdBirthdayMD('12 Jan'),fdBirthdayMD('2001-03-05'),fdBirthdayMD('05/03'),fdBirthdayMD('Mar 5')].map(x=>x&&x.join('-')).join(',');
+        fdSaveCoupons(S,[]);const bc=fdMakeBirthdayCoupon(S,fdClients(S)[0]);const its=[{name:'Cut',type:'Service',qty:1,rate:1000}];const bcv=[fdCheckCoupon(S,bc.code,'9810044444',its).err?'blocked':'open',fdCheckCoupon(S,bc.code,'9810011111',its).amount];
+        fdSaveStock(S,[{id:'K1',name:'Gel',unit:'tube',qty:2,rate:100},{id:'K2',name:'Oil',unit:'bottle',qty:0,rate:50}]);safeLocalSet('salonos_inventory_log_outlet_'+S,'[]');
+        savePOs(S,[{id:'PO1',no:'PO-0001',vendorId:'V1',date:T,lines:[{itemId:'K1',name:'Gel',qty:10,rate:100},{itemId:'K2',name:'Oil',qty:5,rate:50}],status:'Draft'}]);
+        const r1=fdReceivePO(S,'PO1',{0:6});const st1=loadPOs(S)[0].status;const q1=fdStock(S).find(i=>i.id==='K1').qty;const r2=fdReceivePO(S,'PO1',{0:4,1:5});const po=[r1,st1,q1,r2,loadPOs(S)[0].status,fdStock(S).find(i=>i.id==='K2').qty];
+        fdSaveStock(S2,[{id:'Z1',name:'Gel',unit:'tube',qty:5,rate:100}]);safeLocalSet('salonos_inventory_log_outlet_'+S2,'[]');safeLocalSet(fdSReqKey(S),'[]');safeLocalSet(fdSReqKey(S2),'[]');
+        const rq=fdRequestStock(S,S2,'Gel',2,'');const rid=(fdSReqs(S2)[0]||{}).id;const an=fdAnswerSReq(S2,rid,true);
+        const sreq=[rq,an,fdStock(S2)[0].qty,fdStock(S).find(i=>i.id==='K1').qty,fdSReqs(S)[0].status,fdSReqs(S2)[0].status];
+        safeLocalSet(fdSpotKey(S),'[]');const spI=fdSpotItems(S).length;const spR=fdSaveSpot(S,{K1:'10'});const spot=[spI,spR&&spR.n,spR&&spR.val,fdStock(S).find(i=>i.id==='K1').qty];
+        const sums=FD_C128.slice(0,106).every(w=>[...w].reduce((a,d)=>a+Number(d),0)===11);const code=[sums,[...FD_C128[106]].reduce((a,d)=>a+Number(d),0),new Set(FD_C128).size,fdCode128('AB').endsWith(FD_C128[102]+FD_C128[106]),fdCode128('AB').startsWith(FD_C128[104]+FD_C128[33]+FD_C128[34])];
+        fdSaveStock(S3,[{id:'K9',name:'Wax',unit:'tin',qty:10,rate:200},{id:'K8',name:'Serum',unit:'btl',qty:4,rate:50,sell:120}]);
+        safeLocalSet('salonos_inventory_log_outlet_'+S3,JSON.stringify([{id:'1',itemId:'K9',type:'receive',qty:5,date:'2026-09-10',at:'2026-09-10T10:00:00Z'},{id:'2',itemId:'K9',type:'issue',qty:2,date:fdAddD(T,-20),at:'x'},{id:'3',itemId:'K9',type:'receive',qty:3,date:'2099-01-05',at:'y'}]));
+        const stS=fdStockStatement(S3,'2026-09').find(x=>x.name==='Wax')||{};const slow=fdSlowStock(S3).map(x=>x.i.name+':'+x.offer).join(',');
+        saveControls({});
+        eq('Front desk operations: staff hours, unconfirmed, add-ons, scheduled price, session package, shared service, UPI link, company payment, preferences, birthday code, PO receiving, stock request, spot check, Code 128, stock statement, slow stock',
+          [hrs,unc,add,schV,sess,spl,sc.length&&sc[0].name,upi,corp,pref,bd,bcv,po,sreq,spot,code,[stS.inQ,stS.closing],slow],
+          [[true,'',true,true,''],'a','Spa',[1,1200,1],[1,5,'1500',0,0],[700,300],'Ravi',[true,true,''],['',0,300,300],'Drink: Tea · Chat: quiet','1-12,3-5,3-5,3-5',['blocked',300],['','Partly received',8,'','Received',5],['','',3,14,'Sent','Sent'],[2,1,-400,10],[true,13,107,true,true],[5,7],'Serum:100']);
+      }catch(err){results.push({name:'Front desk operations',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

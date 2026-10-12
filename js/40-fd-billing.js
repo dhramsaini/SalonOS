@@ -44,17 +44,18 @@ function fdPrintBill(sid,inv){
     +(inv.noGst?'':'<tr><td>Taxable</td><td class="r">'+FD_M(t.taxable)+'</td></tr>'+(typeof fdIsInterState==='function'&&fdIsInterState(sid,inv)?'<tr><td>IGST</td><td class="r">'+FD_M(t.gst)+'</td></tr>':'<tr><td>CGST</td><td class="r">'+FD_M(half)+'</td></tr><tr><td>SGST</td><td class="r">'+FD_M(t.gst-half)+'</td></tr>'))
     +(()=>{const ro=Math.round((t.total-(Number(t.taxable)+t.gst))*100)/100;return Math.abs(ro)>=0.01&&!inv.inclusive?'<tr><td>Round off</td><td class="r">'+(ro>0?'+':'')+ro.toFixed(2)+'</td></tr>':'';})()
     +'<tr class="big"><td>Total</td><td class="r">'+FD_M(t.total)+'</td></tr>'+(Number(inv.packagePaid)>0?'<tr><td>Paid from package</td><td class="r">'+FD_M(inv.packagePaid)+'</td></tr>':'')+(Number(inv.advancePaid)>0?'<tr><td>Advance adjusted</td><td class="r">'+FD_M(inv.advancePaid)+'</td></tr>':'')
-    +'<tr><td>Paid by</td><td class="r">'+(inv.paymentMode==='Split'?(inv.payments||[]).map(p=>esc(p.mode)+' '+FD_M(p.amount)).join(', '):esc(inv.paymentMode))+'</td></tr></table><p class="m">Thank you — see you again!</p><script>window.onload=()=>window.print()<\/script></body></html>';
+    +'<tr><td>Paid by</td><td class="r">'+(inv.paymentMode==='Split'?(inv.payments||[]).map(p=>esc(p.mode)+' '+FD_M(p.amount)).join(', '):esc(inv.paymentMode))+'</td></tr></table>'+(()=>{try{const due=fdBillDue(inv);const u=controlOn('upiQr',sid)&&typeof qrcode==='function'&&(inv.status==='Unpaid'||inv.paymentMode==='UPI')?fdUpiUri(sid,due||t.total,inv.id):'';if(!u)return'';const q=qrcode(0,'M');q.addData(u);q.make();return'<p style="text-align:center">'+q.createImgTag(3,4)+'<br><span class="m">Scan to pay '+FD_M(due||t.total)+' by UPI</span></p>';}catch(e){return'';}})()+'<p class="m">Thank you — see you again!</p><script>window.onload=()=>window.print()<\/script></body></html>';
   const w=window.open('','_blank');if(!w){window.alert('Allow pop-ups to print the bill.');return;}w.document.write(html);w.document.close();
 }
 function BillingSheet({salon}){
   const h=React.createElement;const {toast}=useToast();const sid=Number(salon&&salon.id)||1;
-  const [invoices,setInvoices]=useState(()=>fdBills(sid));const [,setT0]=useState(0);const [regOpen,setRegOpen]=useState(false);const [cpnOpen,setCpnOpen]=useState(false);const [drawerOpen,setDrawerOpen]=useState(false);const [pettyOpen,setPettyOpen]=useState(false);
+  const [invoices,setInvoices]=useState(()=>fdBills(sid));const [,setT0]=useState(0);const [regOpen,setRegOpen]=useState(false);const [cpnOpen,setCpnOpen]=useState(false);const [drawerOpen,setDrawerOpen]=useState(false);const [pettyOpen,setPettyOpen]=useState(false);const [tabsOpen,setTabsOpen]=useState(false);const [corpOpen,setCorpOpen]=useState(false);
   useEffect(()=>{safeLocalSet(outletKey('salonos_billing_invoices',sid),JSON.stringify(invoices));},[invoices,sid]);
   const [search,setSearch]=useState('');const [fMode,setFMode]=useState('All');const [fStatus,setFStatus]=useState('All');const [fStaff,setFStaff]=useState('All');
   const [editor,setEditor]=useState(null);const [viewInv,setViewInv]=useState(null);const [impOpen,setImpOpen]=useState(false);const [duesOpen,setDuesOpen]=useState(false);const [vchOpen,setVchOpen]=useState(false);const [refundOf,setRefundOf]=useState(null);const [quickOpen,setQuickOpen]=useState(false);const [gstOpen,setGstOpen]=useState(false);const [archOpen,setArchOpen]=useState(false);const [menuOpen,setMenuOpen]=useState(false);const [dayOpen,setDayOpen]=useState(false);const [dayIso,setDayIso]=useState(fdTodayIso());const [insOpen,setInsOpen]=useState(false);
   // a bill started from an appointment (js/41) — picked up once
   useEffect(()=>{try{const k='salonos_bill_draft_'+sid;const d=sessionStorage.getItem(k);if(d){sessionStorage.removeItem(k);setEditor({initial:JSON.parse(d)});}}catch(e){}},[sid]);
+  useEffect(()=>{try{if(controlOn('upiQr',sid)&&fdUpiId(sid)&&typeof qrcode!=='function'&&typeof loadScript==='function')loadScript(FD_QR_LIB).catch(()=>{});}catch(e){}},[sid]);
   const today=fdTodayIso();const cur=today.slice(0,7);const staff=fdStaff(sid);
   const T=b=>billCalc(b).total;const live=invoices.filter(b=>b.status!=='Cancelled');
   const todaySales=live.filter(b=>b.date===today).reduce((s,b)=>s+T(b),0),monthSales=live.filter(b=>String(b.date).slice(0,7)===cur).reduce((s,b)=>s+T(b),0);
@@ -67,6 +68,7 @@ function BillingSheet({salon}){
     const id=fdNextBillNo(sid,invoices,rec.date);const bill={...rec,id,createdBy:(currentSessionUser()||{}).name||'',createdAt:new Date().toISOString()};
     setInvoices(L=>[bill,...L]);setTimeout(()=>{const notes=fdAfterBillSaved(sid,bill,true);
       try{if(editor&&editor.initial&&editor.initial.apptKey&&typeof fdMarkApptBilled==='function')fdMarkApptBilled(sid,editor.initial.apptKey,editor.initial.apptIds||[],id);}catch(e){}
+      try{if(editor&&editor.initial&&editor.initial.tabId)fdCloseTab(sid,editor.initial.tabId,id);}catch(e){}
       toast('Bill '+id+' — '+FD_M(T(bill))+(notes.length?' · '+notes.join(' · '):''),'success');},0);
     setEditor(null);};
   const del=b=>{const reason=fdCancelOk(sid,b,'cancel');if(reason==null)return;setInvoices(L=>L.map(x=>x.id===b.id?{...x,status:'Cancelled',cancelReason:reason,cancelledBy:(currentSessionUser()||{}).name||'',cancelledAt:new Date().toISOString()}:x));
@@ -85,6 +87,8 @@ function BillingSheet({salon}){
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setMenuOpen(true)},'⚙ Menu & settings'),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setGstOpen(true)},'📑 GST'),
         controlOn('billArchive',sid)&&isSuperAdminUser(currentSessionUser())&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setArchOpen(true)},'🗄 Archive'),
+        controlOn('runningBills',sid)&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setTabsOpen(true)},'🧾 Running bills'+(fdTabs(sid).length?' ('+fdTabs(sid).length+')':'')),
+        controlOn('corporateAccounts',sid)&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setCorpOpen(true)},'🏢 Companies'),
         controlOn('fdRegisters',sid)&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRegOpen(true)},'📒 Registers'),
         controlOn('coupons',sid)&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setCpnOpen(true)},'🏷 Coupons'),
         controlOn('cashDrawer',sid)&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setDrawerOpen(true)},'💵 Drawer'+(fdOpenShift(sid)?' (open)':'')),
@@ -128,6 +132,7 @@ function BillingSheet({salon}){
     gstOpen&&h(FdGstModal,{sid,onClose:()=>setGstOpen(false)}),
     regOpen&&h(FdRegistersModal,{sid,onClose:()=>setRegOpen(false)}),cpnOpen&&h(FdCouponsModal,{sid,onClose:()=>setCpnOpen(false)}),
     drawerOpen&&h(FdCashDrawerModal,{sid,onClose:()=>{setDrawerOpen(false);setT0(x=>x+1);}}),pettyOpen&&h(FdPettyModal,{sid,onClose:()=>setPettyOpen(false)}),
+    tabsOpen&&h(FdTabsModal,{sid,onClose:()=>setTabsOpen(false),onBill:t=>{setTabsOpen(false);setEditor({initial:{customer:t.client,phone:t.phone,date:fdTodayIso(),items:t.items.map(({id,at,...x})=>x),paymentMode:'Cash',status:'Paid',discount:0,tabId:t.id,apptKey:t.apptKey,apptIds:t.apptIds}});}}),corpOpen&&h(FdCorpModal,{sid,onClose:()=>{setCorpOpen(false);reload();}}),
     archOpen&&h(FdArchiveModal,{sid,onClose:()=>setArchOpen(false),onDone:()=>{setArchOpen(false);reload();}}),
     impOpen&&h(FdImportBillsModal,{sid,onClose:()=>setImpOpen(false),onDone:()=>{setImpOpen(false);reload();}}),
     duesOpen&&h(FdDuesModal,{sid,onClose:()=>{setDuesOpen(false);reload();},onChanged:reload}),

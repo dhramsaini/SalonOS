@@ -67,7 +67,7 @@ function ClientCRM({salon}){
   const h=React.createElement;const {toast}=useToast();const sid=Number(salon&&salon.id)||1;
   const [tick,setTick]=useState(0);const refresh=()=>setTick(t=>t+1);
   const [q,setQ]=useState('');const [seg,setSeg]=useState('All');const [sel,setSel]=useState(null);const [form,setForm]=useState(null);const [bill,setBill]=useState(null);const [wa,setWa]=useState(null);
-  const [memOpen,setMemOpen]=useState(false);const [simOpen,setSimOpen]=useState(false);const [regOpen,setRegOpen]=useState(null);const [consult,setConsult]=useState(null);const [growOpen,setGrowOpen]=useState(false);const [msgOpen,setMsgOpen]=useState(false);const [campOpen,setCampOpen]=useState(false);const importRef=useRef(null);
+  const [memOpen,setMemOpen]=useState(false);const [simOpen,setSimOpen]=useState(false);const [hoOpen,setHoOpen]=useState(false);const [regOpen,setRegOpen]=useState(null);const [consult,setConsult]=useState(null);const [growOpen,setGrowOpen]=useState(false);const [msgOpen,setMsgOpen]=useState(false);const [campOpen,setCampOpen]=useState(false);const importRef=useRef(null);
   const bills=fdBills(sid);const book=fdLoadBook(sid);
   const rows=fdClients(sid).map(c=>{const st=fdClientStats(c,bills);return{c,st,seg:fdSegOf(st),od:typeof fdOverdueDays==='function'?fdOverdueDays(sid,st):0};});
   const ql=q.trim().toLowerCase();const list=rows.filter(r=>(seg==='All'||r.seg===seg||(seg==='Due back'&&r.od>0))&&(!ql||String(r.c.name||'').toLowerCase().includes(ql)||String(r.c.phone||'').includes(ql)||String(r.c.tags||'').toLowerCase().includes(ql))).sort((a,b)=>b.st.spend-a.st.spend);
@@ -97,15 +97,18 @@ function ClientCRM({salon}){
         dups>0&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(!window.confirm(dups+' duplicate record(s) share a mobile number. Merge them?'))return;const n=fdMergeDuplicates(sid);toast(n+' merged','success');refresh();}},'🔗 Merge '+dups+' duplicate(s)'),
         (()=>{const g=typeof fdSimilarClients==='function'?fdSimilarClients(sid).length:0;return g?h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setSimOpen(true)},'🔍 Similar names ('+g+')'):null;})(),
         controlOn('fdRegisters',sid)&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRegOpen('client')},'📒 Registers'),
+        controlOn('stylistHandover',sid)&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setHoOpen(true)},'👋 Stylist left'),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setCampOpen(true)},'📣 Campaign'),
         typeof ClientGrowthModal==='function'&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setGrowOpen(true)},'🌱 Feedback & referrals'),
         typeof MembershipRegisterModal==='function'&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setMemOpen(true)},'💳 Memberships'),
         typeof ClientMessagesModal==='function'&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setMsgOpen(true)},'📣 Messages'))),
     campOpen&&h(FdCampaignModal,{sid,onClose:()=>setCampOpen(false)}),
+    hoOpen&&h(FdHandoverModal,{sid,salonName:String((salon&&salon.name)||'').split('—')[0].trim(),onClose:()=>{setHoOpen(false);refresh();},onDone:refresh}),
     simOpen&&h(FdSimilarModal,{sid,onClose:()=>setSimOpen(false),onDone:refresh}),regOpen&&h(FdRegistersModal,{sid,initialTab:regOpen,onClose:()=>setRegOpen(null)}),h(FdRebookHost,{sid}),
     consult&&h(FdConsultModal,{sid,client:consult,onClose:()=>setConsult(null),onSaved:refresh}),
     memOpen&&h(MembershipRegisterModal,{salon,onClose:()=>{setMemOpen(false);refresh();}}),growOpen&&h(ClientGrowthModal,{salon,onClose:()=>setGrowOpen(false)}),
     msgOpen&&h(ClientMessagesModal,{salon,clients:rows.filter(r=>!r.c.optOut).map(r=>({...r.c,...r.st})),onClose:()=>setMsgOpen(false)}),
+    h(FdBirthdayStrip,{sid,salonName:String((salon&&salon.name)||'').split('—')[0].trim(),onChanged:refresh}),
     h('div',{className:'grid4',style:{marginBottom:16}},stat('Clients',String(rows.length),members+' with membership / package'),stat('Active',String(active),'visited in 90 days','var(--green)'),
       stat('Lapsed',String(lapsed),lapsed?'worth a win-back message':'nobody drifting','var(--red)'),stat('Repeat',rows.length?Math.round(repeat/rows.length*100)+'%':'—','came more than once')),
     h('div',{className:'crm'},
@@ -139,6 +142,8 @@ function ClientCRM({salon}){
             controlOn('consultForm',sid)&&h('div',{style:{fontSize:12.5,marginTop:8,display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},c.consult?h('span',{style:{color:FD_CONSULT_Q.some(([k])=>(c.consult.answers||{})[k]==='Yes')?'var(--red)':''}},'📝 Consultation '+new Date(c.consult.at).toLocaleDateString('en-IN')+(FD_CONSULT_Q.some(([k])=>(c.consult.answers||{})[k]==='Yes')?' — ⚠ '+FD_CONSULT_Q.filter(([k])=>(c.consult.answers||{})[k]==='Yes').map(([k])=>k+((c.consult.details||{})[k]?': '+c.consult.details[k]:'')).join(' · '):' — all clear')):h('span',{style:{color:'var(--orange)'}},'📝 No consultation form'),
               h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setConsult(c)},c.consult?'Redo':'Fill now')),
             h(FdFormulaCard,{sid,phone:c.phone}),
+            h(FdPrefsCard,{sid,phone:c.phone}),
+            (()=>{const SP=typeof fdSessionPacks==='function'?fdSessionPacks(sid,c.phone):[];return SP.length?h('div',{style:{fontSize:12.5,marginTop:6,color:'var(--green)'}},'🎟 '+SP.map(m=>(m.plan||'Package')+': '+fdSessionLeft(m)+' of '+m.sessions+' '+(m.sessionService||'')+' left').join(' · ')):null;})(),
             h('div',{style:{display:'flex',gap:6,marginTop:12,flexWrap:'wrap'}},
               h('button',{className:'btn btn-primary btn-sm',onClick:()=>setBill({initial:{customer:c.name,phone:c.phone,date:fdTodayIso(),items:[],paymentMode:'Cash',status:'Paid',discount:0}})},'🧾 New bill'),
               h('button',{className:'btn btn-ghost btn-sm',onClick:()=>sellMembership(c)},'💳 Sell membership / package'),
