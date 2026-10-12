@@ -67,7 +67,8 @@ function ClientCRM({salon}){
   const h=React.createElement;const {toast}=useToast();const sid=Number(salon&&salon.id)||1;
   const [tick,setTick]=useState(0);const refresh=()=>setTick(t=>t+1);
   const [q,setQ]=useState('');const [seg,setSeg]=useState('All');const [sel,setSel]=useState(null);const [form,setForm]=useState(null);const [bill,setBill]=useState(null);const [wa,setWa]=useState(null);
-  const [memOpen,setMemOpen]=useState(false);const [simOpen,setSimOpen]=useState(false);const [hoOpen,setHoOpen]=useState(false);const [regOpen,setRegOpen]=useState(null);const [consult,setConsult]=useState(null);const [growOpen,setGrowOpen]=useState(false);const [msgOpen,setMsgOpen]=useState(false);const [campOpen,setCampOpen]=useState(false);const importRef=useRef(null);
+  const [memOpen,setMemOpen]=useState(false);const [simOpen,setSimOpen]=useState(false);const [lim,setLim]=useState(150);const [hoOpen,setHoOpen]=useState(false);const [regOpen,setRegOpen]=useState(null);const [consult,setConsult]=useState(null);const [growOpen,setGrowOpen]=useState(false);const [msgOpen,setMsgOpen]=useState(false);const [campOpen,setCampOpen]=useState(false);const importRef=useRef(null);
+  useEffect(()=>{const v=fdTakeOpen('client',sid);if(v)setSel(v);const f=e=>{const d=e.detail||{};if(d.kind==='client'&&Number(d.sid)===sid){fdTakeOpen('client',sid);setSeg('All');setQ('');setSel(d.id);}};const g=e=>{if(!e.detail||Number(e.detail.sid)===sid)refresh();};window.addEventListener('fd-open',f);window.addEventListener('fd-clients-changed',g);return()=>{window.removeEventListener('fd-open',f);window.removeEventListener('fd-clients-changed',g);};},[sid]);
   const bills=fdBills(sid);const book=fdLoadBook(sid);
   const rows=fdClients(sid).map(c=>{const st=fdClientStats(c,bills);return{c,st,seg:fdSegOf(st),od:typeof fdOverdueDays==='function'?fdOverdueDays(sid,st):0};});
   const ql=q.trim().toLowerCase();const list=rows.filter(r=>(seg==='All'||r.seg===seg||(seg==='Due back'&&r.od>0))&&(!ql||String(r.c.name||'').toLowerCase().includes(ql)||String(r.c.phone||'').includes(ql)||String(r.c.tags||'').toLowerCase().includes(ql))).sort((a,b)=>b.st.spend-a.st.spend);
@@ -82,7 +83,8 @@ function ClientCRM({salon}){
   const sellMembership=c=>{const items=fdMenu(sid).filter(m=>m.active!==false&&(m.type==='Membership'||m.type==='Package'));if(!items.length){toast('Add membership / package plans in Billing → ⚙ Menu & settings first','error');return;}
     setBill({initial:{customer:c.name,phone:c.phone,date:fdTodayIso(),items:[],paymentMode:'Cash',status:'Paid',discount:0},pick:items});};
   const onBillSaved=rec=>{const r=fdCreateBill(sid,rec);setBill(null);toast('Bill '+r.bill.id+' — '+FD_M(billCalc(r.bill).total)+(r.notes.length?' · '+r.notes.join(' · '):''),'success');refresh();};
-  const del=c=>{if(!window.confirm('Delete '+c.name+'? Their bills stay; the client record, notes and photos go.'))return;fdSaveClients(sid,fdClients(sid).filter(x=>x.id!==c.id));try{logAuditEvent(sid,{entity:'Client',entityId:c.id,action:'Deleted',summary:c.name});}catch(e){}setSel(null);refresh();};
+  const del=c=>{if(!window.confirm('Delete '+c.name+'? Their bills stay; the client record, notes and photos go.'))return;fdSaveClients(sid,fdClients(sid).filter(x=>x.id!==c.id));try{logAuditEvent(sid,{entity:'Client',entityId:c.id,action:'Deleted',summary:c.name});}catch(e){}setSel(null);refresh();
+    fdOfferUndo(sid,c.name+' deleted',()=>{fdSaveClients(sid,[...fdClients(sid),c]);try{logAuditEvent(sid,{entity:'Client',entityId:c.id,action:'Delete undone',summary:c.name});}catch(e){}window.dispatchEvent(new CustomEvent('fd-clients-changed',{detail:{sid}}));});};
   const templates=c=>{const first=String(c.name||'').split(' ')[0];const nm=String((salon&&salon.name)||'').split('—')[0].trim();const st=fdClientStats(c,bills);
     return{'Win back':'Hi '+first+', we have missed you at '+nm+'! It has been a while since your last '+(st.fav||'visit')+'. Reply BOOK and we will keep a slot for you this week.','Reminder':'Hi '+first+', just a reminder of your appointment with us. Reply YES to confirm.',
       'Birthday':'Happy birthday '+first+'! 🎉 Enjoy a complimentary cleanup with any service this month.','Thank you':'Thank you for visiting '+nm+', '+first+'! We would love your feedback — reply with a rating from 1 to 5.'};};
@@ -91,7 +93,7 @@ function ClientCRM({salon}){
   return h('div',{className:'fade-in',key:tick},
     h('div',{className:'section-header'},
       h('div',null,h('div',{className:'page-title'},'Clients'),h('div',{className:'page-sub'},'Built from bills and bookings — add, import or edit clients any time.')),
-      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      h(FdToolbar,{sid,keep:[/Campaign/,/Registers/]},
         h('button',{className:'btn btn-primary btn-sm',onClick:()=>setForm({})},'+ New client'),
         h('button',{className:'btn btn-ghost btn-sm',title:'Excel with columns Name, Mobile, Email, Birthday, Notes',onClick:()=>importRef.current&&importRef.current.click()},'⬆ Import Excel'),h('input',{type:'file',accept:'.xlsx,.xls,.csv',ref:importRef,style:{display:'none'},onChange:importFile}),
         dups>0&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(!window.confirm(dups+' duplicate record(s) share a mobile number. Merge them?'))return;const n=fdMergeDuplicates(sid);toast(n+' merged','success');refresh();}},'🔗 Merge '+dups+' duplicate(s)'),
@@ -108,6 +110,7 @@ function ClientCRM({salon}){
     consult&&h(FdConsultModal,{sid,client:consult,onClose:()=>setConsult(null),onSaved:refresh}),
     memOpen&&h(MembershipRegisterModal,{salon,onClose:()=>{setMemOpen(false);refresh();}}),growOpen&&h(ClientGrowthModal,{salon,onClose:()=>setGrowOpen(false)}),
     msgOpen&&h(ClientMessagesModal,{salon,clients:rows.filter(r=>!r.c.optOut).map(r=>({...r.c,...r.st})),onClose:()=>setMsgOpen(false)}),
+    h(FdTodayStrip,{sid}),
     h(FdBirthdayStrip,{sid,salonName:String((salon&&salon.name)||'').split('—')[0].trim(),onChanged:refresh}),
     h('div',{className:'grid4',style:{marginBottom:16}},stat('Clients',String(rows.length),members+' with membership / package'),stat('Active',String(active),'visited in 90 days','var(--green)'),
       stat('Lapsed',String(lapsed),lapsed?'worth a win-back message':'nobody drifting','var(--red)'),stat('Repeat',rows.length?Math.round(repeat/rows.length*100)+'%':'—','came more than once')),
@@ -116,7 +119,9 @@ function ClientCRM({salon}){
         h('input',{className:'form-control',placeholder:'Search name, mobile or tag…',value:q,onChange:e=>setQ(e.target.value),style:{marginBottom:10}}),
         typeof ClientFollowUps==='function'&&h(ClientFollowUps,{salon}),
         h('div',{className:'seg'},['All','VIP','Regular','New','Lapsed',...(controlOn('visitGapWinback',sid)?['Due back']:[])].map(s=>h('button',{key:s,className:seg===s?'on':'',title:s==='Due back'?'Past their own usual gap between visits':'',onClick:()=>setSeg(s)},s,s!=='All'?' · '+rows.filter(r=>s==='Due back'?r.od>0:r.seg===s).length:''))),
-        h('div',{style:{maxHeight:480,overflowY:'auto'}},list.length?list.slice(0,400).map(r=>h('div',{key:r.c.id,className:'cl-row '+(sel===r.c.id?'on':''),onClick:()=>setSel(r.c.id)},
+        h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',margin:'6px 0'}},h(FdMoreBar,{shown:Math.min(lim,list.length),total:list.length,onMore:()=>setLim(l=>l+300)}),
+          controlOn('filterChips',sid)&&(seg!=='All'||q)&&[seg!=='All'&&h('span',{key:'s',className:'badge',style:{background:'var(--accent)',color:'#fff',cursor:'pointer'},onClick:()=>setSeg('All')},seg+' ✕'),q&&h('span',{key:'q',className:'badge',style:{background:'var(--accent)',color:'#fff',cursor:'pointer'},onClick:()=>setQ('')},'“'+q+'” ✕')]),
+        h('div',{style:{maxHeight:480,overflowY:'auto'}},list.length?list.slice(0,lim).map(r=>h('div',{key:r.c.id,className:'cl-row '+(sel===r.c.id?'on':''),onClick:()=>setSel(r.c.id)},
           h('div',{className:'cl-av'},String(r.c.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2)),
           h('div',{style:{minWidth:0}},h('div',{className:'cl-nm'},r.c.name,r.c.optOut&&h('span',{style:{fontSize:10,color:'var(--text3)',marginLeft:4}},'🔕'),r.od>0&&h('span',{style:{fontSize:10,color:'var(--orange)',marginLeft:4},title:'Due back by their usual gap'},'⏳')),h('div',{className:'cl-sub'},(r.c.phone?fdShowPhone(sid,r.c.phone)+' · ':'')+r.st.visits+' visit(s)'+(r.st.since!=null?' · last '+(r.st.since===0?'today':r.st.since+'d ago'):'')+(r.st.stylist?' · '+String(r.st.stylist).split(' ')[0]:''))),
           h('div',{className:'cl-amt'},FD_M(r.st.spend),h('div',null,h('span',{className:'badge '+segCls(r.seg)},r.seg)))))

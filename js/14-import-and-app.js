@@ -472,7 +472,7 @@ function App(){
     if(!autoBackupOn)return;
     const doSnapshot=()=>{
       try{
-        const data=collectSalonOSData();
+        const data=collectSalonOSData(true);
         const savedAt=new Date().toISOString();
         safeLocalSet('salonos_autobackup_snapshot',JSON.stringify({savedAt,data}));
         setLastAutoBackup(savedAt);
@@ -975,6 +975,7 @@ function App(){
     if(!dp){handleSelectSalon(sn);return;}
     setPeriod(dp);setSelFY(dp.fy);setSelectedSalon(sn);setActivePage('salon');navToSalonTab(tabId);
   };
+  window.__salonosNav={setActivePage,setSalonTab,setSelectedSalon,salons,selectedSalon,activePage,salonTab}; // Ctrl+K search (js/49)
   const renderPage=()=>{
     if(gateFor||(activePage==='salon'&&!period)){
       const gateSalon=gateFor||selectedSalon;
@@ -1233,7 +1234,8 @@ function App(){
   ));
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App,null));
+// The large store (js/01) is read into memory first, so every screen sees the same data synchronously.
+(typeof initBigStore==='function'?initBigStore():Promise.resolve()).catch(()=>{}).then(()=>{ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App,null));});
 
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{

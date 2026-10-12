@@ -863,7 +863,7 @@ function MasterSheet({onSelect,salons,setSalons,user}){
     // with none of its employees/invoices/history behind it.
     const snapshot={};
     SALON_SCOPED_KEY_BASES.forEach(base=>{const k=outletKey(base,id);snapshot[k]=cachedLocalGet(k);});
-    try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.indexOf('salonos_')===0&&k.endsWith('_outlet_'+id)&&!(k in snapshot))snapshot[k]=localStorage.getItem(k);}}catch(e){}
+    try{for(const k of lsKeys()){if(k&&k.indexOf('salonos_')===0&&k.endsWith('_outlet_'+id)&&!(k in snapshot))snapshot[k]=lsGet(k);}}catch(e){}
     const apptRaw=cachedLocalGet('salonos_appointments_book');
     setSalons(prev=>prev.filter(s=>s.id!==id));
     deleteAllSalonScopedData(id);
@@ -1974,6 +1974,7 @@ function MasterSettings({autoBackupOn,setAutoBackupOn,lastAutoBackup,salons}={})
   return React.createElement('div',{className:'fade-in'},
     React.createElement('div',{className:'page-title'},'Master Settings'),
     React.createElement('div',{className:'page-sub'},'Global configuration and statutory applicability'),
+    typeof FdStorageMeter==='function'&&React.createElement(FdStorageMeter),
     React.createElement('div',{id:'controls-card'},React.createElement(ControlsCenterCard,{salons:salons||SALONS})),
     CLOUD_SYNC_ENABLED&&React.createElement(TwoStepLoginCard,null),
     CLOUD_SYNC_ENABLED&&React.createElement(CloudBackupsCard,null),

@@ -29,7 +29,7 @@ function incPlanKeyMatch(sid,key){
 }
 function lsAllKeys(){
   const out=new Set(Object.keys(_lsReadCache));
-  try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k)out.add(k);}}catch(e){}
+  try{lsKeys().forEach(k=>out.add(k));}catch(e){}
   return[...out];
 }
 function captureIncPlanSettings(sid){

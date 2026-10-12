@@ -458,6 +458,61 @@ let _lastSavedAt=null;
 // scan every key in localStorage dynamically (storage-usage estimates, the full backup dump) call
 // localStorage.getItem directly instead, since caching a one-off full scan of arbitrary keys
 // would only waste memory, not save any repeat work. ──
+// ── Large store: the biggest per-outlet lists (bills, stock log, bookings, audit log…) live in
+// IndexedDB — which holds hundreds of MB — instead of localStorage (about 5 MB for everything).
+// Reads stay synchronous: every large value is loaded into memory before the app starts
+// (initBigStore, awaited in js/14 before the first render); writes update memory at once and are
+// saved to IndexedDB in the background (a refused write falls back to localStorage). Without
+// IndexedDB (private window, blocked) and in the test/demo pages (their storage is in memory)
+// everything simply stays in localStorage, as before. lsGet/lsSet/lsRemove/lsKeys are the only
+// functions that touch the browser stores for app data. ──
+const BIG_KEY_RE=/^salonos_(billing_invoices|inventory_log|appointments_book|audit_log|booking_requests|stock_requests|spot_checks|open_tabs|booking_advances)_outlet_\d+$/;
+let _bigDb=null,_bigOn=false,_bigT=null,_bigChan=null;const _bigVals=Object.create(null);const _bigQ=new Set();
+function bigStoreOn(){return _bigOn;}
+function isBigKey(k){return _bigOn&&typeof k==='string'&&BIG_KEY_RE.test(k);}
+function bigStoreBytes(){let n=0;for(const k in _bigVals){const v=_bigVals[k];if(v!=null)n+=k.length+v.length;}return n;}
+function lsGet(k){if(isBigKey(k))return k in _bigVals?_bigVals[k]:null;try{return localStorage.getItem(k);}catch(e){return null;}}
+function lsSet(k,v){if(isBigKey(k)){_bigVals[k]=v;_bigQueue(k);return;}localStorage.setItem(k,v);}
+function lsRemove(k){if(isBigKey(k)){delete _bigVals[k];_bigQueue(k);}try{localStorage.removeItem(k);}catch(e){}}
+function lsKeys(){const out=[];try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k)out.push(k);}}catch(e){}
+  if(_bigOn){const seen=new Set(out);for(const k in _bigVals)if(_bigVals[k]!=null&&!seen.has(k))out.push(k);}return out;}
+function _bigQueue(k){_bigQ.add(k);if(!_bigT)_bigT=setTimeout(_bigFlush,30);}
+function _bigFlush(){_bigT=null;if(!_bigDb||!_bigQ.size)return;const keys=[..._bigQ];_bigQ.clear();
+  try{const tx=_bigDb.transaction('kv','readwrite');const st=tx.objectStore('kv');keys.forEach(k=>{if(k in _bigVals)st.put(_bigVals[k],k);else st.delete(k);});
+    tx.oncomplete=()=>{try{if(_bigChan)keys.forEach(k=>_bigChan.postMessage({k,v:k in _bigVals?_bigVals[k]:null}));}catch(e){}};
+    tx.onerror=tx.onabort=()=>_bigFallback(keys);}catch(e){_bigFallback(keys);}}
+function _bigFallback(keys){ // IndexedDB refused the write — keep the data in localStorage instead (moved back on the next start)
+  let ok=true;keys.forEach(k=>{try{if(k in _bigVals)localStorage.setItem(k,_bigVals[k]);}catch(e){ok=false;}});
+  if(!ok)try{if(_addToast)_addToast("Couldn't save on this device — keep this tab open until it says saved, and see Master Settings → Storage.",'error',10000);}catch(e){}}
+function initBigStore(){
+  return new Promise(resolve=>{
+    let done=false;const finish=()=>{if(!done){done=true;resolve();}};
+    try{
+      if(typeof indexedDB==='undefined'||typeof Storage==='undefined'||!(window.localStorage instanceof Storage))return finish();
+      const tm=setTimeout(finish,4000); // a slow or stuck IndexedDB never holds the app up — it just stays on localStorage
+      const rq=indexedDB.open('salonos-store',1);
+      rq.onupgradeneeded=()=>{try{rq.result.createObjectStore('kv');}catch(e){}};
+      rq.onerror=rq.onblocked=()=>{clearTimeout(tm);finish();};
+      rq.onsuccess=()=>{const db=rq.result;if(done){try{db.close();}catch(e){}return;}
+        const all={};const tx=db.transaction('kv','readonly');const cur=tx.objectStore('kv').openCursor();
+        cur.onsuccess=()=>{const c=cur.result;if(c){all[c.key]=c.value;c.continue();}};
+        tx.onerror=()=>{clearTimeout(tm);finish();};
+        tx.oncomplete=()=>{
+          // large keys still in localStorage (first start, an older tab, a fallback write) are the newer copy
+          const move=[];try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&BIG_KEY_RE.test(k))move.push(k);}}catch(e){}
+          move.forEach(k=>{const v=localStorage.getItem(k);if(v!=null)all[k]=v;});
+          const wtx=db.transaction('kv','readwrite');const st=wtx.objectStore('kv');move.forEach(k=>st.put(all[k],k));
+          wtx.onerror=wtx.onabort=()=>{clearTimeout(tm);finish();};
+          wtx.oncomplete=()=>{clearTimeout(tm);if(done){try{db.close();}catch(e){}return;}
+            Object.keys(all).forEach(k=>{if(BIG_KEY_RE.test(k)&&typeof all[k]==='string')_bigVals[k]=all[k];});
+            _bigDb=db;_bigOn=true;
+            move.forEach(k=>{let v2=null;try{v2=localStorage.getItem(k);}catch(e){}if(v2!=null&&v2!==all[k]){_bigVals[k]=v2;_bigQueue(k);}try{localStorage.removeItem(k);}catch(e){}});
+            Object.keys(_bigVals).forEach(k=>{_lsReadCache[k]=_bigVals[k];});
+            try{_bigChan=new BroadcastChannel('salonos-store');_bigChan.onmessage=e=>{const d=e.data||{};if(!d.k||!BIG_KEY_RE.test(d.k))return;if(d.v==null)delete _bigVals[d.k];else _bigVals[d.k]=d.v;_lsReadCache[d.k]=d.v;};}catch(e){}
+            finish();};};};
+    }catch(e){finish();}
+  });
+}
 const _lsReadCache={};
 // Read overlay — lets a calculation run against a saved snapshot of some settings instead of the
 // live ones (an approved Monthly Incentive Plan, js/18-approvals.js). Reads only; null when unset.
@@ -465,8 +520,7 @@ let _lsOverlay=null;
 function cachedLocalGet(key){
   if(_lsOverlay&&_lsOverlay.match(key))return _lsOverlay.get(key);
   if(Object.prototype.hasOwnProperty.call(_lsReadCache,key))return _lsReadCache[key];
-  let v=null;
-  try{v=localStorage.getItem(key);}catch(e){}
+  const v=lsGet(key);
   _lsReadCache[key]=v;
   return v;
 }
@@ -475,7 +529,7 @@ function cachedLocalGet(key){
 // stay in sync: every localStorage.removeItem in the app goes through here instead of calling
 // the browser API directly, so a deleted key can never be served stale out of the cache.
 function cachedLocalRemove(key){
-  try{localStorage.removeItem(key);}catch(e){}
+  lsRemove(key);
   _lsReadCache[key]=null;
 }
 // Sticky (frozen) columns/cells need a fully OPAQUE background, or whatever scrolls underneath
@@ -498,7 +552,7 @@ function safeLocalSet(key,value){
     // nothing was edited. Pushing those unchanged copies to the cloud overwrote other users' newer
     // edits (e.g. employees another ID added) with this browser's older copy — only push real changes.
     const unchanged=cachedLocalGet(key)===value;
-    localStorage.setItem(key,value);
+    lsSet(key,value);
     _lsReadCache[key]=value; // keep the read cache in sync — safeLocalSet is the only write path
     _lastSavedAt=Date.now();
     try{window.dispatchEvent(new Event('salonos-saved'));}catch(e3){}
@@ -527,6 +581,7 @@ function safeLocalSet(key,value){
 try{
   window.addEventListener('storage',(e)=>{
     if(e.key==null)return; // localStorage.clear() — nothing safe to reconcile key-by-key
+    if(isBigKey(e.key)){if(e.newValue!=null){_bigVals[e.key]=e.newValue;_bigQueue(e.key);_lsReadCache[e.key]=e.newValue;try{localStorage.removeItem(e.key);}catch(e2){}}return;} // an older tab wrote a large key
     _lsReadCache[e.key]=e.newValue;
   });
 }catch(e){}
@@ -559,7 +614,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.10.11.153';
+const APP_VERSION='2026.10.11.154';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
@@ -666,7 +721,7 @@ function notifyCloudDataChanged(keys){
 const DEVICE_ONLY_KEYS=new Set(['salonos_autobackup_snapshot','salonos_autobackup_enabled','salonos_theme']);
 function applyCloudValue(key,value){
   if(DEVICE_ONLY_KEYS.has(key))return;
-  try{localStorage.setItem(key,value);}catch(e){}
+  try{lsSet(key,value);}catch(e){}
   _lsReadCache[key]=value;
 }
 
@@ -778,7 +833,7 @@ function cloudPermissionError(){const e=new Error('View-only access — change n
 // key's outlet folder, so storage applies the same per-outlet access as the data itself.
 const _uploadedDataUrls=new Map(); // folder|data: URL -> sbfile ref, so a re-save of the same file never re-uploads
 async function externalizeAttachments(key){
-  const raw=localStorage.getItem(key);
+  const raw=lsGet(key);
   if(!raw||raw.indexOf('"dataUrl":"data:')<0)return;
   const m=/_outlet_(\d+)$/.exec(key);
   const folder=m?'outlet_'+m[1]:'global';
@@ -806,7 +861,7 @@ async function externalizeAttachments(key){
     for(const k of Object.keys(node))if(k!=='dataUrl')await walk(node[k]);
   };
   await walk(val);
-  if(localStorage.getItem(key)===raw)applyCloudValue(key,JSON.stringify(val)); // unless edited again meanwhile
+  if(lsGet(key)===raw)applyCloudValue(key,JSON.stringify(val)); // unless edited again meanwhile
 }
 // Pushes this browser's current value for one key, merged with whatever is in the cloud now.
 async function cloudPushKey(key){
@@ -815,7 +870,7 @@ async function cloudPushKey(key){
   if(!session){notifyCloudSessionLost();throw new Error('Not signed in');}
   for(let attempt=0;attempt<6;attempt++){
     await externalizeAttachments(key);
-    const local=localStorage.getItem(key);
+    const local=lsGet(key);
     if(local==null)return; // removed locally — removals aren't synced (same as before)
     if(local.indexOf('"dataUrl":"data:')>=0)continue; // edited during the upload — externalize again
     const{data:row,error:readErr}=await supa.from('kv_store').select('value,updated_at').eq('key',key).maybeSingle();
@@ -933,8 +988,8 @@ function purgeOutletDataWithoutAccess(){
     const allowed=new Set(oa?Object.keys(oa).filter(id=>oa[id]&&oa[id]!=='No Access'):(u.outletIds||[]).map(String));
     const pending=new Set(loadCloudPending());
     const drop=[];
-    for(let i=0;i<localStorage.length;i++){
-      const k=localStorage.key(i);const m=k&&k.indexOf('salonos_')===0&&/_outlet_(\d+)$/.exec(k);
+    for(const k of lsKeys()){
+      const m=k&&k.indexOf('salonos_')===0&&/_outlet_(\d+)$/.exec(k);
       if(m&&!allowed.has(m[1])&&!pending.has(k))drop.push(k);
     }
     drop.forEach(k=>cachedLocalRemove(k));
@@ -947,7 +1002,7 @@ function migrateInlineAttachments(){
     const u=JSON.parse(sessionStorage.getItem('salonos_user')||'null');
     if(!u||u.role!=='Super Admin')return;
     const keys=[];
-    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.indexOf('salonos_')===0&&(localStorage.getItem(k)||'').indexOf('"dataUrl":"data:')>=0)keys.push(k);}
+    for(const k of lsKeys()){if(k&&k.indexOf('salonos_')===0&&(lsGet(k)||'').indexOf('"dataUrl":"data:')>=0)keys.push(k);}
     keys.forEach((k,i)=>queueCloudPush(k,null,i*400));
   }catch(e){}
 }
@@ -1073,11 +1128,11 @@ async function cloudApplyUpdates(){
     _cloudUpdatedAt[row.key]=row.updated_at;
     if(row.value==null){ // deleted in the cloud (e.g. another ID deleted an outlet)
       delete _cloudBase[row.key];
-      if(localStorage.getItem(row.key)!=null){cachedLocalRemove(row.key);applied.push(row.key);}
+      if(lsGet(row.key)!=null){cachedLocalRemove(row.key);applied.push(row.key);}
       return;
     }
     _cloudBase[row.key]=row.value;
-    if(localStorage.getItem(row.key)!==row.value){applyCloudValue(row.key,row.value);applied.push(row.key);}
+    if(lsGet(row.key)!==row.value){applyCloudValue(row.key,row.value);applied.push(row.key);}
   });
   return applied;
 }
@@ -1137,7 +1192,7 @@ function startCloudSyncLoop(){
       .on('postgres_changes',{event:'*',schema:'public',table:'kv_store'},payload=>{
         lastRealtimeAt=Date.now();
         const row=payload.new||{};
-        if(row.key&&localStorage.getItem(row.key)===row.value)return; // our own save echoing back
+        if(row.key&&lsGet(row.key)===row.value)return; // our own save echoing back
         clearTimeout(rtTimer);
         rtTimer=setTimeout(cloudCheckForUpdates,250); // coalesce a burst of saves into one check
       })
@@ -1179,7 +1234,7 @@ async function cloudPullAndHydrate(){
     (data||[]).forEach(row=>{
       if(stillPending.includes(row.key)||DEVICE_ONLY_KEYS.has(row.key)||String(row.key).indexOf('salonos_billarchive_')===0)return; // archives stay in the cloud
       if(row.value==null){ // deleted in the cloud — drop this browser's leftover copy too
-        if(localStorage.getItem(row.key)!=null)cachedLocalRemove(row.key);
+        if(lsGet(row.key)!=null)cachedLocalRemove(row.key);
         _cloudUpdatedAt[row.key]=row.updated_at;
         return;
       }
@@ -1412,7 +1467,7 @@ function clearAutoBackupSnapshot(){
 function clearAllSalonOSData(){
   try{
     const keys=[];
-    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.indexOf('salonos_')===0)keys.push(k);}
+    for(const k of lsKeys()){if(k&&k.indexOf('salonos_')===0)keys.push(k);}
     keys.forEach(k=>{cachedLocalRemove(k);});
     return keys.length;
   }catch(e){return 0;}

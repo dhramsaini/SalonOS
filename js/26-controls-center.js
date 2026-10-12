@@ -133,6 +133,15 @@ const CONTROL_DEFS=[
   {id:'barcodeLabels',group:'Clients & stock',label:'Barcode labels',hint:'Inventory → 🏷 Labels: give codes to items without one and print labels.',def:true},
   {id:'stockStatement',group:'Clients & stock',label:'Monthly stock statement',hint:'Opening + in − used − written off = closing, for the accountant (not posted to the P&L).',def:true},
   {id:'slowStock',group:'Clients & stock',label:'Slow or expiring stock to clear',hint:'Items not used for the days below, or expiring within 60 days, with a clearance price.',def:true,limit:90,limitLabel:'Not used for (days)'},
+  {id:'compactToolbars',group:'Look & feel',label:'Tidy top bars with a “More ▾” menu',hint:'Appointments, Billing, Clients and Inventory keep the daily buttons visible; the rest are grouped under More (Money, Reports, Setup).',def:true},
+  {id:'todayStrip',group:'Look & feel',label:'Today strip on front-desk tabs',hint:'Sales today, bookings still to come, client dues and low stock at the top of each tab.',def:true},
+  {id:'keyboardShortcuts',group:'Look & feel',label:'Keyboard shortcuts and Ctrl + K search',hint:'Ctrl/⌘ + K finds clients, bills, mobiles and screens; Alt + 1…4 switch the front-desk tabs; in a bill F2 adds an item and Ctrl + Enter saves.',def:true},
+  {id:'mobileLayout',group:'Look & feel',label:'Phone layout',hint:'One-column forms, full-width pop-ups and one stylist at a time in the appointment day (swipe for the next) on small screens.',def:true},
+  {id:'calendarPolish',group:'Look & feel',label:'Calendar extras',hint:'Red “now” line, a colour per stylist and 🆕 first visit · ⭐ VIP · 💳 dues on booking cards; a hint on empty days.',def:true},
+  {id:'billPrintDesign',group:'Look & feel',label:'New bill print layout',hint:'Centred header, cleaner table, choice of 58 mm / 80 mm thermal, A5 or A4 (⚙ Menu & settings → Hours, GST). Off = the old layout.',def:true},
+  {id:'miniCharts',group:'Look & feel',label:'Mini charts',hint:'14-day sales trend on Billing, payment-mode ring on Day-end, bars in the date-wise register.',def:true},
+  {id:'undoActions',group:'Look & feel',label:'Undo for deletes and cancellations',hint:'A 5-second “Undo” after cancelling a bill or booking, deleting a client or removing blocked time.',def:true},
+  {id:'filterChips',group:'Look & feel',label:'Show active filters',hint:'Filters in Billing and Clients show as chips you can clear with one tap.',def:true},
   {id:'collRecoNeedsMapping',group:'Month close',label:'Collection Reco only after every bank credit of the month is mapped',hint:'Each credit line needs a Nature, and card / UPI settlements a Date as per Cradlee, before the month’s Collection Reco is shown or downloaded.',def:true},
   {id:'monthFinalNeedsMapping',group:'Month close',label:'Mark Month Final only after every bank line of the month is mapped',hint:'Debits need a Nature (vendor payments a vendor or linked bill); credits a Nature (card / UPI settlements a Date as per Cradlee). Applies to P&L Final and Daily Sales & Exp Month Final.',def:true},
   {id:'monthFinalRule',group:'Month close',label:'Mark Month Final only from the month’s last day',hint:'Daily Sales & Exp and Attendance cannot be finalised before the month ends.',def:true},
@@ -205,7 +214,7 @@ function pendingApprovalsFor(u,salons){
 function ControlsCenterCard({salons}){
   const h=React.createElement;const {toast}=useToast();
   const u=currentSessionUser();const canEdit=isSuperAdminUser(u);
-  const [c,setC]=useState(()=>loadControls());const [open,setOpen]=useState(null);const [tab,setTab]=useState('rules');const [,tick]=useState(0);
+  const [c,setC]=useState(()=>loadControls());const [open,setOpen]=useState(null);const [tab,setTab]=useState('rules');const [,tick]=useState(0);const [cq,setCq]=useState('');const [onlyOff,setOnlyOff]=useState(false);const [shut,setShut]=useState({});
   const outlets=(salons||[]).filter(s=>s&&s.id!=null&&s.status!=='Inactive');
   const upd=(id,patch)=>{if(!canEdit){toast('Only a Super Admin can change controls','error');return;}
     const n={...c,[id]:{...(c[id]||{}),...patch}};setC(n);saveControls(n);
@@ -218,15 +227,20 @@ function ControlsCenterCard({salons}){
   const decide=(a,st)=>{let note='';if(st==='rejected'){note=window.prompt('Reason for rejecting (shown to the person who asked):','');if(note==null)return;}
     else if(!window.confirm('Approve?\n\n'+a.summary))return;
     if(decideApproval(a.id,st,note)){toast(st==='approved'?'Approved — they can now go ahead':'Rejected','success');tick(x=>x+1);}};
+  const ctlVis=d=>(!cq.trim()||(d.label+' '+(d.hint||'')+' '+d.group).toLowerCase().includes(cq.trim().toLowerCase()))&&(!onlyOff||!allOn(d));
   const groups=[...new Set(CONTROL_DEFS.map(d=>d.group))];
   const sw=(on,onClick,dis)=>h('div',{className:'toggle-switch '+(on?'on':''),style:{flexShrink:0,opacity:dis?.5:1,cursor:dis?'not-allowed':'pointer'},onClick:dis?undefined:onClick,role:'switch','aria-checked':on});
   return h('div',{className:'card',style:{marginBottom:16}},
     h('div',{className:'card-title'},'🎛 Controls'),
     h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:10,lineHeight:1.6}},'Switch each check or approval rule on or off for all outlets, then open “Outlet-wise” to set a different choice for any outlet. '+(canEdit?'':'Only a Super Admin can change these.')),
     h('div',{className:'tab-bar',style:{marginBottom:10}},[['rules','Rules'],['checkup','Bank mapping check-up'],['appr','Approvals'+(pend.length?' ('+pend.length+')':'')]].map(([k,l])=>h('button',{key:k,className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
-    tab==='rules'&&groups.map(g=>h('div',{key:g,style:{marginBottom:10}},
-      h('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'8px 0 2px'}},g),
-      CONTROL_DEFS.filter(d=>d.group===g).map(d=>{const over=outlets.filter(s=>outletState(d,s.id)!=='same').length;
+    tab==='rules'&&h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',margin:'0 0 8px'}},h('input',{className:'form-control',style:{flex:'1 1 220px'},placeholder:'Search '+CONTROL_DEFS.length+' switches…',value:cq,onChange:e=>setCq(e.target.value)}),
+      h('label',{style:{fontSize:12.5,display:'flex',gap:5,alignItems:'center'}},h('input',{type:'checkbox',checked:onlyOff,onChange:e=>setOnlyOff(e.target.checked)}),'Only switched off'),
+      h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShut(Object.keys(shut).length?{}:Object.fromEntries(groups.map(g=>[g,1])))},Object.keys(shut).length?'Expand all':'Collapse all')),
+    tab==='rules'&&!groups.some(g=>CONTROL_DEFS.some(d=>d.group===g&&ctlVis(d)))&&h('div',{style:{fontSize:12.5,color:'var(--text3)'}},'No switch matches.'),
+    tab==='rules'&&groups.filter(g=>CONTROL_DEFS.some(d=>d.group===g&&ctlVis(d))).map(g=>h('div',{key:g,style:{marginBottom:10}},
+      h('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'8px 0 2px',cursor:'pointer'},onClick:()=>setShut(x=>{const n={...x};if(n[g])delete n[g];else n[g]=1;return n;})},(shut[g]&&!cq.trim()?'▸ ':'▾ ')+g+' ('+CONTROL_DEFS.filter(d=>d.group===g&&ctlVis(d)).length+')'),
+      (!shut[g]||cq.trim())&&CONTROL_DEFS.filter(d=>d.group===g&&ctlVis(d)).map(d=>{const over=outlets.filter(s=>outletState(d,s.id)!=='same').length;
         return h('div',{key:d.id,style:{borderBottom:'1px solid var(--border)',padding:'10px 0'}},
           h('div',{style:{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}},
             h('div',{style:{flex:'1 1 240px',minWidth:0}},h('div',{style:{fontSize:13,color:'var(--text)',fontWeight:500}},d.label),h('div',{style:{fontSize:11.5,color:'var(--text3)'}},d.hint)),

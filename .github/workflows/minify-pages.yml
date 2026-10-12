@@ -1,0 +1,46 @@
+# Optional: publishes the site with compressed (minified) JavaScript — about a third of the size.
+# It does nothing until BOTH are set (one time, in GitHub → Settings):
+#   1. Settings → Pages → Build and deployment → Source: "GitHub Actions"
+#   2. Settings → Secrets and variables → Actions → Variables → New: SALONOS_MINIFY = true
+# Top-level names are kept (the js/ files share globals); only names inside functions are shortened.
+# To go back: set SALONOS_MINIFY to false and Pages → Source to "Deploy from a branch".
+name: Minify and publish
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  publish:
+    if: ${{ vars.SALONOS_MINIFY == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install terser
+        run: npm install --no-save --no-package-lock terser@5.31.6
+      - name: Minify js/*.js in place
+        run: |
+          for f in js/*.js; do
+            npx terser "$f" --compress --mangle --ecma 2020 --comments false -o "$f.min" && mv "$f.min" "$f"
+          done
+      - name: Keep only the site
+        run: rm -rf node_modules .github tools
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deploy
+        uses: actions/deploy-pages@v4

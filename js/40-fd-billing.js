@@ -36,7 +36,7 @@ function fdPrintBill(sid,inv){
   const t=billCalc(inv);const salon=getSalonRecordById(sid)||{};const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const sName=salon.name||'Salon';const addr=[salon.address,salon.city,salon.state,salon.pin].filter(Boolean).join(', ');const half=Math.round(t.gst/2);
   const rows=(inv.items||[]).map((it,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(it.name)+'<div class="m">'+esc(it.type)+(it.staffName?' · '+esc(it.staffName):'')+(typeof fdSacOf==='function'&&fdSacOf(sid,it)?' · '+(it.type==='Product'?'HSN ':'SAC ')+esc(fdSacOf(sid,it)):'')+'</div></td><td class="r">'+it.qty+'</td><td class="r">'+FD_M(it.rate)+'</td><td class="r">'+(inv.noGst?'—':(it.gst==null?18:it.gst)+'%')+'</td><td class="r">'+FD_M((Number(it.qty)||0)*(Number(it.rate)||0))+'</td></tr>').join('');
-  const html='<!doctype html><html><head><meta charset="utf-8"><title>'+esc(inv.id)+'</title><style>@page{size:A5 portrait;margin:10mm}body{font-family:Arial,sans-serif;font-size:12px;color:#222}h1{font-size:18px;margin:0}.m{color:#777;font-size:10px}table{width:100%;border-collapse:collapse;margin:10px 0}td,th{border-bottom:1px solid #eee;padding:5px}th{text-align:left;font-size:10px;color:#666;text-transform:uppercase}.r{text-align:right}.tot td{border:0;padding:3px 5px}.big td{font-weight:700;font-size:14px;border-top:2px solid #2f5fe0}</style></head><body>'
+  const html='<!doctype html><html><head><meta charset="utf-8"><title>'+esc(inv.id)+'</title><style>'+(typeof fdPrintCss==='function'?fdPrintCss(sid):'')+'</style></head><body>'
     +(salon.logo?'<img src="'+salon.logo+'" style="max-height:40px">':'')+'<h1>'+esc(sName)+'</h1><div class="m">'+esc(addr)+(salon.gst&&!inv.noGst?'<br>GSTIN '+esc(salon.gst):'')+'</div>'
     +'<p><b>'+(inv.kind==='credit-note'?'Credit note ':'Tax invoice ')+esc(inv.id)+'</b> · '+esc(inv.date.split('-').reverse().join('/'))+(inv.refBill?' · against '+esc(inv.refBill):'')+'<br>'+esc(inv.customer)+(inv.phone?' · '+esc(inv.phone):'')+(inv.custGstin?'<br>GSTIN '+esc(inv.custGstin):'')+'<br><span class="m">Place of supply: '+esc((salon.state||'')+(salon.gst?' ('+String(salon.gst).slice(0,2)+')':''))+'</span></p>'
     +'<table><tr><th>#</th><th>Item</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">GST</th><th class="r">Amount</th></tr>'+rows+'</table>'
@@ -49,12 +49,14 @@ function fdPrintBill(sid,inv){
 }
 function BillingSheet({salon}){
   const h=React.createElement;const {toast}=useToast();const sid=Number(salon&&salon.id)||1;
-  const [invoices,setInvoices]=useState(()=>fdBills(sid));const [,setT0]=useState(0);const [regOpen,setRegOpen]=useState(false);const [cpnOpen,setCpnOpen]=useState(false);const [drawerOpen,setDrawerOpen]=useState(false);const [pettyOpen,setPettyOpen]=useState(false);const [tabsOpen,setTabsOpen]=useState(false);const [corpOpen,setCorpOpen]=useState(false);
+  const [invoices,setInvoices]=useState(()=>fdBills(sid));const [,setT0]=useState(0);const [regOpen,setRegOpen]=useState(false);const [cpnOpen,setCpnOpen]=useState(false);const [drawerOpen,setDrawerOpen]=useState(false);const [pettyOpen,setPettyOpen]=useState(false);const [tabsOpen,setTabsOpen]=useState(false);const [lim,setLim]=useState(100);const [corpOpen,setCorpOpen]=useState(false);
   useEffect(()=>{safeLocalSet(outletKey('salonos_billing_invoices',sid),JSON.stringify(invoices));},[invoices,sid]);
   const [search,setSearch]=useState('');const [fMode,setFMode]=useState('All');const [fStatus,setFStatus]=useState('All');const [fStaff,setFStaff]=useState('All');
   const [editor,setEditor]=useState(null);const [viewInv,setViewInv]=useState(null);const [impOpen,setImpOpen]=useState(false);const [duesOpen,setDuesOpen]=useState(false);const [vchOpen,setVchOpen]=useState(false);const [refundOf,setRefundOf]=useState(null);const [quickOpen,setQuickOpen]=useState(false);const [gstOpen,setGstOpen]=useState(false);const [archOpen,setArchOpen]=useState(false);const [menuOpen,setMenuOpen]=useState(false);const [dayOpen,setDayOpen]=useState(false);const [dayIso,setDayIso]=useState(fdTodayIso());const [insOpen,setInsOpen]=useState(false);
   // a bill started from an appointment (js/41) — picked up once
   useEffect(()=>{try{const k='salonos_bill_draft_'+sid;const d=sessionStorage.getItem(k);if(d){sessionStorage.removeItem(k);setEditor({initial:JSON.parse(d)});}}catch(e){}},[sid]);
+  useEffect(()=>{const f=e=>{if(!e.detail||Number(e.detail.sid)===sid)setInvoices(fdBills(sid));};window.addEventListener('fd-bills-changed',f);return()=>window.removeEventListener('fd-bills-changed',f);},[sid]);
+  useEffect(()=>{const open=id=>{const b=fdBills(sid).find(x=>x.id===id);if(b)setViewInv(b);};const v=fdTakeOpen('bill',sid);if(v)open(v);const f=e=>{const d=e.detail||{};if(d.kind==='bill'&&Number(d.sid)===sid){fdTakeOpen('bill',sid);open(d.id);}};window.addEventListener('fd-open',f);return()=>window.removeEventListener('fd-open',f);},[sid]);
   useEffect(()=>{try{if(controlOn('upiQr',sid)&&fdUpiId(sid)&&typeof qrcode!=='function'&&typeof loadScript==='function')loadScript(FD_QR_LIB).catch(()=>{});}catch(e){}},[sid]);
   const today=fdTodayIso();const cur=today.slice(0,7);const staff=fdStaff(sid);
   const T=b=>billCalc(b).total;const live=invoices.filter(b=>b.status!=='Cancelled');
@@ -72,7 +74,8 @@ function BillingSheet({salon}){
       toast('Bill '+id+' — '+FD_M(T(bill))+(notes.length?' · '+notes.join(' · '):''),'success');},0);
     setEditor(null);};
   const del=b=>{const reason=fdCancelOk(sid,b,'cancel');if(reason==null)return;setInvoices(L=>L.map(x=>x.id===b.id?{...x,status:'Cancelled',cancelReason:reason,cancelledBy:(currentSessionUser()||{}).name||'',cancelledAt:new Date().toISOString()}:x));
-    try{logAuditEvent(sid,{entity:'Bill',entityId:b.id,action:'Cancelled',summary:FD_M(T(b))+' — '+reason});}catch(e){}setViewInv(null);};
+    try{logAuditEvent(sid,{entity:'Bill',entityId:b.id,action:'Cancelled',summary:FD_M(T(b))+' — '+reason});}catch(e){}setViewInv(null);
+    fdOfferUndo(sid,'Bill '+b.id+' cancelled',()=>{const L=fdBills(sid).map(x=>x.id===b.id?b:x);safeLocalSet(outletKey('salonos_billing_invoices',sid),JSON.stringify(L));try{logAuditEvent(sid,{entity:'Bill',entityId:b.id,action:'Cancel undone',summary:FD_M(T(b))});}catch(e){}window.dispatchEvent(new CustomEvent('fd-bills-changed',{detail:{sid}}));});};
   const setRating=(b,r)=>{setInvoices(L=>L.map(x=>x.id===b.id?{...x,rating:r}:x));setViewInv(v=>v&&v.id===b.id?{...v,rating:r}:v);};
   const sendWa=b=>{const ph=typeof waNumber==='function'?waNumber(b.phone):'';if(!ph){toast('No valid mobile on this bill','error');return;}window.open('https://wa.me/'+ph+'?text='+encodeURIComponent(fdBillText(sid,b)),'_blank','noopener');};
   const ds=dayOpen?fdDaySummary(sid,dayIso):null;
@@ -82,7 +85,7 @@ function BillingSheet({salon}){
     h('div',{className:'section-header'},
       h('div',null,h('div',{className:'page-title'},'Billing'+(salon?' — '+String(salon.name).split('—')[0].trim():'')),
         h('div',{className:'page-sub'},'Bills on your own menu and staff. '+(fdSettings(sid).gst?'GST per item'+(fdSettings(sid).inclusive?' (prices include GST)':''):'Outlet not GST-registered — no GST on bills')+'.')),
-      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      h(FdToolbar,{sid,keep:[/Day-end/,/Dues/]},
         h('button',{className:'btn btn-primary btn-sm',onClick:()=>setQuickOpen(true)},'⚡ Quick bill'),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setMenuOpen(true)},'⚙ Menu & settings'),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setGstOpen(true)},'📑 GST'),
@@ -101,12 +104,12 @@ function BillingSheet({salon}){
         fi&&h('button',{className:'btn btn-ghost btn-sm',title:'Fill this month’s Service / Product / Membership sales in Incentive Working from the bills',onClick:()=>{if(!window.confirm('Send '+RPT_MONTHS[now.getMonth()]+' billed sales of each staff member to Incentive Working? (Used only where no staff work report is imported.)'))return;const n=fdPushIncentive(sid,now.getFullYear(),now.getMonth());toast('Sales of '+n+' staff sent to Incentive Working','success');}},'↗ Sales to incentives'),
         h('button',{className:'btn btn-primary',onClick:()=>setEditor({})},'+ New bill'))),
     insOpen&&h(SalesInsightsModal,{salon,invoices:live,onClose:()=>setInsOpen(false)}),
-    h(FdSyncBanner,{sid}),h(FdRebookHost,{sid}),
+    h(FdTodayStrip,{sid}),h(FdSyncBanner,{sid}),h(FdRebookHost,{sid}),
     controlOn('cashDrawer',sid)&&!fdOpenShift(sid)&&h('div',{className:'attention-card',style:{marginBottom:12,color:'var(--orange)'}},'💵 The cash drawer is not open. ',h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setDrawerOpen(true)},'Open it with the float')),
     !staff.length&&h('div',{className:'help-note',style:{marginBottom:12}},'No floor staff found for this month — add stylists in Master Salary so bills (and incentives) carry the right person.'),
     (()=>{const od=fdOldDues(sid);return od.length?h('div',{className:'attention-card',style:{marginBottom:12,color:'var(--red)'}},'💳 '+od.length+' client(s) owe money for more than '+(controlLimit('oldDuesAlert')||60)+' days — '+FD_M(od.reduce((t,e)=>t+e.due,0))+'. ',h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setDuesOpen(true)},'Open dues')):null;})(),
     lowRated.length>0&&h('div',{className:'attention-card',style:{marginBottom:12,color:'var(--red)'}},'⭐ '+lowRated.length+' low rating(s): ',lowRated.slice(0,4).map(b=>h('button',{key:b.id,className:'btn btn-ghost btn-sm',onClick:()=>setViewInv(b)},b.customer+' ('+b.rating+'★)'))),
-    h('div',{className:'grid4',style:{marginBottom:16}},metric("Today's sales",FD_M(todaySales),live.filter(b=>b.date===today).length+' bill(s)','green'),(()=>{const mm=fdMonthMoney(sid,cur);return metric('This month — new money',FD_M(mm.newMoney),(mm.fromPackages?FD_M(mm.fromPackages)+' used from packages / vouchers · ':'')+RPT_MONTHS[now.getMonth()],'blue');})(),
+    h('div',{className:'grid4',style:{marginBottom:16}},metric("Today's sales",FD_M(todaySales),h('span',null,live.filter(b=>b.date===today).length+' bill(s)',controlOn('miniCharts',sid)&&fdSpark(fdDailyTotals(sid,14),'var(--green)')),'green'),(()=>{const mm=fdMonthMoney(sid,cur);return metric('This month — new money',FD_M(mm.newMoney),(mm.fromPackages?FD_M(mm.fromPackages)+' used from packages / vouchers · ':'')+RPT_MONTHS[now.getMonth()],'blue');})(),
       metric('Average bill',FD_M(live.filter(b=>String(b.date).slice(0,7)===cur).length?monthSales/live.filter(b=>String(b.date).slice(0,7)===cur).length:0),'this month','amber'),
       metric('Client dues',FD_M(unpaid.reduce((s,b)=>s+fdBillDue(b),0)),unpaid.length+' bill(s)',unpaid.length?'red':'teal')),
     h('div',{style:{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap',alignItems:'center'}},
@@ -114,11 +117,12 @@ function BillingSheet({salon}){
       h('select',{className:'form-control',style:{width:'auto'},value:fMode,onChange:e=>setFMode(e.target.value)},['All','Cash','Card','UPI','Split','Package'].map(m=>h('option',{key:m,value:m},m==='All'?'All payments':m))),
       h('select',{className:'form-control',style:{width:'auto'},value:fStatus,onChange:e=>setFStatus(e.target.value)},['All','Paid','Unpaid','Cancelled'].map(m=>h('option',{key:m,value:m},m==='All'?'All status':m))),
       h('select',{className:'form-control',style:{width:'auto'},value:fStaff,onChange:e=>setFStaff(e.target.value)},h('option',{value:'All'},'All staff'),staff.map(s=>h('option',{key:s.id,value:s.name},s.name))),
-      h('span',{style:{fontSize:12,color:'var(--text3)'}},filtered.length+' of '+invoices.length)),
+      h('span',{style:{fontSize:12,color:'var(--text3)'}},filtered.length+' of '+invoices.length),h(FdMoreBar,{shown:Math.min(lim,filtered.length),total:filtered.length,onMore:()=>setLim(l=>l+200)}),
+      controlOn('filterChips',sid)&&(fMode!=='All'||fStatus!=='All'||fStaff!=='All'||search)&&h('span',{style:{display:'inline-flex',gap:4,flexWrap:'wrap',alignItems:'center'}},[search&&['“'+search+'”',()=>setSearch('')],fMode!=='All'&&[fMode,()=>setFMode('All')],fStatus!=='All'&&[fStatus,()=>setFStatus('All')],fStaff!=='All'&&[fStaff,()=>setFStaff('All')]].filter(Boolean).map(([l,f],i)=>h('span',{key:i,className:'badge',style:{background:'var(--accent)',color:'#fff',cursor:'pointer'},title:'Remove this filter',onClick:f},l+' ✕')),h('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setSearch('');setFMode('All');setFStatus('All');setFStaff('All');}},'Clear all'))),
     h('div',{className:'card',style:{padding:0}},!filtered.length?h('div',{className:'empty-state'},h('div',{className:'empty-icon'},'🧾'),h('div',{className:'empty-title'},'No bills'),h('div',{className:'empty-sub'},'Press + New bill to make the first one.'))
       :h('div',{className:'table-wrap'},h('table',null,
         h('thead',null,h('tr',null,['Bill','Date','Customer','Items','Staff','Payment','Status','Amount',''].map((x,i)=>h('th',{key:i,style:i===7?{textAlign:'right'}:null},x)))),
-        h('tbody',null,filtered.slice(0,500).map(b=>h('tr',{key:b.id,style:{opacity:b.status==='Cancelled'?0.55:1}},
+        h('tbody',null,filtered.slice(0,lim).map(b=>h('tr',{key:b.id,style:{opacity:b.status==='Cancelled'?0.55:1}},
           h('td',{style:{fontFamily:'monospace',fontWeight:600,color:'var(--accent)'}},b.id),h('td',{style:{fontSize:12}},String(b.date).split('-').reverse().join('/')),
           h('td',null,h('div',{style:{fontWeight:600}},b.customer),b.phone&&h('div',{style:{fontSize:10.5,color:'var(--text3)'}},fdShowPhone(sid,b.phone))),
           h('td',{style:{fontSize:12}},(b.items||[]).length+' item(s)'),h('td',{style:{fontSize:12}},b.staff||'—'),
@@ -159,6 +163,7 @@ function BillingSheet({salon}){
       [['Bills',ds.bills+(ds.cancelled?' ('+ds.cancelled+' cancelled)':'')],['Gross',FD_M(ds.gross)],['Discounts',FD_M(ds.disc)],['GST',FD_M(ds.gst)],['Total billed',FD_M(ds.total)],['New money (excl. package / voucher use)',FD_M(ds.total-(ds.modes.Package||0)-(ds.modes.Voucher||0))],
         ['Advances received (net)',FD_M(ds.advancesIn||0)],['Petty cash paid from the counter',FD_M(ds.petty||0)],
         ['Cancelled / refunded',FD_M(fdBills(sid).filter(b=>b.date===dayIso&&b.status==='Cancelled').reduce((t,b)=>t+billCalc(b).total,0))+' / '+FD_M(-fdBills(sid).filter(b=>b.date===dayIso&&b.kind==='credit-note').reduce((t,b)=>t+billCalc(b).total,0))]].map(([k,v])=>h('div',{key:k,className:'kv'},h('span',null,k),h('b',null,v))),
+      controlOn('miniCharts',sid)&&fdDonut(Object.entries(ds.modes).filter(([k,v])=>v>0&&k!=='Unpaid')),
       h('div',{style:{fontWeight:700,margin:'10px 0 4px'}},'By payment'),
       Object.entries(ds.modes).filter(([,v])=>v).map(([k,v])=>h('div',{key:k,className:'kv'},h('span',null,k),h('span',null,FD_M(v),ds.cradlee&&(k==='Card'||k==='UPI')?h('span',{style:{marginLeft:8,fontSize:11.5,color:Math.abs(ds.cradlee[k.toLowerCase()]-v)>1?'var(--orange)':'var(--green)'}},'Cradlee '+FD_M(ds.cradlee[k.toLowerCase()])):null))),
       Object.keys(ds.tips).length>0&&h('div',{style:{fontWeight:700,margin:'10px 0 4px'}},'Tips to pay out'),Object.entries(ds.tips).map(([k,v])=>h('div',{key:k,className:'kv'},h('span',null,k),h('span',null,FD_M(v)))),

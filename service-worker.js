@@ -30,6 +30,22 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return; // let Supabase/API calls pass straight through
   if (/\.(mp4|webm)$/i.test(url.pathname)) return; // guide videos: streamed by the browser (range requests), never cached here
 
+  // js/*.js?v=<release> never changes once published, so it comes straight from this device's cache
+  // (instant second start, works offline); a new release has a new ?v= and older copies are dropped.
+  if (/\.js$/.test(url.pathname) && url.searchParams.has('v')) {
+    event.respondWith(caches.open(CACHE_NAME).then(async (cache) => {
+      const hit = await cache.match(req);
+      if (hit) return hit;
+      const res = await fetch(req);
+      if (res && res.ok) {
+        cache.put(req, res.clone()).catch(() => {});
+        cache.keys().then((keys) => keys.forEach((k) => { const u = new URL(k.url); if (u.pathname === url.pathname && u.search !== url.search) cache.delete(k); })).catch(() => {});
+      }
+      return res;
+    }).catch(() => fetch(req)));
+    return;
+  }
+
   // Network-first for the app shell so users always get the latest version when online,
   // falling back to cache when offline. The page itself and version.json skip the browser's
   // HTTP cache (GitHub Pages lets it keep them 10 minutes), so a release reaches people at once;

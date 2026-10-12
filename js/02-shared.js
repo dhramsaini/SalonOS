@@ -972,7 +972,7 @@ function deleteAllSalonScopedData(salonId){
   // or the outlet's data kept coming back on every other login.
   try{
     const suffix='_outlet_'+salonId,stray=[];
-    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.indexOf('salonos_')===0&&k.endsWith(suffix))stray.push(k);}
+    for(const k of lsKeys()){if(k&&k.indexOf('salonos_')===0&&k.endsWith(suffix))stray.push(k);}
     stray.forEach(k=>cachedLocalRemove(k));
   }catch(e){}
   cloudDeleteOutletData(salonId);
@@ -1019,12 +1019,14 @@ function nextPrefixedId(list,prefix,pad){
 // prefixed "salonos_", so a full backup is just every such key/value pair, and a restore is
 // writing them straight back. Used by Master Settings' Take/Import Backup and by the login
 // screen's "back up before you exit" prompt, and by the auto-backup timer. ──
-function collectSalonOSData(){
+// skipBig: the in-browser auto-backup leaves out the large lists — they are in the large store and the cloud,
+// and copying them into localStorage would fill it again.
+function collectSalonOSData(skipBig){
   const data={};
   try{
-    for(let i=0;i<localStorage.length;i++){
-      const k=localStorage.key(i);
-      if(k&&k.indexOf('salonos_')===0&&k!=='salonos_autobackup_snapshot')data[k]=localStorage.getItem(k);
+    for(const k of lsKeys()){
+      if(skipBig&&typeof BIG_KEY_RE!=='undefined'&&BIG_KEY_RE.test(k))continue;
+      if(k&&k.indexOf('salonos_')===0&&k!=='salonos_autobackup_snapshot')data[k]=lsGet(k);
     }
   }catch(e){}
   return data;

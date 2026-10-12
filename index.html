@@ -13,7 +13,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SalonOS">
 <title>SalonOS</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 input[type="checkbox"],input[type="radio"]{accent-color:var(--accent);width:15px;height:15px;cursor:pointer;vertical-align:middle}
@@ -874,65 +875,79 @@ body.light kbd{background:#fff}
 .rawbox{max-height:220px;overflow:auto;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:12px;font-size:11px;line-height:1.55;color:var(--text2);white-space:pre-wrap;margin-top:10px}
 
 </style>
+<style>
+/* start-up splash — shown by the browser before the scripts run; React replaces it */
+.boot-splash{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:Inter,system-ui,sans-serif;font-weight:600;color:#64748b;background:#f8fafc}
+.boot-splash .lg{width:56px;height:56px;border-radius:14px;background:#1E40AF;color:#fff;font:700 26px Arial,sans-serif;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(30,64,175,.35)}
+.boot-splash .bar{width:160px;height:4px;border-radius:2px;background:#e2e8f0;overflow:hidden}.boot-splash .bar i{display:block;height:100%;width:40%;background:#1E40AF;animation:bootbar 1.1s ease-in-out infinite}
+@keyframes bootbar{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
+@media (prefers-color-scheme:dark){.boot-splash{background:#0f172a;color:#94a3b8}.boot-splash .bar{background:#1e293b}}
+@media (prefers-reduced-motion:reduce){.boot-splash .bar i{animation:none;width:100%}}
+/* phone layout (Controls → mobileLayout) */
+@media (max-width:640px){body:not(.no-fd-mobile) .form-row.cols2,body:not(.no-fd-mobile) .form-row.cols3,body:not(.no-fd-mobile) .form-row.cols4{grid-template-columns:1fr}
+  body:not(.no-fd-mobile) .modal{max-width:100vw!important;width:100%!important;border-radius:14px 14px 0 0;max-height:94vh!important}
+  body:not(.no-fd-mobile) .section-header{flex-wrap:wrap;gap:8px}body:not(.no-fd-mobile) .grid4{grid-template-columns:1fr 1fr}}
+</style>
 </head>
 <body class="light">
 <script>try{var t=localStorage.getItem('salonos_theme')||'light';document.body.className=(t==='light'?'light':'');}catch(e){}</script>
-<div id="root"></div>
+<div id="root"><div class="boot-splash" aria-label="Loading SalonOS"><div class="lg">S</div><div>SalonOS</div><div class="bar"><i></i></div></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous" type="text/x-lazy" data-lazy="xlsx"></script>
 <!-- App code, split by area (js/). Load order matters; ?v= must match APP_VERSION so browsers never mix releases. -->
-<script src="js/01-foundation.js?v=2026.10.11.153"></script>
-<script src="js/02-shared.js?v=2026.10.11.153"></script>
-<script src="js/03-admin.js?v=2026.10.11.153"></script>
-<script src="js/04-outlet-staff.js?v=2026.10.11.153"></script>
-<script src="js/05-daily-sales.js?v=2026.10.11.153"></script>
-<script src="js/06-attendance-salary.js?v=2026.10.11.153"></script>
-<script src="js/07-incentives.js?v=2026.10.11.153"></script>
-<script src="js/08-advances-vendors.js?v=2026.10.11.153"></script>
-<script src="js/09-registers-statutory.js?v=2026.10.11.153"></script>
-<script src="js/10-collections-bank.js?v=2026.10.11.153"></script>
-<script src="js/11-expenses-reports.js?v=2026.10.11.153"></script>
-<script src="js/12-front-desk.js?v=2026.10.11.153"></script>
-<script src="js/13-pnl.js?v=2026.10.11.153"></script>
-<script src="js/13a-insights.js?v=2026.10.11.153"></script>
-<script src="js/13b-whatsapp.js?v=2026.10.11.153"></script>
-<script src="js/13c-email.js?v=2026.10.11.153"></script>
-<script src="js/15-restaurant.js?v=2026.10.11.153"></script>
-<script src="js/16-automation.js?v=2026.10.11.153"></script>
-<script src="js/17-automation-files.js?v=2026.10.11.153"></script>
-<script src="js/18-approvals.js?v=2026.10.11.153"></script>
-<script src="js/19-mtd.js?v=2026.10.11.153"></script>
-<script src="js/20-ops.js?v=2026.10.11.153"></script>
-<script src="js/21-owner.js?v=2026.10.11.153"></script>
-<script src="js/22-controls.js?v=2026.10.11.153"></script>
-<script src="js/23-sales-stock.js?v=2026.10.11.153"></script>
-<script src="js/24-people-owner.js?v=2026.10.11.153"></script>
-<script src="js/25-reports.js?v=2026.10.11.153"></script>
-<script src="js/26-controls-center.js?v=2026.10.11.153"></script>
-<script src="js/27-accounts.js?v=2026.10.11.153"></script>
-<script src="js/28-money-owner.js?v=2026.10.11.153"></script>
-<script src="js/29-staff.js?v=2026.10.11.153"></script>
-<script src="js/30-checks.js?v=2026.10.11.153"></script>
-<script src="js/31-collection-xl.js?v=2026.10.11.153"></script>
-<script src="js/32-bank-mapper.js?v=2026.10.11.153"></script>
-<script src="js/33-bank-checks.js?v=2026.10.11.153"></script>
-<script src="js/34-bank-reports.js?v=2026.10.11.153"></script>
-<script src="js/35-bank-matching.js?v=2026.10.11.153"></script>
-<script src="js/36-staff-self.js?v=2026.10.11.153"></script>
-<script src="js/37-front-office.js?v=2026.10.11.153"></script>
-<script src="js/38-owner-platform.js?v=2026.10.11.153"></script>
-<script src="js/39-fd-core.js?v=2026.10.11.153"></script>
-<script src="js/40-fd-billing.js?v=2026.10.11.153"></script>
-<script src="js/41-fd-appointments.js?v=2026.10.11.153"></script>
-<script src="js/42-fd-clients.js?v=2026.10.11.153"></script>
-<script src="js/43-fd-inventory.js?v=2026.10.11.153"></script>
-<script src="js/44-fd-extras.js?v=2026.10.11.153"></script>
-<script src="js/45-fd-safety.js?v=2026.10.11.153"></script>
-<script src="js/46-fd-more.js?v=2026.10.11.153"></script>
-<script src="js/47-fd-plus.js?v=2026.10.11.153"></script>
-<script src="js/48-fd-ops.js?v=2026.10.11.153"></script>
-<script src="js/14-import-and-app.js?v=2026.10.11.153"></script>
+<script src="js/01-foundation.js?v=2026.10.11.154"></script>
+<script src="js/02-shared.js?v=2026.10.11.154"></script>
+<script src="js/03-admin.js?v=2026.10.11.154"></script>
+<script src="js/04-outlet-staff.js?v=2026.10.11.154"></script>
+<script src="js/05-daily-sales.js?v=2026.10.11.154"></script>
+<script src="js/06-attendance-salary.js?v=2026.10.11.154"></script>
+<script src="js/07-incentives.js?v=2026.10.11.154"></script>
+<script src="js/08-advances-vendors.js?v=2026.10.11.154"></script>
+<script src="js/09-registers-statutory.js?v=2026.10.11.154"></script>
+<script src="js/10-collections-bank.js?v=2026.10.11.154"></script>
+<script src="js/11-expenses-reports.js?v=2026.10.11.154"></script>
+<script src="js/12-front-desk.js?v=2026.10.11.154"></script>
+<script src="js/13-pnl.js?v=2026.10.11.154"></script>
+<script src="js/13a-insights.js?v=2026.10.11.154"></script>
+<script src="js/13b-whatsapp.js?v=2026.10.11.154"></script>
+<script src="js/13c-email.js?v=2026.10.11.154"></script>
+<script src="js/15-restaurant.js?v=2026.10.11.154"></script>
+<script src="js/16-automation.js?v=2026.10.11.154"></script>
+<script src="js/17-automation-files.js?v=2026.10.11.154"></script>
+<script src="js/18-approvals.js?v=2026.10.11.154"></script>
+<script src="js/19-mtd.js?v=2026.10.11.154"></script>
+<script src="js/20-ops.js?v=2026.10.11.154"></script>
+<script src="js/21-owner.js?v=2026.10.11.154"></script>
+<script src="js/22-controls.js?v=2026.10.11.154"></script>
+<script src="js/23-sales-stock.js?v=2026.10.11.154"></script>
+<script src="js/24-people-owner.js?v=2026.10.11.154"></script>
+<script src="js/25-reports.js?v=2026.10.11.154"></script>
+<script src="js/26-controls-center.js?v=2026.10.11.154"></script>
+<script src="js/27-accounts.js?v=2026.10.11.154"></script>
+<script src="js/28-money-owner.js?v=2026.10.11.154"></script>
+<script src="js/29-staff.js?v=2026.10.11.154"></script>
+<script src="js/30-checks.js?v=2026.10.11.154"></script>
+<script src="js/31-collection-xl.js?v=2026.10.11.154"></script>
+<script src="js/32-bank-mapper.js?v=2026.10.11.154"></script>
+<script src="js/33-bank-checks.js?v=2026.10.11.154"></script>
+<script src="js/34-bank-reports.js?v=2026.10.11.154"></script>
+<script src="js/35-bank-matching.js?v=2026.10.11.154"></script>
+<script src="js/36-staff-self.js?v=2026.10.11.154"></script>
+<script src="js/37-front-office.js?v=2026.10.11.154"></script>
+<script src="js/38-owner-platform.js?v=2026.10.11.154"></script>
+<script src="js/39-fd-core.js?v=2026.10.11.154"></script>
+<script src="js/40-fd-billing.js?v=2026.10.11.154"></script>
+<script src="js/41-fd-appointments.js?v=2026.10.11.154"></script>
+<script src="js/42-fd-clients.js?v=2026.10.11.154"></script>
+<script src="js/43-fd-inventory.js?v=2026.10.11.154"></script>
+<script src="js/44-fd-extras.js?v=2026.10.11.154"></script>
+<script src="js/45-fd-safety.js?v=2026.10.11.154"></script>
+<script src="js/46-fd-more.js?v=2026.10.11.154"></script>
+<script src="js/47-fd-plus.js?v=2026.10.11.154"></script>
+<script src="js/48-fd-ops.js?v=2026.10.11.154"></script>
+<script src="js/49-fd-speed-ui.js?v=2026.10.11.154"></script>
+<script src="js/14-import-and-app.js?v=2026.10.11.154"></script>
 <script>
 // ── Phone card view for list tables — marks read-only list tables (one record per row) so the
 // CSS above can show each row as a labelled card on phones. Editable grids (text/number inputs or
