@@ -145,6 +145,7 @@ function AdvanceSheet({period,salon}={}){
     const isSynced=editItem&&editItem.source==='dse';
     if(!isSynced&&!form.bankRef){alert('Bank Reference is required — advances recorded here are always by Bank Transfer. Cash advances go through Daily Sales & Expenses instead.');return;}
     if(!isSynced&&!advanceLimitGate(advSalonId,form.emp,Number(form.amount)-(editItem?Number(editItem.amount)||0:0),editItem?editItem.id:undefined))return;
+    if(typeof ecAdvanceOk==='function'&&!ecAdvanceOk(advSalonId,form,editItem?editItem.id:null,advances))return;
     const outstanding=Number(form.amount)-Number(form.repayment||0);
     const item={...form,mode:isSynced?form.mode:'Bank Transfer',id:form.id||nextId(),amount:Number(form.amount),repayment:Number(form.repayment||0),
       schedule:(form.schedule||[]).map(r=>({month:r.month,amount:Number(r.amount)||0})),
@@ -685,6 +686,7 @@ function PenaltySheet({period,salon}={}){
     if(penBlockIfLocked(form.date))return;
     if(!form.emp||!form.amount){alert('Employee and amount are required.');return;}
     if(form.type==='Other'&&!form.otherType.trim()){alert('Please specify the penalty type.');return;}
+    if(typeof ecPenaltyOk==='function'&&!ecPenaltyOk(penSalonId,form,editItem?editItem.id:null,penalties))return;
     const item={...form,id:form.id||nextId(),amount:Number(form.amount)};
     if(editItem)setPenalties(prev=>prev.map(p=>p.id===item.id?item:p));
     else setPenalties(prev=>[...prev,item]);
@@ -967,6 +969,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     const sameName=vendors.find(v=>v.name.trim().toLowerCase()===vForm.name.trim().toLowerCase()&&(!editVendor||v.id!==editVendor.id));
     if(sameName){alert('A vendor named "'+sameName.name+'" already exists ('+sameName.id+').');return;}
     if(!confirmIdFields({gst:vForm.gst,phone:vForm.phone,email:vForm.email,accountNo:vForm.accountNo,ifsc:vForm.ifsc,bankName:vForm.bankName},'the vendor details',salonId))return;
+    if(typeof ecVendorOk==='function'&&!ecVendorOk(salonId,vForm,editVendor?editVendor.id:null,vendors))return;
     if(editVendor&&!vendorBankChangeOk(salonId,vendors.find(v=>v.id===editVendor.id)||editVendor,vForm))return;
     // Edits are matched on the vendor's original ID (invoices, payments and bank links point to it),
     // so the ID itself can't change here — it used to, and then nothing was saved at all.
@@ -1023,6 +1026,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
   const handleBulkImportFile=async(e)=>{
     const f=e.target.files&&e.target.files[0];
     if(!f)return;
+    if(typeof ecImportOk==='function'&&!ecImportOk(salonId,'vendor bills',f)){e.target.value='';return;}
     e.target.value='';
     setBulkBusy(true);
     try{
@@ -1084,6 +1088,8 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     {const orig=editInvoiceId?invoices.find(i=>i.id===editInvoiceId):null;const ym=invoiceBookMonthOf(invForm);
      if((!orig||invoiceBookMonthOf(orig)!==ym)&&!canBookInvoiceInMonth(ym)){alert(invoiceMonthBlockMessage());return;}}
     if(!computedTotal){alert('Enter at least a Taxable Value.');return;}
+    if(typeof ecVendorBillOk==='function'&&!ecVendorBillOk(salonId,{...invForm,amount:Math.round(computedTotal)},invForm.vendorId==='__new__'?null:invForm.vendorId,editInvoiceId,invoices))return;
+    if(invForm.vendorId==='__new__'&&typeof ecVendorOk==='function'&&!ecVendorOk(salonId,{name:invForm.newVendorName,gst:invForm.newVendorGst},null,vendors))return;
     {const orig=editInvoiceId?invoices.find(i=>i.id===editInvoiceId):null;
      if(!invoiceApprovalOk(salonId,invForm.vendorId==='__new__'?'new:'+(invForm.newVendorName||''):invForm.vendorId,invForm.vendorId==='__new__'?invForm.newVendorName:getVendorName(invForm.vendorId),invForm.invoiceNo,computedTotal,orig?orig.amount:null))return;}
     if(outletSettings(salonId).attachmentRequired&&!invForm.attachment){alert('This outlet requires the document to be attached for every '+invForm.docNature+' — please attach it (📎 below) before saving.');return;}
@@ -1282,6 +1288,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     if(vendBlockIfLocked(payForm.paidDate))return;
     {const tgt=invoices.find(i=>i.id===payForm.invoiceId);if(payForm.editingPaymentId===null&&tgt&&invoiceNeedsApproval(tgt,salonId)){toastError('This bill is above the approval limit and isn’t approved yet — a Super Admin has to approve it before it can be paid.');return;}}
     if(!payForm.paidAmount||!payForm.paidDate){alert('Paid amount and date are required');return;}
+    {const tgt=invoices.find(i=>i.id===payForm.invoiceId);if(tgt&&typeof ecPaymentOk==='function'&&!ecPaymentOk(salonId,tgt,payForm))return;}
     const linkId=matchedBankRowId!=null?'bank-'+matchedBankRowId:undefined;
     const entry={paidAmount:Number(payForm.paidAmount),paidDate:payForm.paidDate,mode:payForm.mode,ref:payForm.ref,note:payForm.note,...(linkId?{linkId}:{})};
     if(payForm.editingPaymentId!==null){
@@ -2958,6 +2965,7 @@ function VendorManagerModal({salon,vendors,setVendors,invoices,recurring,onClose
     const same=vendors.find(v=>String(v.name).trim().toLowerCase()===name.toLowerCase()&&v.id!==editId);
     if(same){window.alert('A vendor named "'+same.name+'" already exists ('+same.id+').');return;}
     if(!confirmIdFields({gst:form.gst,phone:form.phone,email:form.email,accountNo:form.accountNo,ifsc:form.ifsc,bankName:form.bankName},'the vendor details',salonId))return;
+    if(typeof ecVendorOk==='function'&&!ecVendorOk(salonId,form,editId,vendors))return;
     const clean={...form,name,gst:String(form.gst||'').trim().toUpperCase(),ifsc:String(form.ifsc||'').trim().toUpperCase(),accountNo:String(form.accountNo||'').replace(/\s/g,'')};
     if(editId){
       const old=vendors.find(v=>v.id===editId);

@@ -1949,6 +1949,7 @@ function MemRuleC({salonId,selYear,selMonth,EMPLOYEES,MONTHS,splitMode,editGroup
   };
   const handleFile=(e)=>{
     const file=e.target.files[0];if(!file)return;
+    if(typeof ecImportOk==='function'&&!ecImportOk(salonId,'membership (Rule C)',file)){e.target.value='';return;}
     setImportMsg('');
     const reader=new FileReader();
     reader.onload=(ev)=>{

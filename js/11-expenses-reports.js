@@ -1669,6 +1669,7 @@ function StaffReportSheet({period,salon}={}){
   const monthLabel=(()=>{const m=/^(\d{4})-(\d{2})$/.exec(selMonth||'');return m?['January','February','March','April','May','June','July','August','September','October','November','December'][+m[2]-1]+' '+m[1]:selMonth;})();
   const importStaffFile=async(f)=>{
     if(!f)return;
+    if(typeof ecImportOk==='function'&&!ecImportOk(salonId,'staff work report',f))return;
     setSWait(0);setSWatch('');
     try{
       const had=reports.length;
@@ -1848,6 +1849,7 @@ function StaffReportSheet({period,salon}={}){
       React.createElement('div',{style:{display:'flex',gap:10,marginBottom:10,alignItems:'center',flexWrap:'wrap'}},
         React.createElement('input',{type:'file',accept:'.csv,.xlsx,.xls',style:{display:'none'},id:'staff-upload',onChange:async e=>{
           const f=e.target.files[0];if(!f)return;
+          if(typeof ecImportOk==='function'&&!ecImportOk(salonId,'staff work report',f)){e.target.value='';return;}
           e.target.value='';
           setParseMsg('');
           try{

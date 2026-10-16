@@ -1007,8 +1007,8 @@ function CollectionReco({salon,onNavTab}={}){
   };
 
   loadWorkbookRef.current=loadWorkbook;
-  const onFile=(e)=>{const f=e.target.files&&e.target.files[0];if(f)loadWorkbook(f);e.target.value='';};
-  const onDrop=(e)=>{e.preventDefault();setDragging(false);const f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f)loadWorkbook(f);};
+  const onFile=(e)=>{const f=e.target.files&&e.target.files[0];if(f&&(typeof ecImportOk!=='function'||ecImportOk(salon&&salon.id,'collection report',f)))loadWorkbook(f);e.target.value='';};
+  const onDrop=(e)=>{e.preventDefault();setDragging(false);const f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f&&(typeof ecImportOk!=='function'||ecImportOk(salon&&salon.id,'collection report',f)))loadWorkbook(f);};
   const downloadTemplate=()=>{
     const csv=[REQUIRED,SAMPLE].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
     const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
@@ -3455,8 +3455,8 @@ function BankStatement({salon,onNavTab}={}){
     const sa=u.sheetAccessByOutlet&&u.sheetAccessByOutlet[salonId];
     return !(sa&&sa['bank-statement']&&sa['bank-statement']!=='Edit');
   })();
-  const onFile=(e)=>{const f=e.target.files&&e.target.files[0];if(f)loadWorkbook(f);e.target.value='';};
-  const onDrop=(e)=>{e.preventDefault();setDragging(false);const f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f)loadWorkbook(f);};
+  const onFile=(e)=>{const f=e.target.files&&e.target.files[0];if(f&&(typeof ecImportOk!=='function'||ecImportOk(salon&&salon.id,'bank statement',f)))loadWorkbook(f);e.target.value='';};
+  const onDrop=(e)=>{e.preventDefault();setDragging(false);const f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f&&(typeof ecImportOk!=='function'||ecImportOk(salon&&salon.id,'bank statement',f)))loadWorkbook(f);};
   // Changing the Nature / vendor / Cradlee date of a line that is already linked (bill, salary, advance)
   // needs approval above the limit when Controls → Mapping approval is on.
   const linkedLine=r=>!!(r&&(r.linkedInvoice||(Array.isArray(r.linkedEmployeePay)&&r.linkedEmployeePay.length)||(Array.isArray(r.linkedAdvance)&&r.linkedAdvance.length)));
@@ -3818,6 +3818,7 @@ function BankStatement({salon,onNavTab}={}){
     const freshInvoices=loadVendorInvoices(salonId);
     {const dupInv=controlOn('dupInvoice',salonId)&&duplicateVendorInvoice(freshInvoices,vendor.id,addInvoiceForm.invoiceNo,addInvoiceForm.docNature,null);
      if(dupInv){faError(duplicateInvoiceMessage(dupInv,vendor.name));return;}}
+    if(typeof ecVendorBillOk==='function'&&!ecVendorBillOk(salonId,{invoiceNo:addInvoiceForm.invoiceNo,invoiceDate:addInvoiceForm.invoiceDate||row.transactionDate,amount:Number(addInvoiceForm.amount),docNature:addInvoiceForm.docNature},vendor.id,null,freshInvoices,{noGst:true,noProof:true,cashNow:true}))return;
     if(!invoiceApprovalOk(salonId,vendor.id,vendor.name,addInvoiceForm.invoiceNo,addInvoiceForm.amount,null))return;
     const invoiceDateDmy=addInvoiceForm.invoiceDate?fmtDate(addInvoiceForm.invoiceDate):row.transactionDate;
     const linkId='bank-'+row.id;

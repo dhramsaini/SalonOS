@@ -568,6 +568,7 @@ function MasterSalarySheet({salon}={}){
     const emp={...form,id:form.id||nextId(),basic:Number(form.basic)||0,hra:Number(form.hra)||0,conv:Number(form.conv)||0,special:Number(form.special)||0,
       gross:Number(form.basic)+Number(form.hra)+Number(form.conv)+Number(form.special)+epfContrib,
       pt:!!(salon&&salon.ptApplicable)};
+    if(typeof ecEmployeeOk==='function'&&!ecEmployeeOk(salon&&salon.id,emp,editMode?employees.find(e=>e.id===emp.id):null,employees))return;
     if(editMode){setEmployees(prev=>prev.map(e=>e.id===emp.id?emp:e));}
     else{setEmployees(prev=>[...prev,emp]);}
     logAuditEvent(salon&&salon.id,{entity:'Employee',entityId:emp.id,action:editMode?'Edited':'Added',summary:emp.name+' — '+emp.desig+' — Gross CTC ₹'+Math.round(emp.gross).toLocaleString('en-IN')});
@@ -696,6 +697,7 @@ function MasterSalarySheet({salon}={}){
   // Import CSV/Excel parsing
   const handleFileImport=(e)=>{
     const file=e.target.files[0];if(!file)return;
+    if(typeof ecImportOk==='function'&&!ecImportOk(salon&&salon.id,'employee list',file)){e.target.value='';return;}
     setImportError('');
     const reader=new FileReader();
     reader.onload=(ev)=>{

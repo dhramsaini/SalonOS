@@ -230,6 +230,7 @@ function AggregatorsSheet({salon,period}={}){
   };
   const importFile=async e=>{
     const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;
+    if(typeof ecImportOk==='function'&&!ecImportOk(sid,'aggregator payouts',f))return;
     try{
       if(!window.XLSX)throw new Error('Excel reader not loaded — check the internet connection');
       const wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true});

@@ -797,6 +797,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     const iso=descModal.iso;const ri=descModal.ri;
     const total=valid.reduce((s,e)=>s+Number(e.amount),0);
     if(blockIfExpenseGoesNegative(iso,ri,total))return;
+    if(typeof ecDescEntriesOk==='function'&&!ecDescEntriesOk(salonId,iso,EXPENSE_ROWS[ri]?.name,valid))return;
     setDescData(prev=>{
       const next={...prev};
       if(!next[iso])next[iso]={};
@@ -942,6 +943,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       amount:invFormTotal,category,desc:invForm.desc,attachment:invForm.attachment};
     {const dupInv=controlOn('dupInvoice',salonId)&&duplicateVendorInvoice(loadVendorInvoices(salonId),vendorId,invFields.invoiceNo,invFields.docNature,payload.mode==='pay'?payload.invoiceId:null);
      if(dupInv){dseToastErr(duplicateInvoiceMessage(dupInv,(vendors.find(v=>v.id===vendorId)||{}).name));return;}}
+    if(typeof ecVendorBillOk==='function'&&!ecVendorBillOk(salonId,{...invForm,amount:invFormTotal},vendorId,payload.mode==='pay'?payload.invoiceId:null,loadVendorInvoices(salonId),{cashNow:true}))return;
     {const orig=payload.mode==='pay'?(loadVendorInvoices(salonId).find(i=>i.id===payload.invoiceId)||null):null;
      if(!invoiceApprovalOk(salonId,vendorId,(vendors.find(v=>v.id===vendorId)||{}).name||invForm.newVendorName,invFields.invoiceNo,invFormTotal,orig?orig.amount:null))return;}
 
@@ -1436,7 +1438,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
         ?React.createElement('span',{style:{fontWeight:700,fontSize:15,color:val<0?'var(--red)':'var(--accent2)'}},'₹'+fmt(val))
         :isSalesEntryRow(sri)
           ?tapBtn(getSalesEntryTotal(iso,sri),()=>openSalesEntryModal(sri,iso))
-          :numInput(getSalesValue(iso,sri),v=>guardedSetSalesValue(iso,sri,v),false,(b,a)=>logLateEdit(salonId,iso,SALES_ROWS[sri].name,b,a));
+          :numInput(getSalesValue(iso,sri),v=>guardedSetSalesValue(iso,sri,v),false,(b,a)=>{logLateEdit(salonId,iso,SALES_ROWS[sri].name,b,a);if(typeof ecSalesCommit==='function')ecSalesCommit(salonId,iso,SALES_ROWS[sri].name,sri,b,a,v=>guardedSetSalesValue(iso,sri,v));});
       return React.createElement('div',{key:'s'+sri,style:{...rowStyle,background:readOnly?'rgba(47,95,224,0.06)':undefined}},
         React.createElement('div',null,React.createElement('div',{style:{fontSize:14,fontWeight:readOnly?700:500,color:readOnly?'var(--accent2)':'var(--text)'}},row.name),
           row.note?React.createElement('div',{style:{fontSize:10.5,color:'var(--orange)'}},row.note):null),right);
@@ -1455,7 +1457,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       else if(isEmpRow(ri))right=tapBtn(getEmpTotal(iso,ri),()=>openEmpModal(ri,iso));
       else if(isInv){const t=getInvEntryTotal(iso,ri);right=tapBtn(t+Math.max(0,(Number(getValue(iso,ri))||0)-t),()=>openInvModal(ri,iso));}
       else right=numInput(getValue(iso,ri),v=>{if(blockIfExpenseGoesNegative(iso,ri,v))return;setValue(iso,ri,v);},locked,
-        (b,a)=>{logLateEdit(salonId,iso,EXPENSE_ROWS[ri].name,b,a);checkPettyLimit(salonId,iso,EXPENSE_ROWS[ri].name,b,a,v=>setValue(iso,ri,v));});
+        (b,a)=>{logLateEdit(salonId,iso,EXPENSE_ROWS[ri].name,b,a);checkPettyLimit(salonId,iso,EXPENSE_ROWS[ri].name,b,a,v=>setValue(iso,ri,v));if(typeof ecExpenseCommit==='function')ecExpenseCommit(salonId,iso,EXPENSE_ROWS[ri].name,b,a,v=>setValue(iso,ri,v));});
       return React.createElement('div',{key:'e'+ri,style:rowStyle},
         React.createElement('div',{style:{minWidth:0}},
           React.createElement('div',{style:{fontSize:14,fontWeight:500,color:row.name==='Penalties'?'var(--red)':'var(--text)'}},row.name),
@@ -1490,6 +1492,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       '⚠ No Daily Sales entered this month for ',React.createElement('b',null,days.length+' day'+(days.length===1?'':'s')),': ',t.toLocaleString('en-IN',{month:'short'})+' '+lbl);})();
   return React.createElement('div',{className:'fade-in'},
     missingStrip,
+    typeof EcDseChecks==='function'&&React.createElement(EcDseChecks,{sid:salonId,days,salesData}),
     // Header
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,
@@ -1759,7 +1762,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                                   setValue(d.iso,ri,raw);
                                 },
                                 onFocus:e=>{e.target.dataset.before=e.target.value;},
-                                onBlur:e=>{const b=e.target.dataset.before,a=e.target.value;if(b===undefined||b===a)return;logLateEdit(salonId,d.iso,EXPENSE_ROWS[ri].name,b,a);checkPettyLimit(salonId,d.iso,EXPENSE_ROWS[ri].name,b,a,v=>setValue(d.iso,ri,v));},
+                                onBlur:e=>{const b=e.target.dataset.before,a=e.target.value;if(b===undefined||b===a)return;logLateEdit(salonId,d.iso,EXPENSE_ROWS[ri].name,b,a);checkPettyLimit(salonId,d.iso,EXPENSE_ROWS[ri].name,b,a,v=>setValue(d.iso,ri,v));if(typeof ecExpenseCommit==='function')ecExpenseCommit(salonId,d.iso,EXPENSE_ROWS[ri].name,b,a,v=>setValue(d.iso,ri,v));},
                                 style:{
                                   width:'100%',background:'transparent',border:'none',outline:'none',
                                   color:dseIsLocked(d.iso)?'var(--text3)':(hasVal?(isSalRow?'var(--purple)':isVendor?'var(--red)':'var(--text)'):'var(--text3)'),
@@ -1845,7 +1848,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                           )
                         :React.createElement('input',{type:'number',value:isOpening?getSalesValue(d.iso,sri):getSalesValue(d.iso,sri),placeholder:'-',
                             onChange:e=>guardedSetSalesValue(d.iso,sri,e.target.value),
-                            onFocus:e=>{e.target.dataset.before=e.target.value;},onBlur:e=>{const b=e.target.dataset.before;if(b!==undefined&&b!==e.target.value)logLateEdit(salonId,d.iso,SALES_ROWS[sri].name,b,e.target.value);},
+                            onFocus:e=>{e.target.dataset.before=e.target.value;},onBlur:e=>{const b=e.target.dataset.before;if(b!==undefined&&b!==e.target.value){logLateEdit(salonId,d.iso,SALES_ROWS[sri].name,b,e.target.value);if(typeof ecSalesCommit==='function')ecSalesCommit(salonId,d.iso,SALES_ROWS[sri].name,sri,b,e.target.value,v=>guardedSetSalesValue(d.iso,sri,v));}},
                             style:{width:'100%',textAlign:'right',background:'transparent',border:'1px solid var(--border)',borderRadius:4,color:'var(--text)',fontSize:11.5,padding:'4px 6px'}})
                   );
                 })

@@ -652,15 +652,20 @@ function backdateLockDays(salonId){
   const n=raw==null||raw===''?3:Number(raw);
   return isFinite(n)&&n>=0?Math.floor(n):3;
 }
+// Future-dated entries (Controls → futureLock) are blocked through the same hooks.
+let _dateBlockKind='past';
 function isBackdateBlocked(salonId,iso){
-  const n=backdateLockDays(salonId);if(n==null)return false;
+  const n=backdateLockDays(salonId);const fut=typeof controlOn==='function'&&controlOn('futureLock',salonId);if(n==null&&!fut)return false;
   const u=currentSessionUser();if(u&&u.role==='Super Admin')return false;
   const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/);if(!m)return false;
   const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));const t=new Date();
-  return Math.round((new Date(t.getFullYear(),t.getMonth(),t.getDate())-d)/864e5)>n;
+  const ago=Math.round((new Date(t.getFullYear(),t.getMonth(),t.getDate())-d)/864e5);
+  if(fut&&ago<0){_dateBlockKind='future';return true;}
+  _dateBlockKind='past';return n!=null&&ago>n;
 }
 function backdateBlockMessage(salonId){
-  const n=backdateLockDays(salonId);
+  if(_dateBlockKind==='future')return 'Entries dated after today are blocked (Master Settings → Controls → Future-dated entries). Ask a Super Admin to make this change.';
+  const n=backdateLockDays(salonId);if(n==null)return 'This date is blocked (Master Settings → Controls). Ask a Super Admin to make this change.';
   return 'Entries dated before '+(n===0?'today':n===1?'yesterday':'the last '+n+' days')+' are blocked (Master Settings → Controls → Back-dated entries). Ask a Super Admin to make this change.';
 }
 // Unlocking (a locked month, a Final month of Daily Sales & Exp, a Final P&L) — Super Admin only,
@@ -984,7 +989,7 @@ const SALON_SCOPED_KEY_BASES=[
   'salonos_staff_certs','salonos_drawings_ack','salonos_feedback','salonos_referrals',
   'salonos_close_checklist','salonos_cash_counts','salonos_sales_targets','salonos_pl_budget','salonos_exit_ticks','salonos_cash_forecast_opening',
   // Front desk (js/39-47).
-  'salonos_appointments_book','salonos_appt_waitlist','salonos_booking_advances','salonos_pay_wb_emailed','salonos_campaigns','salonos_cash_shifts','salonos_closed_days','salonos_coupons','salonos_frontdesk_settings','salonos_gift_vouchers','salonos_petty_cash','salonos_service_menu','salonos_stock_writeoffs',
+  'salonos_appointments_book','salonos_appt_waitlist','salonos_booking_advances','salonos_pay_wb_emailed','salonos_import_log','salonos_dse_expense_notes','salonos_campaigns','salonos_cash_shifts','salonos_closed_days','salonos_coupons','salonos_frontdesk_settings','salonos_gift_vouchers','salonos_petty_cash','salonos_service_menu','salonos_stock_writeoffs',
   'salonos_booking_requests','salonos_open_tabs','salonos_corporates','salonos_stock_requests','salonos_spot_checks'
 ];
 function deleteAllSalonScopedData(salonId){

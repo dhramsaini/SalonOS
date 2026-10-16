@@ -162,6 +162,7 @@ function BillEditor({sid,initial,editId,onSave,onClose,existingIds}){
     if(Number(rec.advancePaid)>=t.total-0.5&&rec.paymentMode!=='Split')rec.paymentMode='Advance';
     if(Number(rec.sessionPaid)>0&&(Number(rec.sessionPaid)||0)+(Number(rec.packagePaid)||0)>=t.total-0.5&&rec.paymentMode!=='Split')rec.paymentMode='Package';
     delete rec.usePackage;delete rec._cc;
+    if(typeof ecBillStockOk==='function'&&!ecBillStockOk(sid,rec,editId))return;
     if(!editId&&controlOn('duplicateBillCheck',sid)&&typeof fdDuplicateBill==='function'){const d=fdDuplicateBill(sid,rec);if(d&&!window.confirm('Bill '+d.id+' for '+d.customer+' with the same items was made '+Math.max(1,Math.round((Date.now()-new Date(d.createdAt))/60000))+' min ago.\n\nMake another one anyway?'))return;}
     onSave(rec);};
   const inp={padding:'4px 6px',fontSize:12.5};const lbl=(l,el)=>h('div',{className:'form-group',style:{marginBottom:8}},h('label',null,l),el);

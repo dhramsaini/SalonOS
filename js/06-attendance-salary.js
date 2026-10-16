@@ -422,6 +422,7 @@ function AttendanceSheet({period,salon,user}={}){
   const toggleMgrFinalMonth=()=>{
     if(mgrFinalMonth&&isManagerSide){warn('This month is marked Final — ask a Super Admin or Reviewer to un-finalize it before editing.');return;}
     if(!mgrFinalMonth){const early=controlOn('monthFinalRule',salon&&salon.id)&&monthFinalTooEarlyMessage(selYear,selMonth);if(early){warn(early);return;}
+      {const iss=typeof ecAttendanceIssues==='function'?ecAttendanceIssues(salon?.id,selYear,selMonth):[];if(iss.length&&!window.confirm('Please check the attendance first:\n\n• '+iss.slice(0,12).join('\n• ')+(iss.length>12?'\n… and '+(iss.length-12)+' more':'')+'\n\nMark Final anyway?'))return;}
       if(!window.confirm('Mark '+months[selMonth]+' '+selYear+' Attendance FINAL?\n\nThe whole month becomes read-only on the Manager side, and salary is then worked out from it.'))return;}
     setManagerFinalMonth(salon?.id,'attendance',selYear,selMonth,!mgrFinalMonth,user?.name);
     setMgrFinalTick(t=>t+1);
@@ -547,6 +548,7 @@ function AttendanceSheet({period,salon,user}={}){
   const handleBulkAttendanceFile=async(e)=>{
     const f=e.target.files&&e.target.files[0];
     if(!f)return;
+    if(typeof ecImportOk==='function'&&!ecImportOk(salon?.id,'attendance',f)){e.target.value='';return;}
     e.target.value='';
     setBulkBusy(true);
     try{
@@ -738,6 +740,7 @@ function AttendanceSheet({period,salon,user}={}){
     !kiosk&&React.createElement(LeaveRequestsPanel,{salon,locked:attMonthLocked,setAttStore,monthKey}),
     kiosk&&ciOn&&React.createElement(CheckInKiosk,{salon}),
     kiosk&&React.createElement(StaffSelfService,{salon}),
+    typeof EcAttendanceBanner==='function'&&React.createElement(EcAttendanceBanner,{sid:salon?.id,y:selYear,m:selMonth}),
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,React.createElement('div',{className:'page-title'},'Employee Attendance'),React.createElement('div',{className:'page-sub'},'Monthly attendance register — click any cell to mark it (previous day must be marked first)')),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
