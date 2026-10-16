@@ -2416,7 +2416,9 @@ function ReportsHub(){
         ),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y))),
-        React.createElement(ShareReportButton,{title:reportsHubTitle,subtitle:'Reports Hub',getBodyHtml:reportsHubBodyHtml,getSheetRows:reportsHubSheetRows})
+        React.createElement(ShareReportButton,{title:reportsHubTitle,subtitle:'Reports Hub',getBodyHtml:reportsHubBodyHtml,getSheetRows:reportsHubSheetRows}),
+        (()=>{if(typeof pwDownloadAllOutlets!=='function')return null;const pool=salonsForCurrentUser().filter(s=>s.status==='Active'&&(selOutlet==='all'||String(s.id)===String(selOutlet))&&controlOn('payWorkbooks',s.id)&&controlOn('payWbAllOutlets',s.id));
+          return pool.length?React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Salary and incentive full workings for '+(pool.length===1?pool[0].name:pool.length+' outlets')+' in one Excel workbook — a Summary sheet plus each outlet’s sheets, as live formulas',onClick:()=>pwDownloadAllOutlets(pool,selYear,selMonth,typeof _addToast==='function'?_addToast:undefined)},'⬇ Salary workings — '+(pool.length===1?'this outlet':'all outlets')):null;})()
       )
     ),
 

@@ -1238,7 +1238,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     if(field==='status'&&value==='Approved'){
       setTimeout(()=>{
         const locked=autoLockMonthIfAllApproved(salon?.id,selYear,selMonth,EMPLOYEES,nextMap,undefined);
-        if(locked){setMonthLockTick(t=>t+1);success(MONTHS[selMonth]+' '+selYear+' auto-locked — every employee is now Approved');}
+        if(locked){setMonthLockTick(t=>t+1);success(MONTHS[selMonth]+' '+selYear+' auto-locked — every employee is now Approved');if(typeof pwAutoEmail==='function'&&salon)pwAutoEmail(salon,selYear,selMonth);}
       },0);
     }
   };
@@ -1267,7 +1267,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     success('All employees marked Approved for '+MONTHS[selMonth]+' '+selYear);
     setTimeout(()=>{
       const locked=autoLockMonthIfAllApproved(salon?.id,selYear,selMonth,EMPLOYEES,nextMap,undefined);
-      if(locked){setMonthLockTick(t=>t+1);success(MONTHS[selMonth]+' '+selYear+' auto-locked — every employee is now Approved');}
+      if(locked){setMonthLockTick(t=>t+1);success(MONTHS[selMonth]+' '+selYear+' auto-locked — every employee is now Approved');if(typeof pwAutoEmail==='function'&&salon)pwAutoEmail(salon,selYear,selMonth);}
     },0);
   };
   // Column applicability toggles — persisted per outlet (see loadSWCols/saveSWCols), since these
@@ -1609,7 +1609,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y))),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openGenerate},'🧮 Generate Salary'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:exportExcel},swSelectedIds.size>0?'⬇ Export Selected ('+swSelectedIds.size+')':'⬇ Export Excel'),
-        typeof pwDownloadSalary==='function'&&controlOn('payWorkbooks',salon&&salon.id)&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Every employee with all the workings behind each figure — attendance day by day, pay rules, PF / ESIC / PT, advances, penalties and incentives — as live Excel formulas',onClick:()=>pwDownloadSalary(salon,selYear,selMonth,(msg)=>swError(msg))},'⬇ Full workings (Excel)'),
+        typeof pwDownloadSalary==='function'&&controlOn('payWorkbooks',salon&&salon.id)&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Every employee with all the workings behind each figure — attendance day by day, pay rules, PF / ESIC / PT, advances, penalties and incentives — as live Excel formulas',onClick:()=>pwDownloadSalary(salon,selYear,selMonth,(msg)=>swError(msg),swSelectedIds)},'⬇ Full workings (Excel)'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',title:'One branded payslip page per employee (the ticked ones, or everyone)',onClick:async()=>{
           try{
             const list=exportWorkings.filter(w=>(Number(w.grossAfterLop)||0)>0||(Number(w.net)||0)>0);

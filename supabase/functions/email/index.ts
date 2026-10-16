@@ -118,6 +118,45 @@ async function sendPack(req: Request, body: Json) {
   return { ok: true, sentTo: [...to] };
 }
 
+// Salary / Incentive Working "full workings" Excel — same recipients as the month-end pack, but
+// only for someone who can read that outlet's Salary Working.
+async function sendWorkbook(req: Request, body: Json) {
+  const sid = Number(body.outletId);
+  if (!sid) throw new HttpError(400, "Missing outlet.");
+  const auth = req.headers.get("Authorization") ?? "";
+  const userClient = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } });
+  const { data: who } = await userClient.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
+  if (!who?.user) throw new HttpError(401, "Please sign in again.");
+  const { data: ok, error } = await userClient.rpc("salonos_key_access", { k: `salonos_salary_working_meta_outlet_${sid}`, want_write: false });
+  if (error) throw new HttpError(500, "Could not check access: " + error.message);
+  if (!ok) throw new HttpError(403, "You don't have access to this outlet's salary.");
+  const xlsx = String(body.xlsx ?? "");
+  if (!xlsx || xlsx.length > MAX_PDF_B64 || !/^[A-Za-z0-9+/=]+$/.test(xlsx.slice(0, 200))) throw new HttpError(400, "The workbook is missing or too large.");
+  const em = await creds();
+  if (!em) throw new HttpError(400, "Email isn't set up yet — a Super Admin can connect it in Master Settings → Email.");
+  const { data: rs } = await admin.from("kv_store").select("value").eq("key", "salonos_secret_report_settings").maybeSingle();
+  let settings: Json = {};
+  try { settings = JSON.parse(rs?.value ?? "{}") ?? {}; } catch { /* none */ }
+  const to = new Set<string>((settings.emails ?? []).filter((e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)));
+  if (body.toSelf && who.user.email) to.add(who.user.email);
+  if (!to.size) throw new HttpError(400, "No recipients — add emails under Master Settings → Automatic reports.");
+  const { data: salonsRow } = await admin.from("kv_store").select("value").eq("key", "salonos_salons").maybeSingle();
+  let outlet = "Outlet " + sid;
+  try { outlet = String((JSON.parse(salonsRow?.value ?? "[]") as Json[]).find((s) => Number(s.id) === sid)?.name ?? outlet); } catch { /* keep */ }
+  const month = String(body.month ?? "").slice(0, 40);
+  const kind = body.kind === "incentive" ? "Incentive" : "Salary";
+  let fileName = String(body.fileName ?? "full_workings.xlsx").replace(/[^\w.\-]+/g, "_").slice(-100);
+  if (!fileName.endsWith(".xlsx")) fileName += ".xlsx";
+  await resend(em.key, {
+    from: em.from, to: [...to], subject: `SalonOS · ${kind} Working full workings — ${outlet} — ${month}`,
+    html: `<div style="font-family:Arial,sans-serif"><h2 style="color:#14335e;margin:0 0 6px">${kind} Working — full workings — ${esc(month)}</h2>
+<p style="color:#5e6a82;margin:0 0 12px">${esc(outlet)}</p><p>The Excel workbook is attached: every figure as a live formula, with the data it is worked out from and a check against SalonOS on each row.</p>
+<p style="color:#5e6a82">Sent from SalonOS by ${esc(who.user.email ?? "a SalonOS user")}.</p></div>`,
+    attachments: [{ filename: fileName, content: xlsx }],
+  });
+  return { ok: true, sentTo: [...to] };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -125,6 +164,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action ?? "");
     if (action === "send_pack") return json(await sendPack(req, body));
+    if (action === "send_workbook") return json(await sendWorkbook(req, body));
 
     const user = await requireSuperAdmin(req);
     if (action === "status") {
