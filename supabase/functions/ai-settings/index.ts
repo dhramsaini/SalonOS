@@ -15,6 +15,7 @@
 //   test   {provider, slot?}              → a tiny request with that stored key (slot 1 by default)
 //   remove {provider, slot?}              → deletes that key (slot 1 by default)
 //   prefs  {primary, fallback}            → which provider is used first, and whether to try the others on failure
+//   models {provider:'gemini', key? | slot?} → the Gemini models that key can use [{id, label, out}] (newest first)
 // Deploy with "Verify JWT" ON.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Anthropic from "npm:@anthropic-ai/sdk";
@@ -29,7 +30,7 @@ const SECRET: Record<Provider, string> = { anthropic: "anthropic_api_key", opena
 const MODELS: Record<Provider, string[]> = {
   anthropic: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5"],
   openai: ["gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"],
-  gemini: ["gemini-3.8-flash", "gemini-3.1-pro-preview"],
+  gemini: ["gemini-3.8-flash", "gemini-4-argon", "gemini-3.1-pro-preview"],
   xai: ["grok-4.7"],
 };
 const LABEL: Record<Provider, string> = { anthropic: "Anthropic (Claude)", openai: "OpenAI (ChatGPT)", gemini: "Google AI Studio (Gemini)", xai: "xAI (Grok)" };
@@ -62,6 +63,52 @@ async function requireSuperAdmin(req: Request) {
   return user;
 }
 
+// ── Google Gemini helpers: which models this key can use, and a sensible stand-in when the
+// saved model isn't available (renamed, retired or not enabled for the key). ──
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
+async function geminiModelList(key: string): Promise<{ id: string; label: string; out: number }[]> {
+  const out: { id: string; label: string; out: number }[] = [];
+  let page = "";
+  for (let i = 0; i < 5; i++) {
+    let res: Response;
+    try { res = await fetch(GEMINI_BASE + "/models?pageSize=200" + (page ? "&pageToken=" + encodeURIComponent(page) : ""), { headers: { "x-goog-api-key": key }, signal: AbortSignal.timeout(30_000) }); }
+    catch { break; }
+    if (!res.ok) break;
+    // deno-lint-ignore no-explicit-any
+    const d: any = await res.json().catch(() => ({}));
+    // deno-lint-ignore no-explicit-any
+    for (const m of (d.models ?? []) as any[]) {
+      const id = String(m.name ?? "").replace(/^models\//, "");
+      const methods: string[] = m.supportedGenerationMethods ?? [];
+      if (!/^gemini-/.test(id) || !methods.includes("generateContent")) continue;
+      if (/embedding|aqa|imagen|veo|tts|audio|live|image-generation|robotics|computer-use/i.test(id)) continue;
+      out.push({ id, label: String(m.displayName ?? id), out: Number(m.outputTokenLimit) || 0 });
+    }
+    page = d.nextPageToken ?? "";
+    if (!page) break;
+  }
+  return out;
+}
+// Newest first, stable before preview/experimental.
+function geminiRank(id: string) {
+  const v = Number((id.match(/gemini-(\d+(?:\.\d+)?)/) ?? [])[1] ?? 0);
+  return v * 10 - (/preview|exp/i.test(id) ? 1 : 0);
+}
+function geminiPick(list: { id: string }[], wanted: string): string | null {
+  const fam = /flash-lite/.test(wanted) ? "flash-lite" : /flash/.test(wanted) ? "flash" : /pro/.test(wanted) ? "pro" : /argon|ultra/.test(wanted) ? "" : "flash";
+  const same = list.filter((m) => fam === "flash" ? /flash/.test(m.id) && !/lite/.test(m.id) : fam ? m.id.includes(fam) : true);
+  const pool = (same.length ? same : list).slice().sort((a, b) => geminiRank(b.id) - geminiRank(a.id));
+  return pool[0]?.id ?? null;
+}
+// Google's own wording for the common problems, in plain words.
+function geminiErrorText(status: number, msg: string): string | null {
+  if (/API key not valid|API_KEY_INVALID|API key expired/i.test(msg)) return "Google rejected this API key — copy it again from aistudio.google.com → Get API key.";
+  if (/SERVICE_DISABLED|has not been used in project|is disabled/i.test(msg)) return "The Gemini API (Generative Language API) is switched off for this key’s Google Cloud project — turn it on in console.cloud.google.com, or create the key in aistudio.google.com.";
+  if (/location is not supported|FAILED_PRECONDITION/i.test(msg)) return "Google says Gemini isn’t available for this key’s region or plan — turn on billing for the project in aistudio.google.com.";
+  if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(msg)) return "Google says the free limit or quota for this key is used up — wait a minute, or turn on billing in aistudio.google.com.";
+  return null;
+}
+
 // Quick sanity check of what was pasted, before spending a request on it.
 function checkKeyShape(p: Provider, key: string) {
   const ok = p === "anthropic" ? /^sk-ant-[A-Za-z0-9_-]{20,}$/.test(key)
@@ -83,6 +130,7 @@ async function post(url: string, headers: Record<string, string>, body: unknown,
   try { data = JSON.parse(text); } catch { /* not JSON */ }
   if (!res.ok) {
     const msg = String(data?.error?.message ?? data?.error ?? text).slice(0, 300);
+    if (who === "Google AI Studio") { const g = geminiErrorText(res.status, msg + " " + String(data?.error?.status ?? "")); if (g) throw new HttpError(res.status === 429 ? 429 : 400, g); }
     if (res.status === 401 || res.status === 403) throw new HttpError(400, who + " rejected this API key — check it was copied completely. (" + msg + ")");
     if (res.status === 404) throw new HttpError(400, "That model isn't available to this key. (" + msg + ")");
     if (res.status === 429) throw new HttpError(429, who + " says too many requests or no credit left on this key — check billing on their site. (" + msg + ")");
@@ -130,11 +178,23 @@ async function tryKey(p: Provider, apiKey: string, model: string) {
     const r = await post("https://api.x.ai/v1/chat/completions", { Authorization: "Bearer " + apiKey }, { model, messages: [{ role: "user", content: prompt }], max_tokens: 200 }, "xAI");
     return { ok: true, model: r.model ?? model, reply: String(r.choices?.[0]?.message?.content ?? "").trim().slice(0, 200) };
   }
-  const r = await post("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", { "x-goog-api-key": apiKey },
-    { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 200 } }, "Google AI Studio");
+  // Gemini 3+ thinks first and that counts against maxOutputTokens, so the test allows plenty.
+  // deno-lint-ignore no-explicit-any
+  let r: any;
+  try {
+    r = await post(GEMINI_BASE + "/models/" + encodeURIComponent(model) + ":generateContent", { "x-goog-api-key": apiKey },
+      { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 4096 } }, "Google AI Studio");
+  } catch (e) {
+    if (e instanceof HttpError && /model isn't available/i.test(e.message)) {
+      const list = await geminiModelList(apiKey);
+      const best = geminiPick(list, model);
+      throw new HttpError(400, "Model " + model + " isn't available to this key." + (list.length ? " Models this key can use: " + list.slice().sort((a, b) => geminiRank(b.id) - geminiRank(a.id)).slice(0, 8).map((m) => m.id).join(", ") + (best ? ". Try " + best + "." : "") : ""));
+    }
+    throw e;
+  }
   // deno-lint-ignore no-explicit-any
   const text = (r.candidates?.[0]?.content?.parts ?? []).map((x: any) => x.text ?? "").join(" ").trim();
-  return { ok: true, model: r.modelVersion ?? model, reply: text.slice(0, 200) };
+  return { ok: true, model: r.modelVersion ?? model, reply: (text || "(key and model work — the test reply was used up by the model’s thinking)").slice(0, 200) };
 }
 const hintOf = (key: string) => "…" + key.slice(-4);
 const MAX_KEYS = 5;
@@ -227,6 +287,20 @@ Deno.serve(async (req) => {
         await admin.from("app_secrets").update({ meta: { ...data.meta, failedAt: new Date().toISOString(), lastError: String((e as Error).message).slice(0, 200) } }).eq("name", rowName(p, slot));
         throw e;
       }
+    }
+
+    if (action === "models") {
+      const p = providerOf(body.provider);
+      if (p !== "gemini") throw new HttpError(400, "Model lists are only available for Gemini.");
+      let key = String(body.key ?? "").trim();
+      if (!key) {
+        const { data } = await admin.from("app_secrets").select("value").eq("name", rowName(p, slotOf(body.slot))).maybeSingle();
+        if (!data) throw new HttpError(400, "Paste the Gemini API key first.");
+        key = data.value;
+      } else checkKeyShape(p, key);
+      const list = (await geminiModelList(key)).sort((a, b) => geminiRank(b.id) - geminiRank(a.id));
+      if (!list.length) throw new HttpError(400, "Google returned no models for this key — check the key, and that the Gemini API is on for its project.");
+      return json({ ok: true, models: list });
     }
 
     if (action === "remove") {

@@ -1612,7 +1612,7 @@ const AI_PROVIDERS=[
   {id:'openai',name:'ChatGPT',company:'OpenAI',site:'platform.openai.com → API keys',ph:'sk-…',
     models:{'gpt-6-astra':'GPT-6 Astra — most capable','gpt-6.1-sol':'GPT-6.1 Sol — lower cost','gpt-6-luna':'GPT-6 Luna — fastest, lowest cost'}},
   {id:'gemini',name:'Gemini',company:'Google AI Studio',site:'aistudio.google.com → Get API key',ph:'AQ.… or AIza…',
-    models:{'gemini-3.8-flash':'Gemini 3.8 Flash — fast, low cost','gemini-3.1-pro-preview':'Gemini 3.1 Pro (preview) — most capable'}},
+    models:{'gemini-3.8-flash':'Gemini 3.8 Flash — fast, low cost','gemini-4-argon':'Gemini 4 Argon — Google’s flagship, most capable','gemini-3.1-pro-preview':'Gemini 3.1 Pro (preview)'},listModels:true},
   {id:'xai',name:'Grok',company:'xAI',site:'console.x.ai → API Keys',ph:'xai-…',note:'Grok reads photos (JPG/PNG) but not PDF bills — PDFs go to another saved AI, or are read in the browser.',
     models:{'grok-4.7':'Grok 4.7 — most capable'}},
 ];
@@ -1620,7 +1620,9 @@ const AI_MAX_KEYS=5;
 // Form for one key: a new key (slot null → next free number) or an existing one (replace key and/or model).
 function AiKeyEditor({p,slot,cur,onSaved,onCancel}){
   const {success,error:toastError}=useToast();
-  const known=Object.keys(p.models);
+  const [extra,setExtra]=useState({});const [listBusy,setListBusy]=useState(false);
+  const known=[...Object.keys(p.models),...Object.keys(extra).filter(m=>!p.models[m])];
+  const label=m=>p.models[m]||extra[m]||m;
   const [key,setKey]=useState('');
   const [showKey,setShowKey]=useState(false);
   const [model,setModel]=useState((cur&&cur.model)||known[0]);
@@ -1643,8 +1645,13 @@ function AiKeyEditor({p,slot,cur,onSaved,onCancel}){
           h('button',{type:'button',onClick:()=>setShowKey(s=>!s),'aria-label':showKey?'Hide key':'Show key',style:{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:14}},showKey?'🙈':'👁'))),
       h('div',{className:'form-group'},h('label',null,'Model'),
         h('select',{className:'form-control',value:custom?'__custom__':model,onChange:e=>{if(e.target.value==='__custom__'){setCustom(true);setModel('');}else{setCustom(false);setModel(e.target.value);}}},
-          known.map(m=>h('option',{key:m,value:m},p.models[m])),h('option',{value:'__custom__'},'Other model — type its name')),
-        custom&&h('input',{className:'form-control',style:{marginTop:6},value:model,placeholder:'exact model name from '+p.company,onChange:e=>setModel(e.target.value)}))),
+          known.map(m=>h('option',{key:m,value:m},label(m))),h('option',{value:'__custom__'},'Other model — type its name')),
+        custom&&h('input',{className:'form-control',style:{marginTop:6},value:model,placeholder:'exact model name from '+p.company,onChange:e=>setModel(e.target.value)}),
+        p.listModels&&(typeof controlOn!=='function'||controlOn('geminiModelList'))&&h('button',{type:'button',className:'btn btn-ghost btn-sm',style:{marginTop:6},disabled:listBusy||(!key.trim()&&!slot),
+          title:'Ask Google which models this key can use',onClick:async()=>{setListBusy(true);try{const r=await aiSettingsCall('models',{provider:p.id,key:key.trim()||undefined,slot:key.trim()?undefined:slot});
+            const m={};(r.models||[]).forEach(x=>{m[x.id]=x.label+' ('+x.id+')';});setExtra(m);const ids=Object.keys(m);
+            if(ids.length&&!ids.includes(model)){setCustom(false);setModel(ids[0]);}success(ids.length+' model'+(ids.length===1?'':'s')+' available to this key — pick one above');}
+            catch(e){toastError(/Unknown action/i.test(e.message)?'Update the ai-settings cloud function to list models (see the release note).':e.message);}setListBusy(false);}},listBusy?'Asking Google…':'⟳ Models for this key'))),
     h('div',{style:{display:'flex',gap:6}},
       h('button',{className:'btn btn-primary btn-sm',disabled:busy||!model.trim()||(!key.trim()&&(!cur||model.trim()===cur.model)),onClick:save},busy?'Checking…':(key.trim()||!cur?'Save & check key':'Save & check model')),
       h('button',{className:'btn btn-ghost btn-sm',onClick:onCancel},'Cancel')));

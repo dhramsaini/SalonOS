@@ -149,6 +149,7 @@ async function httpJson(url: string, headers: Record<string, string>, body: unkn
   try { data = JSON.parse(text); } catch { /* not JSON */ }
   if (!res.ok) {
     const msg = String(data?.error?.message ?? data?.error ?? text).slice(0, 300);
+    if (who === "Gemini") { const g = geminiErrorText(res.status, msg + " " + String(data?.error?.status ?? "")); if (g) throw new ProviderError("retry", g); }
     if (res.status === 401 || res.status === 403) throw new ProviderError("retry", who + " rejected the saved key (" + msg + ").");
     if (res.status === 429) throw new ProviderError("retry", who + " is busy or out of credit (" + msg + ").");
     if (res.status === 404) throw new ProviderError("retry", who + ": model not available to this key (" + msg + ").");
@@ -233,17 +234,79 @@ export function geminiSchema(s: Json): Json {
   if (s.items) out.items = geminiSchema(s.items);
   return out;
 }
+// Gemini 3 and later think before answering, and the thinking counts against maxOutputTokens —
+// so the budget is generous, an empty cut-off answer is retried once with a bigger budget, and a
+// model the key can't use is swapped for the closest one it can.
 async function viaGemini(c: Cfg, parts: Part[], schema: Json, o: Opts): Promise<string> {
   const gparts = parts.map((p) => p.type === "text" ? { text: p.text } : { inline_data: { mime_type: p.mediaType, data: p.data } });
-  const res = await httpJson("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(c.model) + ":generateContent", { "x-goog-api-key": c.key }, {
+  const call = (model: string, budget: number) => httpJson(GEMINI_BASE + "/models/" + encodeURIComponent(model) + ":generateContent", { "x-goog-api-key": c.key }, {
     contents: [{ role: "user", parts: gparts }],
-    generationConfig: { responseMimeType: "application/json", responseSchema: geminiSchema(schema), maxOutputTokens: o.maxTokens ?? 4096 },
+    generationConfig: { responseMimeType: "application/json", responseSchema: geminiSchema(schema), maxOutputTokens: budget },
   }, "Gemini");
+  let model = c.model;
+  let budget = Math.max(o.maxTokens ?? 4096, 16384);
+  let res: Json;
+  try { res = await call(model, budget); }
+  catch (e) {
+    if (!(e instanceof ProviderError) || !/model not available/i.test(e.message)) throw e;
+    const alt = geminiPick(await geminiModelList(c.key), model);
+    if (!alt || alt === model) throw e;
+    model = alt;
+    res = await call(model, budget);
+  }
   if (res.promptFeedback?.blockReason) throw new ProviderError("retry", "Gemini declined this request (" + res.promptFeedback.blockReason + ").");
-  const cand = res.candidates?.[0];
+  let cand = res.candidates?.[0];
+  const textOf = (cd: Json) => (cd?.content?.parts ?? []).map((p: Json) => p.text ?? "").join("");
+  if (cand?.finishReason === "MAX_TOKENS" && !textOf(cand).trim()) { budget = 65536; res = await call(model, budget); cand = res.candidates?.[0]; }
   if (cand?.finishReason === "MAX_TOKENS") throw new ProviderError("fatal", "The AI's answer was cut off — please try again with less at once.");
   if (cand?.finishReason === "SAFETY") throw new ProviderError("retry", "Gemini declined this request.");
   return (cand?.content?.parts ?? []).map((p: Json) => p.text ?? "").join("");
+}
+
+// ── Google Gemini helpers: which models this key can use, and a sensible stand-in when the
+// saved model isn't available (renamed, retired or not enabled for the key). ──
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
+async function geminiModelList(key: string): Promise<{ id: string; label: string; out: number }[]> {
+  const out: { id: string; label: string; out: number }[] = [];
+  let page = "";
+  for (let i = 0; i < 5; i++) {
+    let res: Response;
+    try { res = await fetch(GEMINI_BASE + "/models?pageSize=200" + (page ? "&pageToken=" + encodeURIComponent(page) : ""), { headers: { "x-goog-api-key": key }, signal: AbortSignal.timeout(30_000) }); }
+    catch { break; }
+    if (!res.ok) break;
+    // deno-lint-ignore no-explicit-any
+    const d: any = await res.json().catch(() => ({}));
+    // deno-lint-ignore no-explicit-any
+    for (const m of (d.models ?? []) as any[]) {
+      const id = String(m.name ?? "").replace(/^models\//, "");
+      const methods: string[] = m.supportedGenerationMethods ?? [];
+      if (!/^gemini-/.test(id) || !methods.includes("generateContent")) continue;
+      if (/embedding|aqa|imagen|veo|tts|audio|live|image-generation|robotics|computer-use/i.test(id)) continue;
+      out.push({ id, label: String(m.displayName ?? id), out: Number(m.outputTokenLimit) || 0 });
+    }
+    page = d.nextPageToken ?? "";
+    if (!page) break;
+  }
+  return out;
+}
+// Newest first, stable before preview/experimental.
+function geminiRank(id: string) {
+  const v = Number((id.match(/gemini-(\d+(?:\.\d+)?)/) ?? [])[1] ?? 0);
+  return v * 10 - (/preview|exp/i.test(id) ? 1 : 0);
+}
+function geminiPick(list: { id: string }[], wanted: string): string | null {
+  const fam = /flash-lite/.test(wanted) ? "flash-lite" : /flash/.test(wanted) ? "flash" : /pro/.test(wanted) ? "pro" : /argon|ultra/.test(wanted) ? "" : "flash";
+  const same = list.filter((m) => fam === "flash" ? /flash/.test(m.id) && !/lite/.test(m.id) : fam ? m.id.includes(fam) : true);
+  const pool = (same.length ? same : list).slice().sort((a, b) => geminiRank(b.id) - geminiRank(a.id));
+  return pool[0]?.id ?? null;
+}
+// Google's own wording for the common problems, in plain words.
+function geminiErrorText(status: number, msg: string): string | null {
+  if (/API key not valid|API_KEY_INVALID|API key expired/i.test(msg)) return "Google rejected this API key — copy it again from aistudio.google.com → Get API key.";
+  if (/SERVICE_DISABLED|has not been used in project|is disabled/i.test(msg)) return "The Gemini API (Generative Language API) is switched off for this key’s Google Cloud project — turn it on in console.cloud.google.com, or create the key in aistudio.google.com.";
+  if (/location is not supported|FAILED_PRECONDITION/i.test(msg)) return "Google says Gemini isn’t available for this key’s region or plan — turn on billing for the project in aistudio.google.com.";
+  if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(msg)) return "Google says the free limit or quota for this key is used up — wait a minute, or turn on billing in aistudio.google.com.";
+  return null;
 }
 
 // One structured-output request: tries the saved providers in order until one answers with JSON
