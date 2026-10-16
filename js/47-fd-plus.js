@@ -33,7 +33,7 @@ function fdRefundAdvance(sid,id,mode){const L=fdAdvances(sid);const a=L.find(x=>
 
 // ── A1b · no-show fee (Controls → noShowFee) ──
 function fdAddNoShowFee(sid,a){
-  if(!controlOn('noShowFee',sid))return'';const amt=controlLimit('noShowFee')||200;const p=fdP10(a.phone);if(p.length!==10)return'';
+  if(!controlOn('noShowFee',sid))return'';const amt=controlLimit('noShowFee',sid)||200;const p=fdP10(a.phone);if(p.length!==10)return'';
   const C=fdClients(sid);const i=C.findIndex(c=>fdP10(c.phone)===p);if(i<0)return'';const fees=C[i].pendingFees||[];if(fees.some(f=>f.apptId===a.id))return'';
   C[i]={...C[i],pendingFees:[...fees,{id:fdPid('NF'),apptId:a.id,date:fdTodayIso(),service:a.service,amount:amt}]};fdSaveClients(sid,C);
   try{logAuditEvent(sid,{entity:'Client',entityId:C[i].id,action:'No-show fee',summary:FD_M(amt)+' — '+a.service});}catch(e){}return FD_M(amt)+' no-show fee goes on '+String(a.client).split(' ')[0]+'’s next bill';
@@ -75,7 +75,7 @@ function FdRebookHost({sid,onBooked}){
 // ── A4 · late arrivals (Controls → lateArrival) ──
 function fdNowMin(){const n=new Date();return n.getHours()*60+n.getMinutes();}
 function fdNowSlot(sid){const set=fdSettings(sid);return Math.ceil(fdNowMin()/set.slot)*set.slot;}
-function fdLateBy(sid,date,a){if(!controlOn('lateArrival',sid)||date!==fdTodayIso()||!a||a.block||!['Booked','Confirmed'].includes(a.status))return 0;const late=fdNowMin()-a.start;return late>=(controlLimit('lateArrival')||15)?late:0;}
+function fdLateBy(sid,date,a){if(!controlOn('lateArrival',sid)||date!==fdTodayIso()||!a||a.block||!['Booked','Confirmed'].includes(a.status))return 0;const late=fdNowMin()-a.start;return late>=(controlLimit('lateArrival',sid)||15)?late:0;}
 function FdLatePanel({sid,date,a,list,onChange}){
   const h=React.createElement;const late=fdLateBy(sid,date,a);if(!late)return null;const set=fdSettings(sid);const now=fdNowSlot(sid);
   const free=now+a.dur<=set.close?fdStaff(sid,date).filter(s=>s.name!==a.staff&&!fdStaffOff(sid,s,date)&&!fdSlotBusy(list,s.name,now,a.dur,a.id)).slice(0,3):[];
@@ -249,7 +249,7 @@ function fdDuplicateBill(sid,rec){
 
 // ── C13 · consultation / allergy form (Controls → consultForm) ──
 const FD_CONSULT_Q=[['allergy','Allergies — products, hair dye, metals, fragrance?'],['skin','Skin or scalp conditions — eczema, psoriasis, cuts, sunburn?'],['pregnant','Pregnant or breastfeeding?'],['meds','Medicines — e.g. isotretinoin (Accutane), blood thinners, steroids?'],['chem','Chemical treatment (colour, keratin, peel) in the last 2 weeks?'],['reaction','Ever had a reaction at a salon?']];
-function fdConsultDue(sid,c){if(!controlOn('consultForm',sid)||!c)return false;if(!c.consult||!c.consult.at)return true;return(Date.now()-new Date(c.consult.at))/864e5>(controlLimit('consultForm')||365);}
+function fdConsultDue(sid,c){if(!controlOn('consultForm',sid)||!c)return false;if(!c.consult||!c.consult.at)return true;return(Date.now()-new Date(c.consult.at))/864e5>(controlLimit('consultForm',sid)||365);}
 function FdSignPad({onChange}){
   const h=React.createElement;const ref=useRef(null);const draw=useRef(false);
   const pos=e=>{const r=ref.current.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top];};
@@ -330,7 +330,7 @@ function FdSimilarModal({sid,onClose,onDone}){
 
 // ── C16 · visit gap: due by the client's own rhythm (Controls → visitGapWinback) ──
 function fdVisitGap(st){const B=(st&&st.bills)||[];if(B.length<3)return null;const ds=B.map(b=>b.date).sort();const g=(new Date(ds[ds.length-1])-new Date(ds[0]))/864e5/(ds.length-1);return g>=7?Math.round(g):null;}
-function fdOverdueDays(sid,st){if(!controlOn('visitGapWinback',sid))return 0;const g=fdVisitGap(st);if(!g||st.since==null||st.since>365)return 0;const lim=g*(controlLimit('visitGapWinback')||150)/100;return st.since>lim?st.since-g:0;}
+function fdOverdueDays(sid,st){if(!controlOn('visitGapWinback',sid))return 0;const g=fdVisitGap(st);if(!g||st.since==null||st.since>365)return 0;const lim=g*(controlLimit('visitGapWinback',sid)||150)/100;return st.since>lim?st.since-g:0;}
 
 // ── C17 · balance link for the client (Controls → clientBalanceLink) ──
 function fdBalanceLink(sid,c){
@@ -348,10 +348,10 @@ function fdCountLosses(sid,days){
   return{items:Object.values(by).map(e=>({...e,qty:Math.round(e.qty*100)/100,value:Math.round(e.value)})).sort((a,b)=>b.value-a.value),months:Object.entries(mon).sort().map(([m,v])=>({m,v:Math.round(v)}))};
 }
 // ── D19 · usage above standard (Controls → usageVsStandard) ──
-function fdUsageAlerts(sid){if(!controlOn('usageVsStandard',sid)||typeof consumptionFor!=='function')return[];const n=new Date();const lim=controlLimit('usageVsStandard')||20;return consumptionFor(sid,n.getFullYear(),n.getMonth()).filter(x=>x.expected>0&&x.varPct!=null&&x.varPct>lim);}
+function fdUsageAlerts(sid){if(!controlOn('usageVsStandard',sid)||typeof consumptionFor!=='function')return[];const n=new Date();const lim=controlLimit('usageVsStandard',sid)||20;return consumptionFor(sid,n.getFullYear(),n.getMonth()).filter(x=>x.expected>0&&x.varPct!=null&&x.varPct>lim);}
 // ── D21 · supplier price rise (Controls → priceRiseAlert) ──
 function fdPriceRise(sid,item,rate,vendorId){
-  if(!controlOn('priceRiseAlert',sid))return null;const old=Number(item.rate)||0,r=Number(rate)||0;if(!old||!r)return null;const pct=(r/old-1)*100;if(pct<=(controlLimit('priceRiseAlert')||5))return null;
+  if(!controlOn('priceRiseAlert',sid))return null;const old=Number(item.rate)||0,r=Number(rate)||0;if(!old||!r)return null;const pct=(r/old-1)*100;if(pct<=(controlLimit('priceRiseAlert',sid)||5))return null;
   const V=typeof loadVendors==='function'?loadVendors(sid)||[]:[];const nm=id=>(V.find(v=>String(v.id)===String(id))||{}).name||'another supplier';
   const cheaper=(item.suppliers||[]).filter(s=>Number(s.rate)>0&&Number(s.rate)<r&&String(s.vendorId)!==String(vendorId||'')).sort((a,b)=>Number(a.rate)-Number(b.rate))[0];
   return{pct:Math.round(pct),msg:item.name+': '+FD_M(old)+' → '+FD_M(r)+' (up '+Math.round(pct)+'%).'+(cheaper?' '+nm(cheaper.vendorId)+' lists it at '+FD_M(cheaper.rate)+'.':'')};

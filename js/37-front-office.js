@@ -93,7 +93,7 @@ function NoShowNote({sid,phone}){
 
 // ── Smarter reorder ──
 function smartReorderList(sid,items){
-  const on=controlOn('smartReorder',sid);const lead=controlLimit('smartReorder')||7;const log=typeof loadInvLog==='function'?loadInvLog(sid):[];
+  const on=controlOn('smartReorder',sid);const lead=controlLimit('smartReorder',sid)||7;const log=typeof loadInvLog==='function'?loadInvLog(sid):[];
   const from=new Date(Date.now()-60*864e5).toISOString().slice(0,10);const used={};log.filter(x=>(x.type==='issue'||x.type==='sale')&&String(x.date)>=from).forEach(x=>{used[x.itemId]=(used[x.itemId]||0)+(Number(x.qty)||0);});
   return(items||[]).map(i=>{const qty=Number(i.qty)||0,min=Number(i.min)||0;const perDay=(used[i.id]||0)/60;const cover=perDay>0?Math.floor(qty/perDay):null;
     const need=qty<=min||(on&&cover!=null&&cover<=(Number(i.leadDays)||lead));const order=Math.max(Math.ceil(min*2-qty),on&&perDay>0?Math.ceil(perDay*30-qty):0,need?1:0);
@@ -111,14 +111,14 @@ function createPO(sid,vendorId,lines,note){
   savePOs(sid,[...list,po]);try{logAuditEvent(sid,{entity:'Purchase order',entityId:po.no,action:'Created',summary:FO_M(po.total)+' · '+L.length+' line(s)'});}catch(e){}return po;
 }
 function approvePO(sid,po){
-  if(controlOn('poApproval',sid)&&po.total>controlLimit('poApproval')&&!requireApproval({control:'poApproval',sid,key:sid+'|po|'+po.id,summary:'Purchase order '+po.no+' for '+FO_M(po.total)}))return false;
+  if(controlOn('poApproval',sid)&&po.total>controlLimit('poApproval',sid)&&!requireApproval({control:'poApproval',sid,key:sid+'|po|'+po.id,summary:'Purchase order '+po.no+' for '+FO_M(po.total)}))return false;
   savePOs(sid,loadPOs(sid).map(p=>p.id===po.id?{...p,status:'Approved',approvedBy:(currentSessionUser()||{}).name||'',approvedAt:new Date().toISOString()}:p));
   try{logAuditEvent(sid,{entity:'Purchase order',entityId:po.no,action:'Approved',summary:FO_M(po.total)});}catch(e){}return true;
 }
 function linkPOToBill(sid,poId,inv){savePOs(sid,loadPOs(sid).map(p=>p.id===poId?{...p,status:'Billed',bills:[...(p.bills||[]),{invoiceNo:inv.invoiceNo,amount:Number(inv.amount)||0,at:new Date().toISOString()}]}:p));}
 // Vendors → saving a bill: with Controls → billNeedsPo, a bill above the limit must name an approved PO of that vendor.
 function billPoOk(sid,vendorId,amount,invoiceNo){
-  if(!controlOn('billNeedsPo',sid)||!(Number(amount)>controlLimit('billNeedsPo')))return true;
+  if(!controlOn('billNeedsPo',sid)||!(Number(amount)>controlLimit('billNeedsPo',sid)))return true;
   const open=loadPOs(sid).filter(p=>String(p.vendorId)===String(vendorId)&&p.status==='Approved');
   if(!open.length){window.alert('Bills above '+FO_M(controlLimit('billNeedsPo'))+' need an approved purchase order for this vendor (Master Settings → 🎛 Controls). Create and approve the PO in Inventory first.');return false;}
   const pick=window.prompt('Which purchase order is this bill against?\n\n'+open.map((p,i)=>(i+1)+'. '+p.no+' — '+FO_M(p.total)+' ('+p.date.split('-').reverse().join('/')+')').join('\n')+'\n\nType the number:',open.length===1?'1':'');

@@ -168,7 +168,7 @@ function fdResourceClash(sid,dayList,resource,start,dur,ignore){if(!resource)ret
 
 // ── Patch tests (Controls → patchTestWarn) ──
 function fdPatchTestOk(sid,phone,service){
-  const m=fdMenuItem(sid,service);if(!m||!m.needsPatchTest||!controlOn('patchTestWarn',sid))return'';const c=fdClients(sid).find(x=>fdP10(x.phone)===fdP10(phone));const days=controlLimit('patchTestWarn')||180;
+  const m=fdMenuItem(sid,service);if(!m||!m.needsPatchTest||!controlOn('patchTestWarn',sid))return'';const c=fdClients(sid).find(x=>fdP10(x.phone)===fdP10(phone));const days=controlLimit('patchTestWarn',sid)||180;
   const last=(c&&c.patchTests||[]).filter(p=>p.result!=='Reaction').map(p=>p.date).sort().pop();if(!last)return service+' needs a patch test — none on record'+(c&&(c.patchTests||[]).some(p=>p.result==='Reaction')?' (an earlier test showed a reaction)':'');
   const age=Math.round((new Date(fdTodayIso()+'T00:00:00')-new Date(last+'T00:00:00'))/864e5);return age>days?service+' — last patch test '+age+' days ago (older than '+days+')':'';
 }

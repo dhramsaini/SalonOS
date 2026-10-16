@@ -30,7 +30,7 @@ function FdStaffHoursModal({sid,onClose}){
 function fdALog(sid,a,what){if(!controlOn('apptChangeLog',sid))return a.log;return[...(a.log||[]),{at:new Date().toISOString(),by:(currentSessionUser()||{}).name||'',what}].slice(-40);}
 
 // ── A3 · not yet confirmed (Controls → unconfirmedAlert) ──
-function fdUnconfirmed(sid,list,date){if(!controlOn('unconfirmedAlert',sid)||date!==fdTodayIso())return[];const now=fdNowMin();const lim=controlLimit('unconfirmedAlert')||120;
+function fdUnconfirmed(sid,list,date){if(!controlOn('unconfirmedAlert',sid)||date!==fdTodayIso())return[];const now=fdNowMin();const lim=controlLimit('unconfirmedAlert',sid)||120;
   return(list||[]).filter(a=>!a.block&&a.status==='Booked'&&a.start>=now-15&&a.start-now<=lim).sort((a,b)=>a.start-b.start);}
 
 // ── A4 · add-on suggestions while booking (Controls → addonSuggest) ──
@@ -276,7 +276,7 @@ function fdStockStatement(sid,ym){
     const opening=Math.round((closing-inQ+used+wo-adj)*100)/100;const r=Number(i.rate)||0;return{name:i.name,unit:i.unit,opening,inQ,used,wo,adj:Math.round(adj*100)/100,closing,rate:r,openV:Math.round(opening*r),inV:Math.round(inQ*r),usedV:Math.round(used*r),woV:Math.round(wo*r),closeV:Math.round(closing*r)};}).filter(x=>x.opening||x.inQ||x.used||x.wo||x.adj||x.closing);
 }
 // ── D22 · slow stock to clear (Controls → slowStock) ──
-function fdSlowStock(sid){if(!controlOn('slowStock',sid))return[];const days=controlLimit('slowStock')||90;const log=typeof loadInvLog==='function'?loadInvLog(sid):[];const cut=fdAddD(fdTodayIso(),-days);const soon=fdAddD(fdTodayIso(),60);
+function fdSlowStock(sid){if(!controlOn('slowStock',sid))return[];const days=controlLimit('slowStock',sid)||90;const log=typeof loadInvLog==='function'?loadInvLog(sid):[];const cut=fdAddD(fdTodayIso(),-days);const soon=fdAddD(fdTodayIso(),60);
   return fdStock(sid).filter(i=>i.active!==false&&Number(i.qty)>0).map(i=>{const last=log.filter(x=>x.itemId===i.id&&['issue','sale'].includes(x.type)).reduce((a,x)=>String(x.date)>a?String(x.date):a,'');const exp=(i.batches||[]).filter(b=>Number(b.qty)>0&&b.expiry&&b.expiry<=soon).map(b=>b.expiry).sort()[0]||'';
     const slow=!last||last<cut;if(!slow&&!exp)return null;const value=Math.round((Number(i.qty)||0)*(Number(i.rate)||0));const sell=Number(i.sell)||0;const offer=sell?Math.max(Math.round(Number(i.rate)||0),Math.round(sell*0.8/10)*10):0;
     return{i,last,exp,value,offer,why:[slow?(last?'no use since '+fdDmy(last):'never used'):'',exp?'expires '+fdDmy(exp):''].filter(Boolean).join(' · ')};}).filter(Boolean).sort((a,b)=>b.value-a.value);}

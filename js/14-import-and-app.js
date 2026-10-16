@@ -985,7 +985,7 @@ function App(){
     if(!dp){handleSelectSalon(sn);return;}
     setPeriod(dp);setSelFY(dp.fy);setSelectedSalon(sn);setActivePage('salon');navToSalonTab(tabId);
   };
-  window.__salonosNav={setActivePage,setSalonTab,setSelectedSalon,salons,selectedSalon,activePage,salonTab}; // Ctrl+K search (js/49)
+  window.__salonosNav={setActivePage,setSalonTab,setSelectedSalon,salons,selectedSalon,activePage,salonTab,openFromAlert,accessibleSalons}; // Ctrl+K search (js/49)
   const renderPage=()=>{
     if(gateFor||(activePage==='salon'&&!period)){
       const gateSalon=gateFor||selectedSalon;

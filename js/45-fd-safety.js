@@ -135,11 +135,11 @@ function fdCancelOk(sid,bill,what){
   if(isBackdateBlocked(sid,bill.date)){window.alert(backdateBlockMessage(sid));return null;}
   const reason=window.prompt((what==='refund'?'Refund':'Cancel')+' '+bill.id+' ('+FD_M(billCalc(bill).total)+') — reason:','');if(reason==null)return null;if(!String(reason).trim()){window.alert('A reason is required.');return null;}
   if(!fdDayOpenFor(sid,bill.date,what))return null;
-  if(controlOn('cancelApproval',sid)&&billCalc(bill).total>(controlLimit('cancelApproval')||2000)&&!requireApproval({control:'cancelApproval',sid,key:sid+'|'+what+'|'+bill.id,summary:(what==='refund'?'Refund':'Cancel')+' bill '+bill.id+' of '+FD_M(billCalc(bill).total)+' ('+bill.customer+') — '+reason}))return null;
+  if(controlOn('cancelApproval',sid)&&billCalc(bill).total>(controlLimit('cancelApproval',sid)||2000)&&!requireApproval({control:'cancelApproval',sid,key:sid+'|'+what+'|'+bill.id,summary:(what==='refund'?'Refund':'Cancel')+' bill '+bill.id+' of '+FD_M(billCalc(bill).total)+' ('+bill.customer+') — '+reason}))return null;
   return String(reason).trim();
 }
 // ── B9 · old dues ──
-function fdOldDues(sid){if(!controlOn('oldDuesAlert',sid))return[];const days=controlLimit('oldDuesAlert')||60;return fdDues(sid).filter(e=>e.age>days);}
+function fdOldDues(sid){if(!controlOn('oldDuesAlert',sid))return[];const days=controlLimit('oldDuesAlert',sid)||60;return fdDues(sid).filter(e=>e.age>days);}
 
 // ── C10 · new money ──
 function fdNewMoney(b){return Math.max(0,billCalc(b).total-(Number(b.packagePaid)||0)-(Number(b.voucherPaid)||0));}

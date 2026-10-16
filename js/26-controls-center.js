@@ -173,6 +173,24 @@ const CONTROL_DEFS=[
   {id:'payWorkbookEmail',group:'Data entry',label:'Full workings: email',hint:'Adds 📧 Email to the download window, and emails the salary full workings to the outlet’s report recipients once, automatically, when the month auto-locks after every employee is approved. Needs the updated email function deployed.',def:false},
   {id:'payWbProtected',group:'Data entry',label:'Full workings: protected copy',hint:'Offers a protected copy in the download window — formulas visible but cells locked, only the yellow what-if cells can be typed in.',def:false},
   {id:'backdateLock',group:'Data entry',label:'Block back-dated entries',hint:'Entries dated more than the days below before today cannot be added, changed or removed — Daily Sales & Exp, Attendance, Advances, Penalties, Vendor bills and Billing (bills, edits, cancellations, refunds). 0 = today only. A Super Admin is never blocked.',def:false,limit:3,limitLabel:'Allow entries up to (days back)'},
+  {id:'ctlOutletView',group:'Controls page',label:'Outlet view',hint:'Rules tab: pick one outlet to see every switch as it applies there, and switch it for that outlet directly.',def:true},
+  {id:'ctlCompare',group:'Controls page',label:'Outlet comparison grid',hint:'Check-up tab: switches × outlets for each area, differences shaded; click a cell to change that outlet.',def:true},
+  {id:'ctlHealth',group:'Controls page',label:'Health check for every area',hint:'Check-up tab: % of switches at the recommended setting per outlet, with a Fix button.',def:true},
+  {id:'ctlLinks',group:'Controls page',label:'Linked switches',hint:'Shows when a switch needs another one (e.g. the Full-workings options need the main switch) and offers to turn it on; a switch that can’t work is greyed.',def:true},
+  {id:'ctlShowMe',group:'Controls page',label:'“Show me” on each switch',hint:'A button that opens the screen where the switch applies, and a sample of the message staff see.',def:true},
+  {id:'ctlLastChanged',group:'Controls page',label:'Last changed by, with undo',hint:'Each switch shows who changed it last and when, with one-click undo.',def:true},
+  {id:'ctlHistory',group:'Controls page',label:'History tab',hint:'Every change to Controls, filterable by date, person and area, with revert.',def:true},
+  {id:'ctlOwnerAlert',group:'Controls page',label:'Alert the owner when a safety rule is turned off',hint:'When a rule labelled “Stops an entry” or “Needs approval” is switched off (for all or any outlet), Super Admins and owners see an alert on every page with 📲 WhatsApp to the owner; it is also emailed to the report recipients once the email function is updated.',def:true},
+  {id:'ctlTwoPerson',group:'Controls page',label:'Second Super Admin to switch off a safety rule',hint:'Switching off a rule labelled “Stops an entry” (for all or any outlet, including temporarily) waits until a different Super Admin approves it.',def:false},
+  {id:'ctlLocks',group:'Controls page',label:'Locked switches',hint:'A Super Admin can lock a switch (🔒); changing or unlocking it then needs the authenticator code again.',def:false},
+  {id:'ctlSets',group:'Controls page',label:'Ready-made and saved sets',hint:'Sets tab: Strict / Balanced / Light, or your own saved set, applied to all outlets or chosen ones.',def:true},
+  {id:'ctlCopyOutlet',group:'Controls page',label:'Copy settings from another outlet',hint:'Sets tab: give one or more outlets the same switches and limits as another outlet.',def:true},
+  {id:'ctlOutletLimits',group:'Controls page',label:'Outlet-wise limits',hint:'A different limit per outlet (in Outlet-wise), not only on/off. Blank = same as all outlets.',def:true},
+  {id:'ctlTemporary',group:'Controls page',label:'Temporary switches',hint:'⏱ on a switch: on or off for a date range (all or one outlet), going back by itself afterwards.',def:true},
+  {id:'ctlRoleRules',group:'Controls page',label:'Role-wise rules',hint:'👤 on a switch: apply it only to chosen roles, or not to named people. Others are treated as switched off.',def:true},
+  {id:'ctlHitStats',group:'Controls page',label:'How often each check fires',hint:'Each check shows the last 30 days’ warnings, overrides and blocks, with filters for noisy checks and ones that never fire.',def:true},
+  {id:'ctlWhatsNew',group:'Controls page',label:'New badge and What’s new',hint:'Switches added in the last 30 days are marked New, and the What’s new tab lists them.',def:true},
+  {id:'ctlExport',group:'Controls page',label:'Export, policy print and backup',hint:'Sets tab: Controls as Excel, a printable controls policy for the CA / auditors, and a backup file to restore.',def:true},
   {id:'compactToolbars',group:'Look & feel',label:'Tidy top bars with a “More ▾” menu',hint:'Appointments, Billing, Clients and Inventory keep the daily buttons visible; the rest are grouped under More (Money, Reports, Setup).',def:true},
   {id:'todayStrip',group:'Look & feel',label:'Today strip on front-desk tabs',hint:'Sales today, bookings still to come, client dues and low stock at the top of each tab.',def:true},
   {id:'keyboardShortcuts',group:'Look & feel',label:'Keyboard shortcuts and Ctrl + K search',hint:'Ctrl/⌘ + K finds clients, bills, mobiles and screens; Alt + 1…4 switch the front-desk tabs; in a bill F2 adds an item and Ctrl + Enter saves.',def:true},
@@ -207,13 +225,28 @@ function loadControls(){try{return JSON.parse(cachedLocalGet(CONTROLS_KEY)||'{}'
 function saveControls(c){safeLocalSet(CONTROLS_KEY,JSON.stringify(c||{}));}
 function controlDef(id){return CONTROL_DEFS.find(d=>d.id===id);}
 // Outlet override wins; then the all-outlets switch; then the rule's default.
+// Role-wise rule (only for chosen roles / not for exempt people) → a temporary switch → outlet
+// override → all-outlets switch → default. The first two need Controls → ctlRoleRules / ctlTemporary.
+function controlRawOn(id){const d=controlDef(id);const c=loadControls()[id]||{};return typeof c.on==='boolean'?c.on:(d?d.def:true);}
+function controlTempFor(c,sid){
+  if(!Array.isArray(c.temp)||!c.temp.length||!controlRawOn('ctlTemporary'))return null;const t=localIsoOf(new Date());
+  const act=c.temp.filter(x=>x&&(!x.from||x.from<=t)&&(!x.to||t<=x.to));
+  return act.find(x=>sid!=null&&x.sid!=null&&String(x.sid)===String(sid))||act.find(x=>x.sid==null)||null;
+}
 function controlOn(id,sid){
   const d=controlDef(id);if(!d)return true;
   const c=loadControls()[id]||{};
+  if(((c.roles&&c.roles.length)||(c.exempt&&c.exempt.length))&&controlRawOn('ctlRoleRules')){const u=currentSessionUser();
+    if(u){if(c.roles&&c.roles.length&&!c.roles.includes(u.role))return false;if(c.exempt&&c.exempt.some(x=>x&&(x===u.email||x===u.name)))return false;}}
+  const tmp=controlTempFor(c,sid);if(tmp)return !!tmp.on;
   if(sid!=null&&c.outlets&&typeof c.outlets[String(sid)]==='boolean')return c.outlets[String(sid)];
   return typeof c.on==='boolean'?c.on:d.def;
 }
-function controlLimit(id){const d=controlDef(id)||{};const c=loadControls()[id]||{};const v=Number(c.limit);return v>0?v:(d.limit||0);}
+// The outlet on screen, for limits read without an outlet.
+function controlCtxSid(){try{const n=window.__salonosNav;return n&&n.selectedSalon?n.selectedSalon.id:null;}catch(e){return null;}}
+// Outlet-wise limit (Controls → ctlOutletLimits) → all-outlets limit → default.
+function controlOutletLimitRaw(id,sid){if(sid==null)sid=controlCtxSid();if(sid==null||!controlRawOn('ctlOutletLimits'))return null;const ol=(loadControls()[id]||{}).outletLimits||{};const v=ol[String(sid)];return v===undefined||v===null||v===''?null:v;}
+function controlLimit(id,sid){const d=controlDef(id)||{};const c=loadControls()[id]||{};const o=Number(controlOutletLimitRaw(id,sid));if(o>0)return o;const v=Number(c.limit);return v>0?v:(d.limit||0);}
 
 // ── Approvals ──
 const APPROVALS_KEY='salonos_approvals';
@@ -232,6 +265,7 @@ function requireApproval({control,sid,key,summary}){
   if(list.some(a=>a.control===control&&a.key===k&&a.status==='pending')){window.alert('This is waiting for Super Admin approval:\n\n'+summary+'\n\nTry again once it is approved (Master Settings → 🎛 Controls → Approvals).');return false;}
   const d=controlDef(control)||{};
   if(!window.confirm((rej?'A Super Admin rejected this earlier'+(rej.note?' ('+rej.note+')':'')+'.\n\n':'')+d.label+'.\n\n'+summary+'\n\nSend it to a Super Admin for approval?'))return false;
+  if(typeof controlHit==='function')controlHit(control,sid,'b');
   list.push({id:'AP'+Date.now()+Math.random().toString(36).slice(2,6),control,sid:sid==null?null:Number(sid),key:k,summary,by:(u&&(u.name||u.email))||'—',at:new Date().toISOString(),status:'pending'});
   saveApprovals(list);
   try{logAuditEvent(sid,{entity:'Approval',entityId:control,action:'Requested',summary});}catch(e){}
@@ -288,11 +322,16 @@ const CONTROL_AREAS=[
     ['Approvals',['poApproval','invoiceApproval','bankFileApproval','deleteApproval','vendorBankApproval','paymentRun']],
     ['Month close',['monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']],
     ['Alerts & reminders',['payablesDueAlert','bankRecoAlert','budgetAlert','missingSalesBanner']]]},
+  {key:'ctl',icon:'🎛',title:'Controls page',groups:['Controls page'],subs:[
+    ['Seeing what’s set',['ctlOutletView','ctlCompare','ctlHealth','ctlLinks','ctlShowMe']],
+    ['History & safety',['ctlLastChanged','ctlHistory','ctlOwnerAlert','ctlTwoPerson','ctlLocks']],
+    ['Easier to manage',['ctlSets','ctlCopyOutlet','ctlOutletLimits','ctlTemporary','ctlRoleRules']],
+    ['Checking rules work',['ctlHitStats','ctlWhatsNew','ctlExport']]]},
   {key:'app',icon:'🎨',title:'App & look',groups:['App','Look & feel'],subs:[
     ['App',['roleHomeScreens','appInstallPrompt','phoneQuickAdd']],
     ['Look & feel',['compactToolbars','todayStrip','filterChips','keyboardShortcuts','mobileLayout','calendarPolish','billPrintDesign','miniCharts','undoActions']]]}];
 // Rules that stop someone from saving, and rules that send the action for approval — shown as labels.
-const CONTROL_STOPS=new Set(['backdateLock','futureLock','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','billNeedsPo','gstLock','dayCloseLock','staffChangeLock','creditLimit','discountReason','staffOffBlocking','requireMarketingConsent','bankLockFinal','tallyChangeGuard','mapRoleLimits','vagueNatureReason','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']);
+const CONTROL_STOPS=new Set(['ctlTwoPerson','ctlLocks','backdateLock','futureLock','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','billNeedsPo','gstLock','dayCloseLock','staffChangeLock','creditLimit','discountReason','staffOffBlocking','requireMarketingConsent','bankLockFinal','tallyChangeGuard','mapRoleLimits','vagueNatureReason','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']);
 const CONTROL_APPROVAL=new Set(['mapApproval','mapReview','tallyNeedsReview','discountApproval','cancelApproval','poApproval','invoiceApproval','bankFileApproval','deleteApproval','vendorBankApproval']);
 // [{area, subs:[{title, defs}]}] for every switch in CONTROL_DEFS — nothing is left out.
 function controlLayout(){
@@ -302,120 +341,14 @@ function controlLayout(){
   return out.filter(a=>a.all.length);
 }
 
-// ── Master Settings card ──
-function ControlsCenterCard({salons}){
-  const h=React.createElement;const {toast}=useToast();
-  const u=currentSessionUser();const canEdit=isSuperAdminUser(u);
-  const [c,setC]=useState(()=>loadControls());const [open,setOpen]=useState(null);const [tab,setTab]=useState('rules');const [,tick]=useState(0);const [cq,setCq]=useState('');const [flt,setFlt]=useState('all');const [area,setAreaRaw]=useState(()=>{try{return localStorage.getItem('salonos_ctl_area')||'checks';}catch(e){return'checks';}});const setArea=k=>{setAreaRaw(k);try{localStorage.setItem('salonos_ctl_area',k);}catch(e){}};const [wide,setWide]=useState(()=>window.innerWidth>=860);useEffect(()=>{const f=()=>setWide(window.innerWidth>=860);window.addEventListener('resize',f);return()=>window.removeEventListener('resize',f);},[]);
-  const outlets=(salons||[]).filter(s=>s&&s.id!=null&&s.status!=='Inactive');
-  const upd=(id,patch)=>{if(!canEdit){toast('Only a Super Admin can change controls','error');return;}
-    const n={...c,[id]:{...(c[id]||{}),...patch}};setC(n);saveControls(n);
-    try{logAuditEvent(null,{entity:'Controls',entityId:id,action:'Changed',summary:(controlDef(id)||{}).label+' → '+JSON.stringify(patch)});}catch(e){}};
-  const allOn=d=>typeof (c[d.id]||{}).on==='boolean'?c[d.id].on:d.def;
-  const outletState=(d,sid)=>{const o=(c[d.id]||{}).outlets||{};return typeof o[String(sid)]==='boolean'?(o[String(sid)]?'on':'off'):'same';};
-  const setOutlet=(d,sid,v)=>{const o={...((c[d.id]||{}).outlets||{})};if(v==='same')delete o[String(sid)];else o[String(sid)]=v==='on';upd(d.id,{outlets:o});};
-  const pend=loadApprovals().filter(a=>a.status==='pending');const recent=loadApprovals().filter(a=>a.status!=='pending').slice(-15).reverse();
-  const sname=sid=>{const s=(salons||[]).find(x=>String(x.id)===String(sid));return s?String(s.name).split('—')[0].trim():'All outlets';};
-  const decide=(a,st)=>{let note='';if(st==='rejected'){note=window.prompt('Reason for rejecting (shown to the person who asked):','');if(note==null)return;}
-    else if(!window.confirm('Approve?\n\n'+a.summary))return;
-    if(decideApproval(a.id,st,note)){toast(st==='approved'?'Approved — they can now go ahead':'Rejected','success');tick(x=>x+1);}};
-  const L=controlLayout();const cur=L.find(a=>a.key===area)||L[0];
-  const effOn=(d,sid)=>{const st=outletState(d,sid);return st==='same'?allOn(d):st==='on';};
-  const overN=d=>outlets.filter(s=>outletState(d,s.id)!=='same').length;
-  const FILTERS=[['all','All'],['on','On'],['off','Off'],['outlet','Set outlet-wise'],['changed','Changed from recommended'],['stops','Stops an entry'],['appr','Needs approval']];
-  const fltOk=d=>flt==='all'||(flt==='on'&&allOn(d))||(flt==='off'&&!allOn(d))||(flt==='outlet'&&overN(d)>0)||(flt==='changed'&&(allOn(d)!==d.def||overN(d)>0))||(flt==='stops'&&CONTROL_STOPS.has(d.id))||(flt==='appr'&&CONTROL_APPROVAL.has(d.id));
-  const qOk=d=>!cq.trim()||(d.label+' '+(d.hint||'')+' '+d.group).toLowerCase().includes(cq.trim().toLowerCase());
-  const vis=d=>fltOk(d)&&qOk(d);const searching=!!cq.trim()||flt!=='all';
-  const bulk=(defs,mode)=>{if(!canEdit){toast('Only a Super Admin can change controls','error');return;}
-    const what=mode==='rec'?'the recommended setting':mode==='on'?'ON':'OFF';
-    if(!window.confirm('Set all '+defs.length+' switches in “'+cur.title+'” to '+what+' for all outlets?'+(mode==='rec'?'\n\nOutlet-wise choices are cleared; limits stay.':'\n\nOutlet-wise choices stay as they are.')))return;
-    const n={...c};defs.forEach(d=>{n[d.id]={...(n[d.id]||{}),on:mode==='rec'?d.def:mode==='on',...(mode==='rec'?{outlets:{}}:{})};});setC(n);saveControls(n);
-    try{logAuditEvent(null,{entity:'Controls',entityId:cur.key,action:'Bulk change',summary:cur.title+' → '+what+' ('+defs.length+' switches)'});}catch(e){}toast(cur.title+': '+defs.length+' switches set to '+what,'success');};
-  const pill=(t,bg,fg)=>h('span',{style:{fontSize:10.5,fontWeight:600,padding:'1px 7px',borderRadius:10,background:bg,color:fg,whiteSpace:'nowrap'}},t);
-  const ctlRow=d=>{const over=overN(d);const on=allOn(d);const nOn=outlets.filter(s=>effOn(d,s.id)).length;
-    return h('div',{key:d.id,style:{borderTop:'1px solid var(--border)',padding:'10px 0'}},
-      h('div',{style:{display:'flex',alignItems:'flex-start',gap:12,flexWrap:'wrap'}},
-        h('div',{style:{flex:'1 1 260px',minWidth:0}},
-          h('div',{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},h('span',{style:{fontSize:13,color:'var(--text)',fontWeight:600}},d.label),
-            CONTROL_STOPS.has(d.id)&&pill('Stops an entry','rgba(224,82,82,0.12)','var(--red)'),CONTROL_APPROVAL.has(d.id)&&pill('Needs approval','rgba(70,120,220,0.12)','var(--blue,#3b6fd8)'),
-            on!==d.def&&pill('Changed','rgba(224,138,18,0.14)','var(--orange,#c27711)')),
-          h('div',{style:{fontSize:11.5,color:'var(--text3)',lineHeight:1.5,marginTop:2}},d.hint)),
-        h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginLeft:'auto'}},
-          d.limit!=null&&h('label',{style:{fontSize:11.5,color:'var(--text3)',display:'flex',alignItems:'center',gap:4}},d.limitLabel||'Limit ₹',h('input',{type:'number',min:0,className:'form-control',style:{width:92,padding:'3px 6px'},disabled:!canEdit,value:(c[d.id]||{}).limit!=null?c[d.id].limit:d.limit,onChange:e=>upd(d.id,{limit:e.target.value})})),
-          outlets.length>1&&h('button',{className:'btn btn-ghost btn-sm',style:{whiteSpace:'nowrap'},title:'Set a different choice for any outlet',onClick:()=>setOpen(open===d.id?null:d.id)},(over?'On in '+nOn+' of '+outlets.length+' outlets':'Outlet-wise')+(open===d.id?' ▴':' ▾')),
-          h('span',{style:{fontSize:11,fontWeight:600,color:on?'var(--green)':'var(--text3)',width:24,textAlign:'right'}},on?'On':'Off'),sw(on,()=>upd(d.id,{on:!on}),!canEdit))),
-      open===d.id&&h('div',{style:{marginTop:8,background:'var(--bg3)',borderRadius:'var(--r)',padding:'6px 10px'}},
-        outlets.map(s=>{const st=outletState(d,s.id);const eff=effOn(d,s.id);
-          return h('div',{key:s.id,style:{display:'flex',alignItems:'center',gap:8,padding:'4px 0',fontSize:12.5,flexWrap:'wrap'}},
-            h('span',{style:{flex:'1 1 140px'}},String(s.name).split('—')[0].trim()),
-            h('span',{style:{fontSize:11,color:eff?'var(--green)':'var(--text3)',width:28}},eff?'On':'Off'),
-            [['same','Same as all'],['on','On'],['off','Off']].map(([v,l])=>h('button',{key:v,disabled:!canEdit,className:'btn btn-sm '+(st===v?'btn-primary':'btn-ghost'),style:{padding:'2px 8px'},onClick:()=>setOutlet(d,s.id,v)},l)));})));};
-  const subCard=(title,defs,crumb)=>h('div',{key:(crumb||'')+title,style:{border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'8px 12px 2px',marginBottom:12,background:'var(--bg2)'}},
-    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,marginBottom:4}},
-      h('div',{style:{fontSize:12,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.05em'}},(crumb?crumb+' › ':'')+title),
-      h('div',{style:{fontSize:11,color:'var(--text3)',whiteSpace:'nowrap'}},defs.filter(allOn).length+' of '+defs.length+' on')),
-    defs.map(ctlRow));
-  const navBtn=a=>{const onN=a.all.filter(allOn).length;const act=a.key===cur.key&&!searching;
-    return h('button',{key:a.key,onClick:()=>{setArea(a.key);setCq('');setFlt('all');},className:'btn btn-sm '+(act?'btn-primary':'btn-ghost'),
-      style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,width:wide?'100%':'auto',flexShrink:0,textAlign:'left',padding:'7px 10px',whiteSpace:'nowrap'}},
-      h('span',null,a.icon+' '+a.title),h('span',{style:{fontSize:11,opacity:.8}},onN+'/'+a.all.length));};
-  const rulesView=()=>{
-    const hits=searching?L.map(a=>({a,list:a.list.map(x=>({title:x.title,defs:x.defs.filter(vis)})).filter(x=>x.defs.length)})).filter(x=>x.list.length):[];
-    const nHits=hits.reduce((t,x)=>t+x.list.reduce((u,y)=>u+y.defs.length,0),0);
-    return h('div',null,
-      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',margin:'0 0 8px'}},
-        h('input',{className:'form-control',style:{flex:'1 1 240px'},placeholder:'🔍 Search all '+CONTROL_DEFS.length+' switches…',value:cq,onChange:e=>setCq(e.target.value)}),
-        cq&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setCq('')},'Clear')),
-      h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}},FILTERS.map(([k,l])=>h('button',{key:k,className:'btn btn-sm '+(flt===k?'btn-primary':'btn-ghost'),style:{padding:'3px 10px',borderRadius:14},onClick:()=>setFlt(k)},l))),
-      h('div',{style:{display:'flex',gap:16,alignItems:'flex-start',flexDirection:wide?'row':'column'}},
-        h('div',{style:wide?{flex:'0 0 230px',display:'flex',flexDirection:'column',gap:4,position:'sticky',top:8}:{display:'flex',gap:6,overflowX:'auto',width:'100%',paddingBottom:4}},L.map(navBtn)),
-        h('div',{style:{flex:'1 1 auto',minWidth:0,width:'100%'}},
-          searching
-            ?h('div',null,h('div',{style:{fontSize:12.5,color:'var(--text3)',marginBottom:8}},nHits?nHits+' switch'+(nHits===1?'':'es')+' found':'No switch matches.'),
-                hits.flatMap(x=>x.list.map(y=>subCard(y.title,y.defs,x.a.icon+' '+x.a.title))))
-            :h('div',null,
-              h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}},
-                h('div',null,h('div',{style:{fontSize:16,fontWeight:700,color:'var(--text)'}},cur.icon+' '+cur.title),
-                  h('div',{style:{fontSize:12,color:'var(--text3)'}},cur.all.filter(allOn).length+' of '+cur.all.length+' switched on · '+cur.list.length+' section'+(cur.list.length===1?'':'s'))),
-                canEdit&&h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
-                  h('button',{className:'btn btn-ghost btn-sm',title:'Suggestions and flags on, rules that stop people off',onClick:()=>bulk(cur.all,'rec')},'↺ Recommended'),
-                  h('button',{className:'btn btn-ghost btn-sm',onClick:()=>bulk(cur.all,'on')},'All on'),
-                  h('button',{className:'btn btn-ghost btn-sm',onClick:()=>bulk(cur.all,'off')},'All off'))),
-              cur.list.map(x=>subCard(x.title,x.defs))))));};
-  const sw=(on,onClick,dis)=>h('div',{className:'toggle-switch '+(on?'on':''),style:{flexShrink:0,opacity:dis?.5:1,cursor:dis?'not-allowed':'pointer'},onClick:dis?undefined:onClick,role:'switch','aria-checked':on});
-  return h('div',{className:'card',style:{marginBottom:16}},
-    h('div',{className:'card-title'},'🎛 Controls'),
-    h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:10,lineHeight:1.6}},'Switch each check or approval rule on or off for all outlets, then open “Outlet-wise” to set a different choice for any outlet. '+(canEdit?'':'Only a Super Admin can change these.')),
-    h('div',{className:'tab-bar',style:{marginBottom:10}},[['rules','Rules'],['checkup','Bank mapping check-up'],['appr','Approvals'+(pend.length?' ('+pend.length+')':'')]].map(([k,l])=>h('button',{key:k,className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
-    tab==='rules'&&rulesView(),
-    tab==='checkup'&&(()=>{const defs=CONTROL_DEFS.filter(d=>d.group==='Bank mapping'||d.group==='Month close');
-      const eff=(d,s)=>{const st=outletState(d,s.id);return st==='same'?allOn(d):st==='on';};
-      const off=defs.reduce((t,d)=>t+outlets.filter(s=>eff(d,s)!==d.def).length,0);
-      const useRec=()=>{if(!canEdit){toast('Only a Super Admin can change controls','error');return;}if(!window.confirm('Set every bank-mapping and month-close switch to the recommended setting for all outlets (outlet-wise choices are cleared; limits stay)?'))return;
-        const n={...c};defs.forEach(d=>{n[d.id]={...(n[d.id]||{}),on:d.def,outlets:{}};});setC(n);saveControls(n);try{logAuditEvent(null,{entity:'Controls',entityId:'bank-checkup',action:'Recommended settings applied',summary:defs.length+' switches'});}catch(e){}toast('Recommended settings applied','success');};
-      return h('div',null,
-        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:8}},
-          h('div',{style:{fontSize:12.5,color:off?'var(--orange)':'var(--green)'}},off?off+' outlet setting(s) differ from the recommended one (shaded below).':'✓ Every outlet uses the recommended settings.'),
-          canEdit&&h('button',{className:'btn btn-primary btn-sm',onClick:useRec},'Use recommended for all outlets')),
-        h('div',{className:'table-wrap'},h('table',null,
-          h('thead',null,h('tr',null,h('th',null,'Switch'),h('th',null,'Recommended'),outlets.map(s=>h('th',{key:s.id,style:{textAlign:'center'}},String(s.name).split('—')[0].trim())))),
-          h('tbody',null,defs.map(d=>h('tr',{key:d.id},h('td',{style:{fontSize:12.5}},d.label),h('td',{style:{fontSize:12,color:'var(--text3)'}},d.def?'On':'Off'),
-            outlets.map(s=>{const v=eff(d,s);return h('td',{key:s.id,style:{textAlign:'center',fontSize:12,fontWeight:600,color:v?'var(--green)':'var(--text3)',background:v!==d.def?'rgba(224,138,18,0.12)':undefined}},v?'On':'Off');})))))),
-        h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Recommended = suggestions and flags on, rules that stop people off. Change any switch on the Rules tab.'));})(),
-    tab==='appr'&&h('div',null,
-      !pend.length&&h('div',{style:{fontSize:12.5,color:'var(--text3)',padding:'6px 0'}},'Nothing waiting for approval.'),
-      pend.map(a=>h('div',{key:a.id,style:{display:'flex',gap:10,alignItems:'center',borderBottom:'1px solid var(--border)',padding:'8px 0'}},
-        h('div',{style:{flex:1,fontSize:12.5}},h('b',null,(controlDef(a.control)||{}).label||a.control),h('div',{style:{whiteSpace:'pre-wrap'}},a.summary),
-          h('div',{style:{fontSize:11,color:'var(--text3)'}},sname(a.sid)+' · asked by '+a.by+' · '+new Date(a.at).toLocaleString('en-IN'))),
-        canEdit&&h('button',{className:'btn btn-primary btn-sm',onClick:()=>decide(a,'approved')},'Approve'),
-        canEdit&&h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>decide(a,'rejected')},'Reject'))),
-      recent.length>0&&h('div',{style:{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',margin:'14px 0 4px'}},'Decided recently'),
-      recent.map(a=>h('div',{key:a.id,style:{fontSize:12,color:'var(--text2)',padding:'3px 0'}},
-        h('span',{style:{fontWeight:600,color:a.status==='rejected'?'var(--red)':'var(--green)'}},a.status==='rejected'?'Rejected':a.status==='used'?'Approved · used':'Approved'),' — ',a.summary.split('\n')[0],' · ',sname(a.sid),' · by ',a.decidedBy||'—'))));
-}
+// The Master Settings → 🎛 Controls page itself is in js/52-controls-plus.js.
 // Strip shown to a Super Admin on every page while requests wait.
 function PendingApprovalsStrip({salons,onOpen}){
   const h=React.createElement;const u=currentSessionUser();
+  if(typeof CtlAlertStrip==='function'&&u&&(isSuperAdminUser(u)||u.role==='Salon Owner')){const x=h(CtlAlertStrip,{onOpen});if(!isSuperAdminUser(u))return x;
+    const n0=loadApprovals().filter(a=>a.status==='pending').length;if(!n0)return x;
+    return h('div',null,x,h('div',{style:{background:'rgba(224,165,48,0.12)',border:'1px solid rgba(224,165,48,0.4)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5,display:'flex',alignItems:'center',gap:10}},
+      h('span',null,'⏳ ',h('b',null,n0),' request'+(n0===1?'':'s')+' waiting for your approval'),onOpen&&h('button',{className:'btn btn-ghost btn-sm',onClick:onOpen},'Open approvals')));}
   if(!isSuperAdminUser(u))return null;
   const n=loadApprovals().filter(a=>a.status==='pending').length;
   if(!n)return null;

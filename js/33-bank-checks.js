@@ -70,17 +70,17 @@ function bankMappingExceptions(sid,year,month,rows){
     if(linked.length)linked.forEach(l=>{if(!active.some(e=>String(e.id)===String(l.employeeId)))add(r,'Not on rolls',(r.nature||'Salary')+' settled to '+(l.employeeName||'an employee')+', who is not active on the rolls for this or last month.');});
     else if(!/bulk|batch|payroll/i.test(r.description||'')&&!findEmployeeSmart(r.description,active))add(r,'Not on rolls',(r.nature||'Salary')+' paid, but no active employee matches the narration and nothing is settled against it (settle it with 👤 Pay, or mark it right).');});
   // first payment to a new payee
-  if(controlOn('newPayeeAlert',sid)){const lim=controlLimit('newPayeeAlert');const before=all.filter(r=>String(toISO(r.transactionDate)||'')<pre+'-01');
+  if(controlOn('newPayeeAlert',sid)){const lim=controlLimit('newPayeeAlert',sid);const before=all.filter(r=>String(toISO(r.transactionDate)||'')<pre+'-01');
     const sigs=new Set(before.map(r=>bmapSig(r.description)).filter(z=>z&&z.length>=6));const toks=new Set(before.flatMap(r=>payeeTokensOf(r.description)));
     if(before.length)all.filter(r=>String(toISO(r.transactionDate)||'').startsWith(pre)&&Number(r.debit)>lim).forEach(r=>{const sg=bmapSig(r.description);const tk=payeeTokensOf(r.description);
       if((!sg||sg.length<6)&&!tk.length)return;if((sg&&sigs.has(sg))||tk.some(z=>toks.has(z)))return;add(r,'New payee','First payment to this payee ('+R(r.debit)+') — the narration pattern'+(tk.length?', account / UPI ID':'')+' never appeared before.');});}
   // round amounts and Sunday payments
-  if(controlOn('roundOddFlags',sid)){const lim=controlLimit('roundOddFlags')||20000;
+  if(controlOn('roundOddFlags',sid)){const lim=controlLimit('roundOddFlags',sid)||20000;
     all.filter(r=>String(toISO(r.transactionDate)||'').startsWith(pre)).forEach(r=>{const a=Number(r.debit);
       if(a>=lim&&a%5000===0&&!r.linkedInvoice&&(['Other','Transfer','Advance Salary','Refund',''].includes(String(r.nature||''))))add(r,'Round amount','Round transfer of '+R(a)+' mapped as '+(r.nature||'nothing')+' — check who received it and why.');
       const iso=toISO(r.transactionDate);if(iso&&new Date(iso+'T00:00:00').getDay()===0&&!['Bank Charges','TDS','GST','Interest','Tax Payment'].includes(r.nature))add(r,'Sunday payment','Paid on a Sunday ('+r.transactionDate+') — the outlet’s bank work is usually on weekdays.');});}
   // card / UPI charges above the agreed rate
-  if(controlOn('mdrCheck',sid)){const lim=controlLimit('mdrCheck')||2;const T=cradleeDayTotals(sid);const grp={};
+  if(controlOn('mdrCheck',sid)){const lim=controlLimit('mdrCheck',sid)||2;const T=cradleeDayTotals(sid);const grp={};
     (rows||bankRowsFor(sid)).filter(r=>r&&Number(r.credit)>0&&String(toISO(r.transactionDate)||'').startsWith(pre)&&(r.nature==='Card Settlement'||r.nature==='UPI Settlement')&&r.cradleeDate)
       .forEach(r=>{const k=(r.nature==='UPI Settlement'?'upi':'card')+'|'+r.cradleeDate;(grp[k]=grp[k]||[]).push(r);});
     Object.keys(grp).forEach(k=>{const [kind,d]=k.split('|');const tot=(T[d]||{})[kind]||0;if(!(tot>0))return;const got=grp[k].reduce((t,r)=>t+Number(r.credit),0);const fee=(tot-got)/tot*100;
@@ -120,7 +120,7 @@ function bankPayrollAllowed(sid){if(!controlOn('mapRoleLimits',sid))return true;
 
 function bankInTally(sid,r){return !!(r&&loadTallyPushed(sid).bank[r.id]);}
 
-function bankVagueNeedsReason(sid,r,nature){return BANK_VAGUE_NATURES.includes(nature)&&controlOn('vagueNatureReason',sid)&&(Number(r.debit)||Number(r.credit)||0)>controlLimit('vagueNatureReason');}
+function bankVagueNeedsReason(sid,r,nature){return BANK_VAGUE_NATURES.includes(nature)&&controlOn('vagueNatureReason',sid)&&(Number(r.debit)||Number(r.credit)||0)>controlLimit('vagueNatureReason',sid);}
 
 // Without prompts (bulk actions): '' when the line may be set to this Nature, else why not.
 function bankEditBlocker(sid,r,nature){
@@ -195,7 +195,7 @@ function bankChangeAlertsKey(sid){return outletKey('salonos_bank_change_alerts',
 function loadBankChangeAlerts(sid){try{const v=JSON.parse(cachedLocalGet(bankChangeAlertsKey(sid))||'[]');return Array.isArray(v)?v:[];}catch(e){return[];}}
 
 function noteBankBigChange(sid,r,what){
-  if(!r||!controlOn('bankBigChangeAlert',sid))return;const amt=Number(r.debit)||Number(r.credit)||0;if(amt<=controlLimit('bankBigChangeAlert'))return;
+  if(!r||!controlOn('bankBigChangeAlert',sid))return;const amt=Number(r.debit)||Number(r.credit)||0;if(amt<=controlLimit('bankBigChangeAlert',sid))return;
   const reviewed=!!loadBankReview(sid)[r.id];const ym=bankLineYM(r);const final=ym.length===7&&isMonthLockedFor(sid,Number(ym.slice(0,4)),Number(ym.slice(5,7))-1);if(!reviewed&&!final)return;
   const L=loadBankChangeAlerts(sid);L.push({id:'BA'+Date.now()+Math.random().toString(36).slice(2,5),at:Date.now(),by:bmapUser(),rowId:r.id,date:r.transactionDate||'',amount:amt,description:r.description||'',what,why:final?'Final month':'checked line',seen:false});
   safeLocalSet(bankChangeAlertsKey(sid),JSON.stringify(L.slice(-200)));
@@ -254,7 +254,7 @@ function bankMissingMonths(sid,rows){
 
 // ── Mapping time target (Controls → mappingSla) ──
 function bankMappingSla(sid,year,month,rows){
-  if(!controlOn('mappingSla',sid))return null;const days=controlLimit('mappingSla')||3;const pre=year+'-'+String(month+1).padStart(2,'0');const vendors=loadVendors(sid)||[];
+  if(!controlOn('mappingSla',sid))return null;const days=controlLimit('mappingSla',sid)||3;const pre=year+'-'+String(month+1).padStart(2,'0');const vendors=loadVendors(sid)||[];
   const J=bankMapJournal(sid);const first={};J.forEach(e=>{if(e.undone)return;if(!first[e.rowId]||e.at<first[e.rowId])first[e.rowId]=e.at;});const now=Date.now();let on=0,late=0,pending=0;
   (rows||bankRowsFor(sid)).forEach(r=>{if(!r||!(Number(r.debit)||Number(r.credit)))return;const iso=toISO(r.transactionDate)||'';if(!iso.startsWith(pre))return;const t0=new Date(iso+'T00:00:00').getTime();const due=t0+(days+1)*864e5;
     if(!bankLineProblem(r,vendors)){const at=first[r.id];if(!at||at<=due)on++;else late++;}else if(now>due)late++;else pending++;});

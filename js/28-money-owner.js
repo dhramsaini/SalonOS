@@ -105,7 +105,7 @@ function BankMappingAgeingBoard({accessibleSalons,onOpenOutletTab,cal}){
   const outs=(accessibleSalons||[]).filter(s=>s&&s.id!=null&&s.status!=='Inactive'&&controlOn('bankAgeingBoard',s.id));
   if(!outs.length)return null;
   const list=outs.map(s=>({s,a:bankUnmappedAgeing(s.id),rv:bankReviewProgress(s.id,cal.year,cal.month),hs:bankHealthScore(s.id,cal.year,cal.month),sla:bankMappingSla(s.id,cal.year,cal.month),
-    nudge:controlOn('bankUnmappedNudge',s.id)?bankUnmappedOlderThan(s.id,controlLimit('bankUnmappedNudge')||7):null}));
+    nudge:controlOn('bankUnmappedNudge',s.id)?bankUnmappedOlderThan(s.id,controlLimit('bankUnmappedNudge',s.id)||7):null}));
   const from=new Date(cal.year,cal.month,1).getTime(),to=new Date(cal.year,cal.month+1,1).getTime()-1;
   const prod={};outs.forEach(s=>bankMappingProductivity(s.id,from,to).forEach(x=>{const k=x.user;const z=prod[k]=prod[k]||{user:k,mapped:0,fromSugg:0,auto:0,changed:0,undone:0,checked:0,outlets:new Set()};
     ['mapped','fromSugg','auto','changed','undone','checked'].forEach(f=>z[f]+=x[f]||0);if(x.mapped||x.checked)z.outlets.add(rptShort(s));}));
@@ -116,7 +116,7 @@ function BankMappingAgeingBoard({accessibleSalons,onOpenOutletTab,cal}){
   const doNudge=(s,info)=>{const url=bankNudgeUrl(s,info,controlLimit('bankUnmappedNudge')||7);if(!url){window.alert('Add the outlet phone number in Master Sheet → Outlets first.');return;}
     window.open(url,'_blank','noopener');try{localStorage.setItem(nudgedKey(s.id),String(Date.now()));}catch(e){}try{logAuditEvent(s.id,{entity:'Bank Statement',entityId:'nudge',action:'WhatsApp nudge',summary:info.n+' unmapped line(s)'});}catch(e){}setT(t=>t+1);};
   const alerts=outs.flatMap(s=>loadBankChangeAlerts(s.id).filter(a=>!a.seen).map(a=>({...a,s})));const isSA=isSuperAdminUser(currentSessionUser());
-  const fc=outs.map(s=>({s,f:bankCashForecast(s.id,30),warn:controlOn('cashForecastAlert',s.id)?controlLimit('cashForecastAlert'):null}));
+  const fc=outs.map(s=>({s,f:bankCashForecast(s.id,30),warn:controlOn('cashForecastAlert',s.id)?controlLimit('cashForecastAlert',s.id):null}));
   const ratios=outs.map(s=>({s,r:bankOutletRatios(s.id,cal.year,cal.month)}));const RK=['salary','rent','power','bank','fees'];const RL={salary:'Salary & incentive',rent:'Rent',power:'Electricity',bank:'Bank charges',fees:'Card / UPI fees'};
   const maxOf=k=>Math.max(...ratios.map(x=>x.r.pct[k]==null?-1:x.r.pct[k]));
   const prevM=new Date(new Date().getFullYear(),new Date().getMonth()-1,1);const opKey='salonos_bank_onepager_sent_'+prevM.getFullYear()+'-'+String(prevM.getMonth()+1).padStart(2,'0');

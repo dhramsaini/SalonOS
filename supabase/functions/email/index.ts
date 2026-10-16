@@ -157,6 +157,25 @@ async function sendWorkbook(req: Request, body: Json) {
   return { ok: true, sentTo: [...to] };
 }
 
+// Controls → ctlOwnerAlert: a safety rule was switched off — tell the report recipients.
+async function sendControlAlert(req: Request, body: Json) {
+  const auth = req.headers.get("Authorization") ?? "";
+  const userClient = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } });
+  const { data: who } = await userClient.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
+  if (!who?.user) throw new HttpError(401, "Please sign in again.");
+  const em = await creds();
+  if (!em) throw new HttpError(400, "Email isn't set up yet.");
+  const { data: rs } = await admin.from("kv_store").select("value").eq("key", "salonos_secret_report_settings").maybeSingle();
+  let settings: Json = {};
+  try { settings = JSON.parse(rs?.value ?? "{}") ?? {}; } catch { /* none */ }
+  const to = (settings.emails ?? []).filter((e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
+  if (!to.length) return { ok: false, sentTo: [] };
+  const text = String(body.text ?? "").slice(0, 3000);
+  await resend(em.key, { from: em.from, to, subject: "SalonOS · Safety rule switched off",
+    html: `<div style="font-family:Arial,sans-serif"><h2 style="color:#b42318;margin:0 0 8px">A safety rule was switched off</h2><pre style="font-family:Arial,sans-serif;white-space:pre-wrap">${esc(text)}</pre><p style="color:#5e6a82">Changed in SalonOS by ${esc(who.user.email ?? "a SalonOS user")} — Master Settings → Controls.</p></div>` });
+  return { ok: true, sentTo: to };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -165,6 +184,7 @@ Deno.serve(async (req) => {
     const action = String(body.action ?? "");
     if (action === "send_pack") return json(await sendPack(req, body));
     if (action === "send_workbook") return json(await sendWorkbook(req, body));
+    if (action === "control_alert") return json(await sendControlAlert(req, body));
 
     const user = await requireSuperAdmin(req);
     if (action === "status") {

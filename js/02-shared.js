@@ -648,7 +648,8 @@ function isMonthLockedFor(salonId,year,month){
 function backdateLockDays(salonId){
   if(typeof controlOn!=='function'||!controlOn('backdateLock',salonId))return null;
   // read directly: controlLimit() treats 0 as "not set", but 0 here means "today only"
-  const raw=typeof loadControls==='function'?(loadControls().backdateLock||{}).limit:null;
+  const ol=typeof controlOutletLimitRaw==='function'?controlOutletLimitRaw('backdateLock',salonId):null;
+  const raw=ol!=null?ol:(typeof loadControls==='function'?(loadControls().backdateLock||{}).limit:null);
   const n=raw==null||raw===''?3:Number(raw);
   return isFinite(n)&&n>=0?Math.floor(n):3;
 }
@@ -1259,6 +1260,7 @@ function duplicateVendorInvoice(list,vendorId,invoiceNo,docNature,excludeId){
     &&normInvoiceNo(inv.invoiceNo)===k&&(inv.docNature==='Performa Invoice')===isPI)||null;
 }
 function duplicateInvoiceMessage(inv,vendorName){
+  if(typeof controlHit==='function')controlHit('dupInvoice',null,'b');
   return 'Invoice No. '+inv.invoiceNo+' of '+(vendorName||'this vendor')+' is already entered'
     +(inv.invoiceDate?' (dated '+inv.invoiceDate+', ₹'+Number(inv.amount||0).toLocaleString('en-IN')+')':'')
     +'. The same invoice number cannot be entered twice for the same vendor.';
@@ -2350,9 +2352,9 @@ function idFieldWarnings(f){
 function confirmIdFields(f,what,sid){
   if(typeof controlOn==='function'&&!controlOn('idChecks',sid))return true;
   const p=idFieldProblems(f);
-  if(p.length){window.alert('Please correct '+(what||'these details')+' before saving:\n\n• '+p.join('\n• '));return false;}
+  if(p.length){if(typeof controlHit==='function')controlHit('idChecks',sid,'b');window.alert('Please correct '+(what||'these details')+' before saving:\n\n• '+p.join('\n• '));return false;}
   const w=idFieldWarnings(f);
-  if(w.length&&!window.confirm('Please check:\n\n• '+w.join('\n• ')+'\n\nSave anyway?'))return false;
+  if(w.length){if(typeof controlHit==='function')controlHit('idChecks',sid,'w');if(!window.confirm('Please check:\n\n• '+w.join('\n• ')+'\n\nSave anyway?'))return false;if(typeof controlHit==='function')controlHit('idChecks',sid,'o');}
   return true;
 }
 function isValidEmailFormat(v){

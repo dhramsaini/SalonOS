@@ -89,7 +89,7 @@ function fdProductSuggestions(sid,items){
 }
 // ── 🔁 Membership renewal offer (Controls → renewalOffer) ──
 function fdRenewalOffer(sid,phone,items){
-  if(!controlOn('renewalOffer',sid)||fdP10(phone).length!==10)return null;const pct=controlLimit('renewalOffer')||10;const p=fdP10(phone);const t=new Date(fdTodayIso()+'T00:00:00');
+  if(!controlOn('renewalOffer',sid)||fdP10(phone).length!==10)return null;const pct=controlLimit('renewalOffer',sid)||10;const p=fdP10(phone);const t=new Date(fdTodayIso()+'T00:00:00');
   const mem=fdMemberships(sid).filter(m=>m.type==='Membership'&&fdP10(m.phone)===p&&m.validTill).sort((a,b)=>String(b.validTill).localeCompare(String(a.validTill)))[0];if(!mem)return null;
   const days=Math.round((new Date(mem.validTill+'T00:00:00')-t)/864e5);if(days>15||days<-15)return null;const line=(items||[]).find(i=>i.type==='Membership');
   return{pct,days,plan:mem.plan||'Membership',amount:line?Math.round((Number(line.qty)||1)*(Number(line.rate)||0)*pct/100):0,hasLine:!!line};

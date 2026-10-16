@@ -10,7 +10,10 @@
 //   negative stock, proof above a limit, and a weekly data-quality score per outlet.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 function ecOn(id,sid){return typeof controlOn==='function'&&controlOn(id,sid);}
-function ecLim(id,d){const v=typeof controlLimit==='function'?Number(controlLimit(id)):0;return v>0?v:d;}
+function ecLim(id,d,sid){const v=typeof controlLimit==='function'?Number(controlLimit(id,sid)):0;return v>0?v:d;}
+// warns.push / blocks.push that remembers which switch raised it (Controls → ctlHitStats)
+function ecTag(id,arr){arr.ids=arr.map(()=>id);return arr;}
+function ecPush(arr,id,msg){arr.push(msg);(arr.ids=arr.ids||[]).push(id);}
 function ecM(n){return '₹'+Math.round(Number(n)||0).toLocaleString('en-IN');}
 function ecToday(){return localIsoOf(new Date());}
 function ecIso(v){const s=String(v==null?'':v).trim();let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);if(m)return m[1]+'-'+m[2]+'-'+m[3];
@@ -24,10 +27,11 @@ function ecUser(){const u=typeof currentSessionUser==='function'?currentSessionU
 function ecShort(s){return String((s&&s.name)||'').split('—')[0].trim();}
 function ecAgo(ts){const m=Math.max(1,Math.round((Date.now()-new Date(ts).getTime())/60000));return m<60?m+' min ago':m<1440?Math.round(m/60)+' h ago':Math.round(m/1440)+' day(s) ago';}
 // Warnings → "Save anyway?" (an override goes to the Audit Log); blocks → can't save.
+function ecHits(arr,sid,kind){if(typeof controlHit==='function')[...new Set((arr&&arr.ids)||[])].forEach(id=>controlHit(id,sid,kind));}
 function ecConfirm(sid,what,warns,blocks){
-  if(blocks&&blocks.length){window.alert('Cannot save '+what+':\n\n• '+blocks.join('\n• '));return false;}
-  if(!warns||!warns.length)return true;
-  const ok=window.confirm('Please check '+what+':\n\n• '+warns.join('\n• ')+'\n\nSave anyway?');
+  if(blocks&&blocks.length){ecHits(blocks,sid,'b');window.alert('Cannot save '+what+':\n\n• '+blocks.join('\n• '));return false;}
+  if(!warns||!warns.length)return true;ecHits(warns,sid,'w');
+  const ok=window.confirm('Please check '+what+':\n\n• '+warns.join('\n• ')+'\n\nSave anyway?');if(ok)ecHits(warns,sid,'o');
   if(ok){try{logAuditEvent(sid,{entity:'Entry check',entityId:String(what).slice(0,60),action:'Saved despite warning',summary:warns.join(' | ').slice(0,400)});}catch(e){}}
   return ok;
 }
@@ -59,19 +63,19 @@ function ecEmployeeOk(sid,emp,prev,list){
   const warns=[];const today=ecToday();
   if(ecOn('dupEmployee',sid)){const F=[['pan','PAN'],['aadhar','Aadhaar'],['pfNumber','UAN'],['esicNumber','ESIC number'],['mobile','Mobile']];
     ecAllEmployees(sid,list).forEach(({s,e})=>{if(String(s.id)===String(sid)&&String(e.id)===String(emp.id))return;
-      F.forEach(([k,l])=>{const a=ecNorm(emp[k]);if(prev&&a===ecNorm(prev[k]))return;if(a.length>=6&&a===ecNorm(e[k]))warns.push(l+' '+emp[k]+' is already on '+e.name+' ('+e.id+(String(s.id)!==String(sid)?', '+ecShort(s):'')+(e.status&&e.status!=='Active'?', '+e.status:'')+')');});});}
-  if(ecOn('sharedBankAccount',sid)&&!(prev&&ecNorm(prev.accountNo)===ecNorm(emp.accountNo))){const h=ecAccountHolders(sid,emp.accountNo,{emp:emp.id,empList:list});if(h.length)warns.push('Bank account '+emp.accountNo+' is also the account of '+h.join(', '));}
-  if(ecOn('wageSenseCheck',sid)){const g=Number(emp.gross)||0,b=Number(emp.basic)||0,min=ecLim('wageSenseCheck',10000);const doj=ecIso(emp.doj),dol=ecIso(emp.dol);
-    if(g>0&&b<g*0.5)warns.push('Basic '+ecM(b)+' is below half of gross '+ecM(g)+' — under the Labour Codes wages should be at least 50% of pay');
-    if(g>0&&g<min)warns.push('Gross '+ecM(g)+' is below '+ecM(min)+' (the minimum set in Controls)');
-    if(emp.pf&&!(b>0))warns.push('PF is ticked but Basic is 0');
-    if(doj&&dol&&dol<doj)warns.push('Date of leaving is before the date of joining');
-    if(doj&&ecDays(today,doj)>30)warns.push('Date of joining '+ecDmy(doj)+' is more than a month ahead');}
+      F.forEach(([k,l])=>{const a=ecNorm(emp[k]);if(prev&&a===ecNorm(prev[k]))return;if(a.length>=6&&a===ecNorm(e[k]))ecPush(warns,'dupEmployee',l+' '+emp[k]+' is already on '+e.name+' ('+e.id+(String(s.id)!==String(sid)?', '+ecShort(s):'')+(e.status&&e.status!=='Active'?', '+e.status:'')+')');});});}
+  if(ecOn('sharedBankAccount',sid)&&!(prev&&ecNorm(prev.accountNo)===ecNorm(emp.accountNo))){const h=ecAccountHolders(sid,emp.accountNo,{emp:emp.id,empList:list});if(h.length)ecPush(warns,'sharedBankAccount','Bank account '+emp.accountNo+' is also the account of '+h.join(', '));}
+  if(ecOn('wageSenseCheck',sid)){const g=Number(emp.gross)||0,b=Number(emp.basic)||0,min=ecLim('wageSenseCheck',10000,sid);const doj=ecIso(emp.doj),dol=ecIso(emp.dol);
+    if(g>0&&b<g*0.5)ecPush(warns,'wageSenseCheck','Basic '+ecM(b)+' is below half of gross '+ecM(g)+' — under the Labour Codes wages should be at least 50% of pay');
+    if(g>0&&g<min)ecPush(warns,'wageSenseCheck','Gross '+ecM(g)+' is below '+ecM(min)+' (the minimum set in Controls)');
+    if(emp.pf&&!(b>0))ecPush(warns,'wageSenseCheck','PF is ticked but Basic is 0');
+    if(doj&&dol&&dol<doj)ecPush(warns,'wageSenseCheck','Date of leaving is before the date of joining');
+    if(doj&&ecDays(today,doj)>30)ecPush(warns,'wageSenseCheck','Date of joining '+ecDmy(doj)+' is more than a month ahead');}
   if(!ecConfirm(sid,'the employee details',warns,[]))return false;
-  if(prev&&ecOn('salaryChangeReason',sid)){const pg=Number(prev.gross)||0,ng=Number(emp.gross)||0,lim=ecLim('salaryChangeReason',20);
+  if(prev&&ecOn('salaryChangeReason',sid)){const pg=Number(prev.gross)||0,ng=Number(emp.gross)||0,lim=ecLim('salaryChangeReason',20,sid);
     if(pg>0&&Math.abs(ng-pg)/pg*100>lim){const pct=Math.round((ng-pg)/pg*1000)/10;
       let r=null;try{r=window.prompt('Gross pay of '+emp.name+' changes from '+ecM(pg)+' to '+ecM(ng)+' ('+(pct>0?'+':'')+pct+'%) — more than '+lim+'%.\n\nGive the reason (it goes to the Audit Log):','');}catch(e){}
-      if(r==null||!String(r).trim()){window.alert('Not saved — a pay change above '+lim+'% needs a reason (Master Settings → Controls → Salary master changes).');return false;}
+      if(r==null||!String(r).trim()){if(typeof controlHit==='function')controlHit('salaryChangeReason',sid,'b');window.alert('Not saved — a pay change above '+lim+'% needs a reason (Master Settings → Controls → Salary master changes).');return false;}
       try{logAuditEvent(sid,{entity:'Employee',entityId:String(emp.id),action:'Pay change reason',summary:emp.name+': '+ecM(pg)+' → '+ecM(ng)+' — '+String(r).trim()});}catch(e){}}}
   return ecOnce(sid,'emp',[emp.id,emp.name,emp.gross,emp.pan,emp.accountNo]);
 }
@@ -80,10 +84,10 @@ function ecVendorOk(sid,v,editId,vendors){
   const warns=[];const list=(vendors||loadVendors(sid)||[]).filter(x=>x&&String(x.id)!==String(editId||''));
   if(ecOn('dupVendor',sid)){const g=ecNorm(v.gst);
     if(g.length>=12){const same=list.find(x=>ecNorm(x.gst)===g);
-      if(same)warns.push('GSTIN '+g+' is already on vendor '+same.name+' ('+same.id+')');
-      else{const pan=g.slice(2,12);const sp=list.find(x=>ecNorm(x.gst).length>=12&&ecNorm(x.gst).slice(2,12)===pan);if(sp)warns.push('Same PAN '+pan+' as vendor '+sp.name+' ('+sp.id+') — the same business in another state?');}}
-    const nk=ecNameKey(v.name);if(nk.length>=4){const sim=list.find(x=>{const k=ecNameKey(x.name);return k===nk||(k.length>=6&&nk.length>=6&&ecLev(k,nk)<=2);});if(sim)warns.push('The name looks like existing vendor "'+sim.name+'" ('+sim.id+')');}}
-  if(ecOn('sharedBankAccount',sid)&&v.accountNo){const h=ecAccountHolders(sid,v.accountNo,{vendor:editId});if(h.length)warns.push('Bank account '+v.accountNo+' is also the account of '+h.join(', '));}
+      if(same)ecPush(warns,'dupVendor','GSTIN '+g+' is already on vendor '+same.name+' ('+same.id+')');
+      else{const pan=g.slice(2,12);const sp=list.find(x=>ecNorm(x.gst).length>=12&&ecNorm(x.gst).slice(2,12)===pan);if(sp)ecPush(warns,'dupVendor','Same PAN '+pan+' as vendor '+sp.name+' ('+sp.id+') — the same business in another state?');}}
+    const nk=ecNameKey(v.name);if(nk.length>=4){const sim=list.find(x=>{const k=ecNameKey(x.name);return k===nk||(k.length>=6&&nk.length>=6&&ecLev(k,nk)<=2);});if(sim)ecPush(warns,'dupVendor','The name looks like existing vendor "'+sim.name+'" ('+sim.id+')');}}
+  if(ecOn('sharedBankAccount',sid)&&v.accountNo){const h=ecAccountHolders(sid,v.accountNo,{vendor:editId});if(h.length)ecPush(warns,'sharedBankAccount','Bank account '+v.accountNo+' is also the account of '+h.join(', '));}
   return ecConfirm(sid,'the vendor details',warns,[])&&ecOnce(sid,'vendor',[v.name,v.gst,v.accountNo]);
 }
 
@@ -111,33 +115,33 @@ function ecRowAverage(src,ri,iso,days){const vals=[];for(let k=1;k<=days;k++){co
 function ecExpenseCommit(sid,iso,rowName,before,after,revert){
   const a=Number(after)||0;if(!(a>0)||String(before)===String(after))return;
   const R=ecExpenseRows();const ri=R.findIndex(r=>r&&r.name===rowName);if(ri<0)return;const D=ecDseData(sid);const warns=[];
-  if(ecOn('repeatExpense',sid)&&a>=1000){const N=ecLim('repeatExpense',3);for(let k=-N;k<=N;k++){if(!k)continue;const d=ecAddDays(iso,k);if(Number((D[d]||{})[ri])===a){warns.push('The same '+ecM(a)+' is entered under "'+rowName+'" on '+ecDmy(d));break;}}}
-  if(ecOn('extraZeroCheck',sid)){const avg=ecRowAverage(D,ri,iso,30),x=ecLim('extraZeroCheck',5);if(avg>0&&a>avg*x)warns.push(ecM(a)+' is '+(a/avg).toFixed(1)+'× the usual "'+rowName+'" of '+ecM(avg)+' — an extra zero?');}
+  if(ecOn('repeatExpense',sid)&&a>=1000){const N=ecLim('repeatExpense',3,sid);for(let k=-N;k<=N;k++){if(!k)continue;const d=ecAddDays(iso,k);if(Number((D[d]||{})[ri])===a){ecPush(warns,'repeatExpense','The same '+ecM(a)+' is entered under "'+rowName+'" on '+ecDmy(d));break;}}}
+  if(ecOn('extraZeroCheck',sid)){const avg=ecRowAverage(D,ri,iso,30),x=ecLim('extraZeroCheck',5,sid);if(avg>0&&a>avg*x)ecPush(warns,'extraZeroCheck',ecM(a)+' is '+(a/avg).toFixed(1)+'× the usual "'+rowName+'" of '+ecM(avg)+' — an extra zero?');}
   if(ecOn('crossEntryExpense',sid)&&!EC_SKIP_ROWS.test(rowName)&&!ecGatedRow(rowName)){const b=ecBillNear(sid,a,iso,3);
-    if(b){const v=(loadVendors(sid)||[]).find(x=>String(x.id)===String(b.vendorId));warns.push('A vendor bill of '+ecM(b.amount)+' from '+(v?v.name:'a vendor')+' (No. '+b.invoiceNo+', '+ecDmy(ecIso(b.invoiceDate))+') is already in Vendors — the same expense counted twice?');}}
+    if(b){const v=(loadVendors(sid)||[]).find(x=>String(x.id)===String(b.vendorId));ecPush(warns,'crossEntryExpense','A vendor bill of '+ecM(b.amount)+' from '+(v?v.name:'a vendor')+' (No. '+b.invoiceNo+', '+ecDmy(ecIso(b.invoiceDate))+') is already in Vendors — the same expense counted twice?');}}
   if(warns.length&&!ecConfirm(sid,rowName+' on '+ecDmy(iso),warns,[])){if(revert)revert(before);return;}
-  if(ecOn('proofAboveLimit',sid)){const lim=ecLim('proofAboveLimit',5000);if(a>=lim){const k=outletKey('salonos_dse_expense_notes',sid);const N=ecLoad('salonos_dse_expense_notes',sid,{})||{};const key=iso+'|'+rowName;
+  if(ecOn('proofAboveLimit',sid)){const lim=ecLim('proofAboveLimit',5000,sid);if(a>=lim){const k=outletKey('salonos_dse_expense_notes',sid);const N=ecLoad('salonos_dse_expense_notes',sid,{})||{};const key=iso+'|'+rowName;
     if(!N[key]||Number(N[key].amount)!==a){let r=null;try{r=window.prompt(rowName+' '+ecM(a)+' on '+ecDmy(iso)+' — expenses of '+ecM(lim)+' or more need a narration.\n\nWhat was it for?',N[key]?N[key].note:'');}catch(e){}
-      if(r==null||!String(r).trim()){window.alert('Entry undone — an expense of '+ecM(lim)+' or more needs a narration (Controls → Proof above a limit).');if(revert)revert(before);return;}
+      if(r==null||!String(r).trim()){if(typeof controlHit==='function')controlHit('proofAboveLimit',sid,'b');window.alert('Entry undone — an expense of '+ecM(lim)+' or more needs a narration (Controls → Proof above a limit).');if(revert)revert(before);return;}
       N[key]={amount:a,note:String(r).trim(),by:ecUser(),at:new Date().toISOString()};safeLocalSet(k,JSON.stringify(N));
       try{logAuditEvent(sid,{entity:'Daily Sales',entityId:iso,action:'Expense narration',summary:rowName+' '+ecM(a)+': '+String(r).trim()});}catch(e){}}}}
 }
 // 5, 11 · the description pop-up (Pentry, Repair & Maintenance …) is saved
 function ecDescEntriesOk(sid,iso,rowName,entries){
   const R=ecExpenseRows();const ri=R.findIndex(r=>r&&r.name===rowName);if(ri<0)return true;const DS=ecDseDesc(sid);const warns=[];const key=e=>String(e.description||'').trim().toLowerCase().replace(/\s+/g,' ');
-  if(ecOn('repeatExpense',sid)){const N=ecLim('repeatExpense',3);const seen={};
-    entries.forEach(e=>{const k=key(e)+'|'+Number(e.amount);if(seen[k])warns.push('"'+e.description+'" '+ecM(e.amount)+' is entered twice on this day');seen[k]=1;
-      for(let d=-N;d<=N;d++){if(!d)continue;const day=ecAddDays(iso,d);const L=(DS[day]||{})[ri];if(Array.isArray(L)&&L.some(x=>key(x)===key(e)&&Number(x.amount)===Number(e.amount))){warns.push('"'+e.description+'" '+ecM(e.amount)+' is also entered on '+ecDmy(day));break;}}});}
+  if(ecOn('repeatExpense',sid)){const N=ecLim('repeatExpense',3,sid);const seen={};
+    entries.forEach(e=>{const k=key(e)+'|'+Number(e.amount);if(seen[k])ecPush(warns,'repeatExpense','"'+e.description+'" '+ecM(e.amount)+' is entered twice on this day');seen[k]=1;
+      for(let d=-N;d<=N;d++){if(!d)continue;const day=ecAddDays(iso,d);const L=(DS[day]||{})[ri];if(Array.isArray(L)&&L.some(x=>key(x)===key(e)&&Number(x.amount)===Number(e.amount))){ecPush(warns,'repeatExpense','"'+e.description+'" '+ecM(e.amount)+' is also entered on '+ecDmy(day));break;}}});}
   if(ecOn('extraZeroCheck',sid)){const vals=[];for(let k=1;k<=60;k++){const L=(DS[ecAddDays(iso,-k)]||{})[ri];if(Array.isArray(L))L.forEach(x=>{const v=Number(x.amount)||0;if(v>0)vals.push(v);});}
-    if(vals.length>=5){const avg=vals.reduce((s,v)=>s+v,0)/vals.length,x=ecLim('extraZeroCheck',5);entries.forEach(e=>{const a=Number(e.amount)||0;if(a>avg*x)warns.push('"'+e.description+'" '+ecM(a)+' is '+(a/avg).toFixed(1)+'× the usual '+rowName+' entry of '+ecM(avg)+' — an extra zero?');});}}
+    if(vals.length>=5){const avg=vals.reduce((s,v)=>s+v,0)/vals.length,x=ecLim('extraZeroCheck',5,sid);entries.forEach(e=>{const a=Number(e.amount)||0;if(a>avg*x)ecPush(warns,'extraZeroCheck','"'+e.description+'" '+ecM(a)+' is '+(a/avg).toFixed(1)+'× the usual '+rowName+' entry of '+ecM(avg)+' — an extra zero?');});}}
   return ecConfirm(sid,rowName+' on '+ecDmy(iso),warns,[]);
 }
 // 11 · a sales cell is left
 const EC_SALES_INPUT=new Set([0,1,2,3,4,5,9,10,11,12,14,15,16,19,20]);
 function ecSalesCommit(sid,iso,rowName,sri,before,after,revert){
   const a=Number(after)||0;if(!(a>0)||String(before)===String(after)||!EC_SALES_INPUT.has(sri)||!ecOn('extraZeroCheck',sid))return;
-  const avg=ecRowAverage(ecDseSales(sid),sri,iso,30),x=ecLim('extraZeroCheck',5);
-  if(avg>0&&a>avg*x&&!ecConfirm(sid,rowName+' on '+ecDmy(iso),[ecM(a)+' is '+(a/avg).toFixed(1)+'× the usual '+rowName+' of '+ecM(avg)+' — an extra zero?'],[])){if(revert)revert(before);}
+  const avg=ecRowAverage(ecDseSales(sid),sri,iso,30),x=ecLim('extraZeroCheck',5,sid);
+  if(avg>0&&a>avg*x&&!ecConfirm(sid,rowName+' on '+ecDmy(iso),ecTag('extraZeroCheck',[ecM(a)+' is '+(a/avg).toFixed(1)+'× the usual '+rowName+' of '+ecM(avg)+' — an extra zero?']),[])){if(revert)revert(before);}
 }
 // 12, 13, 14 · Daily Sales against Billing and against the bank statement, for the days on screen
 function ecDseFindings(sid,isos,salesData){
@@ -172,26 +176,26 @@ function EcDseChecks({sid,days,salesData}){
 function ecVendorBillOk(sid,f,vendorId,editId,invoices,opt){
   opt=opt||{};const warns=[],blocks=[];const L=(invoices||loadVendorInvoices(sid)||[]).filter(i=>i&&i.id!==editId);
   const amt=Number(f.amount)||0;const inv=ecIso(f.invoiceDate);const today=ecToday();const nn=typeof normInvoiceNo==='function'?normInvoiceNo:(x=>ecNorm(x));
-  if(vendorId&&amt>0&&inv&&ecOn('sameBillNewNumber',sid)){const N=ecLim('sameBillNewNumber',3);
+  if(vendorId&&amt>0&&inv&&ecOn('sameBillNewNumber',sid)){const N=ecLim('sameBillNewNumber',3,sid);
     const hit=L.find(i=>String(i.vendorId)===String(vendorId)&&Math.abs((Number(i.amount)||0)-amt)<=1&&nn(i.invoiceNo)!==nn(f.invoiceNo)&&ecIso(i.invoiceDate)&&Math.abs(ecDays(ecIso(i.invoiceDate),inv))<=N);
-    if(hit)warns.push('A bill of '+ecM(amt)+' from this vendor is already entered as No. '+hit.invoiceNo+' dated '+ecDmy(ecIso(hit.invoiceDate))+' — the same bill under a new number?');}
-  if(!editId&&!opt.cashNow&&amt>0&&inv&&ecOn('crossEntryExpense',sid)){const x=ecDseExpenseNear(sid,amt,inv,3);if(x)warns.push(ecM(amt)+' is already entered as "'+x.row+'" in Daily Sales & Exp on '+ecDmy(x.iso)+' — the same expense counted twice?');}
+    if(hit)ecPush(warns,'sameBillNewNumber','A bill of '+ecM(amt)+' from this vendor is already entered as No. '+hit.invoiceNo+' dated '+ecDmy(ecIso(hit.invoiceDate))+' — the same bill under a new number?');}
+  if(!editId&&!opt.cashNow&&amt>0&&inv&&ecOn('crossEntryExpense',sid)){const x=ecDseExpenseNear(sid,amt,inv,3);if(x)ecPush(warns,'crossEntryExpense',ecM(amt)+' is already entered as "'+x.row+'" in Daily Sales & Exp on '+ecDmy(x.iso)+' — the same expense counted twice?');}
   if(vendorId&&amt>0&&ecOn('extraZeroCheck',sid)){const P=L.filter(i=>String(i.vendorId)===String(vendorId)&&Number(i.amount)>0).slice(-12);
-    if(P.length>=3){const avg=P.reduce((s,i)=>s+Number(i.amount),0)/P.length,x=ecLim('extraZeroCheck',5);if(amt>avg*x)warns.push(ecM(amt)+' is '+(amt/avg).toFixed(1)+'× this vendor’s usual bill of '+ecM(avg)+' — an extra zero?');}}
+    if(P.length>=3){const avg=P.reduce((s,i)=>s+Number(i.amount),0)/P.length,x=ecLim('extraZeroCheck',5,sid);if(amt>avg*x)ecPush(warns,'extraZeroCheck',ecM(amt)+' is '+(amt/avg).toFixed(1)+'× this vendor’s usual bill of '+ecM(avg)+' — an extra zero?');}}
   if(!opt.noGst&&ecOn('gstMathCheck',sid)){const tx=Number(f.taxable)||0,c=Number(f.cgst)||0,s=Number(f.sgst)||0,ig=Number(f.igst)||0,tax=c+s+ig;
-    if(tx>0&&tax>0){if((c||s)&&Math.abs(c-s)>1)warns.push('CGST '+ecM(c)+' and SGST '+ecM(s)+' should be equal');
+    if(tx>0&&tax>0){if((c||s)&&Math.abs(c-s)>1)ecPush(warns,'gstMathCheck','CGST '+ecM(c)+' and SGST '+ecM(s)+' should be equal');
       const RATES=[0.1,0.25,1,1.5,3,5,6,12,18,28,40];const ok=RATES.some(r=>Math.abs(tax-tx*r/100)<=Math.max(1.5,tx*0.0005));
-      if(!ok)warns.push('GST '+ecM(tax)+' is '+(tax/tx*100).toFixed(2)+'% of the taxable value '+ecM(tx)+' — not a GST rate (5%, 12%, 18%, 28% …). Check the figures (or it is a bill with mixed rates).');}}
-  if(ecOn('dateSenseCheck',sid)){if(inv&&inv>today)warns.push('The invoice date '+ecDmy(inv)+' is in the future');const due=ecIso(f.dueDate),bk=ecIso(f.bookingDate);
-    if(due&&inv&&due<inv)warns.push('The due date '+ecDmy(due)+' is before the invoice date');if(bk&&inv&&bk<inv)warns.push('The booking date '+ecDmy(bk)+' is before the invoice date');
-    if(inv&&ecDays(inv,today)>180)warns.push('The invoice date '+ecDmy(inv)+' is more than 6 months old');}
-  if(!opt.noProof&&ecOn('proofAboveLimit',sid)){const lim=ecLim('proofAboveLimit',5000);if(amt>=lim&&!f.attachment)blocks.push('Bills of '+ecM(lim)+' or more need the bill copy attached (📎) — Master Settings → Controls → Proof above a limit');}
+      if(!ok)ecPush(warns,'gstMathCheck','GST '+ecM(tax)+' is '+(tax/tx*100).toFixed(2)+'% of the taxable value '+ecM(tx)+' — not a GST rate (5%, 12%, 18%, 28% …). Check the figures (or it is a bill with mixed rates).');}}
+  if(ecOn('dateSenseCheck',sid)){if(inv&&inv>today)ecPush(warns,'dateSenseCheck','The invoice date '+ecDmy(inv)+' is in the future');const due=ecIso(f.dueDate),bk=ecIso(f.bookingDate);
+    if(due&&inv&&due<inv)ecPush(warns,'dateSenseCheck','The due date '+ecDmy(due)+' is before the invoice date');if(bk&&inv&&bk<inv)ecPush(warns,'dateSenseCheck','The booking date '+ecDmy(bk)+' is before the invoice date');
+    if(inv&&ecDays(inv,today)>180)ecPush(warns,'dateSenseCheck','The invoice date '+ecDmy(inv)+' is more than 6 months old');}
+  if(!opt.noProof&&ecOn('proofAboveLimit',sid)){const lim=ecLim('proofAboveLimit',5000,sid);if(amt>=lim&&!f.attachment)ecPush(blocks,'proofAboveLimit','Bills of '+ecM(lim)+' or more need the bill copy attached (📎) — Master Settings → Controls → Proof above a limit');}
   return ecConfirm(sid,'this bill',warns,blocks)&&ecOnce(sid,'bill',[vendorId,f.invoiceNo,amt,inv]);
 }
 // 16 · a payment against a bill
 function ecPaymentOk(sid,inv,pay){
   if(!ecOn('dateSenseCheck',sid))return true;const warns=[];const pd=ecIso(pay.paidDate),bd=ecIso(inv.invoiceDate);
-  if(pd&&bd&&pd<bd)warns.push('The payment date '+ecDmy(pd)+' is before the bill date '+ecDmy(bd));if(pd&&pd>ecToday())warns.push('The payment date '+ecDmy(pd)+' is in the future');
+  if(pd&&bd&&pd<bd)ecPush(warns,'dateSenseCheck','The payment date '+ecDmy(pd)+' is before the bill date '+ecDmy(bd));if(pd&&pd>ecToday())ecPush(warns,'dateSenseCheck','The payment date '+ecDmy(pd)+' is in the future');
   return ecConfirm(sid,'this payment',warns,[]);
 }
 
@@ -199,14 +203,14 @@ function ecPaymentOk(sid,inv,pay){
 function ecAdvanceOk(sid,form,editId,list){
   const warns=[];const amt=Number(form.amount)||0;const d=ecIso(form.date);
   if(ecOn('dupAdvancePenalty',sid)&&d){const hit=(list||[]).find(a=>a&&a.id!==editId&&a.emp===form.emp&&Number(a.amount)===amt&&ecIso(a.date)&&Math.abs(ecDays(ecIso(a.date),d))<=3);
-    if(hit)warns.push('An advance of '+ecM(amt)+' to '+form.emp+' dated '+ecDmy(ecIso(hit.date))+' is already entered'+(hit.source==='dse'?' (from Daily Sales & Exp)':'')+(hit.bankRef?' — bank ref '+hit.bankRef:''));
-    if(form.bankRef){const r=(list||[]).find(a=>a&&a.id!==editId&&a.bankRef&&ecNorm(a.bankRef)===ecNorm(form.bankRef));if(r)warns.push('Bank reference '+form.bankRef+' is already used on the advance to '+r.emp+' ('+ecM(r.amount)+')');}}
+    if(hit)ecPush(warns,'dupAdvancePenalty','An advance of '+ecM(amt)+' to '+form.emp+' dated '+ecDmy(ecIso(hit.date))+' is already entered'+(hit.source==='dse'?' (from Daily Sales & Exp)':'')+(hit.bankRef?' — bank ref '+hit.bankRef:''));
+    if(form.bankRef){const r=(list||[]).find(a=>a&&a.id!==editId&&a.bankRef&&ecNorm(a.bankRef)===ecNorm(form.bankRef));if(r)ecPush(warns,'dupAdvancePenalty','Bank reference '+form.bankRef+' is already used on the advance to '+r.emp+' ('+ecM(r.amount)+')');}}
   return ecConfirm(sid,'this advance',warns,[])&&ecOnce(sid,'adv',[form.emp,amt,d]);
 }
 function ecPenaltyOk(sid,form,editId,list){
   const warns=[];const amt=Number(form.amount)||0;const d=ecIso(form.date);const ty=form.type==='Other'?form.otherType:form.type;
   if(ecOn('dupAdvancePenalty',sid)&&d){const hit=(list||[]).find(p=>p&&p.id!==editId&&p.emp===form.emp&&ecIso(p.date)===d&&((p.type==='Other'?p.otherType:p.type)===ty||Number(p.amount)===amt));
-    if(hit)warns.push('A penalty for '+form.emp+' on '+ecDmy(d)+' is already entered ('+(hit.type==='Other'?hit.otherType:hit.type)+', '+ecM(hit.amount)+')');}
+    if(hit)ecPush(warns,'dupAdvancePenalty','A penalty for '+form.emp+' on '+ecDmy(d)+' is already entered ('+(hit.type==='Other'?hit.otherType:hit.type)+', '+ecM(hit.amount)+')');}
   return ecConfirm(sid,'this penalty',warns,[])&&ecOnce(sid,'pen',[form.emp,amt,d,ty]);
 }
 
@@ -225,15 +229,15 @@ function ecImportOk(sid,kind,file){
 function ecStockReceiveOk(sid,rec,n){
   if(!ecOn('stockTwice',sid))return true;const warns=[];const since=Date.now()-2*864e5;
   const r=(typeof loadInvLog==='function'?loadInvLog(sid):[]).filter(x=>x&&x.type==='receive'&&x.itemId===rec.id&&Math.abs((Number(x.qty)||0)-n)<1e-9&&new Date(x.at).getTime()>=since).pop();
-  if(r)warns.push(n+' '+(rec.unit||'')+' of '+rec.name+' was already received '+ecAgo(r.at));
+  if(r)ecPush(warns,'stockTwice',n+' '+(rec.unit||'')+' of '+rec.name+' was already received '+ecAgo(r.at));
   if(rec.poId&&typeof loadPOs==='function'){const po=loadPOs(sid).find(p=>p.id===rec.poId);const l=po&&(po.lines||[]).find(x=>x.itemId===rec.id||String(x.name).toLowerCase()===String(rec.name).toLowerCase());
-    if(l&&(Number(l.received)||0)>=Number(l.qty))warns.push('Purchase order '+po.no+' already has all '+l.qty+' received');}
+    if(l&&(Number(l.received)||0)>=Number(l.qty))ecPush(warns,'stockTwice','Purchase order '+po.no+' already has all '+l.qty+' received');}
   return ecConfirm(sid,'this stock receipt',warns,[]);
 }
 function ecPoReceiveOk(sid,po,qq){
   if(!ecOn('stockTwice',sid))return true;const norm=o=>JSON.stringify(Object.keys(o||{}).filter(k=>Number(o[k])>0).sort().map(k=>[k,Number(o[k])]));const key=norm(qq);
   const r=(po.receipts||[]).filter(x=>Date.now()-new Date(x.at).getTime()<864e5&&norm(x.qtys)===key).pop();
-  return ecConfirm(sid,'this receipt',r?['The same quantities were received against '+po.no+' '+ecAgo(r.at)+(r.by?' by '+r.by:'')]:[],[]);
+  return ecConfirm(sid,'this receipt',ecTag('stockTwice',r?['The same quantities were received against '+po.no+' '+ecAgo(r.at)+(r.by?' by '+r.by:'')]:[]),[]);
 }
 function ecNegStockBlocked(sid){return ecOn('negativeStockBlock',sid);}
 function ecBillStockOk(sid,rec,editId){
@@ -242,7 +246,7 @@ function ecBillStockOk(sid,rec,editId){
   (rec.items||[]).filter(it=>it.type==='Product').forEach(it=>{const m=(typeof fdMenuItem==='function'?fdMenuItem(sid,it.name):null)||{};const s=S.find(z=>(m.stockItemId&&z.id===m.stockItemId)||String(z.name).toLowerCase()===String(it.name).toLowerCase());
     if(s)need[s.id]=(need[s.id]||0)+(Number(it.qty)||1);});
   const short=Object.keys(need).map(id=>S.find(z=>z.id===id)).filter(s=>need[s.id]>(Number(s.qty)||0)).map(s=>s.name+': '+need[s.id]+' on the bill, '+(Number(s.qty)||0)+' in stock');
-  return ecConfirm(sid,'this bill',[],short.length?['Not enough stock — '+short.join('; ')+'. Receive the stock (or correct it with a count) first.']:[]);
+  return ecConfirm(sid,'this bill',[],ecTag('negativeStockBlock',short.length?['Not enough stock — '+short.join('; ')+'. Receive the stock (or correct it with a count) first.']:[]));
 }
 
 // ── 18 · attendance ──
@@ -285,7 +289,7 @@ function ecDuplicateScan(sid){
 function ecQuality(sid){
   const since=new Date(Date.now()-7*864e5).toISOString();const A=(typeof loadAuditLog==='function'?loadAuditLog(sid):[]).filter(x=>x&&String(x.ts)>=since);
   const dups=ecDuplicateScan(sid);const corr=A.filter(x=>/Edited|Deleted|Undo|Restored|cancel/i.test(String(x.action||''))).length;const late=A.filter(x=>x.action==='Late edit').length;
-  const over=A.filter(x=>x.action==='Saved despite warning').length;const lim=ecLim('proofAboveLimit',5000);const from=ecAddDays(ecToday(),-30);
+  const over=A.filter(x=>x.action==='Saved despite warning').length;const lim=ecLim('proofAboveLimit',5000,sid);const from=ecAddDays(ecToday(),-30);
   const proof=(loadVendorInvoices(sid)||[]).filter(b=>ecIso(b.invoiceDate)>=from&&(Number(b.amount)||0)>=lim&&!b.attachment).length;
   const wk=ecAddDays(ecToday(),-7);let missing=0;if(typeof dseDaysMissingFor==='function'){const t=new Date(),p=new Date(Date.now()-7*864e5);const L=[...(dseDaysMissingFor(sid,t.getFullYear(),t.getMonth())||[])];if(p.getMonth()!==t.getMonth())L.push(...(dseDaysMissingFor(sid,p.getFullYear(),p.getMonth())||[]));missing=new Set(L.filter(d=>String(d)>=wk)).size;}
   const score=Math.max(0,Math.min(100,Math.round(100-dups.length*5-corr*1-late*2-over*3-proof*2-missing*3)));

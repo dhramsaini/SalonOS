@@ -1054,7 +1054,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         const invoiceDate=parseTemplateDate(row['Invoice Date (DD/MM/YYYY)']||row['Invoice Date']);
         const dupInv=controlOn('dupInvoice',salonId)&&duplicateVendorInvoice([...invoices,...toAdd],vendor.id,invoiceNo,docNature,null);
         if(dupInv){failed.push('Row '+rowNum+' ('+vendorNameRaw+'): Invoice No. '+invoiceNo+' is already entered for this vendor — skipped');return;}
-        if(controlOn('invoiceApproval',salonId)&&!isSuperAdminUser(currentSessionUser())&&amount>controlLimit('invoiceApproval')){failed.push('Row '+rowNum+' ('+vendorNameRaw+'): ₹'+amount.toLocaleString('en-IN')+' is above the approval limit — enter this bill on its own so it can be sent for approval');return;}
+        if(controlOn('invoiceApproval',salonId)&&!isSuperAdminUser(currentSessionUser())&&amount>controlLimit('invoiceApproval',salonId)){failed.push('Row '+rowNum+' ('+vendorNameRaw+'): ₹'+amount.toLocaleString('en-IN')+' is above the approval limit — enter this bill on its own so it can be sent for approval');return;}
         toAdd.push({
           vendorId:vendor.id,docNature,invoiceNo,invoiceDate,
           dueDate:parseTemplateDate(row['Due Date (DD/MM/YYYY)']||row['Due Date']),

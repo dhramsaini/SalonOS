@@ -7,7 +7,7 @@
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 const FD_STOCK_CATS=['Back bar — colour','Back bar — hair care','Back bar — skin','Back bar — nails','Back bar — spa','Retail','Consumable','Equipment','Other'];
 function fdStockMovers(sid,days){const from=localIsoOf(new Date(Date.now()-(days||30)*864e5));const used={};(typeof loadInvLog==='function'?loadInvLog(sid):[]).forEach(x=>{if((x.type==='issue'||x.type==='sale')&&String(x.date)>=from)used[x.itemId]=(used[x.itemId]||0)+(Number(x.qty)||0);});return used;}
-function fdExpiring(sid,items){if(!controlOn('expiryAlerts',sid))return[];const lim=controlLimit('expiryAlerts')||30;const t=fdTodayIso();const until=localIsoOf(new Date(Date.now()+lim*864e5));const out=[];
+function fdExpiring(sid,items){if(!controlOn('expiryAlerts',sid))return[];const lim=controlLimit('expiryAlerts',sid)||30;const t=fdTodayIso();const until=localIsoOf(new Date(Date.now()+lim*864e5));const out=[];
   (items||fdStock(sid)).forEach(i=>(i.batches||[]).forEach(b=>{if(b.expiry&&Number(b.qty)>0&&b.expiry<=until)out.push({i,b,expired:b.expiry<t});}));return out.sort((a,b)=>String(a.b.expiry).localeCompare(String(b.b.expiry)));}
 // Takes qty out of batches, earliest expiry first.
 function fdTakeBatches(item,qty){let need=Number(qty)||0;(item.batches||[]).slice().sort((a,b)=>String(a.expiry||'9').localeCompare(String(b.expiry||'9'))).forEach(b=>{if(need<=0)return;const use=Math.min(Number(b.qty)||0,need);b.qty=Math.round(((Number(b.qty)||0)-use)*100)/100;need-=use;});item.batches=(item.batches||[]).filter(b=>Number(b.qty)>0);}

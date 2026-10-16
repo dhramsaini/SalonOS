@@ -118,7 +118,7 @@ function AdvanceRecoveryPlan({salon,year,month}){
   const h=React.createElement;const sid=salon&&salon.id;const [open,setOpen]=useState(false);
   if(sid==null||!controlOn('advanceRecoveryPlan',sid))return null;
   const plan=advancePlanFor(sid,year,month);if(!plan.length)return null;const m=n=>'₹'+Math.round(n).toLocaleString('en-IN');
-  const floorOn=controlOn('advanceNetFloor',sid);const floor=controlLimit('advanceNetFloor')||40;
+  const floorOn=controlOn('advanceNetFloor',sid);const floor=controlLimit('advanceNetFloor',sid)||40;
   let sw=[];if(floorOn){try{sw=swWorkingsFor(sid,year,month)||[];}catch(e){sw=[];}}
   const warnOf=p=>{if(!floorOn)return'';const w=sw.find(z=>z.name===p.name);if(!w)return'';const gross=(Number(w.grossAfterLop)||0)+(Number(w.totalIncSW)||0);if(!(gross>0))return'';
     const pct=Math.round((Number(w.net)||0)/gross*100);return pct<floor?'Net pay only '+pct+'% of earnings (floor '+floor+'%) — reduce this month’s recovery':'';};
