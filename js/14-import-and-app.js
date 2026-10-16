@@ -545,7 +545,7 @@ function App(){
   // applies by itself as soon as they pause. ──
   const [dataVersion,setDataVersion]=useState(0);
   const _viewRef=useRef({page:null,sid:null});
-  _viewRef.current={page:activePage,sid:selectedSalon?selectedSalon.id:null};
+  _viewRef.current={page:activePage,sid:selectedSalon?selectedSalon.id:null,tab:salonTab};
   const _lastRemountRef=useRef(0);
   // Does a changed key affect the screen open now? Inside an outlet: that outlet's data or shared
   // settings — not another outlet's, and never background logs.
@@ -596,6 +596,14 @@ function App(){
       // data itself is already in this browser, so other screens show it when they next open.
       const shown=applied.filter(_keyShownNow);
       if(!shown.length)return;
+      // The front-desk tabs re-read their data in place — no re-mount, so the open view, filters,
+      // selection and scroll stay exactly as they are (js/40–43 listen for these events).
+      const pg=_viewRef.current;
+      if(pg.page==='salon'&&['billing','appointments','clients','inventory'].includes(pg.tab)){
+        const detail={sid:pg.sid,keys:shown};
+        ['fd-bills-changed','fd-book-changed','fd-clients-changed','fd-data-changed'].forEach(n=>{try{window.dispatchEvent(new CustomEvent(n,{detail}));}catch(e){}});
+        return;
+      }
       _lastRemountRef.current=Date.now();
       setDataVersion(v=>v+1);
       setTimeout(()=>{const el=document.querySelector('.content');if(el)el.scrollTop=top;},60);
@@ -616,6 +624,8 @@ function App(){
     const busy=()=>{
       const now=Date.now();
       if(document.querySelector('.modal-overlay'))return true;
+      // front-desk tabs refresh in place (nothing moves), so they only wait for typing to stop
+      const pg=_viewRef.current;if(pg.page==='salon'&&['billing','appointments','clients','inventory'].includes(pg.tab))return now-lastTyping<5000;
       if(waiting&&now-waitingSince>180000)return now-lastTyping<5000;
       return now-lastActivity<20000||now-_lastRemountRef.current<60000;
     };
@@ -1193,11 +1203,7 @@ function App(){
         React.createElement('div',null,'✨ A new version of SalonOS is available.'),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:updateNow},'Update now')
       ),
-      // Floating, so it never pushes the page down when it appears or goes away.
-      CLOUD_SYNC_ENABLED&&cloudUpdateWaiting&&React.createElement('div',{title:'Other users saved changes to this outlet. They load by themselves when you pause — or load them now (finish or close any open form first).',style:{position:'fixed',right:16,bottom:76,zIndex:60,display:'flex',alignItems:'center',gap:10,padding:'6px 8px 6px 14px',background:'var(--bg2)',border:'1px solid var(--accent)',borderRadius:999,boxShadow:'0 4px 16px rgba(0,0,0,0.15)',fontSize:12.5,color:'var(--text)',maxWidth:'calc(100vw - 32px)'}},
-        React.createElement('span',null,'↻ New changes from another user'),
-        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{_lastRemountRef.current=0;applyCloudUpdatesNow();}},'Show latest')
-      ),
+      // (No "new changes from another user" prompt: other users' saves load by themselves — see applyCloudUpdatesNow.)
       React.createElement('div',{className:'content'},React.createElement('div',{key:activePage+'_'+(selectedSalon?.id||'')+'_'+dataVersion,className:'content-frame'},activePage!=='settings'&&React.createElement(PendingApprovalsStrip,{onOpen:()=>{setActivePage('settings');setTimeout(()=>{const el=document.getElementById('controls-card');if(el)el.scrollIntoView({behavior:'smooth'});},300);}}),renderPage())),
       // ── Phone bottom tab bar inside an outlet: the four everyday sheets (only those this user
       // may open) plus "All sheets". Hidden on wider screens by CSS. ──

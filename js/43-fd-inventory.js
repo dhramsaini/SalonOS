@@ -60,7 +60,9 @@ function InventorySheet({salon}){
   const [tick,setTick]=useState(0);const refresh=()=>{try{fdRecalcStock(sid);}catch(e){}setTick(t=>t+1);};
   const [q,setQ]=useState('');const [cat,setCat]=useState('All');const [lowOnly,setLowOnly]=useState(false);const [showInactive,setShowInactive]=useState(false);const [tab,setTab]=useState('stock');
   const [form,setForm]=useState(null);const [rec,setRec]=useState(null);const [iss,setIss]=useState(null);const [hist,setHist]=useState(null);const vendorsAll=(loadVendors(sid)||[]).filter(v=>v&&v.status!=='Inactive');const staffAll=fdStaff(sid);const [count,setCount]=useState({});const [tr,setTr]=useState({itemId:'',qty:'',to:''});
-  useEffect(()=>{try{fdEnsureLedger(sid);if(fdRecalcStock(sid))refresh();}catch(e){}},[sid]);const [reorderOpen,setReorderOpen]=useState(false);const [lim,setLim]=useState(150);const [poOpen,setPoOpen]=useState(false);const [lblOpen,setLblOpen]=useState(false);const [spot,setSpot]=useState({});const [sreq,setSreq]=useState({from:'',item:'',qty:'',note:''});const [stYm,setStYm]=useState(fdTodayIso().slice(0,7));
+  useEffect(()=>{try{fdEnsureLedger(sid);if(fdRecalcStock(sid))refresh();}catch(e){}},[sid]);const [reorderOpen,setReorderOpen]=useState(false);const [lim,setLim]=useState(150);
+  useEffect(()=>{const f=e=>{if(!e.detail||Number(e.detail.sid)===sid)refresh();};window.addEventListener('fd-data-changed',f);return()=>window.removeEventListener('fd-data-changed',f);},[sid]);
+  const [poOpen,setPoOpen]=useState(false);const [lblOpen,setLblOpen]=useState(false);const [spot,setSpot]=useState({});const [sreq,setSreq]=useState({from:'',item:'',qty:'',note:''});const [stYm,setStYm]=useState(fdTodayIso().slice(0,7));
   const items=fdStock(sid);const used30=fdStockMovers(sid,30);const exp=fdExpiring(sid,items);
   const ql=q.trim().toLowerCase();
   const list=items.filter(i=>(showInactive||i.active!==false)&&(cat==='All'||i.cat===cat)&&(!lowOnly||Number(i.qty)<=Number(i.min))&&(!ql||String(i.name).toLowerCase().includes(ql)||String(i.barcode||'')===q.trim()));
