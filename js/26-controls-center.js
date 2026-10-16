@@ -250,11 +250,63 @@ function pendingApprovalsFor(u,salons){
   return loadApprovals().filter(a=>a.status==='pending'&&(a.sid==null||vis.has(String(a.sid))||isSuperAdminUser(u)));
 }
 
+// ── How the Rules tab is arranged: areas (left menu) → sub-sections. A switch not listed here
+// still shows, under "More" in the area its group belongs to. ──
+const CONTROL_AREAS=[
+  {key:'frontdesk',icon:'🧾',title:'Front desk',groups:['Front desk'],subs:[
+    ['Billing',['billReducesStock','autoIssueStdUsage','billingFeedsIncentive','billingFeedsDailySales','fyInvoiceSeries','deviceBillSeries','duplicateBillCheck','runningBills','splitService','upiQr','billArchive']],
+    ['Discounts, cancellations & dues',['discountReason','discountApproval','cancelApproval','staffChangeLock','dayCloseLock','creditLimit','oldDuesAlert']],
+    ['Appointments',['staffOffBlocking','apptWaitlist','bookingRequests','bookingAdvance','noShowWarn','noShowFee','lateArrival','rebookPrompt','addonSuggest','twoStaffServices','unconfirmedAlert','apptChangeLog','busyHeatmap','staffHours','patchTestWarn']],
+    ['Offers, packages & loyalty',['membershipAtBilling','sessionPackages','familySharing','loyaltyPoints','giftVouchers','coupons','combos','offPeakPricing','scheduledPrices','referralReward','renewalOffer','birthdayVoucher','productSuggestions','corporateAccounts']],
+    ['Counter cash',['cashDrawer','pettyCash']],
+    ['Messages & privacy',['waApiSend','requireMarketingConsent','maskClientPhones','clientBalanceLink','lowRatingAlert']],
+    ['Registers & sync',['fdRegisters','offlineWarning']]]},
+  {key:'clients',icon:'👥',title:'Clients',groups:[],subs:[
+    ['Client records',['similarClientCheck','clientFollowUps','visitGapWinback','consultForm','colourFormula','clientPrefs']],
+    ['Stylists',['stylistScorecard','stylistHandover']]]},
+  {key:'stock',icon:'📦',title:'Stock',groups:['Clients & stock'],subs:[
+    ['Buying & receiving',['smartReorder','poReceiving','priceRiseAlert','stockRequests']],
+    ['Counting & usage',['spotCheck','countVariance','usageVsStandard','stockOutWarning','expiryAlerts','slowStock']],
+    ['Labels & statements',['barcodeLabels','stockStatement']]]},
+  {key:'checks',icon:'🛡',title:'Entry checks',groups:['Entry checks'],subs:[
+    ['Duplicates',['dupEmployee','sharedBankAccount','dupVendor','dupInvoice','sameBillNewNumber','repeatExpense','crossEntryExpense','dupAdvancePenalty','importSeen','stockTwice','doubleSaveGuard']],
+    ['Wrong figures',['extraZeroCheck','modeVsBilling','dseVsBilling','depositVsBank','gstMathCheck','gstLock','idChecks','wageSenseCheck','attendanceSense']],
+    ['Dates',['backdateLock','futureLock','dateSenseCheck']],
+    ['Rules that stop an entry',['salaryChangeReason','negativeStockBlock','proofAboveLimit','billNeedsPo']],
+    ['Overview',['dataQualityBoard']]]},
+  {key:'bank',icon:'🏦',title:'Bank mapping',groups:['Bank mapping'],subs:[
+    ['Import & automatic mapping',['bankAutoMapImport','bankAutoRules','ruleAutoPause','bankLearnPayees','crossOutletMap','newVendorFromNarration','vendorBankFromPayments','bankConflictWarn','bankMapTour']],
+    ['Matching help',['billReverseMatch','billComboMatch','bankReversalPairs','ownTransferPairs','loanEmiSplit','fdLines','bankChargeGst','aggregatorPayoutCheck']],
+    ['Checks & flags',['bankDupWarning','bankExceptions','bankBalanceCheck','mdrCheck','bankGstinCheck','statutoryBankCheck','bankRecurringWatch','newPayeeAlert','roundOddFlags','pettyCashCheck','vagueNatureReason']],
+    ['Review, approval & locks',['mapApproval','mapReview','mapRoleLimits','bankLockFinal','tallyNeedsReview','tallyChangeGuard','bankBigChangeAlert','bankAuditorView']],
+    ['Dashboards & reminders',['bankAgeingBoard','mappingSla','bankUnmappedNudge','bankDailyDigest','bankOnePagerReminder','cashForecastAlert']]]},
+  {key:'staff',icon:'💼',title:'Salary & staff',groups:['Employees','Data entry'],subs:[
+    ['Employees',['phoneCheckin','paidLeave','leaveRequests','staffIncentiveView','empStatement']],
+    ['Advances',['advanceRecoveryPlan','advanceNetFloor']],
+    ['Full workings Excel',['payWorkbooks','payWbChooser','payWbPools','payWbWhatIf','payWbPayslips','payWbBank','payWbStatutory','payWbCompare','payWbCtc','payWbExceptions','payWbReco','payWbTrail','payWbIntegrity','payWbAllOutlets','payWorkbookEmail','payWbProtected']]]},
+  {key:'close',icon:'✅',title:'Approvals & month close',groups:['Approvals','Month close','Alerts','Reminders'],subs:[
+    ['Approvals',['poApproval','invoiceApproval','bankFileApproval','deleteApproval','vendorBankApproval','paymentRun']],
+    ['Month close',['monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']],
+    ['Alerts & reminders',['payablesDueAlert','bankRecoAlert','budgetAlert','missingSalesBanner']]]},
+  {key:'app',icon:'🎨',title:'App & look',groups:['App','Look & feel'],subs:[
+    ['App',['roleHomeScreens','appInstallPrompt','phoneQuickAdd']],
+    ['Look & feel',['compactToolbars','todayStrip','filterChips','keyboardShortcuts','mobileLayout','calendarPolish','billPrintDesign','miniCharts','undoActions']]]}];
+// Rules that stop someone from saving, and rules that send the action for approval — shown as labels.
+const CONTROL_STOPS=new Set(['backdateLock','futureLock','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','billNeedsPo','gstLock','dayCloseLock','staffChangeLock','creditLimit','discountReason','staffOffBlocking','requireMarketingConsent','bankLockFinal','tallyChangeGuard','mapRoleLimits','vagueNatureReason','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']);
+const CONTROL_APPROVAL=new Set(['mapApproval','mapReview','tallyNeedsReview','discountApproval','cancelApproval','poApproval','invoiceApproval','bankFileApproval','deleteApproval','vendorBankApproval']);
+// [{area, subs:[{title, defs}]}] for every switch in CONTROL_DEFS — nothing is left out.
+function controlLayout(){
+  const placed=new Set();const out=CONTROL_AREAS.map(a=>({...a,list:a.subs.map(([t,ids])=>({title:t,defs:ids.map(id=>{const d=controlDef(id);if(d)placed.add(id);return d;}).filter(Boolean)}))}));
+  CONTROL_DEFS.filter(d=>!placed.has(d.id)).forEach(d=>{const a=out.find(x=>x.groups.includes(d.group))||out[out.length-1];let m=a.list.find(x=>x.title==='More');if(!m){m={title:'More',defs:[]};a.list.push(m);}m.defs.push(d);});
+  out.forEach(a=>{a.list=a.list.filter(x=>x.defs.length);a.all=a.list.flatMap(x=>x.defs);});
+  return out.filter(a=>a.all.length);
+}
+
 // ── Master Settings card ──
 function ControlsCenterCard({salons}){
   const h=React.createElement;const {toast}=useToast();
   const u=currentSessionUser();const canEdit=isSuperAdminUser(u);
-  const [c,setC]=useState(()=>loadControls());const [open,setOpen]=useState(null);const [tab,setTab]=useState('rules');const [,tick]=useState(0);const [cq,setCq]=useState('');const [onlyOff,setOnlyOff]=useState(false);const [shut,setShut]=useState({});
+  const [c,setC]=useState(()=>loadControls());const [open,setOpen]=useState(null);const [tab,setTab]=useState('rules');const [,tick]=useState(0);const [cq,setCq]=useState('');const [flt,setFlt]=useState('all');const [area,setAreaRaw]=useState(()=>{try{return localStorage.getItem('salonos_ctl_area')||'checks';}catch(e){return'checks';}});const setArea=k=>{setAreaRaw(k);try{localStorage.setItem('salonos_ctl_area',k);}catch(e){}};const [wide,setWide]=useState(()=>window.innerWidth>=860);useEffect(()=>{const f=()=>setWide(window.innerWidth>=860);window.addEventListener('resize',f);return()=>window.removeEventListener('resize',f);},[]);
   const outlets=(salons||[]).filter(s=>s&&s.id!=null&&s.status!=='Inactive');
   const upd=(id,patch)=>{if(!canEdit){toast('Only a Super Admin can change controls','error');return;}
     const n={...c,[id]:{...(c[id]||{}),...patch}};setC(n);saveControls(n);
@@ -267,33 +319,75 @@ function ControlsCenterCard({salons}){
   const decide=(a,st)=>{let note='';if(st==='rejected'){note=window.prompt('Reason for rejecting (shown to the person who asked):','');if(note==null)return;}
     else if(!window.confirm('Approve?\n\n'+a.summary))return;
     if(decideApproval(a.id,st,note)){toast(st==='approved'?'Approved — they can now go ahead':'Rejected','success');tick(x=>x+1);}};
-  const ctlVis=d=>(!cq.trim()||(d.label+' '+(d.hint||'')+' '+d.group).toLowerCase().includes(cq.trim().toLowerCase()))&&(!onlyOff||!allOn(d));
-  const groups=[...new Set(CONTROL_DEFS.map(d=>d.group))];
+  const L=controlLayout();const cur=L.find(a=>a.key===area)||L[0];
+  const effOn=(d,sid)=>{const st=outletState(d,sid);return st==='same'?allOn(d):st==='on';};
+  const overN=d=>outlets.filter(s=>outletState(d,s.id)!=='same').length;
+  const FILTERS=[['all','All'],['on','On'],['off','Off'],['outlet','Set outlet-wise'],['changed','Changed from recommended'],['stops','Stops an entry'],['appr','Needs approval']];
+  const fltOk=d=>flt==='all'||(flt==='on'&&allOn(d))||(flt==='off'&&!allOn(d))||(flt==='outlet'&&overN(d)>0)||(flt==='changed'&&(allOn(d)!==d.def||overN(d)>0))||(flt==='stops'&&CONTROL_STOPS.has(d.id))||(flt==='appr'&&CONTROL_APPROVAL.has(d.id));
+  const qOk=d=>!cq.trim()||(d.label+' '+(d.hint||'')+' '+d.group).toLowerCase().includes(cq.trim().toLowerCase());
+  const vis=d=>fltOk(d)&&qOk(d);const searching=!!cq.trim()||flt!=='all';
+  const bulk=(defs,mode)=>{if(!canEdit){toast('Only a Super Admin can change controls','error');return;}
+    const what=mode==='rec'?'the recommended setting':mode==='on'?'ON':'OFF';
+    if(!window.confirm('Set all '+defs.length+' switches in “'+cur.title+'” to '+what+' for all outlets?'+(mode==='rec'?'\n\nOutlet-wise choices are cleared; limits stay.':'\n\nOutlet-wise choices stay as they are.')))return;
+    const n={...c};defs.forEach(d=>{n[d.id]={...(n[d.id]||{}),on:mode==='rec'?d.def:mode==='on',...(mode==='rec'?{outlets:{}}:{})};});setC(n);saveControls(n);
+    try{logAuditEvent(null,{entity:'Controls',entityId:cur.key,action:'Bulk change',summary:cur.title+' → '+what+' ('+defs.length+' switches)'});}catch(e){}toast(cur.title+': '+defs.length+' switches set to '+what,'success');};
+  const pill=(t,bg,fg)=>h('span',{style:{fontSize:10.5,fontWeight:600,padding:'1px 7px',borderRadius:10,background:bg,color:fg,whiteSpace:'nowrap'}},t);
+  const ctlRow=d=>{const over=overN(d);const on=allOn(d);const nOn=outlets.filter(s=>effOn(d,s.id)).length;
+    return h('div',{key:d.id,style:{borderTop:'1px solid var(--border)',padding:'10px 0'}},
+      h('div',{style:{display:'flex',alignItems:'flex-start',gap:12,flexWrap:'wrap'}},
+        h('div',{style:{flex:'1 1 260px',minWidth:0}},
+          h('div',{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},h('span',{style:{fontSize:13,color:'var(--text)',fontWeight:600}},d.label),
+            CONTROL_STOPS.has(d.id)&&pill('Stops an entry','rgba(224,82,82,0.12)','var(--red)'),CONTROL_APPROVAL.has(d.id)&&pill('Needs approval','rgba(70,120,220,0.12)','var(--blue,#3b6fd8)'),
+            on!==d.def&&pill('Changed','rgba(224,138,18,0.14)','var(--orange,#c27711)')),
+          h('div',{style:{fontSize:11.5,color:'var(--text3)',lineHeight:1.5,marginTop:2}},d.hint)),
+        h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginLeft:'auto'}},
+          d.limit!=null&&h('label',{style:{fontSize:11.5,color:'var(--text3)',display:'flex',alignItems:'center',gap:4}},d.limitLabel||'Limit ₹',h('input',{type:'number',min:0,className:'form-control',style:{width:92,padding:'3px 6px'},disabled:!canEdit,value:(c[d.id]||{}).limit!=null?c[d.id].limit:d.limit,onChange:e=>upd(d.id,{limit:e.target.value})})),
+          outlets.length>1&&h('button',{className:'btn btn-ghost btn-sm',style:{whiteSpace:'nowrap'},title:'Set a different choice for any outlet',onClick:()=>setOpen(open===d.id?null:d.id)},(over?'On in '+nOn+' of '+outlets.length+' outlets':'Outlet-wise')+(open===d.id?' ▴':' ▾')),
+          h('span',{style:{fontSize:11,fontWeight:600,color:on?'var(--green)':'var(--text3)',width:24,textAlign:'right'}},on?'On':'Off'),sw(on,()=>upd(d.id,{on:!on}),!canEdit))),
+      open===d.id&&h('div',{style:{marginTop:8,background:'var(--bg3)',borderRadius:'var(--r)',padding:'6px 10px'}},
+        outlets.map(s=>{const st=outletState(d,s.id);const eff=effOn(d,s.id);
+          return h('div',{key:s.id,style:{display:'flex',alignItems:'center',gap:8,padding:'4px 0',fontSize:12.5,flexWrap:'wrap'}},
+            h('span',{style:{flex:'1 1 140px'}},String(s.name).split('—')[0].trim()),
+            h('span',{style:{fontSize:11,color:eff?'var(--green)':'var(--text3)',width:28}},eff?'On':'Off'),
+            [['same','Same as all'],['on','On'],['off','Off']].map(([v,l])=>h('button',{key:v,disabled:!canEdit,className:'btn btn-sm '+(st===v?'btn-primary':'btn-ghost'),style:{padding:'2px 8px'},onClick:()=>setOutlet(d,s.id,v)},l)));})));};
+  const subCard=(title,defs,crumb)=>h('div',{key:(crumb||'')+title,style:{border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'8px 12px 2px',marginBottom:12,background:'var(--bg2)'}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,marginBottom:4}},
+      h('div',{style:{fontSize:12,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.05em'}},(crumb?crumb+' › ':'')+title),
+      h('div',{style:{fontSize:11,color:'var(--text3)',whiteSpace:'nowrap'}},defs.filter(allOn).length+' of '+defs.length+' on')),
+    defs.map(ctlRow));
+  const navBtn=a=>{const onN=a.all.filter(allOn).length;const act=a.key===cur.key&&!searching;
+    return h('button',{key:a.key,onClick:()=>{setArea(a.key);setCq('');setFlt('all');},className:'btn btn-sm '+(act?'btn-primary':'btn-ghost'),
+      style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,width:wide?'100%':'auto',flexShrink:0,textAlign:'left',padding:'7px 10px',whiteSpace:'nowrap'}},
+      h('span',null,a.icon+' '+a.title),h('span',{style:{fontSize:11,opacity:.8}},onN+'/'+a.all.length));};
+  const rulesView=()=>{
+    const hits=searching?L.map(a=>({a,list:a.list.map(x=>({title:x.title,defs:x.defs.filter(vis)})).filter(x=>x.defs.length)})).filter(x=>x.list.length):[];
+    const nHits=hits.reduce((t,x)=>t+x.list.reduce((u,y)=>u+y.defs.length,0),0);
+    return h('div',null,
+      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',margin:'0 0 8px'}},
+        h('input',{className:'form-control',style:{flex:'1 1 240px'},placeholder:'🔍 Search all '+CONTROL_DEFS.length+' switches…',value:cq,onChange:e=>setCq(e.target.value)}),
+        cq&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setCq('')},'Clear')),
+      h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}},FILTERS.map(([k,l])=>h('button',{key:k,className:'btn btn-sm '+(flt===k?'btn-primary':'btn-ghost'),style:{padding:'3px 10px',borderRadius:14},onClick:()=>setFlt(k)},l))),
+      h('div',{style:{display:'flex',gap:16,alignItems:'flex-start',flexDirection:wide?'row':'column'}},
+        h('div',{style:wide?{flex:'0 0 230px',display:'flex',flexDirection:'column',gap:4,position:'sticky',top:8}:{display:'flex',gap:6,overflowX:'auto',width:'100%',paddingBottom:4}},L.map(navBtn)),
+        h('div',{style:{flex:'1 1 auto',minWidth:0,width:'100%'}},
+          searching
+            ?h('div',null,h('div',{style:{fontSize:12.5,color:'var(--text3)',marginBottom:8}},nHits?nHits+' switch'+(nHits===1?'':'es')+' found':'No switch matches.'),
+                hits.flatMap(x=>x.list.map(y=>subCard(y.title,y.defs,x.a.icon+' '+x.a.title))))
+            :h('div',null,
+              h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}},
+                h('div',null,h('div',{style:{fontSize:16,fontWeight:700,color:'var(--text)'}},cur.icon+' '+cur.title),
+                  h('div',{style:{fontSize:12,color:'var(--text3)'}},cur.all.filter(allOn).length+' of '+cur.all.length+' switched on · '+cur.list.length+' section'+(cur.list.length===1?'':'s'))),
+                canEdit&&h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
+                  h('button',{className:'btn btn-ghost btn-sm',title:'Suggestions and flags on, rules that stop people off',onClick:()=>bulk(cur.all,'rec')},'↺ Recommended'),
+                  h('button',{className:'btn btn-ghost btn-sm',onClick:()=>bulk(cur.all,'on')},'All on'),
+                  h('button',{className:'btn btn-ghost btn-sm',onClick:()=>bulk(cur.all,'off')},'All off'))),
+              cur.list.map(x=>subCard(x.title,x.defs))))));};
   const sw=(on,onClick,dis)=>h('div',{className:'toggle-switch '+(on?'on':''),style:{flexShrink:0,opacity:dis?.5:1,cursor:dis?'not-allowed':'pointer'},onClick:dis?undefined:onClick,role:'switch','aria-checked':on});
   return h('div',{className:'card',style:{marginBottom:16}},
     h('div',{className:'card-title'},'🎛 Controls'),
     h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:10,lineHeight:1.6}},'Switch each check or approval rule on or off for all outlets, then open “Outlet-wise” to set a different choice for any outlet. '+(canEdit?'':'Only a Super Admin can change these.')),
     h('div',{className:'tab-bar',style:{marginBottom:10}},[['rules','Rules'],['checkup','Bank mapping check-up'],['appr','Approvals'+(pend.length?' ('+pend.length+')':'')]].map(([k,l])=>h('button',{key:k,className:'tab-btn '+(tab===k?'active':''),onClick:()=>setTab(k)},l))),
-    tab==='rules'&&h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',margin:'0 0 8px'}},h('input',{className:'form-control',style:{flex:'1 1 220px'},placeholder:'Search '+CONTROL_DEFS.length+' switches…',value:cq,onChange:e=>setCq(e.target.value)}),
-      h('label',{style:{fontSize:12.5,display:'flex',gap:5,alignItems:'center'}},h('input',{type:'checkbox',checked:onlyOff,onChange:e=>setOnlyOff(e.target.checked)}),'Only switched off'),
-      h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShut(Object.keys(shut).length?{}:Object.fromEntries(groups.map(g=>[g,1])))},Object.keys(shut).length?'Expand all':'Collapse all')),
-    tab==='rules'&&!groups.some(g=>CONTROL_DEFS.some(d=>d.group===g&&ctlVis(d)))&&h('div',{style:{fontSize:12.5,color:'var(--text3)'}},'No switch matches.'),
-    tab==='rules'&&groups.filter(g=>CONTROL_DEFS.some(d=>d.group===g&&ctlVis(d))).map(g=>h('div',{key:g,style:{marginBottom:10}},
-      h('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'8px 0 2px',cursor:'pointer'},onClick:()=>setShut(x=>{const n={...x};if(n[g])delete n[g];else n[g]=1;return n;})},(shut[g]&&!cq.trim()?'▸ ':'▾ ')+g+' ('+CONTROL_DEFS.filter(d=>d.group===g&&ctlVis(d)).length+')'),
-      (!shut[g]||cq.trim())&&CONTROL_DEFS.filter(d=>d.group===g&&ctlVis(d)).map(d=>{const over=outlets.filter(s=>outletState(d,s.id)!=='same').length;
-        return h('div',{key:d.id,style:{borderBottom:'1px solid var(--border)',padding:'10px 0'}},
-          h('div',{style:{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}},
-            h('div',{style:{flex:'1 1 240px',minWidth:0}},h('div',{style:{fontSize:13,color:'var(--text)',fontWeight:500}},d.label),h('div',{style:{fontSize:11.5,color:'var(--text3)'}},d.hint)),
-            d.limit!=null&&h('label',{style:{fontSize:11.5,color:'var(--text3)',display:'flex',alignItems:'center',gap:4}},d.limitLabel||'Limit ₹',h('input',{type:'number',min:0,className:'form-control',style:{width:100,padding:'3px 6px'},disabled:!canEdit,value:(c[d.id]||{}).limit!=null?c[d.id].limit:d.limit,onChange:e=>upd(d.id,{limit:e.target.value})})),
-            h('button',{className:'btn btn-ghost btn-sm',style:{whiteSpace:'nowrap'},onClick:()=>setOpen(open===d.id?null:d.id)},'Outlet-wise'+(over?' ('+over+')':'')+(open===d.id?' ▴':' ▾')),
-            h('span',{style:{fontSize:11,color:'var(--text3)',width:62,textAlign:'right'}},'All outlets'),sw(allOn(d),()=>upd(d.id,{on:!allOn(d)}),!canEdit)),
-          open===d.id&&h('div',{style:{marginTop:8,background:'var(--bg3)',borderRadius:'var(--r)',padding:'6px 10px'}},
-            !outlets.length&&h('div',{style:{fontSize:12,color:'var(--text3)'}},'No outlets.'),
-            outlets.map(s=>{const st=outletState(d,s.id);const eff=st==='same'?allOn(d):st==='on';
-              return h('div',{key:s.id,style:{display:'flex',alignItems:'center',gap:8,padding:'4px 0',fontSize:12.5}},
-                h('span',{style:{flex:1}},String(s.name).split('—')[0].trim()),
-                h('span',{style:{fontSize:11,color:eff?'var(--green)':'var(--text3)',width:28}},eff?'On':'Off'),
-                [['same','Same as all'],['on','On'],['off','Off']].map(([v,l])=>h('button',{key:v,disabled:!canEdit,className:'btn btn-sm '+(st===v?'btn-primary':'btn-ghost'),style:{padding:'2px 8px'},onClick:()=>setOutlet(d,s.id,v)},l)));})));}))),
+    tab==='rules'&&rulesView(),
     tab==='checkup'&&(()=>{const defs=CONTROL_DEFS.filter(d=>d.group==='Bank mapping'||d.group==='Month close');
       const eff=(d,s)=>{const st=outletState(d,s.id);return st==='same'?allOn(d):st==='on';};
       const off=defs.reduce((t,d)=>t+outlets.filter(s=>eff(d,s)!==d.def).length,0);
