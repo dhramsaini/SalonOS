@@ -1549,6 +1549,17 @@
           [hrs,unc,add,schV,sess,spl,sc.length&&sc[0].name,upi,corp,pref,bd,bcv,po,sreq,spot,code,[stS.inQ,stS.closing],slow],
           [[true,'',true,true,''],'a','Spa',[1,1200,1],[1,5,'1500',0,0],[700,300],'Ravi',[true,true,''],['',0,300,300],'Drink: Tea · Chat: quiet','1-12,3-5,3-5,3-5',['blocked',300],['','Partly received',8,'','Received',5],['','',3,14,'Sent','Sent'],[2,1,-400,10],[true,13,107,true,true],[5,7],'Serum:100']);
       }catch(err){results.push({name:'Front desk operations',ok:false,got:String(err&&err.stack||err),want:'no error'});}
+      try{
+        const S=940;const U0=sessionStorage.getItem('salonos_user');const day=n=>localIsoOf(new Date(Date.now()-n*864e5));
+        sessionStorage.setItem('salonos_user',JSON.stringify({name:'Asha',role:'Salon Manager'}));
+        saveControls({backdateLock:{on:true,limit:2}});const mgr=[isBackdateBlocked(S,day(0)),isBackdateBlocked(S,day(2)),isBackdateBlocked(S,day(3)),isBackdateBlocked(S,'')];
+        saveControls({backdateLock:{on:true,limit:0}});const zero=[isBackdateBlocked(S,day(0)),isBackdateBlocked(S,day(1))];
+        saveControls({backdateLock:{on:true,limit:2,outlets:{'941':false}}});const outletOff=isBackdateBlocked(941,day(10));
+        sessionStorage.setItem('salonos_user',JSON.stringify({name:'Boss',role:'Super Admin'}));const sa=isBackdateBlocked(S,day(10));
+        sessionStorage.setItem('salonos_user',JSON.stringify({name:'Asha',role:'Salon Manager'}));saveControls({});const off=isBackdateBlocked(S,day(10));
+        if(U0)sessionStorage.setItem('salonos_user',U0);else sessionStorage.removeItem('salonos_user');
+        eq('Back-dated entries: blocked beyond N days, 0 = today only, outlet-wise off, Super Admin exempt, switch off',[mgr,zero,outletOff,sa,off],[[false,false,true,false],[false,true],false,false,false]);
+      }catch(err){results.push({name:'Back-dated entries',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       parent.postMessage({salonosTests:results},'*');
     })();`;
 

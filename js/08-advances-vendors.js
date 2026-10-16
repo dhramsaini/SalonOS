@@ -10,10 +10,11 @@ function AdvanceSheet({period,salon}={}){
   const advIsLocked=(dateStr)=>{
     const p=String(dateStr||'').split('-');
     if(p.length!==3)return false;
-    return isMonthLockedFor(salon?.id,Number(p[0]),Number(p[1])-1);
+    return isMonthLockedFor(salon?.id,Number(p[0]),Number(p[1])-1)||isBackdateBlocked(salon?.id,dateStr);
   };
   const advBlockIfLocked=(dateStr)=>{
     if(!advIsLocked(dateStr))return false;
+    {const p=String(dateStr||'').split('-');if(p.length===3&&!isMonthLockedFor(salon?.id,Number(p[0]),Number(p[1])-1)){advError(backdateBlockMessage(salon?.id));return true;}}
     advError('That month is locked — nobody can change it while it is locked. A Super Admin can unlock it, with a reason (Salary Working, Master Sheet → Months, or un-finalize the P&L).');
     return true;
   };
@@ -631,10 +632,11 @@ function PenaltySheet({period,salon}={}){
   const penIsLocked=(dateStr)=>{
     const p=String(dateStr||'').split('-');
     if(p.length!==3)return false;
-    return isMonthLockedFor(salon?.id,Number(p[0]),Number(p[1])-1);
+    return isMonthLockedFor(salon?.id,Number(p[0]),Number(p[1])-1)||isBackdateBlocked(salon?.id,dateStr);
   };
   const penBlockIfLocked=(dateStr)=>{
     if(!penIsLocked(dateStr))return false;
+    {const p=String(dateStr||'').split('-');if(p.length===3&&!isMonthLockedFor(salon?.id,Number(p[0]),Number(p[1])-1)){penError(backdateBlockMessage(salon?.id));return true;}}
     penError('That month is locked — nobody can change it while it is locked. A Super Admin can unlock it, with a reason (Salary Working, Master Sheet → Months, or un-finalize the P&L).');
     return true;
   };
@@ -852,10 +854,11 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
   const vendIsLocked=(dateStr)=>{
     const p=String(dateStr||'').split('-');
     if(p.length!==3)return false;
-    return isMonthLockedFor(salonId,Number(p[0]),Number(p[1])-1);
+    return isMonthLockedFor(salonId,Number(p[0]),Number(p[1])-1)||isBackdateBlocked(salonId,dateStr);
   };
   const vendBlockIfLocked=(dateStr)=>{
     if(!vendIsLocked(dateStr))return false;
+    {const p=String(dateStr||'').split('-');if(p.length===3&&!isMonthLockedFor(salonId,Number(p[0]),Number(p[1])-1)){toastError(backdateBlockMessage(salonId));return true;}}
     toastError('That month is locked — nobody can change it while it is locked. A Super Admin can unlock it, with a reason (Salary Working, Master Sheet → Months, or un-finalize the P&L).');
     return true;
   };

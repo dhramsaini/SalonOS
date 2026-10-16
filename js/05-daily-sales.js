@@ -220,6 +220,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   useEffect(()=>{safeLocalSet(salesEntryDataKey(),JSON.stringify(salesEntryData));},[salesEntryData,salonId]);
   const getSalesValue=(iso,ri)=>(salesData[iso]&&salesData[iso][ri]!=null)?salesData[iso][ri]:'';
   const setSalesValue=(iso,ri,val)=>{
+    if(dseBlockIfLocked(iso))return;
     // Final checkpoint against a negative Closing Cash Balance, right at the point of writing —
     // not just in the callers above (guardedSetSalesValue, saveSalesEntryModal). Those still exist
     // to give an immediate, specific toast before the write is even attempted, but this is the one
@@ -473,6 +474,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   const updateSalesEntryModalRow=(i,k,v)=>setModalSalesEntries(p=>p.map((r,idx)=>idx===i?{...r,[k]:v}:r));
   const saveSalesEntryModal=()=>{
     const sri=salesEntryModal.sri;const iso=salesEntryModal.iso;
+    if(dseBlockIfLocked(iso))return;
     const fields=SALES_ENTRY_FIELDS[sri]||[];
     const withAmount=modalSalesEntries.filter(e=>Number(e.amount)>0);
     // Every field is required on every entry that has an amount — same "don't silently drop
@@ -672,6 +674,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     const y=Number(p[0]),m=Number(p[1])-1;
     if(isMonthLockedFor(salonId,y,m))return true;
     if(isMgrFinalMonthOf(y,m))return true; // Month Final — nobody edits, Super Admin included
+    if(isBackdateBlocked(salonId,iso))return true;
     return dseOutsideEditWindow(iso);
   };
   const {toast:dseLockToast}=useToast();
@@ -696,6 +699,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       dseLockToast('This month is marked Final — nobody can change it. A Super Admin can un-finalize it, with a reason.','error');
       return true;
     }
+    if(isBackdateBlocked(salonId,iso)){dseLockToast(backdateBlockMessage(salonId),'error');return true;}
     if(dseOutsideEditWindow(iso)){
       const salonRec=getSalonRecordById(salonId);
       const days=Math.max(1,Number(salonRec&&salonRec.dseEditWindowDays)||3);
@@ -1607,8 +1611,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
                 outlineOffset:-1
               }},
                 isTodayCol(d.iso)?React.createElement('div',null,React.createElement('div',{style:{fontSize:9,color:'var(--accent)',letterSpacing:'0.1em'}},'TODAY'),d.label):d.label,
-                dseIsLocked(d.iso)&&React.createElement('div',{title:isMgrFinalMonthOf(Number(d.iso.slice(0,4)),Number(d.iso.slice(5,7))-1)?'This month is Marked Final by Manager':isMonthLockedFor(salonId,Number(d.iso.slice(0,4)),Number(d.iso.slice(5,7))-1)?'This date falls in a locked month':'Outside the editable window set for this outlet — see Master Sheet → Edit Salon',style:{fontSize:9,color:'var(--green)',marginTop:2}},
-                  isMgrFinalMonthOf(Number(d.iso.slice(0,4)),Number(d.iso.slice(5,7))-1)?'🔒 Final':isMonthLockedFor(salonId,Number(d.iso.slice(0,4)),Number(d.iso.slice(5,7))-1)?'🔒 Locked':'⏳ Window Closed'),
+                dseIsLocked(d.iso)&&React.createElement('div',{title:isMgrFinalMonthOf(Number(d.iso.slice(0,4)),Number(d.iso.slice(5,7))-1)?'This month is Marked Final by Manager':isMonthLockedFor(salonId,Number(d.iso.slice(0,4)),Number(d.iso.slice(5,7))-1)?'This date falls in a locked month':isBackdateBlocked(salonId,d.iso)?backdateBlockMessage(salonId):'Outside the editable window set for this outlet — see Master Sheet → Edit Salon',style:{fontSize:9,color:'var(--green)',marginTop:2}},
+                  isMgrFinalMonthOf(Number(d.iso.slice(0,4)),Number(d.iso.slice(5,7))-1)?'🔒 Final':isMonthLockedFor(salonId,Number(d.iso.slice(0,4)),Number(d.iso.slice(5,7))-1)?'🔒 Locked':isBackdateBlocked(salonId,d.iso)?'⏳ Back-dated':'⏳ Window Closed'),
                 React.createElement('div',{style:{marginTop:4,display:'flex',alignItems:'center',justifyContent:'flex-end',gap:4}},
                   React.createElement('input',{type:'file',accept:'image/*,.pdf',style:{display:'none'},id:'cashreg-'+d.iso,onChange:e=>{const f=e.target.files[0];if(f)handleCashRegFile(d.iso,f);e.target.value='';}}),
                   React.createElement('label',{htmlFor:'cashreg-'+d.iso,title:cashRegFiles[d.iso]?'Replace Cash Register attachment':'Attach Cash Register (JPG/PDF)',style:{cursor:'pointer',fontSize:11,fontWeight:400,color:cashRegFiles[d.iso]?'var(--green)':'var(--text3)'}},'📎'),

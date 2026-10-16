@@ -641,6 +641,28 @@ function isMonthLockedFor(salonId,year,month){
   const rec=loadMonthLocks(salonId)[monthLockCode(year,month)];
   return !!(rec&&rec.locked);
 }
+// ── Back-dated entries (Master Settings → Controls → backdateLock): an entry dated more than N
+// days before today can't be added, changed or removed — on Daily Sales & Exp, Attendance,
+// Advances, Penalties, Vendor bills and Billing. N = 0 allows today only. A Super Admin is never
+// blocked (corrections), and the switch can be set outlet-wise like every control. ──
+function backdateLockDays(salonId){
+  if(typeof controlOn!=='function'||!controlOn('backdateLock',salonId))return null;
+  // read directly: controlLimit() treats 0 as "not set", but 0 here means "today only"
+  const raw=typeof loadControls==='function'?(loadControls().backdateLock||{}).limit:null;
+  const n=raw==null||raw===''?3:Number(raw);
+  return isFinite(n)&&n>=0?Math.floor(n):3;
+}
+function isBackdateBlocked(salonId,iso){
+  const n=backdateLockDays(salonId);if(n==null)return false;
+  const u=currentSessionUser();if(u&&u.role==='Super Admin')return false;
+  const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/);if(!m)return false;
+  const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));const t=new Date();
+  return Math.round((new Date(t.getFullYear(),t.getMonth(),t.getDate())-d)/864e5)>n;
+}
+function backdateBlockMessage(salonId){
+  const n=backdateLockDays(salonId);
+  return 'Entries dated before '+(n===0?'today':n===1?'yesterday':'the last '+n+' days')+' are blocked (Master Settings → Controls → Back-dated entries). Ask a Super Admin to make this change.';
+}
 // Unlocking (a locked month, a Final month of Daily Sales & Exp, a Final P&L) — Super Admin only,
 // with a reason that goes to the Audit Log. While locked, nobody — Super Admin included — can edit.
 function requestUnlock(salonId,what){

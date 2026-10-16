@@ -594,6 +594,7 @@ function AttendanceSheet({period,salon,user}={}){
           if(!raw)return; // blank cell — leave whatever was already there
           const code=STATUS_FULL_REV[raw.toLowerCase()];
           if(!code){failed.push('Row '+rowNum+' ('+empId+'), Day '+day+': "'+raw+'" isn\'t a valid status — use the dropdown values');return;}
+          if(days[day-1]!==code&&attDayBackdated(day-1)){failed.push('Row '+rowNum+' ('+empId+'), Day '+day+': older than the back-dated entry limit — not changed');return;}
           days[day-1]=code;
           changedThisRow++;
         });
@@ -647,9 +648,12 @@ function AttendanceSheet({period,salon,user}={}){
   // automatically once every employee's Salary Working row was Approved. Locked = read-only.
   const monthLockRec=monthLockRecordFor(salon?.id,selYear,selMonth);
   const attMonthLocked=!!(monthLockRec&&monthLockRec.locked);
+  const attIso=di=>selYear+'-'+String(selMonth+1).padStart(2,'0')+'-'+String(di+1).padStart(2,'0');
+  const attDayBackdated=di=>isBackdateBlocked(salon?.id,attIso(di));
   const updateDays=(empId,dayIdx,newStatus)=>{
     if(attMonthLocked){warn(months[selMonth]+' '+selYear+' is locked — unlock it from Master Sheet or Salary Working to make changes.');return;}
     if(isMonthLockedForRole){warn(months[selMonth]+' '+selYear+' is marked Final — ask a Super Admin or Reviewer to un-finalize it before editing.');return;}
+    if(attDayBackdated(dayIdx)){warn(backdateBlockMessage(salon?.id));return;}
     setAttStore(prev=>{
       const k=monthKey(empId,selYear,selMonth);
       const e=EMPLOYEES.find(x=>x.id===empId);
@@ -680,7 +684,7 @@ function AttendanceSheet({period,salon,user}={}){
   const applyCheckins=()=>{
     if(attMonthLocked){warn(months[selMonth]+' '+selYear+' is locked.');return;}
     if(!window.confirm('Mark '+ciPending.length+' day(s) Present from phone check-ins?\n\n'+ciPending.slice(0,12).map(x=>x.name+' — '+x.day+' '+months[selMonth].slice(0,3)+(x.cur?' (now '+x.cur+')':'')).join('\n')+(ciPending.length>12?'\n…':'')))return;
-    setAttStore(prev=>{const next={...prev};ciPending.forEach(x=>{const e=EMPLOYEES.find(z=>String(z.id)===String(x.empId));if(!e)return;const k=monthKey(e.id,selYear,selMonth);
+    setAttStore(prev=>{const next={...prev};ciPending.forEach(x=>{const e=EMPLOYEES.find(z=>String(z.id)===String(x.empId));if(!e||attDayBackdated(x.day-1))return;const k=monthKey(e.id,selYear,selMonth);
       const cur=next[k]||{days:genAttDay(e,selYear,selMonth),adjustment:0};const days=[...cur.days];days[x.day-1]='present';next[k]={...cur,days};});return next;});
     toast(ciPending.length+' day(s) marked Present from check-ins','success');
   };
@@ -823,14 +827,14 @@ function AttendanceSheet({period,salon,user}={}){
             Array.from({length:(new Date(selYear,selMonth,1).getDay()+6)%7},(_,i)=>React.createElement('div',{key:'pad'+i,'aria-hidden':true})),
             Array.from({length:daysInMonth},(_,i)=>{
               const status=empDays[i];
-              const dayLocked=isMonthLockedForRole||attMonthLocked;
+              const dayLocked=isMonthLockedForRole||attMonthLocked||attDayBackdated(i);
               const markable=attDayMarkable(empDays,i)&&!dayLocked;
               const cls=status?STATUS_CSS[status]:'att-blank';
               return React.createElement('div',{key:i,
                 className:`att-day ${cls} ${(!status&&!markable)?'att-locked':''}`,
                 style:{cursor:markable?'pointer':'not-allowed',position:'relative',fontSize:9,aspectRatio:'1',minHeight:28,opacity:dayLocked?0.55:1},
                 onClick:()=>toggleStatus(selEmp,i),
-                title:dayLocked?(mgrFinalMonth?'Marked Final — ask a Super Admin or Reviewer to un-finalize it':'This month is locked'):(status?STATUS_FULL[status]:(markable?'Not marked — click to mark':'Mark the previous day first'))},
+                title:dayLocked?(mgrFinalMonth?'Marked Final — ask a Super Admin or Reviewer to un-finalize it':attDayBackdated(i)&&!attMonthLocked?backdateBlockMessage(salon?.id):'This month is locked'):(status?STATUS_FULL[status]:(markable?'Not marked — click to mark':'Mark the previous day first'))},
                 React.createElement('div',{style:{fontSize:8,position:'absolute',top:2,left:0,right:0,textAlign:'center',color:'inherit',opacity:0.7}},i+1),
                 status?(STATUS_LABELS[status]||'—'):'·'
               );
@@ -875,7 +879,7 @@ function AttendanceSheet({period,salon,user}={}){
                   React.createElement('td',{style:{padding:'7px 10px',borderRight:'1px solid var(--border2)',borderBottom:'1px solid var(--border)',color:'var(--text2)',whiteSpace:'nowrap'}},fmtShort(e.doj)),
                   React.createElement('td',{style:{padding:'7px 10px',borderRight:'2px solid var(--border2)',borderBottom:'1px solid var(--border)',color:'var(--text2)',whiteSpace:'nowrap'}},fmtShort(e.dol)),
                   ...sl.map((st,di)=>{
-                    const markable=attDayMarkable(sl,di)&&!isMonthLockedForRole&&!attMonthLocked;
+                    const markable=attDayMarkable(sl,di)&&!isMonthLockedForRole&&!attMonthLocked&&!attDayBackdated(di);
                     return React.createElement('td',{key:di,
                       className:st?STATUS_CSS[st]:'att-blank',
                       style:{borderRight:'1px solid var(--border)',borderBottom:'1px solid var(--border)',textAlign:'center',padding:0,height:34,opacity:(!st&&!markable)?0.45:1}},
