@@ -1250,7 +1250,7 @@
           +'<VOUCHER><DATE>20261006</DATE><VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME><LEDGERENTRIES.LIST><LEDGERNAME>HDFC Bank</LEDGERNAME><AMOUNT>-9500.00</AMOUNT></LEDGERENTRIES.LIST><LEDGERENTRIES.LIST><LEDGERNAME>Card Settlement Receivable</LEDGERNAME><AMOUNT>9500.00</AMOUNT></LEDGERENTRIES.LIST></VOUCHER>'
           +'<VOUCHER><DATE>20261007</DATE><VOUCHERTYPENAME>Payment</VOUCHERTYPENAME><ALLLEDGERENTRIES.LIST><LEDGERNAME>Mystery Ledger</LEDGERNAME><AMOUNT>-20000</AMOUNT></ALLLEDGERENTRIES.LIST><ALLLEDGERENTRIES.LIST><LEDGERNAME>HDFC Bank</LEDGERNAME><AMOUNT>20000</AMOUNT></ALLLEDGERENTRIES.LIST></VOUCHER></TALLYMESSAGE></DATA></BODY></ENVELOPE>';
         const vs=parseTallyBankVouchers(xml,'hdfc bank');const plan=planTallyPull(S,unmappedBankLinesFor(S,2026,9),bankRowsFor(S),vs,{bankLedger:'HDFC Bank'});
-        const cf=bankCashFlow([S],2026,9,2);const old=bankUnmappedOlderThan(S,7);
+        const cf=bankCashFlow([S],2026,9,2);const old=bankUnmappedOlderThan(S,Math.round((new Date(localIsoOf(new Date())+'T00:00:00')-new Date('2026-10-05T00:00:00'))/864e5)+1); // only T5 (2 Sep) is older, whatever today is
         const hs=bankHealthScore(S,2026,9);const req=buildTallyDayBookRequestXml('2026-10-01','2026-10-31');
         saveControls({});window.alert=A0;window.prompt=P0;window.confirm=C0;if(U0)sessionStorage.setItem('salonos_user',U0);else sessionStorage.removeItem('salonos_user');
         eq('Control & reporting: reason for Other, salary roles, changes after Tally, pull from Tally, cash flow, ageing, health score',
@@ -1270,8 +1270,8 @@
           {id:'BIG',transactionDate:'06/10/2026',description:'NEFT BIG',debit:60000,nature:'Rent'}];
         safeLocalSet('salonos_bank_statement_rows_outlet_'+S,JSON.stringify(rows));safeLocalSet('salonos_bank_exc_ok_outlet_'+S,'{}');safeLocalSet('salonos_bank_map_review_outlet_'+S,'{}');safeLocalSet('salonos_bank_change_alerts_outlet_'+S,'[]');
         const br=bankBalanceBreaks(S);
-        const AS=window.autoStatutoryDueItemsFor;window.autoStatutoryDueItemsFor=()=>[{type:'PF Challan',year:2026,month:8,due:'2026-10-15',amount:5000},{type:'ESIC Challan',year:2026,month:8,due:'2026-10-15',amount:800}];
-        const st=bankStatutoryCheck(S,2026,9).map(z=>z.type+':'+z.status.slice(0,8));window.autoStatutoryDueItemsFor=AS;
+        const AS=window.autoStatutoryDueItemsFor;window.autoStatutoryDueItemsFor=()=>[{type:'PF Challan',year:2026,month:8,due:'2026-10-15',amount:5000},{type:'ESIC Challan',year:2026,month:8,due:localIsoOf(new Date(Date.now()+10*864e5)),amount:800}]; // ESIC always still due, whatever today is
+        const st=bankStatutoryCheck(S,2026,9).map(z=>z.type+':'+z.status.slice(0,z.type==='ESIC Challan'?6:8));window.autoStatutoryDueItemsFor=AS;
         learnPayeeTokens(S,'vendor','V1','NEFT 501001234567 A');learnPayeeTokens(S,'vendor','V1','NEFT 501001234567 B');
         const pv=payeeByToken('vendor','IMPS 501001234567 X',loadVendors(S));const offers=vendorBankOffers(S).map(o=>o.vendor.name+':'+o.accountNo);
         const ex=bankMappingExceptions(S,2026,9).map(e=>e.kind+':'+e.rowId).sort().join(',');
@@ -1282,7 +1282,7 @@
         saveControls({});if(U0)sessionStorage.setItem('salonos_user',U0);else sessionStorage.removeItem('salonos_user');
         eq('Month close: balance breaks, statutory dues, payee learning and vendor bank details, new payee / round / Sunday, maker-checker, owner alert, Tally compare, forecast',
           [br.map(b=>b.rowId+':'+b.diff),st,pv&&pv.id,offers,ex,held,al,cmp.onlyTally.map(v=>v.ledger),cmp.onlyBank.length,fc&&fc.start,/net/.test(txt)],
-          [['C:-500'],['PF Challan:Short by','ESIC Challan:Due by 1'],'V1',['Acme Traders:501001234567'],'New payee:BIG,New payee:N1,Round amount:N1,Sunday payment:N2',true,1,['Ghost'],3,99000,true]);
+          [['C:-500'],['PF Challan:Short by','ESIC Challan:Due by'],'V1',['Acme Traders:501001234567'],'New payee:BIG,New payee:N1,Round amount:N1,Sunday payment:N2',true,1,['Ghost'],3,99000,true]);
       }catch(err){results.push({name:'Month close',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       try{
         const S=927;const U0=sessionStorage.getItem('salonos_user');const C0=window.confirm;sessionStorage.setItem('salonos_user',JSON.stringify({name:'Asha',role:'Salon Manager',outletIds:[927]}));saveControls({});

@@ -311,9 +311,18 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   const cashOutstandingRecoveryAt=(iso)=>getSalesEntries(iso,IDX_OREC).filter(e=>e.mode==='Cash').reduce((s,e)=>s+(Number(e.amount)||0),0);
   // The most recent date with any real cash-register entries strictly before the given date —
   // ISO date strings ("YYYY-MM-DD") sort correctly as plain strings, so this is a cheap lookup.
+  // A day counts once the register has started (its first day with cash/sales entries) if it has
+  // ANY entries — cash/sales rows, their entry lines, or only expenses. Looking at the cash/sales
+  // rows alone skipped expense-only days, so e.g. 30 Sep's expenses were deducted in 30 Sep's own
+  // Closing Cash Balance but dropped from 1 Oct's Opening (which came from 29 Sep). Days before the
+  // first cash day are still ignored, so that day's typed-in starting float keeps working.
   const priorCashRegisterDate=(iso)=>{
-    const dates=Object.keys(salesData).filter(d=>d<iso&&salesData[d]&&Object.keys(salesData[d]).length>0);
-    return dates.length?dates.sort()[dates.length-1]:null;
+    const has=o=>!!o&&Object.keys(o).length>0;
+    let first=null;for(const d in salesData)if(has(salesData[d])&&(first===null||d<first))first=d;
+    if(first===null||iso<=first)return null;
+    let best=null;
+    [salesData,salesEntryData,data].forEach(src=>{for(const d in src)if(d<iso&&d>=first&&has(src[d])&&(best===null||d>best))best=d;});
+    return best;
   };
   const isFirstEverCashDay=(iso)=>priorCashRegisterDate(iso)===null;
   const _closingBalanceCache={}; // per-render memo — without this, each cell can recurse back through every day of history ever entered
