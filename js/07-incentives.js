@@ -714,6 +714,7 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
           React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowSettings(false)},'\u2715 Close')
         ),
         React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:16,paddingBottom:12,borderBottom:'1px solid var(--border)'}},'Applicability, Target Multipliers, category rules, Manager Incentive, and display preferences for '+MONTHS[selMonth]+' '+selYear+' \u2014 changes save immediately and apply live to the table behind this.'),
+        typeof IncRulesGuide==='function'&&React.createElement(IncRulesGuide,{sid:salon?.id,year:selYear,month:selMonth,applicability,showAdvanced,splitMode}),
 
     // ── Quick Setup vs Advanced Settings — Applicability, Target Multipliers, and each
     // category's core rate/rule stay visible either way (that's the minimum every outlet needs
