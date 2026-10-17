@@ -614,7 +614,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.10.11.165';
+const APP_VERSION='2026.10.11.167';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
@@ -1489,3 +1489,54 @@ function useStorageUsage(){
   },[]);
   return usage;
 }
+
+// ── Dates as DD/MM/YYYY everywhere (Controls → dmyDates). The browser's own date box shows the
+// device's format (MM/DD/YYYY on a US-English phone or PC), so every <input type="date"> in the
+// app is drawn as a DD/MM/YYYY text box with a 📅 button that opens the browser's calendar. The
+// value handed to the screen's own onChange stays YYYY-MM-DD, exactly as before. ──
+const DMY_D={day:'2-digit',month:'2-digit',year:'numeric'};
+const DMY_WD={weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'};
+const DMY_DT={day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true};
+function isoToDmyText(iso){const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/);return m?m[3]+'/'+m[2]+'/'+m[1]:'';}
+// Accepts 16/10/2026, 16-10-2026, 16.10.2026, 16/10/26, 16102026 and 2026-10-16.
+function dmyTextToIso(t){const s=String(t||'').trim();if(!s)return'';let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);let y,mo,d;
+  if(m){y=+m[1];mo=+m[2];d=+m[3];}else if((m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2}|\d{4})$/))){d=+m[1];mo=+m[2];y=+m[3];if(y<100)y+=2000;}else if((m=s.match(/^(\d{2})(\d{2})(\d{4})$/))){d=+m[1];mo=+m[2];y=+m[3];}else return null;
+  const dt=new Date(y,mo-1,d);if(isNaN(dt)||dt.getFullYear()!==y||dt.getMonth()!==mo-1||dt.getDate()!==d)return null;
+  return y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');}
+const _salonosCreateElement=React.createElement;
+function DmyDateInput(props){
+  const ce=_salonosCreateElement;const controlled=props.value!==undefined;const cur=controlled?String(props.value||''):undefined;
+  const [text,setText]=useState(()=>isoToDmyText(controlled?cur:props.defaultValue));const [bad,setBad]=useState(false);
+  const lastIso=useRef(controlled?cur:String(props.defaultValue||''));const pick=useRef(null);
+  useEffect(()=>{if(controlled&&cur!==lastIso.current){lastIso.current=cur;setText(isoToDmyText(cur));setBad(false);}},[cur]);
+  const evt=(iso,orig)=>{const tgt={value:iso,type:'date',name:props.name,id:props.id,dataset:(orig&&orig.target&&orig.target.dataset)||{},checked:false,valueAsDate:iso?new Date(iso+'T00:00:00'):null};
+    return{target:tgt,currentTarget:tgt,type:'change',preventDefault(){},stopPropagation(){},persist(){},nativeEvent:orig&&orig.nativeEvent};};
+  const send=(iso,orig)=>{lastIso.current=iso;if(props.onChange)props.onChange(evt(iso,orig));};
+  const onText=e=>{const t=e.target.value.replace(/[^\d\/\-.]/g,'').slice(0,10);setText(t);if(!t){setBad(false);send('',e);return;}const iso=dmyTextToIso(t);
+    if(iso&&(t.length>=8||/^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4}$/.test(t))){setBad(false);if(iso!==lastIso.current)send(iso,e);}else setBad(true);};
+  const onBlur=e=>{if(bad){setText(isoToDmyText(lastIso.current));setBad(false);}else if(text)setText(isoToDmyText(lastIso.current));if(props.onBlur)props.onBlur(evt(lastIso.current,e));};
+  const open=()=>{const el=pick.current;if(!el||props.disabled||props.readOnly)return;try{if(el.showPicker){el.showPicker();return;}}catch(e){}try{el.focus();el.click();}catch(e){}};
+  const st=props.style||{};const outer={};const inner={};Object.keys(st).forEach(k=>{if(/^(width|minWidth|maxWidth|flex|flexGrow|flexShrink|flexBasis|margin|marginTop|marginBottom|marginLeft|marginRight|alignSelf|gridColumn)$/.test(k))outer[k]=st[k];else inner[k]=st[k];});
+  const pass={};['id','name','className','title','required','autoFocus','disabled','readOnly','onFocus','onKeyDown','tabIndex','aria-label','form'].forEach(k=>{if(props[k]!==undefined)pass[k]=props[k];});
+  return ce('span',{style:{position:'relative',display:outer.width||outer.flex?'inline-block':'block',verticalAlign:'middle',...outer}},
+    ce('input',{...pass,type:'text',inputMode:'numeric',autoComplete:'off',placeholder:props.placeholder||'DD/MM/YYYY',value:text,onChange:onText,onBlur,
+      style:{...inner,width:'100%',boxSizing:'border-box',paddingRight:28,...(bad?{borderColor:'var(--red,#d33)'}:{})},title:bad?'Type the date as DD/MM/YYYY':pass.title}),
+    ce('button',{type:'button',tabIndex:-1,'aria-label':'Open calendar',disabled:props.disabled||props.readOnly,onClick:open,
+      style:{position:'absolute',right:4,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',padding:'0 2px',cursor:props.disabled?'default':'pointer',fontSize:13,lineHeight:1,opacity:props.disabled?.4:.8}},'📅'),
+    ce('input',{ref:pick,type:'date',tabIndex:-1,'aria-hidden':true,value:lastIso.current||'',min:props.min,max:props.max,
+      onChange:e=>{const iso=e.target.value;setText(isoToDmyText(iso));setBad(false);send(iso,e);},
+      style:{position:'absolute',right:0,bottom:0,width:1,height:1,opacity:0,pointerEvents:'none',border:0,padding:0}}));
+}
+function dmyDatesOn(){try{return typeof controlOn!=='function'||controlOn('dmyDates');}catch(e){return true;}}
+// Text shown on screen: 2026-09-04 → 04/09/2026 and 17 Oct 2026 → 17/10/2026 (not inside inputs or code).
+const DMY_MON={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',sept:'09',oct:'10',nov:'11',dec:'12'};
+const DMY_TEST=/\d{4}-\d\d-\d\d|\d (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{4}/;
+function dmyFixText(s){if(typeof s!=='string'||s.length<8||!DMY_TEST.test(s))return s;
+  return s.replace(/\b(\d{4})-(\d{2})-(\d{2})(?![\d-])/g,'$3/$2/$1').replace(/\b(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*,? (\d{4})\b/g,(m,d,mo,y)=>String(d).padStart(2,'0')+'/'+DMY_MON[mo.toLowerCase()]+'/'+y);}
+function dmyFixKids(k){return Array.isArray(k)?k.map(dmyFixKids):dmyFixText(k);}
+const DMY_SKIP=new Set(['input','textarea','code','pre','script','style','kbd']);
+React.createElement=function(type,props){
+  if(type==='input'&&props&&props.type==='date'&&!props['data-native']&&dmyDatesOn())return _salonosCreateElement.apply(this,[DmyDateInput,props,...Array.prototype.slice.call(arguments,2)]);
+  if(typeof type==='string'&&arguments.length>2&&!DMY_SKIP.has(type)&&dmyDatesOn()){const a=Array.prototype.slice.call(arguments);for(let i=2;i<a.length;i++)a[i]=dmyFixKids(a[i]);return _salonosCreateElement.apply(this,a);}
+  return _salonosCreateElement.apply(this,arguments);
+};

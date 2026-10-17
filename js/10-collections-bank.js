@@ -1112,7 +1112,7 @@ function CollectionReco({salon,onNavTab}={}){
     doc.setTextColor(255,255,255);doc.setFontSize(13);doc.setFont(undefined,'bold');
     doc.text('Collection Reco — '+(salon?salon.name.split('—')[0].trim():'Outlet'),8,9);
     doc.setFontSize(8);doc.setFont(undefined,'normal');doc.setTextColor(200,215,235);
-    doc.text('Collection Reco · Generated '+new Date().toLocaleString('en-IN'),8,14.5);
+    doc.text('Collection Reco · Generated '+new Date().toLocaleString('en-GB',DMY_DT),8,14.5);
 
     const hdr=['Date','Cash (Cradlee)','Cash (Counter)','Cash Diff','Card (Cradlee)','Card (Bank)','Card Diff','UPI (Cradlee)','UPI (Bank)','UPI Diff','Consolidate Diff'];
     const sums=Array(10).fill(0);
@@ -1879,7 +1879,7 @@ function CollectionSheetView({salon,onNavTab}={}){
     doc.setTextColor(255,255,255);doc.setFontSize(13);doc.setFont(undefined,'bold');
     doc.text('Collection Reco — '+(salon?salon.name.split('—')[0].trim():'Outlet'),8,9);
     doc.setFontSize(8);doc.setFont(undefined,'normal');doc.setTextColor(200,215,235);
-    doc.text('Collection Reco · Generated '+new Date().toLocaleString('en-IN'),8,14.5);
+    doc.text('Collection Reco · Generated '+new Date().toLocaleString('en-GB',DMY_DT),8,14.5);
 
     const hdr=['Date','Cash (Cradlee)','Cash (Counter)','Cash Diff','Card (Cradlee)','Card (Bank)','Card Diff','UPI (Cradlee)','UPI (Bank)','UPI Diff','Consolidate Diff'];
     const sums=Array(10).fill(0);
@@ -2606,7 +2606,7 @@ function BankFetchPanel({salonId,canEdit,onImport}){
                 React.createElement('span',{style:{fontWeight:600,fontSize:12.5}},l.label),
                 (l.accounts||[]).length>0&&React.createElement('span',{style:{fontSize:11,color:'var(--text2)'}},(l.accounts||[]).map(a=>(a.masked||'')+(a.type?' '+a.type:'')).join(', ')),
                 React.createElement('span',{style:{fontSize:11,color:st[1]}},st[0]),
-                l.last_fetch_at&&React.createElement('span',{style:{fontSize:10.5,color:'var(--text3)'}},'last fetched '+new Date(l.last_fetch_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})),
+                l.last_fetch_at&&React.createElement('span',{style:{fontSize:10.5,color:'var(--text3)'}},'last fetched '+new Date(l.last_fetch_at).toLocaleString('en-GB',DMY_DT)),
                 canEdit&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto',fontSize:11,padding:'2px 8px'},disabled:!!busy,onClick:e=>{e.preventDefault();unlink(l);}},'Remove'));
             })
           ),

@@ -1164,7 +1164,7 @@ function App(){
           activePage==='salon'&&period
             ?React.createElement('span',{className:'hide-phone',title:'Set via this outlet\'s period picker below',style:{fontSize:11,padding:'4px 8px',border:'1px solid var(--border)',borderRadius:6,color:'var(--text2)'}},'FY '+period.fy)
             :React.createElement('select',{className:'form-control hide-phone',style:{width:'auto',fontSize:11,padding:'4px 8px'},value:selFY,onChange:e=>setSelFY(e.target.value)},FYS.map(f=>React.createElement('option',{key:f,value:f},'FY '+f))),
-          React.createElement('div',{className:'hide-phone',style:{fontSize:12,color:'var(--text3)'}},new Date().toLocaleDateString('en-IN',{weekday:'short',month:'short',day:'numeric',year:'numeric'})),
+          React.createElement('div',{className:'hide-phone',style:{fontSize:12,color:'var(--text3)'}},new Date().toLocaleDateString('en-GB',DMY_WD)),
           (()=>{const c=!CLOUD_SYNC_ENABLED?'var(--green)':cloudStatus.state==='error'?'var(--red)':cloudStatus.state==='saving'?'var(--orange)':'var(--green)';
             return React.createElement('div',{className:'hide-phone',title:!CLOUD_SYNC_ENABLED?'Synced locally on this device':cloudStatus.state==='error'?'Cloud save failing — retrying':cloudStatus.state==='saving'?'Saving to the cloud…':'Live — synced with the cloud',style:{width:8,height:8,borderRadius:'50%',background:c,boxShadow:'0 0 6px '+c}});})(),
           React.createElement('span',{className:'role-chip hide-phone'},roleLabelForUser(user)),
@@ -1182,7 +1182,7 @@ function App(){
               ?React.createElement('div',{className:'pm-row',style:{color:'var(--text2)'}},'📅 '+pgLabel(period))
               :React.createElement('div',{className:'pm-row'},'📅',React.createElement('select',{className:'form-control',style:{flex:1,fontSize:16},value:selFY,onChange:e=>setSelFY(e.target.value)},FYS.map(f=>React.createElement('option',{key:f,value:f},'FY '+f)))),
             React.createElement('button',{style:{color:'var(--red)'},onClick:()=>{setPhoneMenuOpen(false);logout();}},React.createElement(IconLogOut,null),'Sign Out'),
-            React.createElement('div',{className:'pm-meta'},(user?.name||'')+' · '+(user?.role||'')+' · '+new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}))
+            React.createElement('div',{className:'pm-meta'},(user?.name||'')+' · '+(user?.role||'')+' · '+new Date().toLocaleDateString('en-GB',DMY_D))
           )
         )
       ),

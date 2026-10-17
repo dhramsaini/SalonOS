@@ -1344,7 +1344,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     .foot td{background:#1e1e26!important;color:#4C7DFF;font-weight:700;font-size:11px;padding:9px 6px}
     @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>
     <div class="hdr"><div><div class="logo">SalonOS</div><div class="sub">Daily Expenses Sheet</div></div>
-    <div style="text-align:right;font-size:9px;color:#888">Exported: ${new Date().toLocaleString('en-IN')}<br>Period: ${days[0].label} to ${days[days.length-1].label}</div></div>
+    <div style="text-align:right;font-size:9px;color:#888">Exported: ${new Date().toLocaleString('en-GB',DMY_DT)}<br>Period: ${days[0].label} to ${days[days.length-1].label}</div></div>
     <table><thead><tr><th>Daily Expenses</th><th>Expenses Group</th><th>Total</th>${hdrCols}</tr></thead>
     <tbody>${rows}</tbody>
     <tfoot><tr class="foot"><td>Final Total Exp.</td><td></td><td style="text-align:right">${grandTotal().toLocaleString('en-IN')}</td>${totCols}</tr></tfoot>
@@ -1419,7 +1419,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   const renderPhoneDay=()=>{
     const iso=phoneIso;
     const locked=dseIsLocked(iso);
-    const dayLabel=new Date(iso+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+    const dayLabel=new Date(iso+'T00:00:00').toLocaleDateString('en-GB',DMY_WD);
     const fmt=v=>(Number(v)||0).toLocaleString('en-IN');
     const rowStyle={display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'10px 12px',borderBottom:'1px solid var(--border)'};
     const numInput=(value,onChange,disabled,onCommit)=>React.createElement('input',{type:'number',inputMode:'decimal',min:0,value,disabled,placeholder:'0',

@@ -54,7 +54,7 @@ function pwAdvances(ws,sid,y,m){
     return{emp:a.emp,from:a.deductFrom||'Salary',date:pwSerial(a.date),amount:Number(a.amount)||0,outstanding:Number(a.outstanding)||0,basis:sch!==null?'Month-wise schedule':'Monthly repayment',planned,
       ded:(r,L)=>pwF('MAX(0,MIN('+L('planned')+r+','+L('outstanding')+r+'))',Math.max(0,Math.min(planned,Number(a.outstanding)||0)))};});
   pwTitle(ws,'Active advances — this month\'s deduction is the planned amount, never more than what is still outstanding');
-  const T=pwTable(ws,2,[{key:'emp',h:'Employee',w:24,input:true},{key:'from',h:'Recover from',w:12,input:true},{key:'date',h:'Date given',w:12,input:true,fmt:'dd-mmm-yyyy'},{key:'amount',h:'Amount given',input:true},
+  const T=pwTable(ws,2,[{key:'emp',h:'Employee',w:24,input:true},{key:'from',h:'Recover from',w:12,input:true},{key:'date',h:'Date given',w:12,input:true,fmt:'dd/mm/yyyy'},{key:'amount',h:'Amount given',input:true},
     {key:'outstanding',h:'Outstanding',input:true},{key:'basis',h:'Planned from',w:20,input:true},{key:'planned',h:'Planned this month',input:true},{key:'ded',h:'Deduction this month'}],rows,{total:['amount','outstanding','planned','ded'],xSplit:1});
   return{emp:pwSumRange(ws.name,T,'emp'),from:pwSumRange(ws.name,T,'from'),ded:pwSumRange(ws.name,T,'ded')};
 }
@@ -63,7 +63,7 @@ function pwPenalties(ws,sid,y,m){
   const rows=list.filter(p=>p&&p.emp&&p.date).filter(p=>{const d=new Date(p.date+'T00:00:00');return!isNaN(d)&&d.getFullYear()===y&&d.getMonth()===m;})
     .sort((a,b)=>String(a.date).localeCompare(String(b.date))).map(p=>({date:pwSerial(p.date),emp:p.emp,type:p.type==='Other'?(p.otherType||'Other'):(p.type||''),amount:Number(p.amount)||0}));
   pwTitle(ws,'Penalties dated in '+PW_MONTHS[m]+' '+y);
-  const T=pwTable(ws,2,[{key:'date',h:'Date',w:12,input:true,fmt:'dd-mmm-yyyy'},{key:'emp',h:'Employee',w:24,input:true},{key:'type',h:'Type',w:22,input:true},{key:'amount',h:'Amount',input:true}],rows,{total:['amount'],xSplit:1});
+  const T=pwTable(ws,2,[{key:'date',h:'Date',w:12,input:true,fmt:'dd/mm/yyyy'},{key:'emp',h:'Employee',w:24,input:true},{key:'type',h:'Type',w:22,input:true},{key:'amount',h:'Amount',input:true}],rows,{total:['amount'],xSplit:1});
   return{emp:pwSumRange(ws.name,T,'emp'),amt:pwSumRange(ws.name,T,'amount')};
 }
 
@@ -250,7 +250,7 @@ function pwSalarySheets(ctx,o){
   pwTitle(S.att,'Attendance — '+PW_MONTHS[m]+' '+y+' · P Present · WO Week-off · H Holiday · HD Half day · A Absent · NJ Not joined · L Left · blank = not marked');
   const A=pwTable(S.att,2,[{key:'id',h:'Emp ID',w:9,input:true},{key:'name',h:'Employee',w:22,input:true},...dayCols,
     {key:'cP',h:'P'},{key:'cWO',h:'WO'},{key:'cH',h:'H'},{key:'cHD',h:'HD'},{key:'cA',h:'A'},{key:'cNJ',h:'NJ'},{key:'cL',h:'L'},{key:'nm',h:'Not marked'},
-    {key:'off',h:'Weekly off',w:11,input:true},{key:'doj',h:'Joined',w:11,input:true,fmt:'dd-mmm-yyyy'},{key:'dol',h:'Left',w:11,input:true,fmt:'dd-mmm-yyyy'},{key:'fr',h:'Counts from',w:11,fmt:'dd-mmm-yyyy'},{key:'to',h:'Counts to',w:11,fmt:'dd-mmm-yyyy'},
+    {key:'off',h:'Weekly off',w:11,input:true},{key:'doj',h:'Joined',w:11,input:true,fmt:'dd/mm/yyyy'},{key:'dol',h:'Left',w:11,input:true,fmt:'dd/mm/yyyy'},{key:'fr',h:'Counts from',w:11,fmt:'dd/mm/yyyy'},{key:'to',h:'Counts to',w:11,fmt:'dd/mm/yyyy'},
     {key:'awo',h:'Allowed week-offs',input:!o.pools},{key:'adj',h:'Adjustment',input:true,fmt:'0.0#'},{key:'pl',h:'Paid leave entered',input:true,fmt:'0.0#'},{key:'plA',h:'Paid leave allowed',fmt:'0.0#'},
     {key:'wd',h:'Working days',fmt:'0.0#'},{key:'xd',h:'Extra days',fmt:'0.0#'},{key:'pay',h:'Payable days',fmt:'0.0#'},{key:'app',h:'SalonOS payable',input:true,fmt:'0.0#'},{key:'chk',h:'Check',w:14}],attRows,{});
   for(let c=3;c<3+dim;c++)S.att.getColumn(c).alignment={horizontal:'center'};const attRow={};list.forEach((e,i)=>attRow[e.id]=A.first+i);
@@ -430,7 +430,7 @@ function pwSheetTrail(ws,c){
   const T=pwTable(ws,2,[{key:'id',h:'Emp ID',w:9},{key:'name',h:'Employee',w:22},{key:'st',h:'Approval',w:12},{key:'ps',h:'Payment',w:12},{key:'mode',h:'Mode',w:14},{key:'adv',h:'Advance settled on approval',w:14}],
     list.map(e=>{const mt=meta[attMonthKey(e.id,c.y,c.m)]||{};return{id:e.id,name:e.name,st:mt.status||'Draft',ps:mt.paymentStatus||'',mode:mt.mode||'',adv:mt.advanceSettled?'Yes':''};}),{noFreeze:true});
   let r=T.last+3;const sec=t=>{ws.getRow(r).getCell(1).value=t;ws.getRow(r).getCell(1).font={bold:true,color:{argb:'FF14335E'}};r++;};const kv=(a,b)=>{ws.getRow(r).getCell(1).value=a;ws.getRow(r).getCell(2).value=b||'—';r++;};
-  const when=x=>x?new Date(x).toLocaleString('en-IN'):'';
+  const when=x=>x?new Date(x).toLocaleString('en-GB',DMY_DT):'';
   [sal?'salary':null,'incentive'].filter(Boolean).forEach(sh=>{const a=summaryApprovalFor(c.sid,sh,c.y,c.m);sec((sh==='salary'?'Salary':'Incentive')+' summary approval');
     if(!a){kv('Status','Not sent for approval');r++;return;}kv('Status',a.status);kv('Sent by',[a.sentBy,when(a.sentAt)].filter(Boolean).join(' · '));kv('Approved by',[a.approvedBy,when(a.approvedAt)].filter(Boolean).join(' · '));kv('Remarks',a.remarks);
     Object.entries(a.reviews||{}).forEach(([role,x])=>kv('Review — '+role,[x.status,x.by,when(x.at),x.remarks].filter(Boolean).join(' · ')));r++;});
@@ -442,7 +442,7 @@ async function pwSheetAbout(ws,c,integ){
   const line=(a,b,font)=>{const R=ws.getRow(r);R.getCell(1).value=a;if(b!==undefined)R.getCell(2).value=b;if(font)R.getCell(1).font=font;R.getCell(2).alignment={wrapText:true,vertical:'top'};r++;};
   line((sal?'Salary':'Incentive')+' Working — full workings',undefined,{bold:true,size:16,color:{argb:'FF14335E'}});line((c.salon.name||'')+' · '+PW_MONTHS[c.m]+' '+c.y,undefined,{bold:true,size:12});
   const who=typeof currentSessionUser==='function'?(currentSessionUser()||{}).name:'';
-  line('Downloaded',new Date().toLocaleString('en-IN')+(who?' by '+who:''));r++;
+  line('Downloaded',new Date().toLocaleString('en-GB',DMY_DT)+(who?' by '+who:''));r++;
   line('Status of the month',undefined,{bold:true});
   line('Attendance marked Final',typeof salaryAttendanceReady==='function'&&salaryAttendanceReady(c.sid,c.y,c.m)?'Yes':'No — figures can still change');
   line('Month locked',isMonthLockedFor(c.sid,c.y,c.m)?'Yes — nobody can change it':'No');

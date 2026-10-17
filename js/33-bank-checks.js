@@ -219,7 +219,7 @@ function bankCloseMarkFinal(sid,year,month,onNavTab){
 function bankConflictOk(sid,x){
   if(!x||!x.problem||!controlOn('bankConflictWarn',sid))return true;const fresh=bankRowsFor(sid).find(r=>r.id===x.id);if(!fresh||bankLineProblem(fresh,loadVendors(sid)||[]))return true;
   const e=bankMapJournal(sid).filter(z=>z.rowId===x.id&&!z.undone).pop();const who=e?(e.lastBy||e.by):'Someone';if(e&&who===bmapUser())return true;
-  return window.confirm(who+(e?' ('+new Date(e.lastAt||e.at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})+')':'')+' has already mapped this line as '+(fresh.nature||'—')+(fresh.vendorOverride&&fresh.vendorOverride!=='__none__'?' · '+fresh.vendorOverride:'')+' on another device.\n\nReplace their mapping with yours?');
+  return window.confirm(who+(e?' ('+new Date(e.lastAt||e.at).toLocaleString('en-GB',DMY_DT)+')':'')+' has already mapped this line as '+(fresh.nature||'—')+(fresh.vendorOverride&&fresh.vendorOverride!=='__none__'?' · '+fresh.vendorOverride:'')+' on another device.\n\nReplace their mapping with yours?');
 }
 
 // ── Aggregator payouts against their reports (Controls → aggregatorPayoutCheck) ──

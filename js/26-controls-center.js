@@ -192,6 +192,7 @@ const CONTROL_DEFS=[
   {id:'ctlWhatsNew',group:'Controls page',label:'New badge and What’s new',hint:'Switches added in the last 30 days are marked New, and the What’s new tab lists them.',def:true},
   {id:'ctlExport',group:'Controls page',label:'Export, policy print and backup',hint:'Sets tab: Controls as Excel, a printable controls policy for the CA / auditors, and a backup file to restore.',def:true},
   {id:'geminiModelList',group:'App',label:'Gemini: list the models your key can use',hint:'Master Settings → AI Assistant → Gemini key: a “⟳ Models for this key” button asks Google which Gemini models the key can use, so you pick one that works. Needs the updated ai-settings cloud function.',def:true},
+  {id:'dmyDates',group:'Look & feel',label:'Date boxes in DD/MM/YYYY',hint:'Every date box shows and takes the date as DD/MM/YYYY (type it, or pick it with 📅), whatever the phone or computer’s language. Off = the browser’s own date box, which follows the device’s format.',def:true},
   {id:'compactToolbars',group:'Look & feel',label:'Tidy top bars with a “More ▾” menu',hint:'Appointments, Billing, Clients and Inventory keep the daily buttons visible; the rest are grouped under More (Money, Reports, Setup).',def:true},
   {id:'todayStrip',group:'Look & feel',label:'Today strip on front-desk tabs',hint:'Sales today, bookings still to come, client dues and low stock at the top of each tab.',def:true},
   {id:'keyboardShortcuts',group:'Look & feel',label:'Keyboard shortcuts and Ctrl + K search',hint:'Ctrl/⌘ + K finds clients, bills, mobiles and screens; Alt + 1…4 switch the front-desk tabs; in a bill F2 adds an item and Ctrl + Enter saves.',def:true},
@@ -331,7 +332,7 @@ const CONTROL_AREAS=[
     ['Checking rules work',['ctlHitStats','ctlWhatsNew','ctlExport']]]},
   {key:'app',icon:'🎨',title:'App & look',groups:['App','Look & feel'],subs:[
     ['App',['roleHomeScreens','appInstallPrompt','phoneQuickAdd','geminiModelList']],
-    ['Look & feel',['compactToolbars','todayStrip','filterChips','keyboardShortcuts','mobileLayout','calendarPolish','billPrintDesign','miniCharts','undoActions']]]}];
+    ['Look & feel',['dmyDates','compactToolbars','todayStrip','filterChips','keyboardShortcuts','mobileLayout','calendarPolish','billPrintDesign','miniCharts','undoActions']]]}];
 // Rules that stop someone from saving, and rules that send the action for approval — shown as labels.
 const CONTROL_STOPS=new Set(['aadhaarRequired','ctlTwoPerson','ctlLocks','backdateLock','futureLock','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','billNeedsPo','gstLock','dayCloseLock','staffChangeLock','creditLimit','discountReason','staffOffBlocking','requireMarketingConsent','bankLockFinal','tallyChangeGuard','mapRoleLimits','vagueNatureReason','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']);
 const CONTROL_APPROVAL=new Set(['mapApproval','mapReview','tallyNeedsReview','discountApproval','cancelApproval','poApproval','invoiceApproval','bankFileApproval','deleteApproval','vendorBankApproval']);

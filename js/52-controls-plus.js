@@ -12,7 +12,7 @@ function ctlPut(k,v){safeLocalSet(k,JSON.stringify(v));}
 function ctlUserName(){const u=currentSessionUser();return u?(u.name||u.email||'—'):'—';}
 function ctlToday(){return localIsoOf(new Date());}
 function ctlDmy(iso){const p=String(iso||'').slice(0,10).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:'';}
-function ctlWhen(ts){try{return new Date(ts).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});}catch(e){return'';}}
+function ctlWhen(ts){try{return new Date(ts).toLocaleString('en-GB',DMY_DT);}catch(e){return'';}}
 function ctlOutletName(sid){const s=(typeof SALONS!=='undefined'?SALONS:[]).find(x=>String(x.id)===String(sid));return s?String(s.name).split('—')[0].trim():'Outlet '+sid;}
 
 // ── switches that need another switch (Controls → ctlLinks) ──
@@ -47,7 +47,7 @@ const CONTROL_ADDED=(()=>{const m={};const add=(d,ids)=>ids.forEach(i=>m[i]=d);
   add('2026-10-16',['payWorkbooks','payWbPools','payWbWhatIf','payWbPayslips','payWbBank','payWbStatutory','payWbCompare','payWbCtc','payWbExceptions','payWbReco','payWbTrail','payWbIntegrity','payWbChooser','payWbAllOutlets','payWorkbookEmail','payWbProtected','backdateLock',
     'dupEmployee','sharedBankAccount','dupVendor','sameBillNewNumber','repeatExpense','crossEntryExpense','dupAdvancePenalty','importSeen','stockTwice','doubleSaveGuard','extraZeroCheck','modeVsBilling','dseVsBilling','depositVsBank','gstMathCheck','dateSenseCheck','futureLock','attendanceSense','salaryChangeReason','wageSenseCheck','negativeStockBlock','proofAboveLimit','dataQualityBoard',
     'ctlOutletView','ctlCompare','ctlHealth','ctlLinks','ctlShowMe','ctlLastChanged','ctlHistory','ctlOwnerAlert','ctlTwoPerson','ctlLocks','ctlSets','ctlCopyOutlet','ctlOutletLimits','ctlTemporary','ctlRoleRules','ctlHitStats','ctlWhatsNew','ctlExport','geminiModelList']);
-  add('2026-10-17',['aadhaarRequired']);
+  add('2026-10-17',['aadhaarRequired','dmyDates']);
   return m;})();
 // Checks that report how often they fire (others show “not counted”).
 const CTL_COUNTED=new Set(['dupEmployee','sharedBankAccount','dupVendor','sameBillNewNumber','repeatExpense','crossEntryExpense','dupAdvancePenalty','stockTwice','extraZeroCheck','gstMathCheck','dateSenseCheck','wageSenseCheck','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','idChecks',
@@ -166,7 +166,7 @@ function ctlPrintPolicy(outlets){const rows=ctlRows(outlets);const esc=t=>String
     html+='<tr><td><b>'+esc(r.label)+'</b><br><small>'+esc(r.section)+(r.kind?' · '+esc(r.kind):'')+'</small></td><td>'+esc(r.hint)+(r.extra?'<br><small>'+esc(r.extra)+'</small>':'')+'</td><td>'+esc(r.all)+(r.limit?' · limit '+esc(r.limit):'')+'</td>'+r.outlets.map(o=>'<td>'+esc(o)+'</td>').join('')+'</tr>';
     const nx=rows[rows.indexOf(r)+1];if(!nx||nx.area!==area)html+='</table>';});
   const w=window.open('','_blank');if(!w){window.alert('Allow pop-ups to print the policy.');return;}
-  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>SalonOS controls policy</title><style>body{font:12px Arial;margin:24px;color:#222}h1{font-size:18px}h2{font-size:14px;margin:18px 0 6px;color:#14335e}table{width:100%;border-collapse:collapse;margin-bottom:6px}th,td{border:1px solid #ccd;padding:4px 6px;vertical-align:top;text-align:left}th{background:#eef3fa}small{color:#667}@media print{h2{page-break-after:avoid}tr{page-break-inside:avoid}}</style></head><body><h1>SalonOS — controls policy</h1><p>As on '+new Date().toLocaleString('en-IN')+' · printed by '+esc(ctlUserName())+'. “Setting” is for all outlets; outlet columns show where an outlet differs.</p>'+html+'<script>setTimeout(()=>window.print(),300)<\/script></body></html>');w.document.close();}
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>SalonOS controls policy</title><style>body{font:12px Arial;margin:24px;color:#222}h1{font-size:18px}h2{font-size:14px;margin:18px 0 6px;color:#14335e}table{width:100%;border-collapse:collapse;margin-bottom:6px}th,td{border:1px solid #ccd;padding:4px 6px;vertical-align:top;text-align:left}th{background:#eef3fa}small{color:#667}@media print{h2{page-break-after:avoid}tr{page-break-inside:avoid}}</style></head><body><h1>SalonOS — controls policy</h1><p>As on '+new Date().toLocaleString('en-GB',DMY_DT)+' · printed by '+esc(ctlUserName())+'. “Setting” is for all outlets; outlet columns show where an outlet differs.</p>'+html+'<script>setTimeout(()=>window.print(),300)<\/script></body></html>');w.document.close();}
 function ctlBackup(){const blob=new Blob([JSON.stringify({app:'SalonOS',kind:'controls',at:new Date().toISOString(),by:ctlUserName(),controls:loadControls(),sets:ctlSavedSets()},null,1)],{type:'application/json'});
   const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='SalonOS Controls backup '+ctlToday()+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);}
 
@@ -414,7 +414,7 @@ function ControlsCenterCard({salons}){
     !pend.length&&!cpend.length&&h('div',{style:{fontSize:12.5,color:'var(--text3)',padding:'6px 0'}},'Nothing waiting for approval.'),
     pend.map(a=>h('div',{key:a.id,style:{display:'flex',gap:10,alignItems:'center',borderBottom:'1px solid var(--border)',padding:'8px 0'}},
       h('div',{style:{flex:1,fontSize:12.5}},h('b',null,(controlDef(a.control)||{}).label||a.control),h('div',{style:{whiteSpace:'pre-wrap'}},a.summary),
-        h('div',{style:{fontSize:11,color:'var(--text3)'}},sname(a.sid)+' · asked by '+a.by+' · '+new Date(a.at).toLocaleString('en-IN'))),
+        h('div',{style:{fontSize:11,color:'var(--text3)'}},sname(a.sid)+' · asked by '+a.by+' · '+new Date(a.at).toLocaleString('en-GB',DMY_DT))),
       canEdit&&h('button',{className:'btn btn-primary btn-sm',onClick:()=>decide(a,'approved')},'Approve'),
       canEdit&&h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>decide(a,'rejected')},'Reject'))),
     recent.length>0&&h('div',{style:{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',margin:'14px 0 4px'}},'Decided recently'),

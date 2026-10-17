@@ -112,7 +112,7 @@ function OwnerDrawingsSheet({salon,period}={}){
     h('div',{className:'grid4',style:{marginBottom:12}},
       [['This month',b6Money(tot)],['Financial year to date',b6Money(ytd)],['Owner confirmed',a?b6Money(a.amount):'not yet'],['Difference',a?b6Money(a.amount-tot):'—']].map(([l,v])=>h('div',{key:l,className:'metric-card'},h('div',{className:'metric-label'},l),h('div',{className:'metric-value',style:{fontSize:20,color:l==='Difference'&&a&&Math.abs(a.amount-tot)>1?'var(--red)':''}},v)))),
     h('button',{className:'btn btn-ghost btn-sm',style:{marginBottom:10},onClick:confirmAck},a?'Re-confirm with owner':'✓ Record owner’s confirmation'),
-    a&&h('span',{style:{fontSize:11.5,color:'var(--text3)',marginLeft:8}},'confirmed by '+a.by+' on '+new Date(a.at).toLocaleDateString('en-IN')),
+    a&&h('span',{style:{fontSize:11.5,color:'var(--text3)',marginLeft:8}},'confirmed by '+a.by+' on '+new Date(a.at).toLocaleDateString('en-GB',DMY_D)),
     h('div',{className:'card',style:{padding:0}},h('div',{className:'table-wrap'},h('table',null,h('thead',null,h('tr',null,['Date','Type','Amount','Detail'].map((t,i)=>h('th',{key:i},t)))),
       h('tbody',null,rows.length?rows.map((r,i)=>h('tr',{key:i},h('td',null,b6Dmy(r.iso)),h('td',null,r.type),h('td',{style:{textAlign:'right'}},b6Money(r.amount)),h('td',{style:{fontSize:12}},r.detail||''))):h('tr',null,h('td',{colSpan:4,style:{textAlign:'center',padding:20,color:'var(--text3)'}},'No Cash Packet or Cash Handover this month')))))));
 }
@@ -175,11 +175,11 @@ function AccessReviewView({users,salons}){
   const done=()=>{const r={at:new Date().toISOString(),by:(currentSessionUser()||{}).name||'',users:rows.length};safeLocalSet('salonos_access_review',JSON.stringify(r));try{logAuditEvent(null,{entity:'Access review',entityId:today,action:'Reviewed',summary:rows.length+' logins reviewed'});}catch(e){}success('Access review recorded');setTick(x=>x+1);};
   return h('div',{className:'card'},
     h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,marginBottom:8}},
-      h('div',null,h('div',{className:'card-title',style:{margin:0}},'Monthly access review'),h('div',{style:{fontSize:12,color:'var(--text3)'}},last.at?'Last reviewed '+new Date(last.at).toLocaleDateString('en-IN')+' by '+last.by:'Not reviewed yet')),
+      h('div',null,h('div',{className:'card-title',style:{margin:0}},'Monthly access review'),h('div',{style:{fontSize:12,color:'var(--text3)'}},last.at?'Last reviewed '+new Date(last.at).toLocaleDateString('en-GB',DMY_D)+' by '+last.by:'Not reviewed yet')),
       h('button',{className:'btn btn-primary btn-sm',onClick:done},'✓ Mark reviewed')),
     h('div',{className:'table-wrap'},h('table',null,h('thead',null,h('tr',null,['Login','Role','Outlets (edit / view)','Last login','Check'].map((t,i)=>h('th',{key:i},t)))),
       h('tbody',null,rows.map(r=>h('tr',{key:r.u.id||r.u.email},h('td',null,h('b',null,r.u.name||''),h('div',{style:{fontSize:11,color:'var(--text3)'}},r.u.email||'')),h('td',null,r.u.role),h('td',null,r.edits+' / '+r.views),
-        h('td',null,r.u.lastLogin?new Date(r.u.lastLogin).toLocaleDateString('en-IN'):'—'),h('td',{style:{fontSize:12,color:r.flags.length?'var(--orange)':'var(--green)'}},r.flags.join(' · ')||'✓')))))));
+        h('td',null,r.u.lastLogin?new Date(r.u.lastLogin).toLocaleDateString('en-GB',DMY_D):'—'),h('td',{style:{fontSize:12,color:r.flags.length?'var(--orange)':'var(--green)'}},r.flags.join(' · ')||'✓')))))));
 }
 
 // ── 19 · Outlet health score (0–100) ──

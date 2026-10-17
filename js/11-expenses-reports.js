@@ -55,7 +55,7 @@ function RecurringExpensesSheet({salon}={}){
     if(!vendorId)return{invoices:invoicesList,created:false,updated:false};
     const linkNo='REC-'+rec.id;
     const invoiceDateIso=rec.startDate||rec.rentStartDate||localTodayIso();
-    const invoiceDate=isoToDMY2(invoiceDateIso)||new Date().toLocaleDateString('en-GB').replace(/\//g,'/');
+    const invoiceDate=isoToDMY2(invoiceDateIso)||new Date().toLocaleDateString('en-GB',DMY_D).replace(/\//g,'/');
     const amount=rec.gstApplicable?(Number(rec.amount)||0)+(Number(rec.gstAmount)||0):(Number(rec.amount)||0);
     // TDS — deducted at source, so it's never actually paid to the vendor in cash. Recorded here
     // as an auto-managed payment entry (a fixed id keyed to this invoice, replaced every time this

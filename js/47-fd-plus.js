@@ -190,7 +190,7 @@ function FdCashDrawerModal({sid,onClose}){
     h('div',{className:'modal-title'},'💵 Cash drawer'),
     !sh?h('div',null,h('div',{style:{fontSize:12.5,marginBottom:8}},'Open the drawer at the start of a shift with the cash already in it (float).'),
         h('div',{style:{display:'flex',gap:8}},h('input',{type:'number',className:'form-control',style:{width:160},placeholder:last?'Float (last close '+FD_M(last.counted)+')':'Float ₹',value:fl,onChange:e=>setFl(e.target.value)}),h('button',{className:'btn btn-primary',onClick:open},'Open drawer')))
-      :h('div',null,h('div',{style:{fontSize:12.5,color:'var(--text2)',marginBottom:6}},'Open since '+new Date(sh.openedAt).toLocaleString('en-IN')+' by '+(sh.openedBy||'—')),
+      :h('div',null,h('div',{style:{fontSize:12.5,color:'var(--text2)',marginBottom:6}},'Open since '+new Date(sh.openedAt).toLocaleString('en-GB',DMY_DT)+' by '+(sh.openedBy||'—')),
         kv('Float',FD_M(sh.float)),kv('+ Cash bills',FD_M(ex.bills)),kv('+ Dues received in cash',FD_M(ex.receipts)),kv('+ Advances in cash (net)',FD_M(ex.adv)),kv('− Petty cash paid',FD_M(ex.petty)),kv('− Cash refunds',FD_M(ex.refunds)),
         h('div',{className:'kv',style:{fontWeight:700}},h('span',null,'Should be in the drawer'),h('span',null,FD_M(ex.expected))),
         h('div',{style:{display:'flex',gap:8,marginTop:10,flexWrap:'wrap'}},h('input',{type:'number',className:'form-control',style:{width:150},placeholder:'Counted ₹',value:cnt,onChange:e=>setCnt(e.target.value)}),h('input',{className:'form-control',style:{flex:1,minWidth:160},placeholder:'Note (needed if it does not tally)',value:note,onChange:e=>setNote(e.target.value)}),h('button',{className:'btn btn-primary',onClick:close},'Close drawer')),
@@ -198,7 +198,7 @@ function FdCashDrawerModal({sid,onClose}){
         h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:4}},'Tips paid out of the drawer are not counted here — pay them after closing, or note them.')),
     Object.keys(per).length>0&&h('div',{style:{marginTop:14,fontSize:12.5}},h('b',null,'Last 30 days — difference by person who opened: '),Object.entries(per).map(([k,v])=>h('span',{key:k,style:{marginRight:10,color:v<0?'var(--red)':v>0?'var(--orange)':'var(--green)'}},k+' '+(v?(v<0?'−':'+')+FD_M(Math.abs(v)):'✓')))),
     hist.length>0&&h('div',{className:'table-wrap',style:{marginTop:8}},h('table',null,h('thead',null,h('tr',null,['Closed','By','Expected','Counted','Difference','Note'].map((x,i)=>h('th',{key:i},x)))),
-      h('tbody',null,hist.map(s=>h('tr',{key:s.id},h('td',null,new Date(s.closedAt).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})),h('td',null,s.closedBy),h('td',null,FD_M(s.expected)),h('td',null,FD_M(s.counted)),
+      h('tbody',null,hist.map(s=>h('tr',{key:s.id},h('td',null,new Date(s.closedAt).toLocaleString('en-GB',DMY_DT)),h('td',null,s.closedBy),h('td',null,FD_M(s.expected)),h('td',null,FD_M(s.counted)),
         h('td',{style:{fontWeight:600,color:s.diff<0?'var(--red)':s.diff>0?'var(--orange)':'var(--green)'}},s.diff?(s.diff<0?'−':'+')+FD_M(Math.abs(s.diff)):'✓'),h('td',{style:{fontSize:11.5}},s.note||'')))))),
     h('div',{className:'modal-actions'},h('button',{className:'btn btn-primary',onClick:onClose},'Close'))));
 }

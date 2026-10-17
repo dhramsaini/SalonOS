@@ -219,7 +219,7 @@ function ecImportOk(sid,kind,file){
   if(!file||!ecOn('importSeen',sid))return true;
   const k=outletKey('salonos_import_log',sid);const L=ecLoad('salonos_import_log',sid,{})||{};
   const f1=kind+'|'+file.size+'|'+(file.lastModified||0),f2=kind+'|'+file.name+'|'+file.size;const seen=L[f1]||L[f2];
-  if(seen&&!window.confirm('This '+kind+' file looks like one already imported — "'+seen.name+'", '+new Date(seen.at).toLocaleString('en-IN')+(seen.by?' by '+seen.by:'')+'.\n\nImport it again anyway?'))return false;
+  if(seen&&!window.confirm('This '+kind+' file looks like one already imported — "'+seen.name+'", '+new Date(seen.at).toLocaleString('en-GB',DMY_DT)+(seen.by?' by '+seen.by:'')+'.\n\nImport it again anyway?'))return false;
   const rec={name:file.name,at:new Date().toISOString(),by:ecUser()};L[f1]=rec;L[f2]=rec;
   const keys=Object.keys(L);if(keys.length>600)keys.sort((a,b)=>String(L[a].at).localeCompare(String(L[b].at))).slice(0,keys.length-600).forEach(x=>delete L[x]);
   safeLocalSet(k,JSON.stringify(L));return true;

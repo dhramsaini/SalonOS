@@ -127,7 +127,7 @@ function WhatsAppInbox({salonId,onClose,onReview}){
   const [showAll,setShowAll]=useState(false);
   const all=waInboxLoad(salonId).slice().sort((a,b)=>String(b.receivedAt).localeCompare(String(a.receivedAt)));
   const list=showAll?all:all.filter(x=>x.status==='new');
-  const when=iso=>{try{return new Date(iso).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});}catch(e){return iso;}};
+  const when=iso=>{try{return new Date(iso).toLocaleString('en-GB',DMY_DT);}catch(e){return iso;}};
   const inr=v=>'₹'+Math.round(Number(v)||0).toLocaleString('en-IN');
   // Which vendor each bill belongs to (GSTIN, then name) and whether it is already entered.
   const vendors=loadVendors(salonId)||[],invoices=loadVendorInvoices(salonId)||[];

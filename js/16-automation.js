@@ -317,7 +317,7 @@ function FullCloseChecklist({sid,cal,steps,onNavTab}){
     if(v){const u=currentSessionUser();cur[it.id]={by:(u&&u.name)||'',at:new Date().toISOString()};}else delete cur[it.id];
     m[ym]=cur;safeLocalSet(outletKey('salonos_close_checklist',sid),JSON.stringify(m));setTick(x=>x+1);
   };
-  const exportX=async()=>{try{await afDownloadXlsx('Month-end checklist',[['Phase','Item','Done','Ticked by','When','How checked'],...phases.flatMap(p=>p.items.map(i=>[p.phase,i.text,i.done?'Yes':'No',i.by||'',i.at?new Date(i.at).toLocaleString('en-IN'):'',i.isAuto?'Automatic':'Manual']))],'Month_End_Checklist_'+String(outletSettings(sid).name||'Outlet').split('—')[0].trim().replace(/[^A-Za-z0-9]+/g,'_')+'_'+ym+'.xlsx');}catch(e){window.alert(e.message||String(e));}};
+  const exportX=async()=>{try{await afDownloadXlsx('Month-end checklist',[['Phase','Item','Done','Ticked by','When','How checked'],...phases.flatMap(p=>p.items.map(i=>[p.phase,i.text,i.done?'Yes':'No',i.by||'',i.at?new Date(i.at).toLocaleString('en-GB',DMY_DT):'',i.isAuto?'Automatic':'Manual']))],'Month_End_Checklist_'+String(outletSettings(sid).name||'Outlet').split('—')[0].trim().replace(/[^A-Za-z0-9]+/g,'_')+'_'+ym+'.xlsx');}catch(e){window.alert(e.message||String(e));}};
   return h('div',{className:'card',style:{marginTop:16,padding:0}},
     h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'14px 16px',borderBottom:'1px solid var(--border)',flexWrap:'wrap',gap:8}},
       h('div',null,h('div',{className:'card-title',style:{margin:0}},'Full month-end checklist'),
@@ -331,6 +331,6 @@ function FullCloseChecklist({sid,cal,steps,onNavTab}){
           h('input',{type:'checkbox',checked:!!it.done,disabled:locked||it.isAuto,title:it.isAuto?'Ticks itself from the data':'',onChange:e=>toggle(it,e.target.checked)}),
           h('span',{style:{flex:1,color:it.done?'var(--text3)':'var(--text)'}},(it.isAuto?'⚙ ':'')+it.text,
             it.detail&&!it.done?h('span',{style:{color:'var(--orange)',marginLeft:6}},'— '+it.detail):null),
-          it.by?h('span',{style:{fontSize:11,color:'var(--text3)',whiteSpace:'nowrap'}},it.by+' · '+new Date(it.at).toLocaleDateString('en-IN')):null,
+          it.by?h('span',{style:{fontSize:11,color:'var(--text3)',whiteSpace:'nowrap'}},it.by+' · '+new Date(it.at).toLocaleDateString('en-GB',DMY_D)):null,
           !it.done&&it.tab&&onNavTab?h('button',{className:'btn btn-ghost btn-sm',style:{padding:'2px 8px'},onClick:()=>onNavTab(it.tab)},'Open →'):null)));}));
 }

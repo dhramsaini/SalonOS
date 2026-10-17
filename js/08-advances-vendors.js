@@ -1375,7 +1375,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
   const vIso=(y,m,d)=>y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
   const [vFrom,setVFrom]=useState(()=>vIso(viewCal.year,viewCal.month,1));
   const [vTo,setVTo]=useState(()=>vIso(viewCal.year,viewCal.month,new Date(viewCal.year,viewCal.month+1,0).getDate()));
-  const vDmy=s=>s?s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(2,4):'…';
+  const vDmy=s=>s?s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4):'…';
   const viewMonthLabel=(()=>{const a=vFrom,b=vTo;if(a&&b&&a.slice(0,7)===b.slice(0,7)&&a.slice(8)==='01'&&Number(b.slice(8))===new Date(+b.slice(0,4),+b.slice(5,7),0).getDate())
     return new Date(+a.slice(0,4),+a.slice(5,7)-1,1).toLocaleString('en-IN',{month:'short',year:'numeric'});return vDmy(a)+' – '+vDmy(b);})();
   const bookIso=inv=>{const p=parseInvoiceDateFlexible(inv.bookingDate||inv.invoiceDate);return p?vIso(p.y,p.m-1,p.d):'';};

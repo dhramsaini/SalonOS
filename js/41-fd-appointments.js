@@ -8,7 +8,7 @@
 const AP_STATUS_COLOR={'Blocked':'#95a5a6','Booked':'var(--blue)','Confirmed':'var(--teal)','Checked in':'#8e44ad','In chair':'var(--orange)','Done':'var(--green)','No-show':'var(--red)','Cancelled':'var(--text3)'};
 const fdHM=m=>{const hh=Math.floor(m/60),mm=m%60;const ap=hh>=12?'PM':'AM';const H=hh%12===0?12:hh%12;return H+':'+String(mm).padStart(2,'0')+' '+ap;};
 const fdAddD=(iso,n)=>{const d=new Date(iso+'T00:00:00');d.setDate(d.getDate()+n);return localIsoOf(d);};
-const fdPrettyD=iso=>new Date(iso+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
+const fdPrettyD=iso=>new Date(iso+'T00:00:00').toLocaleDateString('en-GB',DMY_WD);
 function fdBookKey(sid){return outletKey('salonos_appointments_book',sid);}
 function fdLoadBook(sid){const v=fdJ(fdBookKey(sid),null);if(v&&typeof v==='object')return v;try{const legacy=JSON.parse(cachedLocalGet('salonos_appointments_book')||'{}')||{};const mine={};Object.keys(legacy).forEach(k=>{if(k.startsWith(sid+'|'))mine[k]=legacy[k];});return mine;}catch(e){return{};}}
 function fdMarkApptBilled(sid,dayKey,ids,billId){const B=fdLoadBook(sid);B[dayKey]=(B[dayKey]||[]).map(a=>ids.includes(a.id)?{...a,status:'Done',billId,finishedAt:a.finishedAt||new Date().toISOString()}:a);safeLocalSet(fdBookKey(sid),JSON.stringify(B));}
@@ -236,8 +236,8 @@ function AppointmentBook({salon}){
       a.advanceId&&(()=>{const ad=fdAdvances(sid).find(x=>x.id===a.advanceId);return ad?h('div',{style:{fontSize:12,color:'var(--green)',marginTop:4}},'💰 Advance '+FD_M(ad.amount)+' '+ad.mode+(ad.usedBill?' · adjusted in '+ad.usedBill:ad.refunded?' · refunded':ad.forfeited?' · kept (no-show)':' · held')):null;})(),
       h(FdFormulaCard,{sid,phone:a.phone,service:a.service,staffName:a.staff}),
       h(FdPrefsCard,{sid,phone:a.phone,readOnly:true}),
-      (a.log||[]).length>0&&h('details',{style:{fontSize:12,marginTop:6}},h('summary',null,'🕓 Changes ('+a.log.length+')'),a.log.slice().reverse().map((x,i)=>h('div',{key:i,style:{color:'var(--text2)'}},new Date(x.at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})+' · '+(x.by||'—')+' — '+x.what))),
-      a.createdBy&&h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:4}},'Booked by '+a.createdBy+(a.createdAt?' · '+new Date(a.createdAt).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'')),
+      (a.log||[]).length>0&&h('details',{style:{fontSize:12,marginTop:6}},h('summary',null,'🕓 Changes ('+a.log.length+')'),a.log.slice().reverse().map((x,i)=>h('div',{key:i,style:{color:'var(--text2)'}},new Date(x.at).toLocaleString('en-GB',DMY_DT)+' · '+(x.by||'—')+' — '+x.what))),
+      a.createdBy&&h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:4}},'Booked by '+a.createdBy+(a.createdAt?' · '+new Date(a.createdAt).toLocaleString('en-GB',DMY_DT):'')),
       controlOn('runningBills',sid)&&!a.billId&&a.status!=='Cancelled'&&h('button',{className:'btn btn-ghost btn-sm',style:{marginTop:6},onClick:()=>{const tb=fdOpenTab(sid,a,date);toast(tb?'Running bill opened for '+a.client:'A running bill is already open for this booking','info');}},'🧾 Open running bill'),
       h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginTop:14}},['Confirmed','In chair','No-show','Cancelled'].map(s=>h('button',{key:s,className:'btn btn-sm '+(s==='No-show'||s==='Cancelled'?'btn-danger':'btn-ghost'),onClick:()=>setStatus(a,s)},s)),
         !a.billId&&a.status!=='Cancelled'&&h('button',{className:'btn btn-primary btn-sm',onClick:()=>billNow(a)},'🧾 Done → Bill now'),

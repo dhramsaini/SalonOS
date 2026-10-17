@@ -42,7 +42,7 @@ function TallyAutoSyncCard({salonId,conn,updateConn,companies,tallyOk,onDone}){
       'Waiting to send: '+pending.invs.length+' invoice(s), '+pending.rows.length+' bank transaction(s), '+(pending.pays||[]).length+' vendor payment(s).',
       pending.changed.length?h('div',{style:{color:'var(--orange)'}},'Changed after they were sent (not re-sent — correct them in Tally): '+pending.changed.slice(0,5).join(' · ')+(pending.changed.length>5?' …':'')):null),
     last&&h('div',{style:{fontSize:11.5,color:last.error||last.failed&&last.failed.length?'var(--orange)':'var(--text3)',margin:'6px 0 0 22px',lineHeight:1.6}},
-      'Last run '+new Date(last.at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+': '
+      'Last run '+new Date(last.at).toLocaleString('en-GB',DMY_DT)+': '
         +(last.error?last.error:(last.sent+' sent'+(last.ledgersCreated?', '+last.ledgersCreated+' ledger(s) created':'')+(last.failed&&last.failed.length?', '+last.failed.length+' rejected':''))),
       last.failed&&last.failed.length?h('div',null,last.failed.slice(0,5).map((f,i)=>h('div',{key:i},'• '+f))):null)
   );
@@ -321,7 +321,7 @@ function TallyExportSheet({salon,onNavTab}={}){
 
   // ── UI pieces ──
   const lastSync=log.find(l=>/Sync|Send/.test(l.action||''));
-  const when=d=>d?new Date(d).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
+  const when=d=>d?new Date(d).toLocaleString('en-GB',DMY_DT):'—';
   const pill=(ok,text)=>h('span',{className:'badge '+(ok===true?'badge-green':ok===false?'badge-red':'badge-amber'),style:{fontSize:10.5}},text);
   const statusBar=h('div',{className:'card',style:{display:'flex',gap:18,alignItems:'center',flexWrap:'wrap',padding:'12px 16px',marginBottom:14}},
     h('div',null,h('div',{style:{fontSize:10.5,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.05em'}},'Tally'),
@@ -2202,7 +2202,7 @@ function AuditLogSheet({salon}={}){
             React.createElement('table',null,
               React.createElement('thead',null,React.createElement('tr',null,['When','User','Type','Action','Details'].map(h=>React.createElement('th',{key:h},h)))),
               React.createElement('tbody',null,filtered.map((e,i)=>React.createElement('tr',{key:i},
-                React.createElement('td',{style:{whiteSpace:'nowrap',fontSize:11.5,color:'var(--text3)'}},new Date(e.ts).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})),
+                React.createElement('td',{style:{whiteSpace:'nowrap',fontSize:11.5,color:'var(--text3)'}},new Date(e.ts).toLocaleString('en-GB',DMY_DT)),
                 React.createElement('td',null,e.user+(e.role?' ('+e.role+')':'')),
                 React.createElement('td',null,React.createElement('span',{className:'badge badge-blue'},e.entity)),
                 React.createElement('td',null,React.createElement('span',{className:'badge '+(e.action==='Deleted'?'badge-red':e.action==='Added'?'badge-green':'badge-amber')},e.action)),

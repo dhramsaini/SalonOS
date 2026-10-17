@@ -298,7 +298,7 @@ async function buildMtdPnlWorkbook(sid,salon,cal){
   const P={},RV={},figRows=[];
   {
     const ws=wsP,COLS=8;
-    banner(ws,'MTD Profit & Loss — '+outletName+' · '+monthLbl+' to '+r.day+' '+shortM,'Actuals to date where they exist; salary (until attendance is final), recurring commitments and depreciation pro-rata for the days elapsed. Projected month: daily-run items scaled by the share below, fixed items in full. Compared with '+prevLbl+' (full month). Generated '+new Date().toLocaleString('en-IN')+'.',COLS);
+    banner(ws,'MTD Profit & Loss — '+outletName+' · '+monthLbl+' to '+r.day+' '+shortM,'Actuals to date where they exist; salary (until attendance is final), recurring commitments and depreciation pro-rata for the days elapsed. Projected month: daily-run items scaled by the share below, fixed items in full. Compared with '+prevLbl+' (full month). Generated '+new Date().toLocaleString('en-GB',DMY_DT)+'.',COLS);
     band(ws,4,'Basis',COLS);
     put(ws,5,1,'Days in '+M[cal.month]);put(ws,5,3,r.days,'0');style(ws,5,COLS);
     put(ws,6,1,'Days counted (data up to '+r.day+' '+shortM+')');put(ws,6,3,r.day,'0');style(ws,6,COLS);

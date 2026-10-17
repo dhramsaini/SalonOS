@@ -191,7 +191,7 @@ function SummaryReviewChips({rec}){
   const rv=(rec&&rec.reviews)||{};
   return h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},[...SUMMARY_REVIEW_ROLES,...(rv['Super Admin']?['Super Admin']:[])].map(r=>{
     const x=rv[r];const col=!x?'var(--text3)':x.status==='Approved'?'var(--green)':'var(--red)';
-    return h('span',{key:r,title:x?(x.by+' · '+new Date(x.at).toLocaleString('en-IN')+(x.remarks?' · '+x.remarks:'')):'Not reviewed yet',
+    return h('span',{key:r,title:x?(x.by+' · '+new Date(x.at).toLocaleString('en-GB',DMY_DT)+(x.remarks?' · '+x.remarks:'')):'Not reviewed yet',
       style:{fontSize:11,padding:'2px 8px',borderRadius:12,border:'1px solid '+col,color:col,whiteSpace:'nowrap'}},
       r+': '+(!x?'pending':x.status==='Approved'?'✓ approved':'↩ returned'));}));
 }
@@ -253,6 +253,6 @@ function SummaryApprovalsPanel({user,salons}){
               h('input',{className:'form-control',style:{flex:1,minWidth:220},placeholder:'Remarks ('+myTag+') — required to return',value:note[key]||'',onChange:e=>setNote(n=>({...n,[key]:e.target.value}))}),
               h('button',{className:'btn btn-success btn-sm',onClick:()=>decide(it,'Approved')},'✓ Approve'),
               h('button',{className:'btn btn-danger btn-sm',onClick:()=>decide(it,'Returned')},'↩ Return')),
-            mine&&h('div',{style:{fontSize:12,color:'var(--text3)'}},'You ('+myTag+') '+(mine.status==='Approved'?'approved':'returned')+' this on '+new Date(mine.at).toLocaleString('en-IN')+'.'))));
+            mine&&h('div',{style:{fontSize:12,color:'var(--text3)'}},'You ('+myTag+') '+(mine.status==='Approved'?'approved':'returned')+' this on '+new Date(mine.at).toLocaleString('en-GB',DMY_DT)+'.'))));
       })))));
 }

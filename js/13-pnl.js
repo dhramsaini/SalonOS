@@ -691,7 +691,7 @@ function OutletPnLCore({salon,period}){
       const P={};const figRows=[];const RV={}; // row → {c: this month, e: previous month} (stored results for viewers that don't recalculate)
       {
         const ws=wsP,COLS=7;
-        banner(ws,'Profit & Loss Statement — '+outletName+' · '+monthLbl+' ('+status+')','FY '+fy+'. Each figure links to its working sheet (W1–W5) — click a cell to see where it comes from. Previous month ('+prevLbl+') for comparison. Generated '+new Date().toLocaleString('en-IN')+'.',COLS);
+        banner(ws,'Profit & Loss Statement — '+outletName+' · '+monthLbl+' ('+status+')','FY '+fy+'. Each figure links to its working sheet (W1–W5) — click a cell to see where it comes from. Previous month ('+prevLbl+') for comparison. Generated '+new Date().toLocaleString('en-GB',DMY_DT)+'.',COLS);
         head(ws,4,['Particulars','Working','This month ₹ ('+monthLbl+')','% of revenue','Previous month ₹ ('+prevLbl+')','Change ₹','Change %'],3);
         let r=5;
         const prevAmt=(si,name)=>{const S=si==='below'?prev.below:(prev.sections[si]||{lines:[]}).lines;const x=(S||[]).find(l=>l.name===name);return x?R(x.amt):0;};
@@ -728,7 +728,7 @@ function OutletPnLCore({salon,period}){
           ['D','F','G'].forEach(cc=>{const x=ws.getCell(cc+i);const b=ws.getCell('C'+i);x.border=b.border;x.fill=b.fill;x.font={...(b.font||{}),color:undefined};x.alignment={horizontal:'right',vertical:'middle'};});}
         // Sign-off
         let sr=P.pbt+3;
-        note(ws,sr,'Figures for '+monthLbl+' as per SalonOS on '+new Date().toLocaleDateString('en-IN')+'. '+(plFinal?'P&L marked FINAL.':'DRAFT — figures can still change until the P&L is marked Final.'),COLS);sr+=2;
+        note(ws,sr,'Figures for '+monthLbl+' as per SalonOS on '+new Date().toLocaleDateString('en-GB',DMY_D)+'. '+(plFinal?'P&L marked FINAL.':'DRAFT — figures can still change until the P&L is marked Final.'),COLS);sr+=2;
         [['Prepared by',1],['Reviewed by',3],['Approved by',5]].forEach(([t,cI])=>{const c=ws.getCell(sr,cI);c.value=t;c.font={bold:true,size:9,color:{argb:C.grey}};
           const l=ws.getCell(sr+2,cI);l.value='Name / signature / date';l.font={size:8,italic:true,color:{argb:C.light}};l.border={top:{style:'thin',color:{argb:C.grey}}};});
         ws.pageSetup.printTitlesRow='4:4';
@@ -973,7 +973,7 @@ function OutletPnLCore({salon,period}){
           ]
         }),
         canFinalize&&h('button',{className:'btn btn-sm '+(plFinal?'btn-ghost':'btn-primary'),onClick:toggleFinal,
-          title:plFinal&&plFinalRec?'Marked Final'+(plFinalRec.by?' by '+plFinalRec.by:'')+' on '+new Date(plFinalRec.at).toLocaleDateString('en-IN'):'Mark this month’s P&L as final'},
+          title:plFinal&&plFinalRec?'Marked Final'+(plFinalRec.by?' by '+plFinalRec.by:'')+' on '+new Date(plFinalRec.at).toLocaleDateString('en-GB',DMY_D):'Mark this month’s P&L as final'},
           plFinal?'↩ Un-finalize':'✓ Mark as Final'))),
 
     h('div',{className:'fd-toolbar'},
@@ -2097,7 +2097,7 @@ function reportInnerHtml(title,subtitle,bodyHtml,opts){
       <div class="brand">SalonOS — Business Report</div>
       <h1>${title}</h1>
       ${subtitle?`<div class="sub">${subtitle}</div>`:''}
-      <div class="meta">Generated ${new Date().toLocaleString('en-IN',{dateStyle:'long',timeStyle:'short'})}${opts.watermark?` · <b style="color:${String(opts.watermark).toUpperCase()==='FINAL'?'#15803d':'#b91c1c'}">${String(opts.watermark).toUpperCase()==='FINAL'?'FINAL':'DRAFT — not final'}</b>`:''}</div>
+      <div class="meta">Generated ${new Date().toLocaleString('en-GB',DMY_DT)}${opts.watermark?` · <b style="color:${String(opts.watermark).toUpperCase()==='FINAL'?'#15803d':'#b91c1c'}">${String(opts.watermark).toUpperCase()==='FINAL'?'FINAL':'DRAFT — not final'}</b>`:''}</div>
     </div>
     ${opts.execSummary&&opts.execSummary.length?`<div class="exec-summary"><h2>Executive Summary</h2><ul>${opts.execSummary.map(li=>'<li>'+li+'</li>').join('')}</ul></div>`:''}
     ${showToc?`<div class="toc"><h2>Contents</h2><ol>${headings.map(h=>'<li><a href="#'+h.id+'">'+h.text+'</a></li>').join('')}</ol></div>`:''}
@@ -2647,7 +2647,7 @@ async function buildPayslipsPdf(salon,year,month,workings,watermark){
     y+=30;
     doc.setFontSize(8);doc.setTextColor(120,130,150);
     doc.text('This is a computer-generated payslip and does not require a signature.',12,y);
-    doc.text('Generated '+new Date().toLocaleString('en-IN')+' · SalonOS',12,y+4.5);
+    doc.text('Generated '+new Date().toLocaleString('en-GB',DMY_DT)+' · SalonOS',12,y+4.5);
   });
   if(watermark)pdfWatermark(doc,watermark);
   return doc.output('blob');
@@ -2664,7 +2664,7 @@ async function exportReportPdfBlob(title,subtitle,sheetRows,opts){
     doc.setTextColor(255,255,255);doc.setFontSize(13);doc.setFont(undefined,'bold');
     doc.text(String(title),8,9);
     doc.setFontSize(8);doc.setFont(undefined,'normal');doc.setTextColor(200,215,235);
-    doc.text(((subtitle||'')+(subtitle?' · ':'')+'Generated '+new Date().toLocaleString('en-IN')).slice(0,120),8,14.5);
+    doc.text(((subtitle||'')+(subtitle?' · ':'')+'Generated '+new Date().toLocaleString('en-GB',DMY_DT)).slice(0,120),8,14.5);
   };
   drawHeader();
   // Split into separate tables at each blank row. Every report's sheetRows already uses a blank

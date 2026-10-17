@@ -28,7 +28,7 @@ function CollaborationReview({user,salons,submissions,setSubmissions}){
       React.createElement('thead',null,React.createElement('tr',null,['Submission','Outlet','Period','Submitted By','Submitted At','Status','Review'].map(h=>React.createElement('th',{key:h},h)))),
       React.createElement('tbody',null,visible.map(x=>React.createElement('tr',{key:x.id},
         React.createElement('td',null,React.createElement('div',{style:{fontWeight:600,color:'var(--text)'}},x.module),React.createElement('div',{style:{fontSize:10,color:'var(--text3)'}},x.id)),
-        React.createElement('td',null,x.outlet),React.createElement('td',null,x.period),React.createElement('td',null,x.submittedBy),React.createElement('td',null,new Date(x.submittedAt).toLocaleString('en-IN')),
+        React.createElement('td',null,x.outlet),React.createElement('td',null,x.period),React.createElement('td',null,x.submittedBy),React.createElement('td',null,new Date(x.submittedAt).toLocaleString('en-GB',DMY_DT)),
         React.createElement('td',null,React.createElement('span',{className:'badge '+({Approved:'badge-green',Returned:'badge-red',Submitted:'badge-blue','Under Review':'badge-amber'}[x.status]||'badge-gray')},x.status),x.remarks&&React.createElement('div',{style:{fontSize:10,color:'var(--text3)',marginTop:5,maxWidth:180}},x.remarks)),
         React.createElement('td',null,canReview?React.createElement('div',{style:{minWidth:230}},React.createElement('textarea',{className:'form-control review-note',placeholder:'Review remarks',value:note[x.id]??x.remarks,onChange:e=>setNote(n=>({...n,[x.id]:e.target.value}))}),React.createElement('div',{style:{display:'flex',gap:5,marginTop:6}},React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>updateStatus(x.id,'Under Review')},'Review'),React.createElement('button',{className:'btn btn-success btn-sm',onClick:()=>updateStatus(x.id,'Approved')},'Approve'),React.createElement('button',{className:'btn btn-danger btn-sm',onClick:()=>updateStatus(x.id,'Returned')},'Return'))):React.createElement('span',{style:{fontSize:11,color:'var(--text3)'}},x.reviewedBy?'Reviewed by '+x.reviewedBy:'Awaiting review'))
       )))
@@ -53,7 +53,7 @@ const AP_COLOR={'Booked':'var(--blue)','Confirmed':'var(--teal)','In chair':'var
 const fdRand=(a,b)=>{let x=Math.sin(a*127.1+b*311.7)*43758.5453;return x-Math.floor(x)};
 const fdDateStr=d=>localIsoOf(d);
 const fdAddDays=(s,n)=>{const d=new Date(s+'T00:00:00');d.setDate(d.getDate()+n);return fdDateStr(d)};
-const fdPretty=s=>new Date(s+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
+const fdPretty=s=>new Date(s+'T00:00:00').toLocaleDateString('en-GB',DMY_WD);
 const fdPhone=(sid,i)=>'9'+String(Math.floor(fdRand(sid*7+i,3)*899999999)+100000000).slice(0,9);
 
 /* Appointment Book → js/41-fd-appointments.js */

@@ -659,7 +659,7 @@ function MasterSalarySheet({salon}={}){
     <div class="header">
       <div><div class="logo">SalonOS</div><div class="logo-sub">Master Salary Sheet</div></div>
       <div class="meta">
-        <div><b>Exported on:</b> ${new Date().toLocaleString('en-IN')}</div>
+        <div><b>Exported on:</b> ${new Date().toLocaleString('en-GB',DMY_DT)}</div>
         <div><b>Filter:</b> ${statusFilter} employees &nbsp;|&nbsp; <b>Records:</b> ${data.length}</div>
       </div>
     </div>

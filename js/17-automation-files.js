@@ -200,7 +200,7 @@ function SendPayslipsSheet({salon,period}={}){
             return h('tr',{key:e.id},h('td',null,h('b',null,e.name),h('div',{style:{fontSize:11,color:'var(--text3)'}},e.desig||'')),
               h('td',null,ph||h('span',{style:{color:'var(--orange)'}},'no mobile')),
               h('td',{style:{textAlign:'right'}},afMoney(e.net)),
-              h('td',{style:{fontSize:11,color:'var(--green)'}},s?'✓ sent '+new Date(s).toLocaleDateString('en-IN'):''),
+              h('td',{style:{fontSize:11,color:'var(--green)'}},s?'✓ sent '+new Date(s).toLocaleDateString('en-GB',DMY_D):''),
               h('td',{style:{textAlign:'right'}},h('button',{className:'btn btn-primary btn-sm',disabled:!waPhoneOk(ph)||busy===e.id,onClick:()=>send(e)},busy===e.id?'Preparing…':s?'Send again':'📤 Send')));}))))));
 }
 

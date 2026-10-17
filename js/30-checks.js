@@ -23,7 +23,7 @@ function EditsCashBoard({accessibleSalons}){
   const outlets=(accessibleSalons||[]).filter(s=>s&&s.id!=null&&s.status!=='Inactive');
   const data=outlets.map(s=>({s,edits:lateEditsFor(s.id,days),cash:cashPatternFor(s.id,days)}));
   const m=n=>(n<0?'−':'')+'₹'+Math.abs(Math.round(n)).toLocaleString('en-IN');
-  const dt=ts=>{try{return new Date(ts).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});}catch(e){return ts;}};
+  const dt=ts=>{try{return new Date(ts).toLocaleString('en-GB',DMY_DT);}catch(e){return ts;}};
   return h('div',null,
     h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,marginBottom:12}},
       h('div',null,h('div',{className:'page-title'},'Edits & cash'),h('div',{className:'page-sub'},'Entries changed after the day had passed, paid bills edited or deleted, months unlocked, and cash count differences above each outlet’s limit')),

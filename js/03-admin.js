@@ -1059,7 +1059,7 @@ function MasterSheet({onSelect,salons,setSalons,user}){
         (form.typeHistory&&form.typeHistory.length>0)&&React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:14}},
           React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6}},'Outlet Type change history'),
           form.typeHistory.slice().reverse().map((h,i)=>React.createElement('div',{key:i,style:{fontSize:12,color:'var(--text2)',padding:'3px 0'}},
-            React.createElement('span',{style:{color:'var(--text3)'}},new Date(h.date).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})+' — '),
+            React.createElement('span',{style:{color:'var(--text3)'}},new Date(h.date).toLocaleDateString('en-GB',DMY_D)+' — '),
             h.from,' → ',React.createElement('b',{style:{color:'var(--text)'}},h.to),
             h.by&&React.createElement('span',{style:{color:'var(--text3)'}},' · by '+h.by)
           ))
@@ -1446,7 +1446,7 @@ function CloudBackupsCard(){
     }catch(e){toastError('Restore failed: '+(e.message||'network error'));}
     setBusy(false);
   };
-  const fmt=(ts)=>new Date(ts).toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'numeric',minute:'2-digit'});
+  const fmt=(ts)=>new Date(ts).toLocaleString('en-GB',DMY_DT);
   const [lastDl,setLastDl]=useState(()=>{try{return JSON.parse(cachedLocalGet('salonos_secret_backup_downloaded')||'null');}catch(e){return null;}});
   const downloadFile=async(id)=>{
     setBusy(true);
@@ -1548,7 +1548,7 @@ function ChangeHistoryCard(){
     }catch(e){toastError('Restore failed: '+(e.message||'network error'));}
     setBusy(false);
   };
-  const fmt=(ts)=>new Date(ts).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});
+  const fmt=(ts)=>new Date(ts).toLocaleString('en-GB',DMY_DT);
   return React.createElement('div',{className:'card',style:{marginBottom:16}},
     React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:8}},
       React.createElement('div',{className:'card-title',style:{marginBottom:0}},'📜 Change history'),
@@ -1586,7 +1586,7 @@ function AppErrorsCard(){
     catch(e){setRows([]);}
   })();},[]);
   if(!rows||!rows.length)return null;
-  const fmt=(ts)=>new Date(ts).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});
+  const fmt=(ts)=>new Date(ts).toLocaleString('en-GB',DMY_DT);
   return React.createElement('div',{className:'card',style:{marginBottom:16}},
     React.createElement('div',{className:'card-title'},'🐞 App errors (last '+rows.length+')'),
     React.createElement('div',{style:{maxHeight:240,overflowY:'auto',border:'1px solid var(--border)',borderRadius:'var(--r)'}},
@@ -2154,7 +2154,7 @@ function UserAccessByOutlet({users,salons,sheets,onEdit}){
   const chip=(label,kind)=>h('span',{key:label,className:'badge '+(kind==='Edit'?'badge-green':kind==='View Only'?'badge-blue':kind==='Approval only'?'badge-amber':'badge-gray'),style:{margin:'0 4px 4px 0',fontWeight:500,whiteSpace:'nowrap',display:'inline-block'}},label);
   const exportXlsx=async()=>{
     try{
-      const rows=[['User access by outlet — '+new Date().toLocaleDateString('en-IN')],[]];
+      const rows=[['User access by outlet — '+new Date().toLocaleDateString('en-GB',DMY_D)],[]];
       list.forEach(s=>{
         rows.push([s.name]);
         rows.push(['User','Email','Role','Status','Outlet access',...sheets.map(sh=>sh.label)]);
@@ -2502,7 +2502,7 @@ function UserManagement(){
                 return React.createElement('span',{style:{fontSize:12,color:'var(--text2)'}},(editCount?editCount+' Edit':'')+(editCount&&viewCount?' · ':'')+(viewCount?viewCount+' View':'')+' (across '+outletCount+' outlet'+(outletCount===1?'':'s')+')');
               })()),
               React.createElement('td',null,React.createElement('span',{className:`badge ${u.status==='Active'?'badge-green':'badge-gray'}`,style:{cursor:'pointer'},onClick:()=>toggleStatus(u),title:'Click to toggle'},u.status),u.accessUntil&&React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:3}},'until '+String(u.accessUntil).split('-').reverse().join('/'))),
-              React.createElement('td',null,u.lastLogin?new Date(u.lastLogin).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):React.createElement('span',{style:{color:'var(--text3)'}},'Never')),
+              React.createElement('td',null,u.lastLogin?new Date(u.lastLogin).toLocaleString('en-GB',DMY_DT):React.createElement('span',{style:{color:'var(--text3)'}},'Never')),
               React.createElement('td',null,React.createElement('div',{style:{display:'flex',gap:6}},
                 React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>openEdit(u)},'Edit'),
                 React.createElement('button',{'aria-label':'Delete',className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>setShowDelete(u)},React.createElement(IconTrash,{size:14}))
