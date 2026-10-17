@@ -1220,11 +1220,13 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
   };
   const setMetaField=(empId,field,value)=>{
     if(monthLocked){swError('This month is locked — unlock it above to make changes.');return;}
+    if(field==='status'&&value==='Approved'&&typeof payApproveRowOk==='function'&&!payApproveRowOk(salon?.id,selYear,selMonth,'salary',empId))return;
     let nextMap=null;
     setMeta(prev=>{
       const k=metaKey(empId,selYear,selMonth);
       const cur=prev[k]||{status:'Draft',paymentStatus:'Not Paid',mode:''};
       const next={...cur,[field]:value};
+      if(typeof payLogChange==='function')payLogChange(salon?.id,'salary',selYear,selMonth,empId,field,cur[field],value);
       if(field==='paymentStatus'&&value==='Not Paid')next.mode='';
       if(field==='status'){
         const emp=EMPLOYEES.find(e=>e.id===empId);
@@ -1253,6 +1255,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
   };
   const approveAll=()=>{
     if(monthLocked){swError('This month is locked — unlock it above to make changes.');return;}
+    if(typeof payApproveAllOk==='function'&&!payApproveAllOk(salon?.id,selYear,selMonth,'salary'))return;
     let nextMap=null;
     setMeta(prev=>{
       const next={...prev};
@@ -1511,6 +1514,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
   // switched on. ──
   const swReportTitle='Salary Working — '+MONTHS[selMonth]+' '+selYear+(salon?' — '+salon.name.split('—')[0].trim():'')+(swSelectedIds.size>0?' (selected)':'');
   const hasArr=workings.some(w=>(Number(w.arrears)||0)!==0);
+  const hasX=workings.some(w=>(Number(w.extraEarn)||0)!==0||(Number(w.extraDed)||0)!==0);const hasHold=workings.some(w=>w.hold);
   const swColDefs=[
     {id:'name',header:'Employee',get:e=>e.name,isText:true},
     {id:'desig',header:'Designation',get:e=>e.desig,isText:true},
@@ -1518,6 +1522,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     {id:'totalDays',header:'Total Days',get:e=>fmtDays(e.totalDays),isText:true},
     {id:'gross',header:'Gross Salary',get:e=>e.grossAfterLop},
     hasArr&&{id:'arrears',header:'Arrears',get:e=>e.arrears||0},
+    hasX&&{id:'extraEarn',header:'Other earnings',get:e=>e.extraEarn||0},hasX&&{id:'extraDed',header:'Other deductions',get:e=>e.extraDed||0},hasHold&&{id:'hold',header:'Hold',get:e=>e.hold?'On hold — '+e.hold.reason:'',isText:true},
     cols.serviceInc&&{id:'svcIncAmt',header:'Service Incentive',get:e=>e.svcIncAmt},
     cols.memInc&&{id:'memInc',header:'Mem Inc',get:e=>e.memIncAmt},
     cols.prodInc&&{id:'prodInc',header:'Prod Inc',get:e=>e.prodIncAmt},
@@ -1608,6 +1613,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
   if(!salaryAttendanceReady(salon?.id,selYear,selMonth))return React.createElement(AttendanceNotFinalNotice,{monthLabel:MONTHS[selMonth]+' '+selYear,title:'Salary Working Sheet',onNavTab});
   return React.createElement('div',{className:'fade-in',style:{position:'relative'}},
     React.createElement(WatermarkOverlay,{text:monthLocked?'FINAL':'DRAFT',final:monthLocked}),
+    typeof PayToolsBar==='function'&&React.createElement(PayToolsBar,{salon,year:selYear,month:selMonth,kind:'salary',onChanged:()=>setRefreshTick(t=>t+1)}),
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,
         React.createElement('div',{className:'page-title'},'Salary Working Sheet'),
@@ -1814,7 +1820,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
               workings.length>0&&React.createElement('input',{type:'checkbox',checked:swAllSelected,onChange:swToggleSelectAll,title:'Select all'})
             ),
             React.createElement('th',{style:{padding:'8px 12px',background:'var(--th-bg)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',position:'sticky',left:36,zIndex:3,minWidth:160,borderRight:'1px solid var(--border2)',borderBottom:'2px solid var(--accent)',textAlign:'left'}},'Employee'),
-            th('Desig.',100),th('Salary'),th('Total Days',80),th('Gross Salary'),hasArr&&th('Arrears',90,SW_BG_EARN),
+            th('Desig.',100),th('Salary'),th('Total Days',80),th('Gross Salary'),hasArr&&th('Arrears',90,SW_BG_EARN),hasX&&th('Other earnings',90,SW_BG_EARN),hasX&&th('Other deductions',90),hasHold&&th('Hold',90),
             cols.serviceInc&&th('Svc Incentive',90,SW_BG_EARN),
             cols.memInc&&th('Mem Inc',90,SW_BG_EARN),
             cols.prodInc&&th('Prod Inc',90,SW_BG_EARN),
@@ -1856,6 +1862,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
               td(fmt(e.gross)),td(fmtDays(e.totalDays)),
               td(fmt(e.grossAfterLop),'var(--text)',true),
               hasArr&&td(e.arrears?fmt(e.arrears):'—',e.arrears<0?'var(--red)':'var(--green)',true),
+              hasX&&td(e.extraEarn?fmt(e.extraEarn):'—','var(--green)',true),hasX&&td(e.extraDed?'−'+fmt(e.extraDed):'—','var(--red)',true),hasHold&&td(e.hold?'⏸ '+e.hold.reason:'—','var(--red)'),
               cols.serviceInc&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_EARN,cursor:'pointer'},
                 title:'Click to see the incentive working behind this employee\'s figures',onClick:()=>setIncWorkingModal(e)},
                 e.svcIncAmt>0?React.createElement('span',{style:{color:'var(--blue)'}},'+₹'+e.svcIncAmt.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'—')
@@ -1963,6 +1970,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
             React.createElement('td',{style:{padding:'8px 8px',borderBottom:'1px solid var(--border)'}},''),
             td(fmt(exportWorkings.reduce((s,e)=>s+(e.grossAfterLop||0),0)),'var(--text)',true),
             hasArr&&td(fmt(exportWorkings.reduce((s,e)=>s+(e.arrears||0),0)),'var(--green)',true),
+            hasX&&td(fmt(exportWorkings.reduce((s,e)=>s+(e.extraEarn||0),0)),'var(--green)',true),hasX&&td(fmt(exportWorkings.reduce((s,e)=>s+(e.extraDed||0),0)),'var(--red)',true),hasHold&&td('',''),
             cols.serviceInc&&td(fmt(exportWorkings.reduce((s,e)=>s+(e.svcIncAmt||0),0)),'var(--blue)',true),
             cols.memInc&&td(fmt(exportWorkings.reduce((s,e)=>s+(e.memIncAmt||0),0)),'var(--purple)',true),
             cols.prodInc&&td(fmt(exportWorkings.reduce((s,e)=>s+(e.prodIncAmt||0),0)),'var(--teal)',true),
@@ -2218,7 +2226,8 @@ function SalaryPaymentSheet({period,salon}={}){
     if(cal){setSelMonth(cal.month);setSelYear(cal.year);}
     // eslint-disable-next-line
   },[period&&period.mi,period&&period.fy]);
-  const workings=swWorkingsFor(salon?.id,selYear,selMonth);
+  // Pay tools (js/55): salaries on hold are left out; the part paid in cash is taken off the bank amount.
+  const workings=(swWorkingsFor(salon?.id,selYear,selMonth)||[]).filter(w=>!w.hold).map(w=>w.cashPart?{...w,net:Math.max(0,(Number(w.net)||0)-w.cashPart)}:w);
   const fmt=(n)=>n?'₹'+Math.round(n).toLocaleString('en-IN'):'—';
   const COLS=['Name of Employee','Designation','Net Salary','Bank Name','Account No.','IFSC Code'];
 

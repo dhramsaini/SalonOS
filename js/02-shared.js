@@ -2650,11 +2650,13 @@ function swWorkingsFor(salonId,year,month){
     // Service Incentive is intentionally NOT part of this figure — it's shown in its own column
     // for reference but isn't folded into Net Salary here.
     const arrears=typeof salArrearsFor==='function'?salArrearsFor(salonId,e,year,month):0; // back-dated pay change for locked months (js/53)
+    // Pay tools (js/55): bonus / one-offs, overtime, leave encashment (+) and late / early, notice shortfall (−).
+    const px=typeof payExtrasFor==='function'?payExtrasFor(salonId,e,year,month):null;const extraEarn=px?px.earn:0,extraDed=px?px.ded:0;
     // Part-recovery (js/54 · Controls → advPartRecovery): never recover more than the month's pay can bear.
-    if(!(swM&&swM.advanceSettled)&&typeof advCapToPay==='function')advAdj=advCapToPay(salonId,advAdj,grossAfterLop+arrears+tea-pfEmp-esicEmp-ptAmt-tdsAmt-penAmt);
-    const net=grossAfterLop+arrears+tea-pfEmp-esicEmp-ptAmt-tdsAmt-penAmt-advAdj;
+    if(!(swM&&swM.advanceSettled)&&typeof advCapToPay==='function')advAdj=advCapToPay(salonId,advAdj,grossAfterLop+arrears+extraEarn-extraDed+tea-pfEmp-esicEmp-ptAmt-tdsAmt-penAmt);
+    const net=grossAfterLop+arrears+extraEarn-extraDed+tea-pfEmp-esicEmp-ptAmt-tdsAmt-penAmt-advAdj;
     const closingAdvance=Math.max(0,prevAdv+currAdv-advAdj);
-    return{...e,totalDays,daysInMonth,lop,lopAmt,grossAfterLop,arrears,svcIncAmt,memIncAmt,prodIncAmt,mgrIncAmt,nonPerfPenalty,totalIncSW,incDetail,tea,pfEmp,pfEr,pfAutoAmt,pfOverridden,esicEmp,esicEr,esicAutoAmt,esicOverridden,ptAmt,ptAutoAmt,ptOverridden,tdsAmt,penAmt,advAdj,prevAdv,currAdv,nextAdv,closingAdvance,net:Math.max(0,net)};
+    return{...e,totalDays,daysInMonth,lop,lopAmt,grossAfterLop,arrears,extraEarn,extraDed,payExtra:px,hold:px&&px.hold,cashPart:px?px.cash:0,svcIncAmt,memIncAmt,prodIncAmt,mgrIncAmt,nonPerfPenalty,totalIncSW,incDetail,tea,pfEmp,pfEr,pfAutoAmt,pfOverridden,esicEmp,esicEr,esicAutoAmt,esicOverridden,ptAmt,ptAutoAmt,ptOverridden,tdsAmt,penAmt,advAdj,prevAdv,currAdv,nextAdv,closingAdvance,net:Math.max(0,net)};
   });
 }
 
@@ -3523,6 +3525,9 @@ function incWorkingsForLive(salonId,year,month){
     const otHours=Number(otA.otHours)||0;
     const otDays=new Date(year,month+1,0).getDate();
     const otAmt=cols.ot&&otApplicable&&otNormalHours>0&&otHours>0?Math.round(salary/otDays/otNormalHours*otHours):0;
+    // Incentive adjustments (js/55): team share, client feedback, clawback, cap and floor.
+    const incBase=totalInc+otAmt-penaltyAmt-advAdj;
+    const incAdj=typeof incAdjFor==='function'?incAdjFor(salonId,e,year,month,incBase,{salary,svcRate:svcRateUsed!=null?svcRateUsed:svcRate,prodRate:prodRateUsed!=null?prodRateUsed:prodRate}):null;
     return{...e,salary,svcTarget,svcActual:Math.round(svcActual),memTarget,memActual:Math.round(memActual),prodTarget,prodActual:Math.round(prodActual),
       otApplicable,otNormalHours,otHours,otDays,otAmt,
       totalTarget:Math.round(totalTarget),totalActual:Math.round(totalActual),svcTimesRaw,memTimesRaw,prodTimesRaw,totalTimesRaw,svcPct,memPct,prodPct,
@@ -3530,7 +3535,7 @@ function incWorkingsForLive(salonId,year,month){
       memRateUsed:memRateUsed!=null?memRateUsed:memRate,prodRateUsed:prodRateUsed!=null?prodRateUsed:prodRate,
       svcManualAmt,memManualAmt,prodManualAmt,mgrManualAmt,calcMode:effCalcMode,manualOv,prodRuleType,prodFlatAmount,
       svcIncAmt,memIncAmt,prodIncAmt,mgrIncAmt:mgrIncAmt||0,
-      penaltyAmt,advAdj,totalInc:Math.max(0,totalInc+otAmt-penaltyAmt-advAdj),fromReport,activeModel};
+      penaltyAmt,advAdj,totalInc:incAdj?incAdj.total:Math.max(0,incBase),incAdj,fromReport,activeModel};
   });
 }
 
@@ -3694,13 +3699,13 @@ function employeeCostFor(salonId,year,month){
   // Salary, Tea and PF/ESIC employer share count only once attendance is final; the employee list
   // itself is still used to place monthly incentives under the right role.
   const swReady=salaryAttendanceReady(salonId,year,month);
-  const sw=swWorkingsFor(salonId,year,month).map(e=>swReady?e:{...e,grossAfterLop:0,arrears:0,tea:0,pfEr:0,esicEr:0});
+  const sw=swWorkingsFor(salonId,year,month).map(e=>swReady?e:{...e,grossAfterLop:0,arrears:0,extraEarn:0,extraDed:0,tea:0,pfEr:0,esicEr:0});
   const inc=incWorkingsFor(salonId,year,month);
   const incByEmp={};inc.forEach(e=>{incByEmp[e.id]=e.totalInc;});
   // "Salary" here is Gross Salary + Tea, matching Salary Working's own "Gross Salary" and "Tea"
   // columns — not just the base gross-after-LOP figure.
   const roleMap=PL_ROLE_MAP.filter(r=>!r.biz||r.biz===bizKeyOf(salonId));
-  const salaryLines=roleMap.map(r=>({name:r.salaryLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+e.grossAfterLop+(e.arrears||0)+e.tea,0),group:'Employee Salary'}));
+  const salaryLines=roleMap.map(r=>({name:r.salaryLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+e.grossAfterLop+(e.arrears||0)+(e.extraEarn||0)-(e.extraDed||0)+e.tea,0),group:'Employee Salary'}));
   const incentiveLines=roleMap.filter(r=>r.incLabel&&!isRestaurantOutlet(salonId)).map(r=>({name:r.incLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+(incByEmp[e.id]||0),0),group:'Employee Monthly Incentive'}));
   const pfEr=sw.reduce((s,e)=>s+e.pfEr,0);
   const esicEr=sw.reduce((s,e)=>s+e.esicEr,0);
@@ -3725,7 +3730,8 @@ function employeeCostFor(salonId,year,month){
       ?[{name:'Service Charge to Staff',amt:serviceChargeDistributedFor(salonId,year,month),group:'Employee Service Charge'}]:[]),
     {name:'PF Employer Contribution',amt:pfEr},
     {name:'ESIC Employer Contribution',amt:esicEr},
-    ...(typeof advWrittenOffFor==='function'&&advWrittenOffFor(salonId,year,month)>0?[{name:'Advances Written Off',amt:advWrittenOffFor(salonId,year,month)}]:[])
+    ...(typeof advWrittenOffFor==='function'&&advWrittenOffFor(salonId,year,month)>0?[{name:'Advances Written Off',amt:advWrittenOffFor(salonId,year,month)}]:[]),
+    ...(typeof payProvisionsTotal==='function'&&swReady?(()=>{const pv=payProvisionsTotal(salonId,year,month);return[...(pv.bonus?[{name:'Bonus Provision',amt:pv.bonus}]:[]),...(pv.gratuity?[{name:'Gratuity Provision',amt:pv.gratuity}]:[])];})():[])
   ];
   const detail=sw.map(e=>({id:e.id,name:e.name,desig:e.desig,dept:e.dept,totalDays:e.totalDays,grossAfterLop:e.grossAfterLop,tea:e.tea,pfEr:e.pfEr,esicEr:e.esicEr,incentive:incByEmp[e.id]||0,total:e.grossAfterLop+e.tea+e.pfEr+e.esicEr+(incByEmp[e.id]||0)}));
   const tot=lines.reduce((s,l)=>s+l.amt,0);

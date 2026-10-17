@@ -114,11 +114,13 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
   };
   const setIwMetaField=(empId,field,value)=>{
     if(iwMonthLocked){iwError('This month is locked — unlock it above to make changes.');return;}
+    if(field==='status'&&value==='Approved'&&typeof payApproveRowOk==='function'&&!payApproveRowOk(salon?.id,selYear,selMonth,'incentive',empId))return;
     let nextMap=null;
     setIwMeta(prev=>{
       const k=iwMetaKey(empId,selYear,selMonth);
       const cur=prev[k]||{status:'Draft',paymentStatus:'Not Paid',mode:''};
       const next={...cur,[field]:value};
+      if(typeof payLogChange==='function')payLogChange(salon?.id,'incentive',selYear,selMonth,empId,field,cur[field],value);
       if(field==='paymentStatus'&&value==='Not Paid')next.mode='';
       if(field==='status'){
         const emp=incData.find(e=>e.id===empId);
@@ -147,6 +149,7 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
   // Helper & Housekeeper, matching who actually appears on this sheet).
   const approveAllIW=()=>{
     if(iwMonthLocked){iwError('This month is locked — unlock it above to make changes.');return;}
+    if(typeof payApproveAllOk==='function'&&!payApproveAllOk(salon?.id,selYear,selMonth,'incentive'))return;
     let nextMap=null;
     setIwMeta(prev=>{
       const next={...prev};
@@ -620,6 +623,7 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
 
   return React.createElement('div',{className:'fade-in',style:{position:'relative'}},
     React.createElement(WatermarkOverlay,{text:iwMonthLocked?'FINAL':'DRAFT',final:iwMonthLocked}),
+    typeof PayToolsBar==='function'&&React.createElement(PayToolsBar,{salon,year:selYear,month:selMonth,kind:'incentive',onChanged:()=>setActualsTick(t=>t+1)}),
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,
         React.createElement('div',{className:'page-title'},'Incentive Working Sheet'),

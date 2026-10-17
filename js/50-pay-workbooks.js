@@ -155,7 +155,7 @@ function pwIncentive(sid,y,m,S,o){
       {key:'bG',h:'Mgr basis',w:16,input:true},{key:'sG',h:'Mgr share %',input:true,fmt:'0.0#'},{key:'vG',h:'Mgr manual ₹',input:true},{key:'iG',h:'Mgr incentive'},
       {key:'oA',h:'OT applies',input:true},{key:'oN',h:'Normal hrs / day',input:true,fmt:'0.0#'},{key:'oH',h:'OT hours',input:true,fmt:'0.0#'},{key:'iO',h:'OT incentive'},
       {key:'pen',h:'Penalty (entered)',input:true},{key:'iPen',h:'Penalty'},{key:'advB',h:'Advance basis',w:18,input:true},{key:'advV',h:'Advance settled ₹',input:true},{key:'iAdv',h:'Advance Adj.'},
-      {key:'tot',h:'Total incentive'},{key:'app',h:'SalonOS total',input:true},{key:'chk',h:'Check',w:14},
+      {key:'iX',h:'Adjustments (team, feedback, clawback, cap / floor)',input:true},{key:'tot',h:'Total incentive'},{key:'app',h:'SalonOS total',input:true},{key:'chk',h:'Check',w:14},
       ...(o.whatIf?[{key:'wX',h:'What-if: extra service sale ₹',open:true,w:14},{key:'wS',h:'What-if svc incentive'},{key:'wT',h:'What-if total'}]:[])];
     const list=W.filter(o.empOk);
     const rows=list.map(w=>{const isMgr=MANAGER_DESIGNATIONS.has(w.desig);const cm=w.calcMode||{};const ov=w.manualOv||{};const g=splitMode.service?incentiveGroupFor(w,sid):'__all';const sl=slabRef[g]||slabRef.__all||{base:'0'};
@@ -183,7 +183,8 @@ function pwIncentive(sid,y,m,S,o){
         pen:Number(a.penaltyAmt)||0,iPen:(r,L)=>pwF('IF('+R.refs.colPen+','+L('pen')+r+',0)',w.penaltyAmt),
         advB:settled?'Settled on approval':'Active advances',advV:settled?im.advanceSettledBreakdown.reduce((s,b)=>s+(Number(b.amount)||0),0):null,
         iAdv:(r,L)=>pwF('IF('+R.refs.colAdv+','+(settled?L('advV')+r:'SUMIFS('+o.adv.ded+','+o.adv.emp+','+L('name')+r+','+o.adv.from+',"Incentive")')+',0)',w.advAdj),
-        tot:(r,L)=>pwF('MAX(0,'+['iS','iM','iP','iG','iO'].map(k=>L(k)+r).join('+')+'-'+L('iPen')+r+'-'+L('iAdv')+r+')',w.totalInc),app:Number(w.totalInc)||0,chk:(r,L)=>pwCheck(L('tot')+r,L('app')+r),
+        iX:(w.incAdj?Number(w.incAdj.adj)||0:0),
+        tot:(r,L)=>pwF('MAX(0,'+['iS','iM','iP','iG','iO'].map(k=>L(k)+r).join('+')+'-'+L('iPen')+r+'-'+L('iAdv')+r+')+'+L('iX')+r,w.totalInc),app:Number(w.totalInc)||0,chk:(r,L)=>pwCheck(L('tot')+r,L('app')+r),
         wX:null,
         wS:(r,L)=>{const a2='('+L('aS')+r+'+'+L('wX')+r+')';const x2='IF('+L('salary')+r+'=0,0,'+a2+'/'+L('salary')+r+')';const rate2=svcB==='Rate slab'?slab(x2):L('rS')+r;
           return pwF('IF('+L('wX')+r+'="","",IF('+R.refs.applSvc+','+(svcB==='Manual ₹'?L('vS')+r:'ROUND('+a2+'*'+rate2+'/100,0)')+',0))');},
@@ -270,8 +271,8 @@ function pwSalarySheets(ctx,o){
       pen:(r,L)=>pwF('IF('+on('penalties')+',SUMIFS('+pen.amt+','+pen.emp+','+L('name')+r+'),0)',w.penAmt),
       advB:settled?'Settled on approval':'Active advances',advV:settled?mt.advanceSettledBreakdown.reduce((s,b)=>s+(Number(b.amount)||0),0):null,
       adv:(r,L)=>pwF('IF('+on('advAdj')+','+(settled?L('advV')+r:'SUMIFS('+adv.ded+','+adv.emp+','+L('name')+r+','+adv.from+',"Salary")')+',0)',w.advAdj),
-      arr:Number(w.arrears)||0,
-      net:(r,L)=>pwF('MAX(0,'+L('gross')+r+'+'+L('arr')+r+'+'+L('tea')+r+'-'+L('pf')+r+'-'+L('esic')+r+'-'+L('pt')+r+'-'+L('tds')+r+'-'+L('pen')+r+'-'+L('adv')+r+')',w.net),
+      arr:Number(w.arrears)||0,xe:Number(w.extraEarn)||0,xd:Number(w.extraDed)||0,
+      net:(r,L)=>pwF('MAX(0,'+L('gross')+r+'+'+L('arr')+r+'+'+L('xe')+r+'-'+L('xd')+r+'+'+L('tea')+r+'-'+L('pf')+r+'-'+L('esic')+r+'-'+L('pt')+r+'-'+L('tds')+r+'-'+L('pen')+r+'-'+L('adv')+r+')',w.net),
       opA:Number(w.prevAdv)||0,cuA:Number(w.currAdv)||0,nxA:Number(w.nextAdv)||0,clA:(r,L)=>pwF('MAX(0,'+L('opA')+r+'+'+L('cuA')+r+'-'+L('adv')+r+')',w.closingAdvance),
       pfEr:(r,L)=>pwF('IF(AND('+ref('pfReg')+','+L('pfE')+r+'),ROUND('+L('wage')+r+'*'+ref('pfRate')+',0),0)',w.pfEr),esEr:(r,L)=>pwF('IF(AND('+ref('esicReg')+','+L('esE')+r+','+L('salary')+r+'<='+ref('esicLimit')+'),ROUND('+L('salary')+r+'*'+ref('esicEr')+',0),0)',w.esicEr),
       ...Object.fromEntries([['iS','serviceInc','iS'],['iM','memInc','iM'],['iP','prodInc','iP'],['iG','mgrInc','iG'],['iN','nonPerfPenalty','iPen'],['iT','totalInc','tot']].map(([k,c,src])=>[k,()=>pwF('IF('+on(c)+','+ctx.incRef(src,e.id)+',0)')])),
@@ -280,12 +281,12 @@ function pwSalarySheets(ctx,o){
       wNet:(r,L)=>{const S2='IF('+L('wSal')+r+'="",'+L('salary')+r+','+L('wSal')+r+')',D2='IF('+L('wDays')+r+'="",'+L('days')+r+','+L('wDays')+r+')',T2='IF('+L('wTds')+r+'="",'+L('tds')+r+',IF('+on('tds')+','+L('wTds')+r+',0))';
         const g2='ROUND('+S2+'/'+L('dim')+r+'*'+D2+',0)',t2='IF(AND('+on('tea')+','+L('status')+r+'="Active"),ROUND(IF('+ref('teaMode')+'="perDay",'+ref('teaRate')+'*'+D2+','+ref('teaRate')+'),0),0)';
         const e2=esicF(S2).split('ESO').join(L('esO')+r).split('ESE').join(L('esE')+r),p2='IF('+on('pt')+',IF('+L('ptO')+r+'<>"",'+L('ptO')+r+','+ptExpr(S2)+'),0)';
-        return pwF('IF(AND('+L('wSal')+r+'="",'+L('wDays')+r+'="",'+L('wTds')+r+'=""),"",MAX(0,'+g2+'+'+L('arr')+r+'+'+t2+'-'+L('pf')+r+'-'+e2+'-'+p2+'-'+T2+'-'+L('pen')+r+'-'+L('adv')+r+'))');},
+        return pwF('IF(AND('+L('wSal')+r+'="",'+L('wDays')+r+'="",'+L('wTds')+r+'=""),"",MAX(0,'+g2+'+'+L('arr')+r+'+'+L('xe')+r+'-'+L('xd')+r+'+'+t2+'-'+L('pf')+r+'-'+e2+'-'+p2+'-'+T2+'-'+L('pen')+r+'-'+L('adv')+r+'))');},
       wDiff:(r,L)=>pwF('IF('+L('wNet')+r+'="","",'+L('wNet')+r+'-'+L('net')+r+')'),
       st:mt.status||'Draft',ps:mt.paymentStatus||'',mode:mt.mode||'',bank:e.bankName||'',acct:e.accountNo||'',ifsc:e.ifsc||''};});
   pwTitle(S.sw,'Salary Working — '+(salon.name||'')+' — '+PW_MONTHS[m]+' '+y+' · Net = Gross + Tea − PF − ESIC − PT − TDS − Penalty − Advance (never below 0)');
   const T=pwTable(S.sw,2,[{key:'id',h:'Emp ID',w:9,input:true},{key:'name',h:'Employee',w:22,input:true},{key:'desig',h:'Designation',w:16,input:true},{key:'status',h:'Status',w:9,input:true},
-    {key:'salary',h:'Monthly salary',input:true},{key:'basic',h:'Basic',input:true},{key:'days',h:'Payable days',fmt:'0.0#'},{key:'dim',h:'Days in month'},{key:'gross',h:'Gross salary'},{key:'lop',h:'LOP amount'},{key:'arr',h:'Arrears',input:true},{key:'tea',h:'Tea'},
+    {key:'salary',h:'Monthly salary',input:true},{key:'basic',h:'Basic',input:true},{key:'days',h:'Payable days',fmt:'0.0#'},{key:'dim',h:'Days in month'},{key:'gross',h:'Gross salary'},{key:'lop',h:'LOP amount'},{key:'arr',h:'Arrears',input:true},{key:'xe',h:'Other earnings (bonus, overtime, encashment)',input:true},{key:'xd',h:'Other deductions (late / early, notice)',input:true},{key:'tea',h:'Tea'},
     {key:'pfE',h:'PF applies',input:true},{key:'pfA',h:'PF on actual basic',input:true},{key:'wage',h:'PF wage base'},{key:'pfO',h:'PF typed in',input:true},{key:'pf',h:'PF (Emp)'},
     {key:'esE',h:'ESIC applies',input:true},{key:'esO',h:'ESIC typed in',input:true},{key:'esic',h:'ESIC (Emp)'},{key:'ptO',h:'PT typed in',input:true},{key:'pt',h:'Professional Tax'},
     {key:'tdsE',h:'TDS entered',input:true},{key:'tds',h:'TDS'},{key:'pen',h:'Penalty'},{key:'advB',h:'Advance basis',w:18,input:true},{key:'advV',h:'Advance settled ₹',input:true},{key:'adv',h:'Advance Adj.'},
@@ -294,7 +295,7 @@ function pwSalarySheets(ctx,o){
     {key:'app',h:'SalonOS net',input:true},{key:'chk',h:'Check',w:14},
     ...(o.whatIf?[{key:'wSal',h:'What-if: monthly salary',open:true,w:13},{key:'wDays',h:'What-if: payable days',open:true,w:12,fmt:'0.0#'},{key:'wTds',h:'What-if: TDS',open:true,w:11},{key:'wNet',h:'What-if net'},{key:'wDiff',h:'What-if change'}]:[]),
     {key:'st',h:'Approval',w:11,input:true},{key:'ps',h:'Payment',w:10,input:true},{key:'mode',h:'Mode',w:10,input:true},{key:'bank',h:'Bank',w:16,input:true},{key:'acct',h:'Account no.',w:18,input:true},{key:'ifsc',h:'IFSC',w:13,input:true}],swRows,
-    {total:['salary','basic','gross','lop','arr','tea','pf','esic','pt','tds','pen','adv','net','opA','cuA','nxA','clA','pfEr','esEr','iS','iM','iP','iG','iN','iT','app']});
+    {total:['salary','basic','gross','lop','arr','xe','xd','tea','pf','esic','pt','tds','pen','adv','net','opA','cuA','nxA','clA','pfEr','esEr','iS','iM','iP','iG','iN','iT','app']});
   const swRow={};list.forEach((e,i)=>swRow[e.id]=T.first+i);
   Object.assign(ctx,{E:list,SW:byId,meta,swT:T,swRow,swRef:(k,id)=>swRow[id]?pwRef(S.sw.name)+T.L(k)+swRow[id]:'0',swTot:k=>pwRef(S.sw.name)+T.L(k)+T.totalRow,payRules:R,att,attSummary:e=>attSummaryFor(e,y,m,att[attMonthKey(e.id,y,m)])});
 }
@@ -315,7 +316,7 @@ function pwSheetPayslips(ws,c){
 }
 function pwSheetBank(ws,c){
   pwTitle(ws,'Salary transfer list — '+PW_MONTHS[c.m]+' '+c.y+' · amounts are the Net salary on Salary Working');
-  const rows=c.E.map(e=>({name:e.name,acct:String(e.accountNo||''),ifsc:e.ifsc||'',bankN:e.bankName||'',amt:()=>pwF(c.swRef('net',e.id)),nar:'Salary '+PW_MONTHS[c.m].slice(0,3)+' '+c.y,mode:(c.meta[attMonthKey(e.id,c.y,c.m)]||{}).mode||'',note:e.accountNo?'':'No bank details — pay another way'}))
+  const rows=c.E.filter(e=>!(c.SW[e.id]||{}).hold).map(e=>({name:e.name,acct:String(e.accountNo||''),ifsc:e.ifsc||'',bankN:e.bankName||'',amt:()=>pwF(c.swRef('net',e.id)+((c.SW[e.id]||{}).cashPart?'-'+Number(c.SW[e.id].cashPart):'')),nar:'Salary '+PW_MONTHS[c.m].slice(0,3)+' '+c.y,mode:(c.meta[attMonthKey(e.id,c.y,c.m)]||{}).mode||'',note:e.accountNo?'':'No bank details — pay another way'}))
     .sort((a,b)=>(a.acct?0:1)-(b.acct?0:1));
   pwTable(ws,2,[{key:'name',h:'Beneficiary name',w:24,input:true},{key:'acct',h:'Account number',w:20,input:true},{key:'ifsc',h:'IFSC',w:13,input:true},{key:'bankN',h:'Bank',w:16,input:true},{key:'amt',h:'Amount ₹'},{key:'nar',h:'Narration',w:18,input:true},{key:'mode',h:'Payment mode',w:13,input:true},{key:'note',h:'Note',w:28}],rows,{total:['amt'],xSplit:1});
 }
