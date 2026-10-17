@@ -76,6 +76,7 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
   // Incentive" on the Advances sheet, so the same advance is never deducted from both Salary and
   // Incentive in the same month. ──
   const applyAdvanceSettlementIW=(empName,year,month)=>{
+    if(typeof advRepairOutstanding==='function')advRepairOutstanding(salon?.id);
     const key=outletKey('salonos_advances',salon?.id);
     let all=[];
     try{const raw=JSON.parse(cachedLocalGet(key)||'[]');if(Array.isArray(raw))all=raw;}catch(e){}

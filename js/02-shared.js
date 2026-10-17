@@ -2082,27 +2082,29 @@ function advTrueOutstanding(a){return Math.max(0,(Number(a&&a.amount)||0)-advSet
 // amount − one monthly deduction before anything was recovered (so ₹10,000 with ₹10,000/month was
 // "Recovered" on the day it was given and never deducted). Only records that match that exact
 // mistake are changed; each repair is written to the Audit Log.
+function advNeedsFix(a){
+  if(!a||a.source==='dse'||!['Active','Recovered'].includes(a.status))return false;
+  const amt=Number(a.amount)||0,rep=Number(a.repayment)||0,done=advSettledTotal(a),out=Number(a.outstanding)||0;
+  return rep>0&&Math.abs(out-Math.max(0,amt-rep-done))<=0.5&&Math.abs(Math.max(0,amt-done)-out)>=0.5;
+}
+// The advance as it should be (used by every calculation, so a copy not yet repaired — e.g. one
+// just brought back from the cloud or from another device — is still worked out correctly).
+function advFixed(a){if(!advNeedsFix(a))return a;const right=Math.max(0,(Number(a.amount)||0)-advSettledTotal(a));return{...a,outstanding:right,status:right>0?'Active':'Recovered'};}
 function advRepairOutstanding(salonId){
-  const flag='salonos_adv_balance_fix_v1_'+salonId;
-  try{if(localStorage.getItem(flag))return 0;}catch(e){}
   let list=[];try{list=JSON.parse(cachedLocalGet(outletKey('salonos_advances',salonId))||'[]');}catch(e){return 0;}
   if(!Array.isArray(list))return 0;const fixed=[];
   const next=list.map(a=>{
-    if(!a||a.source==='dse'||!['Active','Recovered'].includes(a.status))return a;
-    const amt=Number(a.amount)||0,rep=Number(a.repayment)||0,done=advSettledTotal(a),out=Number(a.outstanding)||0;
-    if(!(rep>0)||Math.abs(out-Math.max(0,amt-rep-done))>0.5)return a;
-    const right=Math.max(0,amt-done);if(Math.abs(right-out)<0.5)return a;
-    fixed.push(a.emp+' '+a.id+': ₹'+Math.round(out).toLocaleString('en-IN')+' → ₹'+Math.round(right).toLocaleString('en-IN'));
-    return{...a,outstanding:right,status:right>0?'Active':'Recovered'};});
+    if(!advNeedsFix(a))return a;const f=advFixed(a);
+    fixed.push(a.emp+' '+a.id+': ₹'+Math.round(Number(a.outstanding)||0).toLocaleString('en-IN')+' → ₹'+Math.round(f.outstanding).toLocaleString('en-IN'));
+    return f;});
   if(fixed.length){safeLocalSet(outletKey('salonos_advances',salonId),JSON.stringify(next));
     try{logAuditEvent(salonId,{entity:'Advance',entityId:'balances',action:'Balance corrected',summary:fixed.length+' advance(s) — balance is amount less recovered: '+fixed.join('; ').slice(0,400)});}catch(e){}}
-  try{localStorage.setItem(flag,new Date().toISOString());}catch(e){}
   return fixed.length;
 }
 function advanceDeductionFor(salonId,empName,source,year,month){
   let list=[];
   try{list=JSON.parse(cachedLocalGet(outletKey('salonos_advances',salonId))||'[]');}catch(e){}
-  return list.filter(a=>a.emp===empName&&a.status==='Active'&&(a.deductFrom||'Salary')===(source||'Salary')).reduce((s,a)=>{
+  return list.map(advFixed).filter(a=>a.emp===empName&&a.status==='Active'&&(a.deductFrom||'Salary')===(source||'Salary')).reduce((s,a)=>{
     const scheduled=(year!=null&&month!=null)?scheduledAmountFor(a,year,month):null;
     const planned=scheduled!==null?scheduled:(Number(a.repayment)||0);
     const rep=Math.min(planned,Number(a.outstanding)||0);
@@ -2158,7 +2160,7 @@ function pfCeilingLabel(year,month){
 // ym), so that is counted too — nothing is ever taken twice. Safe to run any number of times.
 function reconcileAdvanceRecoveries(sid){
   try{
-    if(sid==null)return false;
+    if(sid==null)return false; if(typeof advRepairOutstanding==='function')advRepairOutstanding(sid);
     const key=outletKey('salonos_advances',sid);
     let all=[];try{const r=JSON.parse(cachedLocalGet(key)||'[]');if(Array.isArray(r))all=r;}catch(e){}
     if(!all.length)return false;
@@ -2207,7 +2209,7 @@ function advanceBalanceSplitFor(salonId,empName,source,year,month,nextCutoffDate
   // or later — so an earlier month shows what was owed then, not after later recoveries.
   const ymKey=year+'-'+String(month+1).padStart(2,'0');
   const afterNext=new Date(nextY,nextM+1,1);
-  list.filter(a=>a.emp===empName&&(a.status==='Active'||a.status==='Recovered')&&(a.deductFrom||'Salary')===(source||'Salary')).forEach(a=>{
+  list.map(advFixed).filter(a=>a.emp===empName&&(a.status==='Active'||a.status==='Recovered')&&(a.deductFrom||'Salary')===(source||'Salary')).forEach(a=>{
     const later=Object.entries(a.settled||{}).reduce((s,[ym,v])=>ym>=ymKey?s+(Number(v)||0):s,0);
     const outstanding=Math.max(0,Math.min(Number(a.amount)||0,(Number(a.outstanding)||0)+later));
     if(outstanding<=0)return;

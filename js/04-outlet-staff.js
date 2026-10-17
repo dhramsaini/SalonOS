@@ -573,7 +573,7 @@ function MasterSalarySheet({salon}={}){
       const before=employees.find(e=>e.id===emp.id);
       salRevAsk(salon&&salon.id,before,emp).then(r=>{if(!r)return;const rec=r.rec;
         setEmployees(prev=>prev.map(e=>e.id===rec.id?rec:e));
-        logAuditEvent(salon&&salon.id,{entity:'Employee',entityId:rec.id,action:'Pay change',summary:rec.name+': gross ₹'+Math.round(before.gross||0).toLocaleString('en-IN')+' → ₹'+Math.round(emp.gross||0).toLocaleString('en-IN')+' from '+salYmLabel(r.plan.start)+(r.plan.arrears.length?' · arrears ₹'+r.plan.arrears.reduce((t,a)=>t+a.amount,0).toLocaleString('en-IN')+' in '+salYmLabel(r.plan.start):'')});
+        logAuditEvent(salon&&salon.id,{entity:'Employee',entityId:rec.id,action:'Master Salary change',summary:rec.name+': '+salChangedFields(before,emp).map(k=>(SAL_FIELD_LABEL[k]||k)+' '+salShowV(k,before[k])+' → '+salShowV(k,emp[k])).join('; ')+' — with effect from '+salYmLabel(r.plan.start)+(r.plan.arrears.length?' · arrears ₹'+r.plan.arrears.reduce((t,a)=>t+a.amount,0).toLocaleString('en-IN')+' in '+salYmLabel(r.plan.start):'')});
         setShowAddModal(false);setForm(BLANK);setEditMode(false);});
       return;
     }

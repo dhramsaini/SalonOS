@@ -21,19 +21,28 @@ function salNowYm(){const d=new Date();return salYm(d.getFullYear(),d.getMonth()
 function salRevOn(sid){return typeof controlOn!=='function'||controlOn('salaryRevisions',sid);}
 function salArrOn(sid){return typeof controlOn!=='function'||controlOn('salaryArrears',sid);}
 function salM(n){return '₹'+Math.round(Number(n)||0).toLocaleString('en-IN');}
+// Every Master Salary detail is kept month-wise, except identity details, documents, contact details and
+// the joining / leaving dates and status — those are corrections that apply to every month.
+const SAL_HIST_SKIP=new Set(['id','name','fatherName','mobile','email','address','pan','aadhar','panFile','aadharFile','bankProofFile','photo','doj','dol','status','pt','payHistory','arrears','payFrom','createdAt','updatedAt']);
+const SAL_FIELD_LABEL={billingId:'Billing ID',desig:'Designation',dept:'Department',weeklyOff:'Weekly off',basic:'Basic',hra:'HRA',conv:'Conveyance',special:'Special allowance',gross:'Gross (monthly salary)',
+  pf:'PF applies',pfOnActualBasic:'PF on actual basic',pfNumber:'UAN',esic:'ESIC applies',esicNumber:'ESIC number',tds:'TDS applies',bankName:'Bank',accountNo:'Account no.',ifsc:'IFSC',accountHolder:'Account holder'};
+function salSnap(e){const o={};Object.keys(e||{}).forEach(k=>{if(!SAL_HIST_SKIP.has(k)&&typeof e[k]!=='function')o[k]=e[k];});return o;}
+function salNormV(k,v){if(SAL_PAY_FIELDS.includes(k))return String(Math.round(Number(v)||0));if(typeof v==='boolean')return v?'1':'';return String(v==null?'':v).trim();}
+function salChangedFields(prev,emp){if(!prev)return[];const keys=new Set([...Object.keys(salSnap(prev)),...Object.keys(salSnap(emp))]);return[...keys].filter(k=>salNormV(k,prev[k])!==salNormV(k,emp[k]));}
+function salShowV(k,v){if(SAL_PAY_FIELDS.includes(k))return salM(v);if(typeof v==='boolean')return v?'Yes':'No';return v===''||v==null?'—':String(v);}
 function salPayOf(e){const o={};SAL_PAY_FIELDS.forEach(k=>{o[k]=Number(e[k])||0;});return o;}
 function salPickEntry(hist,ym){let pick=null;(hist||[]).forEach(r=>{if(r&&(r.from==null||r.from<=ym)){if(!pick||String(r.from||'')>=String(pick.from||''))pick=r;}});return pick;}
 // The employee as paid in that month (used by getEmployeesForMonth).
 function salPayFor(e,y,m,sid){
   if(!e||!Array.isArray(e.payHistory)||!e.payHistory.length||!salRevOn(sid))return e;
   const r=salPickEntry(e.payHistory,salYm(y,m));if(!r)return e;
-  const o={...e};SAL_PAY_FIELDS.forEach(k=>{if(r[k]!==undefined)o[k]=Number(r[k])||0;});o.payFrom=r.from;return o;
+  const o={...e};if(r.vals)Object.keys(r.vals).forEach(k=>{if(!SAL_HIST_SKIP.has(k))o[k]=r.vals[k];});SAL_PAY_FIELDS.forEach(k=>{if(r[k]!==undefined)o[k]=Number(r[k])||0;});o.payFrom=r.from;return o;
 }
 // Arrears paid in this month (Salary Working adds them to net pay).
 function salArrearsFor(sid,e,y,m){if(!e||!Array.isArray(e.arrears)||!salArrOn(sid))return 0;const ym=salYm(y,m);return Math.round(e.arrears.filter(a=>a&&a.payYm===ym).reduce((s,a)=>s+(Number(a.amount)||0),0));}
 function salArrearsLines(e,y,m){const ym=salYm(y,m);return(e&&Array.isArray(e.arrears)?e.arrears:[]).filter(a=>a&&a.payYm===ym);}
 function salPayChanged(prev,emp){return!!prev&&SAL_PAY_FIELDS.some(k=>Math.round(Number(prev[k])||0)!==Math.round(Number(emp[k])||0));}
-function salRevNeeded(sid,prev,emp){return salRevOn(sid)&&salPayChanged(prev,emp);}
+function salRevNeeded(sid,prev,emp){return salRevOn(sid)&&salChangedFields(prev,emp).length>0;}
 function salLocked(sid,ym){const p=salYmParts(ym);return typeof isMonthLockedFor==='function'&&isMonthLockedFor(sid,p.y,p.m);}
 // First month (from the joining month, at most 36 months back) that isn't locked.
 function salFirstOpen(sid,e){const now=salNowYm();let ym=e&&e.doj?String(e.doj).slice(0,7):salYmAdd(now,-36);if(ym<salYmAdd(now,-36))ym=salYmAdd(now,-36);while(ym<now&&salLocked(sid,ym))ym=salYmAdd(ym,1);return ym;}
@@ -41,7 +50,7 @@ function salFirstOpen(sid,e){const now=salNowYm();let ym=e&&e.doj?String(e.doj).
 function salPlan(sid,prev,emp,fromYm){
   let start=fromYm;const locked=[];while(salLocked(sid,start)){locked.push(start);start=salYmAdd(start,1);}
   const arrears=[];
-  if(salArrOn(sid))locked.forEach(ym=>{const p=salYmParts(ym);const old=salPayFor(prev,p.y,p.m,sid);const dim=new Date(p.y,p.m+1,0).getDate();
+  if(salArrOn(sid)&&salPayChanged(prev,emp))locked.forEach(ym=>{const p=salYmParts(ym);const old=salPayFor(prev,p.y,p.m,sid);const dim=new Date(p.y,p.m+1,0).getDate();
     let days=dim;try{const w=(swWorkingsFor(sid,p.y,p.m)||[]).find(x=>String(x.id)===String(prev.id));if(w)days=Number(w.totalDays)||0;}catch(e){}
     const amt=Math.round(((Number(emp.gross)||0)-(Number(old.gross)||0))/dim*days);if(amt)arrears.push({forYm:ym,payYm:start,amount:amt,days,dim,oldGross:Number(old.gross)||0,newGross:Number(emp.gross)||0});});
   return{start,locked,arrears};
@@ -49,18 +58,21 @@ function salPlan(sid,prev,emp,fromYm){
 // The record to save: history + arrears added, and the master's own pay = this month's pay.
 function salApplyChange(sid,prev,emp,fromYm,reason){
   const plan=salPlan(sid,prev,emp,fromYm);const who=(typeof currentSessionUser==='function'&&(currentSessionUser()||{}).name)||'';const at=new Date().toISOString();
-  let hist=Array.isArray(prev.payHistory)&&prev.payHistory.length?prev.payHistory.slice():[{from:null,...salPayOf(prev),at:prev.createdAt||null,by:'',reason:'Pay before the first recorded change'}];
-  hist=hist.filter(r=>r.from!==plan.start);hist.push({from:plan.start,...salPayOf(emp),at,by:who,reason:reason||''});hist.sort((a,b)=>String(a.from||'').localeCompare(String(b.from||'')));
+  // Entries recorded before details were kept month-wise get the details as they were before this change.
+  let hist=Array.isArray(prev.payHistory)&&prev.payHistory.length?prev.payHistory.map(r=>r.vals?r:{...r,vals:salSnap(prev)}):[{from:null,...salPayOf(prev),vals:salSnap(prev),at:prev.createdAt||null,by:'',reason:'Before the first recorded change'}];
+  const changed=salChangedFields(prev,emp);
+  hist=hist.filter(r=>r.from!==plan.start);hist.push({from:plan.start,...salPayOf(emp),vals:salSnap(emp),changed,at,by:who,reason:reason||''});hist.sort((a,b)=>String(a.from||'').localeCompare(String(b.from||'')));
   const arrears=[...(Array.isArray(prev.arrears)?prev.arrears.filter(a=>!plan.arrears.some(n=>n.forYm===a.forYm&&n.payYm===a.payYm)):[]),...plan.arrears.map(a=>({...a,at,by:who}))];
-  const rec={...emp,payHistory:hist,arrears};const now=salNowYm();const cur=salPickEntry(hist,now);if(cur)SAL_PAY_FIELDS.forEach(k=>{rec[k]=Number(cur[k])||0;});
+  const rec={...emp,payHistory:hist,arrears};const now=salNowYm();const cur=salPickEntry(hist,now);
+  if(cur){if(cur.vals)Object.keys(cur.vals).forEach(k=>{if(!SAL_HIST_SKIP.has(k))rec[k]=cur.vals[k];});SAL_PAY_FIELDS.forEach(k=>{rec[k]=Number(cur[k])||0;});}
   return{rec,plan};
 }
 // Brings the master's own pay up to this month (a scheduled change whose month has come).
 function salApplyDue(sid){
   try{if(!salRevOn(sid))return 0;const L=loadEmployees(sid)||[];const now=salNowYm();let n=0;
     const next=L.map(e=>{if(!Array.isArray(e.payHistory)||!e.payHistory.length)return e;const r=salPickEntry(e.payHistory,now);if(!r)return e;
-      if(SAL_PAY_FIELDS.every(k=>Math.round(Number(e[k])||0)===Math.round(Number(r[k])||0)))return e;n++;const o={...e};SAL_PAY_FIELDS.forEach(k=>{o[k]=Number(r[k])||0;});return o;});
-    if(n){saveEmployees(next,sid);try{logAuditEvent(sid,{entity:'Employee',entityId:'pay',action:'Scheduled pay change applied',summary:n+' employee(s) — from '+salYmLabel(now)});}catch(e){}}
+      const want={...e,...(r.vals||{}),...salPayOf(r)};if(!salChangedFields(e,want).length)return e;n++;const o={...e};if(r.vals)Object.keys(r.vals).forEach(k=>{if(!SAL_HIST_SKIP.has(k))o[k]=r.vals[k];});SAL_PAY_FIELDS.forEach(k=>{o[k]=Number(r[k])||0;});return o;});
+    if(n){saveEmployees(next,sid);try{logAuditEvent(sid,{entity:'Employee',entityId:'pay',action:'Scheduled Master Salary change applied',summary:n+' employee(s) — from '+salYmLabel(now)});}catch(e){}}
     return n;}catch(e){return 0;}
 }
 setTimeout(()=>{try{(typeof SALONS!=='undefined'?SALONS:[]).forEach(s=>{if(!s||s.id==null)return;salApplyDue(s.id);if(typeof advRepairOutstanding==='function')advRepairOutstanding(s.id);});}catch(e){}},5000);
@@ -71,24 +83,26 @@ function SalRevModal({sid,prev,emp,onDone}){
   const [mode,setMode]=useState('from');const [from,setFrom]=useState(salYmAdd(now,1));const [reason,setReason]=useState('');
   const fromYm=mode==='fix'?salFirstOpen(sid,prev):(from||now);
   const plan=salPlan(sid,prev,emp,fromYm);const old=salPayOf(prev),nw=salPayOf(emp);const arrTot=plan.arrears.reduce((s,a)=>s+a.amount,0);
+  const changed=salChangedFields(prev,emp);const payCh=salPayChanged(prev,emp);const what=payCh?'pay':'details';
   const row=(l,a,b)=>h('tr',{key:l},h('td',{style:{fontSize:12.5,padding:'3px 8px'}},l),h('td',{style:{textAlign:'right',padding:'3px 8px'}},salM(a)),h('td',{style:{textAlign:'right',padding:'3px 8px',fontWeight:a!==b?700:400,color:a!==b?'var(--accent)':undefined}},salM(b)));
-  const save=()=>{if(mode==='from'&&!/^\d{4}-\d{2}$/.test(from)){window.alert('Pick the month the new pay starts.');return;}onDone(salApplyChange(sid,prev,emp,fromYm,reason.trim()));};
+  const save=()=>{if(mode==='from'&&!/^\d{4}-\d{2}$/.test(from)){window.alert('Pick the month the change takes effect from.');return;}onDone(salApplyChange(sid,prev,emp,fromYm,reason.trim()));};
   return h('div',{className:'modal-overlay',onClick:()=>onDone(null)},h('div',{className:'modal',style:{width:560,maxWidth:'96vw',maxHeight:'90vh',overflowY:'auto'},onClick:e=>e.stopPropagation()},
-    h('div',{className:'modal-title'},'Pay change — '+(emp.name||'')),
-    h('table',{style:{width:'100%',marginBottom:10}},h('thead',null,h('tr',null,h('th',null,''),h('th',{style:{textAlign:'right'}},'Now'),h('th',{style:{textAlign:'right'}},'New'))),
-      h('tbody',null,row('Basic',old.basic,nw.basic),row('HRA',old.hra,nw.hra),row('Conveyance',old.conv,nw.conv),row('Special',old.special,nw.special),row('Gross (monthly salary)',old.gross,nw.gross))),
-    h('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:13,marginBottom:6}},h('input',{type:'radio',checked:mode==='from',onChange:()=>setMode('from')}),'New pay takes effect from',
+    h('div',{className:'modal-title'},'Change in Master Salary — '+(emp.name||'')),
+    h('table',{style:{width:'100%',marginBottom:10}},h('thead',null,h('tr',null,h('th',null,'Changed'),h('th',{style:{textAlign:'right'}},'Now'),h('th',{style:{textAlign:'right'}},'New'))),
+      h('tbody',null,(payCh?[...SAL_PAY_FIELDS,...changed.filter(k=>!SAL_PAY_FIELDS.includes(k))]:changed).map(k=>h('tr',{key:k},h('td',{style:{fontSize:12.5,padding:'3px 8px'}},SAL_FIELD_LABEL[k]||k),
+        h('td',{style:{textAlign:'right',padding:'3px 8px'}},salShowV(k,prev[k])),h('td',{style:{textAlign:'right',padding:'3px 8px',fontWeight:changed.includes(k)?700:400,color:changed.includes(k)?'var(--accent)':undefined}},salShowV(k,emp[k])))))),
+    h('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:13,marginBottom:6,fontWeight:600}},h('input',{type:'radio',checked:mode==='from',onChange:()=>setMode('from')}),'With effect from',
       h('input',{type:'month',className:'form-control',style:{width:'auto',padding:'3px 6px'},value:from,disabled:mode!=='from',onChange:e=>setFrom(e.target.value)})),
     h('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:13,marginBottom:10}},h('input',{type:'radio',checked:mode==='fix',onChange:()=>setMode('fix')}),'It was a typing mistake — correct it for every month that isn’t locked'),
     h('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'8px 12px',fontSize:12.5,lineHeight:1.6,marginBottom:10}},
-      fromYm>now?h('div',null,'📅 Scheduled — '+salM(old.gross)+' stays until '+salYmLabel(salYmAdd(fromYm,-1))+'; '+salM(nw.gross)+' from '+salYmLabel(fromYm)+'. It is applied by itself when that month comes.')
-        :h('div',null,'New pay from '+salYmLabel(plan.start)+' onwards'+(plan.start<now?' (months not locked are worked out again with the new pay)':'')+'.'),
-      plan.locked.length>0&&h('div',null,'🔒 Locked month'+(plan.locked.length>1?'s':'')+' '+plan.locked.map(salYmLabel).join(', ')+' keep'+(plan.locked.length>1?'':'s')+' the old pay.'),
-      plan.locked.length>0&&(salArrOn(sid)
+      fromYm>now?h('div',null,'📅 Scheduled — the present '+what+' stay'+(payCh?'s':'')+' until '+salYmLabel(salYmAdd(fromYm,-1))+'; the new '+what+' from '+salYmLabel(fromYm)+'. It is applied by itself when that month comes.')
+        :h('div',null,'New '+what+' from '+salYmLabel(plan.start)+' onwards'+(plan.start<now?' (months not locked are worked out again)':'')+'.'),
+      plan.locked.length>0&&h('div',null,'🔒 Locked month'+(plan.locked.length>1?'s':'')+' '+plan.locked.map(salYmLabel).join(', ')+' keep'+(plan.locked.length>1?'':'s')+' the old '+what+'.'),
+      plan.locked.length>0&&payCh&&(salArrOn(sid)
         ?h('div',null,plan.arrears.length?('💰 Arrears '+salM(arrTot)+' added to '+salYmLabel(plan.start)+' salary: '+plan.arrears.map(a=>salYmLabel(a.forYm)+' '+salM(a.amount)+' ('+a.days+'/'+a.dim+' days)').join(', ')):'No arrears (no payable days in those months).')
         :h('div',{style:{color:'var(--text3)'}},'Arrears are switched off (Controls → Arrears for back-dated pay changes) — pay the difference separately if due.'))),
     h('div',{className:'form-group'},h('label',null,'Reason (optional — goes to the pay history)'),h('input',{className:'form-control',value:reason,onChange:e=>setReason(e.target.value),placeholder:'e.g. Annual increment'})),
-    h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:()=>onDone(null)},'Cancel'),h('button',{className:'btn btn-primary',onClick:save},'Save pay change'))));
+    h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:()=>onDone(null)},'Cancel'),h('button',{className:'btn btn-primary',onClick:save},'Save change'))));
 }
 function salRevAsk(sid,prev,emp){return new Promise(res=>{const el=document.createElement('div');document.body.appendChild(el);const root=ReactDOM.createRoot(el);
   root.render(React.createElement(SalRevModal,{sid,prev,emp,onDone:r=>{root.unmount();el.remove();res(r);}}));});}
@@ -103,10 +117,10 @@ function SalPayHistory({sid,emp,onChange}){
     try{logAuditEvent(sid,{entity:'Employee',entityId:emp.id,action:'Arrears removed',summary:emp.name+': '+salM(a.amount)+' for '+salYmLabel(a.forYm)});}catch(e){}};
   const paidLocked=ym=>{const p=salYmParts(ym);return typeof isMonthLockedFor==='function'&&isMonthLockedFor(sid,p.y,p.m);};
   return h('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:14,marginTop:12}},
-    h('div',{style:{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:8}},'Pay history'),
+    h('div',{style:{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:8}},'Master Salary history'),
     hist.map((r,i)=>h('div',{key:i,style:{display:'flex',gap:8,alignItems:'center',fontSize:12.5,padding:'4px 0',borderTop:i?'1px solid var(--border)':'none'}},
       h('span',{style:{width:110,color:'var(--text2)'}},r.from?'From '+salYmLabel(r.from):'Earlier'),h('b',{style:{width:90,textAlign:'right'}},salM(r.gross)),
-      h('span',{style:{flex:1,color:'var(--text3)',fontSize:11.5}},[r===cur?'current':r.from&&r.from>now?'scheduled':'',r.reason,r.by].filter(Boolean).join(' · ')),
+      h('span',{style:{flex:1,color:'var(--text3)',fontSize:11.5}},[r===cur?'current':r.from&&r.from>now?'scheduled':'',Array.isArray(r.changed)&&r.changed.length?r.changed.map(k=>SAL_FIELD_LABEL[k]||k).join(', '):'',r.reason,r.by].filter(Boolean).join(' · ')),
       r.from&&r.from>now&&h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>removeRev(r)},'Remove'))),
     arr.length>0&&h('div',{style:{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.08em',margin:'10px 0 4px'}},'Arrears'),
     arr.map((a,i)=>h('div',{key:'a'+i,style:{display:'flex',gap:8,alignItems:'center',fontSize:12.5,padding:'3px 0'}},

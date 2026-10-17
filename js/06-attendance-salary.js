@@ -1017,6 +1017,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
   // deducted, using the breakdown recorded at the time, so toggling Approval Status back and forth
   // can never double-deduct or leave the balance wrong.
   const applyAdvanceSettlement=(empName,year,month)=>{
+    if(typeof advRepairOutstanding==='function')advRepairOutstanding(salon?.id);
     const key=outletKey('salonos_advances',salon?.id);
     let all=[];
     try{const raw=JSON.parse(cachedLocalGet(key)||'[]');if(Array.isArray(raw))all=raw;}catch(e){}
