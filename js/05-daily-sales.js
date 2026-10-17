@@ -1166,7 +1166,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
           outstanding:amt,status:'Active',source:'dse',dseRow:rowName};
       });
       // An advance already on the Advances sheet keeps its number and what has been recovered.
-      const next=replaceDseGroup(all,isOld,fresh,(o,f)=>{const r={...o,...f,id:o.id,outstanding:o.outstanding,status:o.status};if(o.settled!==undefined)r.settled=o.settled;return r;});
+      const next=replaceDseGroup(all,isOld,fresh,(o,f)=>{const done=typeof advSettledTotal==='function'?advSettledTotal(o):Math.max(0,(Number(o.amount)||0)-(Number(o.outstanding)||0));const out=Math.max(0,(Number(f.amount)||0)-done);const r={...o,...f,id:o.id,outstanding:out,status:out>0?'Active':'Recovered'};if(o.settled!==undefined)r.settled=o.settled;return r;});
       if(next)safeLocalSet(key,JSON.stringify(next));
     }catch(e){}
   };

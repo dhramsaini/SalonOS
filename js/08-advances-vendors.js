@@ -98,7 +98,7 @@ function AdvanceSheet({period,salon}={}){
     if(!approveForm.approverId){alert('Select the approving ASM (Assist Manager).');return;}
     const asm=ASM_LIST.find(e=>e.id===approveForm.approverId);
     const repay=Number(approveForm.repayment)||0;
-    setAdvances(prev=>prev.map(a=>a.id===showApproveModal.id?{...a,status:'Active',approvedBy:asm.name+' (ASM)',repayment:repay,outstanding:Math.max(0,a.amount-repay)}:a));
+    setAdvances(prev=>prev.map(a=>a.id===showApproveModal.id?{...a,status:'Active',approvedBy:asm.name+' (ASM)',repayment:repay,outstanding:Math.max(0,(Number(a.amount)||0)-(typeof advSettledTotal==='function'?advSettledTotal(a):0))}:a));
     setShowApproveModal(null);
   };
   const rejectRequest=(a)=>{
@@ -146,7 +146,8 @@ function AdvanceSheet({period,salon}={}){
     if(!isSynced&&!form.bankRef){alert('Bank Reference is required — advances recorded here are always by Bank Transfer. Cash advances go through Daily Sales & Expenses instead.');return;}
     if(!isSynced&&!advanceLimitGate(advSalonId,form.emp,Number(form.amount)-(editItem?Number(editItem.amount)||0:0),editItem?editItem.id:undefined))return;
     if(typeof ecAdvanceOk==='function'&&!ecAdvanceOk(advSalonId,form,editItem?editItem.id:null,advances))return;
-    const outstanding=Number(form.amount)-Number(form.repayment||0);
+    // Balance = amount − what has actually been recovered (Monthly Deduction is only the plan).
+    const outstanding=Number(form.amount)-(editItem&&typeof advSettledTotal==='function'?advSettledTotal(editItem):0);
     const item={...form,mode:isSynced?form.mode:'Bank Transfer',id:form.id||nextId(),amount:Number(form.amount),repayment:Number(form.repayment||0),
       schedule:(form.schedule||[]).map(r=>({month:r.month,amount:Number(r.amount)||0})),
       outstanding:Math.max(0,outstanding),status:outstanding<=0?'Recovered':'Active'};

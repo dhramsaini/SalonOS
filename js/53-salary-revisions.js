@@ -63,7 +63,7 @@ function salApplyDue(sid){
     if(n){saveEmployees(next,sid);try{logAuditEvent(sid,{entity:'Employee',entityId:'pay',action:'Scheduled pay change applied',summary:n+' employee(s) — from '+salYmLabel(now)});}catch(e){}}
     return n;}catch(e){return 0;}
 }
-setTimeout(()=>{try{(typeof SALONS!=='undefined'?SALONS:[]).forEach(s=>s&&s.id!=null&&salApplyDue(s.id));}catch(e){}},5000);
+setTimeout(()=>{try{(typeof SALONS!=='undefined'?SALONS:[]).forEach(s=>{if(!s||s.id==null)return;salApplyDue(s.id);if(typeof advRepairOutstanding==='function')advRepairOutstanding(s.id);});}catch(e){}},5000);
 
 // ── “Takes effect from” window, shown when pay is changed in Master Salary ──
 function SalRevModal({sid,prev,emp,onDone}){

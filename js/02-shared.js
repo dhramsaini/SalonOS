@@ -2074,6 +2074,31 @@ function scheduledAmountFor(adv,year,month){
   const row=adv.schedule.find(s=>s.month===key);
   return row?Number(row.amount)||0:0; // has a schedule but nothing planned for this month → 0, not the flat fallback
 }
+// An advance's balance is always amount − what has been recovered (a.settled = {'YYYY-MM': amount},
+// written when Salary / Incentive Working is approved). The monthly deduction is a plan, not a recovery.
+function advSettledTotal(a,beforeYm){return Object.entries((a&&a.settled)||{}).reduce((s,[ym,v])=>(!beforeYm||ym<beforeYm)?s+(Number(v)||0):s,0);}
+function advTrueOutstanding(a){return Math.max(0,(Number(a&&a.amount)||0)-advSettledTotal(a));}
+// One-time repair (per outlet) of advances saved by the old Advances form, which set the balance to
+// amount − one monthly deduction before anything was recovered (so ₹10,000 with ₹10,000/month was
+// "Recovered" on the day it was given and never deducted). Only records that match that exact
+// mistake are changed; each repair is written to the Audit Log.
+function advRepairOutstanding(salonId){
+  const flag='salonos_adv_balance_fix_v1_'+salonId;
+  try{if(localStorage.getItem(flag))return 0;}catch(e){}
+  let list=[];try{list=JSON.parse(cachedLocalGet(outletKey('salonos_advances',salonId))||'[]');}catch(e){return 0;}
+  if(!Array.isArray(list))return 0;const fixed=[];
+  const next=list.map(a=>{
+    if(!a||a.source==='dse'||!['Active','Recovered'].includes(a.status))return a;
+    const amt=Number(a.amount)||0,rep=Number(a.repayment)||0,done=advSettledTotal(a),out=Number(a.outstanding)||0;
+    if(!(rep>0)||Math.abs(out-Math.max(0,amt-rep-done))>0.5)return a;
+    const right=Math.max(0,amt-done);if(Math.abs(right-out)<0.5)return a;
+    fixed.push(a.emp+' '+a.id+': ₹'+Math.round(out).toLocaleString('en-IN')+' → ₹'+Math.round(right).toLocaleString('en-IN'));
+    return{...a,outstanding:right,status:right>0?'Active':'Recovered'};});
+  if(fixed.length){safeLocalSet(outletKey('salonos_advances',salonId),JSON.stringify(next));
+    try{logAuditEvent(salonId,{entity:'Advance',entityId:'balances',action:'Balance corrected',summary:fixed.length+' advance(s) — balance is amount less recovered: '+fixed.join('; ').slice(0,400)});}catch(e){}}
+  try{localStorage.setItem(flag,new Date().toISOString());}catch(e){}
+  return fixed.length;
+}
 function advanceDeductionFor(salonId,empName,source,year,month){
   let list=[];
   try{list=JSON.parse(cachedLocalGet(outletKey('salonos_advances',salonId))||'[]');}catch(e){}
@@ -2178,10 +2203,16 @@ function advanceBalanceSplitFor(salonId,empName,source,year,month,nextCutoffDate
   try{list=JSON.parse(cachedLocalGet(outletKey('salonos_advances',salonId))||'[]');}catch(e){}
   const nextY=month===11?year+1:year,nextM=month===11?0:month+1;
   let prev=0,curr=0,next=0;
-  list.filter(a=>a.emp===empName&&a.status==='Active'&&(a.deductFrom||'Salary')===(source||'Salary')).forEach(a=>{
-    const outstanding=Math.max(0,Number(a.outstanding)||0);
+  // Balance at the start of this month: today's balance plus whatever was recovered in this month
+  // or later — so an earlier month shows what was owed then, not after later recoveries.
+  const ymKey=year+'-'+String(month+1).padStart(2,'0');
+  const afterNext=new Date(nextY,nextM+1,1);
+  list.filter(a=>a.emp===empName&&(a.status==='Active'||a.status==='Recovered')&&(a.deductFrom||'Salary')===(source||'Salary')).forEach(a=>{
+    const later=Object.entries(a.settled||{}).reduce((s,[ym,v])=>ym>=ymKey?s+(Number(v)||0):s,0);
+    const outstanding=Math.max(0,Math.min(Number(a.amount)||0,(Number(a.outstanding)||0)+later));
     if(outstanding<=0)return;
     const d=a.date?new Date(a.date+'T00:00:00'):null;
+    if(d&&!isNaN(d)&&d>=afterNext)return; // given after next month — not owed yet in this month
     if(d&&!isNaN(d)&&d.getFullYear()===year&&d.getMonth()===month)curr+=outstanding;
     else if(d&&!isNaN(d)&&d.getFullYear()===nextY&&d.getMonth()===nextM){
       if(nextCutoffDate&&a.date>nextCutoffDate)return; // dated after the chosen cutoff — not part of what's being adjusted, so leave it out
