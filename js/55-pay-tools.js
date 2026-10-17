@@ -90,7 +90,7 @@ function incAdjFor(sid,e,y,m,base,ctx){
   const team=(ptTeamShares(sid,y,m)||{shares:{}}).shares[e.id]||0;
   const fb=ptFeedback(sid,e,y,m);const fbCut=fb&&fb.cut?Math.round((Math.max(0,base)+team)*fb.cut/100):0;
   const cb=ptClawback(sid,e,y,m,Number(ctx.svcRate)||0,Number(ctx.prodRate)||0);
-  let t=Math.max(0,base+team-fbCut-cb.amount);let capped=0,floored=0;
+  let t=Math.max(0,base+team-fbCut-cb.amount);if(ptOn('incRoundTotal',sid))t=Math.round(t);let capped=0,floored=0;
   if(ptOn('incCap',sid)){const cap=Math.round((Number(ctx.salary)||0)*ptLim('incCap',100,sid)/100);if(cap>0&&t>cap){capped=t-cap;t=cap;}}
   if(ptOn('incFloor',sid)&&ptMonthsSinceJoin(e,y,m)<3){const fl=ptLim('incFloor',2000,sid);if(t<fl){floored=fl-t;t=fl;}}
   return{total:t,team,feedback:fbCut,fbAvg:fb&&fb.avg,clawback:cb.amount,clawLines:cb.lines,capped,floored,adj:t-Math.max(0,base)};
@@ -113,6 +113,7 @@ function ptChanges(sid,y,m){const p=m===0?[y-1,11]:[y,m-1];const cur=ptTotals(si
 function payApproveAllOk(sid,y,m,kind){
   const msgs=[];
   if(kind==='salary'&&ptOn('payChangePreview',sid)){const c=ptChanges(sid,y,m);const f=c.rows.filter(r=>r.flag);if(f.length)msgs.push(f.length+' employee(s) with net pay changed by more than '+c.lim+'% from last month: '+f.slice(0,6).map(r=>r.w.name+' ('+(r.pct>0?'+':'')+r.pct+'%)').join(', '));}
+  if(kind==='incentive'&&typeof incTieOut==='function'&&ptOn('incTieOut',sid)){const ti=incTieOut(sid,y,m);if(ti.flag)msgs.push('Stylists’ sales '+ptM(ti.stylists)+' differ from the outlet’s '+ptM(ti.outlet)+' ('+ti.src+') by '+ti.pct+'%');}
   if(ptOn('payBudget',sid)){const b=ptLim('payBudget',0,sid);if(b>0){const t=ptTotals(sid,y,m);const tot=Math.round(t.net+t.inc);if(tot>b)msgs.push('Salary + incentive '+ptM(tot)+' is above the budget of '+ptM(b));}}
   if(ptOn('payMakerChecker',sid)){const ids=(kind==='salary'?(swWorkingsFor(sid,y,m)||[]):(incWorkingsFor(sid,y,m)||[])).map(w=>w.id);const me=ptWho();const bad=ids.filter(id=>{const c=ptChecked(sid,y,m,kind,id);return!c||c.by===me;});
     if(bad.length){window.alert('Maker-checker: '+bad.length+' row(s) are not checked yet, or were checked by you. A different person has to check each row before it is approved (🧰 Pay tools → Checking).');return false;}}

@@ -3042,6 +3042,8 @@ function membershipRateUsedFor(salonId,employee,splitMode){
   const s=loadMemRuleASettings(salonId,group);return isManager?(Number(s.mgrRate)||0):(Number(s.staffRate)||0);
 }
 
+// Rounding of each incentive amount (Controls → incRoundTotal: keep paise and round once on the total).
+function incRoundAmt(sid,x){return(typeof controlOn==='function'&&controlOn('incRoundTotal',sid))?Math.round((Number(x)||0)*100)/100:Math.round(Number(x)||0);}
 function incentiveModel1(ctx){
   const appl=loadIncentiveApplicability(ctx.salonId);
   const calcMode=ctx.calcMode||INCENTIVE_CALC_MODE_DEFAULTS;
@@ -3051,7 +3053,9 @@ function incentiveModel1(ctx){
   // Designation, else the one shared outlet slab table. Manual Rate %: the per-employee "Svc %"
   // column drives it instead. Manual Amount: the ₹ figure is typed straight in, rate skipped.
   let svcRateUsed=calcMode.svc==='manualRate'?ctx.svcRate:serviceSlabRateFor(ctx.salonId,ctx.svcTimesRaw,ctx.svcGroup);
-  let svcIncAmt=appl.service?Math.round(ctx.svcActual*svcRateUsed/100):0;
+  let svcIncAmt=appl.service?incRoundAmt(ctx.salonId,ctx.svcActual*svcRateUsed/100):0;
+  // Progressive slabs (js/57 · Controls → incProgressive): each rate only on the part of sales inside its slab.
+  if(calcMode.svc!=='manualRate'&&typeof incProgressiveAmt==='function'){const pg=incProgressiveAmt(ctx.salonId,ctx.svcActual,ctx.svcTimesRaw,ctx.svcGroup);if(pg){svcIncAmt=appl.service?pg.amount:0;svcRateUsed=pg.rate;}}
   if(calcMode.svc==='manualAmt'){svcIncAmt=appl.service?(Number(ctx.svcManualAmt)||0):0;}
 
   // Membership — Automatic: driven by whichever of Rule A/B/C is active under Membership
@@ -3061,7 +3065,7 @@ function incentiveModel1(ctx){
   // overriding the rule-based figure per employee.
   let memRateUsed=membershipRateUsedFor(ctx.salonId,ctx.employee,ctx.splitMode);
   let memIncAmt=appl.membership?(ctx.membershipIncentiveMap?.[ctx.employee?.id]||0):0;
-  if(calcMode.mem==='manualRate'){memRateUsed=ctx.memRate;memIncAmt=appl.membership?Math.round(ctx.memActual*ctx.memRate/100):0;}
+  if(calcMode.mem==='manualRate'){memRateUsed=ctx.memRate;memIncAmt=appl.membership?incRoundAmt(ctx.salonId,ctx.memActual*ctx.memRate/100):0;}
   else if(calcMode.mem==='manualAmt'){memIncAmt=appl.membership?(Number(ctx.memManualAmt)||0):0;}
 
   // Product — Automatic: Rule A applies the Product Incentive Rule's flat % rate to each
@@ -3075,14 +3079,14 @@ function incentiveModel1(ctx){
   let prodIncAmt;
   if(calcMode.prod==='manualRate'){
     prodRateUsed=ctx.prodRate;
-    prodIncAmt=appl.product?Math.round(ctx.prodActual*ctx.prodRate/100):0;
+    prodIncAmt=appl.product?incRoundAmt(ctx.salonId,ctx.prodActual*ctx.prodRate/100):0;
   }else if(calcMode.prod==='manualAmt'){
     prodIncAmt=appl.product?(Number(ctx.prodManualAmt)||0):0;
   }else if(ctx.prodRuleType==='B'){
     prodIncAmt=appl.product?(Number(ctx.prodFlatAmount)||0):0;
   }else{
     prodRateUsed=Number(ctx.prodGlobalRate)||0;
-    prodIncAmt=appl.product?Math.round(ctx.prodActual*prodRateUsed/100):0;
+    prodIncAmt=appl.product?incRoundAmt(ctx.salonId,ctx.prodActual*prodRateUsed/100):0;
   }
 
   // Manager Incentive — a Salon Manager/Manager/Assist Manager's own Share Amount from the
@@ -3445,11 +3449,13 @@ function incWorkingsForLive(salonId,year,month){
     let svcTarget=salary*targetMultFor('svc',salonId,e,splitMode);
     let memTarget=salary*targetMultFor('mem',salonId,e,splitMode);
     let prodTarget=salary*targetMultFor('prod',salonId,e,splitMode);
+    // Pro-rata targets (js/57 · Controls → incProRata): target × payable days ÷ days in the month.
+    const prf=typeof incProRataFactor==='function'?incProRataFactor(salonId,e,year,month):1;if(prf!==1){svcTarget*=prf;memTarget*=prf;prodTarget*=prf;}
     const reportRow=staffWorkReportRowFor(salonId,year,month,e.billingId);
     let svcActual,memActual,prodActual;
     const fromReport=!!reportRow;
     if(reportRow){
-      svcActual=(Number(reportRow['ServiceSale'])||0)+(Number(reportRow['PackageSale'])||0)+0.5*(Number(reportRow['ComplementarySale'])||0);
+      svcActual=(Number(reportRow['ServiceSale'])||0)+(Number(reportRow['PackageSale'])||0)+(typeof incCompWeight==='function'?incCompWeight(salonId):0.5)*(Number(reportRow['ComplementarySale'])||0);
       memActual=Number(reportRow['MemberShipSale'])||0;
       prodActual=Number(reportRow['ProductSale'])||0;
     }else{
@@ -3529,7 +3535,7 @@ function incWorkingsForLive(salonId,year,month){
     const incBase=totalInc+otAmt-penaltyAmt-advAdj;
     const incAdj=typeof incAdjFor==='function'?incAdjFor(salonId,e,year,month,incBase,{salary,svcRate:svcRateUsed!=null?svcRateUsed:svcRate,prodRate:prodRateUsed!=null?prodRateUsed:prodRate}):null;
     return{...e,salary,svcTarget,svcActual:Math.round(svcActual),memTarget,memActual:Math.round(memActual),prodTarget,prodActual:Math.round(prodActual),
-      otApplicable,otNormalHours,otHours,otDays,otAmt,
+      otApplicable,otNormalHours,otHours,otDays,otAmt,proRata:prf,
       totalTarget:Math.round(totalTarget),totalActual:Math.round(totalActual),svcTimesRaw,memTimesRaw,prodTimesRaw,totalTimesRaw,svcPct,memPct,prodPct,
       svcRate,memRate,prodRate,svcRateUsed:svcRateUsed!=null?svcRateUsed:svcRate,
       memRateUsed:memRateUsed!=null?memRateUsed:memRate,prodRateUsed:prodRateUsed!=null?prodRateUsed:prodRate,

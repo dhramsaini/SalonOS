@@ -77,7 +77,7 @@ function pwIncentive(sid,y,m,S,o){
       ['applSvc','Service incentive switched on',!!appl.service],['applMem','Membership incentive switched on',!!appl.membership],['applProd','Product incentive switched on',!!appl.product],['applMgr','Manager incentive switched on',!!appl.manager],
       ['colSvc','Service column on (Incentive Working)',!!cols.svcTarget],['colMem','Membership column on',!!cols.membership],['colProd','Product column on',!!cols.product],
       ['colPen','Penalty column on',!!cols.penalty],['colAdv','Advance Adj. column on',!!cols.advAdj],['colOT','Overtime (OT) column on',!!cols.ot],
-      ['dim','Days in the month',dim],['pool','Manager incentive pool ₹',Math.round(pool||0),'#,##0',o.pools?'Worked out below from the month’s collection, target and tiers':'From the Manager Incentive panel']]);
+      ['dim','Days in the month',dim],['compW','Complementary sale counted in Service (share)',typeof incCompWeight==='function'?incCompWeight(sid):0.5,'0%'],['pool','Manager incentive pool ₹',Math.round(pool||0),'#,##0',o.pools?'Worked out below from the month’s collection, target and tiers':'From the Manager Incentive panel']]);
     let row=R.next;const IR=S.irules;const IRn=IR.name;
     const sec=(t)=>{const c=IR.getRow(row).getCell(1);c.value=t;c.font={bold:true,color:{argb:'FF14335E'}};row++;};
     const hdr=(a)=>{const h=IR.getRow(row);a.forEach((x,i)=>{h.getCell(i+1).value=x;});pwHeader(h);row++;};
@@ -102,7 +102,7 @@ function pwIncentive(sid,y,m,S,o){
     groups.forEach(g=>{const sl=loadServiceSlabs(sid,g==='__all'?undefined:g)||[];const tiers=sl.slice(1).map(t=>({th:Number(t.threshold),rate:Number(t.rate)||0})).filter(t=>!isNaN(t.th)).sort((a,b)=>a.th-b.th);
       sec('Service rate slabs'+(g==='__all'?'':' — '+g)+' (rate by ×times of salary achieved in Service)');hdr(['Reached at least (×times)','Rate %']);
       IR.getRow(row).getCell(1).value='Below the first tier';const base=blue(row,2,Number(sl[0]&&sl[0].rate)||0,'0.0#');row++;const t0=row;tiers.forEach(t=>{blue(row,1,t.th,'0.0#');blue(row,2,t.rate,'0.0#');row++;});
-      slabRef[g]={base,thr:tiers.length?pwRef(IRn)+'$A$'+t0+':$A$'+(row-1):null,rate:tiers.length?pwRef(IRn)+'$B$'+t0+':$B$'+(row-1):null};row++;});
+      slabRef[g]={n:tiers.length,base,thr:tiers.length?pwRef(IRn)+'$A$'+t0+':$A$'+(row-1):null,rate:tiers.length?pwRef(IRn)+'$B$'+t0+':$B$'+(row-1):null};row++;});
     IR.getRow(row).getCell(1).value='Week-day names (used by Attendance)';IR.getRow(row).getCell(1).font={bold:true,color:{argb:'FF14335E'}};row++;const wd0=row;
     ATT_WEEKLY_OFFS.forEach(d=>{IR.getRow(row).getCell(1).value=d;row++;});const weekdays=pwRef(IRn)+'$A$'+wd0+':$A$'+(row-1);
     // Sales — every incentive employee (the pools need everyone)
@@ -148,7 +148,7 @@ function pwIncentive(sid,y,m,S,o){
     }
     // Inc Working
     const IWc=[{key:'id',h:'Emp ID',w:10,input:true},{key:'name',h:'Employee',w:22,input:true},{key:'desig',h:'Designation',w:16,input:true},{key:'salary',h:'Salary',input:true},
-      {key:'mS',h:'Svc target ×salary',input:true,fmt:'0.0#'},{key:'mM',h:'Mem target ×salary',input:true,fmt:'0.0#'},{key:'mP',h:'Prod target ×salary',input:true,fmt:'0.0#'},
+      {key:'mS',h:'Svc target ×salary',input:true,fmt:'0.0#'},{key:'mM',h:'Mem target ×salary',input:true,fmt:'0.0#'},{key:'mP',h:'Prod target ×salary',input:true,fmt:'0.0#'},{key:'pr',h:'Pro-rata factor (payable ÷ days)',input:true,fmt:'0.00%'},
       {key:'aS',h:'Svc achieved'},{key:'tS',h:'Svc target'},{key:'pS',h:'Svc %',fmt:'0'},{key:'xS',h:'Svc ×times',fmt:'0.00'},{key:'bS',h:'Svc basis',w:16,input:true},{key:'rS',h:'Svc rate %',fmt:'0.0#'},{key:'vS',h:'Svc manual ₹',input:true},{key:'iS',h:'Svc incentive'},
       {key:'aM',h:'Mem achieved'},{key:'tM',h:'Mem target'},{key:'pM',h:'Mem %',fmt:'0'},{key:'bM',h:'Mem basis',w:18,input:true},{key:'rM',h:'Mem rate %',input:true,fmt:'0.0#'},{key:'vM',h:'Mem ₹ (pool / manual)'},{key:'iM',h:'Mem incentive'},
       {key:'aP',h:'Prod achieved'},{key:'tP',h:'Prod target'},{key:'pP',h:'Prod %',fmt:'0'},{key:'bP',h:'Prod basis',w:16,input:true},{key:'rP',h:'Prod rate %',input:true,fmt:'0.0#'},{key:'vP',h:'Prod ₹ (flat / manual)',input:true},{key:'iP',h:'Prod incentive'},
@@ -164,18 +164,20 @@ function pwIncentive(sid,y,m,S,o){
       const memB=cm.mem==='manualAmt'?'Manual ₹':cm.mem==='manualRate'?'Manual rate %':'Membership rule '+memRule+' (pool)';
       const prodB=cm.prod==='manualAmt'?'Manual ₹':cm.prod==='manualRate'?'Manual rate %':w.prodRuleType==='B'?'Rule B flat ₹':'Rule A rate %';
       const mgrB=!isMgr?'Not a manager':ov.mgr?'Manual ₹':'Share of pool';
+      const PWD=typeof controlOn==='function'&&controlOn('incRoundTotal',sid)?2:0;const prog=svcB==='Rate slab'&&typeof controlOn==='function'&&controlOn('incProgressive',sid);
+      const progF=(r,L)=>{const a=L('aS')+r,sal=L('salary')+r,n=sl.n||0;if(!n)return a+'*'+sl.base;const T=k=>'INDEX('+sl.thr+','+k+')',RT=k=>'INDEX('+sl.rate+','+k+')';const terms=['MIN('+a+','+T(1)+'*'+sal+')*'+sl.base];for(let k=1;k<n;k++)terms.push('MAX(0,MIN('+a+','+T(k+1)+'*'+sal+')-'+T(k)+'*'+sal+')*'+RT(k));terms.push('MAX(0,'+a+'-'+T(n)+'*'+sal+')*'+RT(n));return'('+terms.join('+')+')';};
       const slab=x=>sl.thr?'IF(OR(COUNT('+sl.thr+')=0,'+x+'<MIN('+sl.thr+')),'+sl.base+',INDEX('+sl.rate+',MATCH('+x+','+sl.thr+',1)))':sl.base;
-      return{id:w.id,name:w.name,desig:w.desig||'',salary:Number(w.salary)||0,mS:targetMultFor('svc',sid,w,splitMode),mM:targetMultFor('mem',sid,w,splitMode),mP:targetMultFor('prod',sid,w,splitMode),
-        aS:(r,L)=>pwF('IF('+R.refs.colSvc+','+sRef('svc',w.id)+'+'+sRef('pkg',w.id)+'+0.5*'+sRef('comp',w.id)+',0)'),tS:(r,L)=>pwF('IF('+R.refs.colSvc+','+L('salary')+r+'*'+L('mS')+r+',0)',w.svcTarget),
+      return{id:w.id,name:w.name,desig:w.desig||'',salary:Number(w.salary)||0,mS:targetMultFor('svc',sid,w,splitMode),mM:targetMultFor('mem',sid,w,splitMode),mP:targetMultFor('prod',sid,w,splitMode),pr:Number(w.proRata)||1,
+        aS:(r,L)=>pwF('IF('+R.refs.colSvc+','+sRef('svc',w.id)+'+'+sRef('pkg',w.id)+'+'+R.refs.compW+'*'+sRef('comp',w.id)+',0)'),tS:(r,L)=>pwF('IF('+R.refs.colSvc+','+L('salary')+r+'*'+L('mS')+r+'*'+L('pr')+r+',0)',w.svcTarget),
         pS:(r,L)=>pwF('IF('+L('tS')+r+'=0,0,MIN(100,ROUND('+L('aS')+r+'/'+L('tS')+r+'*100,0)))',w.svcPct),xS:(r,L)=>pwF('IF('+L('salary')+r+'=0,0,'+L('aS')+r+'/'+L('salary')+r+')',w.svcTimesRaw),bS:svcB,
-        rS:(r,L)=>svcB==='Manual rate %'?Number(w.svcRate)||0:svcB==='Manual ₹'?null:pwF(slab(L('xS')+r),w.svcRateUsed),vS:svcB==='Manual ₹'?Number(w.svcManualAmt)||0:null,
-        iS:(r,L)=>pwF('IF('+R.refs.applSvc+','+(svcB==='Manual ₹'?L('vS')+r:'ROUND('+L('aS')+r+'*'+L('rS')+r+'/100,0)')+',0)',w.svcIncAmt),
-        aM:(r,L)=>pwF('IF('+R.refs.colMem+','+sRef('mem',w.id)+',0)'),tM:(r,L)=>pwF('IF('+R.refs.colMem+','+L('salary')+r+'*'+L('mM')+r+',0)',w.memTarget),pM:(r,L)=>pwF('IF('+L('tM')+r+'=0,0,MIN(100,ROUND('+L('aM')+r+'/'+L('tM')+r+'*100,0)))',w.memPct),
+        rS:(r,L)=>svcB==='Manual rate %'?Number(w.svcRate)||0:svcB==='Manual ₹'?null:prog?pwF('IF('+L('aS')+r+'=0,0,'+L('iS')+r+'/'+L('aS')+r+'*100)',w.svcRateUsed):pwF(slab(L('xS')+r),w.svcRateUsed),vS:svcB==='Manual ₹'?Number(w.svcManualAmt)||0:null,
+        iS:(r,L)=>pwF('IF('+R.refs.applSvc+','+(svcB==='Manual ₹'?L('vS')+r:prog?'ROUND('+progF(r,L)+'/100,'+PWD+')':'ROUND('+L('aS')+r+'*'+L('rS')+r+'/100,'+PWD+')')+',0)',w.svcIncAmt),
+        aM:(r,L)=>pwF('IF('+R.refs.colMem+','+sRef('mem',w.id)+',0)'),tM:(r,L)=>pwF('IF('+R.refs.colMem+','+L('salary')+r+'*'+L('mM')+r+'*'+L('pr')+r+',0)',w.memTarget),pM:(r,L)=>pwF('IF('+L('tM')+r+'=0,0,MIN(100,ROUND('+L('aM')+r+'/'+L('tM')+r+'*100,0)))',w.memPct),
         bM:memB,rM:Number(w.memRateUsed)||0,vM:memB==='Manual rate %'?null:memB==='Manual ₹'?Number(w.memManualAmt)||0:(memRef?pwF(memRef(w.id),w.memIncAmt):Number(w.memIncAmt)||0),
-        iM:(r,L)=>pwF('IF('+R.refs.applMem+','+(memB==='Manual rate %'?'ROUND('+L('aM')+r+'*'+L('rM')+r+'/100,0)':L('vM')+r)+',0)',w.memIncAmt),
-        aP:(r,L)=>pwF('IF('+R.refs.colProd+','+sRef('prod',w.id)+',0)'),tP:(r,L)=>pwF('IF('+R.refs.colProd+','+L('salary')+r+'*'+L('mP')+r+',0)',w.prodTarget),pP:(r,L)=>pwF('IF('+L('tP')+r+'=0,0,MIN(100,ROUND('+L('aP')+r+'/'+L('tP')+r+'*100,0)))',w.prodPct),
+        iM:(r,L)=>pwF('IF('+R.refs.applMem+','+(memB==='Manual rate %'?'ROUND('+L('aM')+r+'*'+L('rM')+r+'/100,'+PWD+')':L('vM')+r)+',0)',w.memIncAmt),
+        aP:(r,L)=>pwF('IF('+R.refs.colProd+','+sRef('prod',w.id)+',0)'),tP:(r,L)=>pwF('IF('+R.refs.colProd+','+L('salary')+r+'*'+L('mP')+r+'*'+L('pr')+r+',0)',w.prodTarget),pP:(r,L)=>pwF('IF('+L('tP')+r+'=0,0,MIN(100,ROUND('+L('aP')+r+'/'+L('tP')+r+'*100,0)))',w.prodPct),
         bP:prodB,rP:(prodB==='Manual rate %'||prodB==='Rule A rate %')?Number(w.prodRateUsed)||0:null,vP:prodB==='Manual ₹'?Number(w.prodManualAmt)||0:prodB==='Rule B flat ₹'?Number(w.prodFlatAmount)||0:null,
-        iP:(r,L)=>pwF('IF('+R.refs.applProd+','+((prodB==='Manual ₹'||prodB==='Rule B flat ₹')?L('vP')+r:'ROUND('+L('aP')+r+'*'+L('rP')+r+'/100,0)')+',0)',w.prodIncAmt),
+        iP:(r,L)=>pwF('IF('+R.refs.applProd+','+((prodB==='Manual ₹'||prodB==='Rule B flat ₹')?L('vP')+r:'ROUND('+L('aP')+r+'*'+L('rP')+r+'/100,'+PWD+')')+',0)',w.prodIncAmt),
         bG:mgrB,sG:isMgr&&!ov.mgr?Number((mgrIn.shares||{})[w.id])||0:null,vG:isMgr&&ov.mgr?Number(w.mgrManualAmt)||0:null,
         iG:(r,L)=>pwF(!isMgr?'0':'IF('+R.refs.applMgr+','+(ov.mgr?L('vG')+r:'ROUND('+R.refs.pool+'*'+L('sG')+r+'/100,0)')+',0)',w.mgrIncAmt),
         oA:!!w.otApplicable,oN:Number(w.otNormalHours)||0,oH:Number(w.otHours)||0,
