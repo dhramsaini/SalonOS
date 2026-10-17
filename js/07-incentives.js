@@ -1119,6 +1119,7 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
       iwSelectedIds.size+' of '+incData.length+' employees selected — tick the box in each row to choose who Export CSV and Share (above) include — ',
       React.createElement('span',{style:{color:'var(--accent2)',cursor:'pointer',textDecoration:'underline'},onClick:()=>setIwSelectedIds(new Set())},'clear selection')
     ),
+    typeof IncPlanInUseChip==='function'&&React.createElement(IncPlanInUseChip,{sid:salon?.id,y:selYear,m:selMonth}),
     typeof IncSimpleView==='function'&&React.createElement(IncSimpleView,{salon,year:selYear,month:selMonth,rows:incData,onChanged:()=>setActualsTick(t=>t+1)}),
     React.createElement('div',{className:'card',style:{padding:0,display:(typeof incViewIsSimple==='function'&&incViewIsSimple(salon?.id))?'none':undefined}},
       React.createElement('div',{style:{overflowX:'auto'}},

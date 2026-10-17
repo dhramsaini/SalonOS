@@ -145,11 +145,13 @@ function MonthlyIncentivePlanSheet({salon,period,user,onOpenRules}={}){
     if(on&&prevPlan){applyIncPlanToLive(sid,prevPlan.settings||{});success(prevLabel+'’s approved plan copied into ⚙ Incentive Rules & Settings — change anything needed there, then submit.');setTick(t=>t+1);}
   };
   const submit=()=>{
+    if(typeof ipSubmitOk==='function'&&!ipSubmitOk(sid,cal.year,cal.month))return;
     if(!window.confirm('Submit the current ⚙ Incentive Rules & Settings as the '+label+' Incentive Plan for approval?'))return;
     submitIncPlan(sid,cal.year,cal.month,user,copyPrev&&prevPlan?prevLabel:'');setTick(t=>t+1);setCopyPrev(false);
     success(label+' plan sent for approval to the Owner / ASM');
   };
   const decide=d=>{
+    if(d==='Approved'&&typeof ipApproveOk==='function'&&!ipApproveOk(sid,cal.year,cal.month,plan))return;
     if(d==='Returned'&&!remarks.trim()){toastErr('Add a remark saying what to change.');return;}
     decideIncPlan(sid,cal.year,cal.month,d,user,remarks.trim());setRemarks('');setTick(t=>t+1);
     success(d==='Approved'?label+' plan approved — Incentive Working for the month now uses it':label+' plan returned');
@@ -158,17 +160,19 @@ function MonthlyIncentivePlanSheet({salon,period,user,onOpenRules}={}){
     if(locked){toastErr(label+' Incentive Working is locked — unlock it first.');return;}
     if(!window.confirm('Revise the approved '+label+' plan? It goes back to Draft (Incentive Working uses the current settings until it is approved again) and its settings are loaded into ⚙ Incentive Rules & Settings.'))return;
     const map=loadIncPlans(sid);const k=incPlanYm(cal.year,cal.month);applyIncPlanToLive(sid,map[k].settings||{});
-    map[k]={...map[k],status:'Draft'};saveIncPlans(sid,map);setTick(t=>t+1);
+    map[k]={...map[k],status:'Draft',history:[...(map[k].history||[]),{what:'Revised',by:user?.name||'',role:roleTag(user?.role),at:new Date().toISOString()}]};saveIncPlans(sid,map);setTick(t=>t+1);
   };
   return h('div',null,
     h('div',{className:'section-header'},
       h('div',null,h('div',{className:'page-title'},'Monthly Incentive Plan'),
         h('div',{className:'page-sub'},'Service, Membership, Product and Manager Target incentive for '+label+' — prepared by the Owner or ASM, approved by the other; Incentive Working uses the approved plan')),
       h('div',{className:'fd-date'},h('button',{onClick:()=>shift(-1)},'‹'),h('span',{className:'lbl'},label),h('button',{onClick:()=>shift(1)},'›'))),
+    typeof IncPlanPlus==='function'&&h(IncPlanPlus,{sid,y:cal.year,m:cal.month,plan,prevPlan,prevLabel,label,user,editable,locked,copyPrev,onOpenRules,tick}),
     !plan&&h('div',{className:'help-note',style:{marginBottom:12}},'No plan for '+label+' yet — Incentive Working uses the current ⚙ Incentive Rules & Settings until a plan is approved.'),
     plan&&h(IncPlanSummaryCard,{sid,y:cal.year,m:cal.month,plan,title:'Plan for '+label}),
     plan&&plan.status==='Pending'&&canApproveIncPlan(user,plan)&&h('div',{className:'card',style:{marginBottom:14}},
       h('div',{className:'form-group'},h('label',null,'Remarks'),h('textarea',{className:'form-control',rows:2,value:remarks,onChange:e=>setRemarks(e.target.value),placeholder:'Required when returning'})),
+      typeof IncPlanApproverChecks==='function'&&h(IncPlanApproverChecks,{sid,y:cal.year,m:cal.month,plan,onPick:t=>setRemarks(r=>r?r+'; '+t:t)}),
       h('div',{style:{display:'flex',gap:8}},h('button',{className:'btn btn-success',onClick:()=>decide('Approved')},'✓ Approve plan'),h('button',{className:'btn btn-danger',onClick:()=>decide('Returned')},'↩ Return'))),
     plan&&plan.status==='Pending'&&!canApproveIncPlan(user,plan)&&maker&&h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:12}},'Waiting for the '+(plan.preparedRole==='ASM'?'Owner':'ASM / Owner')+' to approve.'),
     editable&&h('div',{className:'card',style:{marginBottom:14}},

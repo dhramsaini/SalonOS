@@ -102,6 +102,7 @@ function StaffSelfService({salon}){
       shown.pct!=null&&h('div',{style:{height:8,borderRadius:6,background:'var(--bg3)',overflow:'hidden',margin:'8px 0'}},h('div',{style:{height:'100%',width:Math.min(100,shown.pct)+'%',background:shown.pct>=100?'var(--green)':'#2f5fe0'}})),
       shown.perDayNeeded>0&&h('div',{style:{fontSize:12,color:'var(--text2)'}},'To reach the target: about '+m(shown.perDayNeeded)+' a day for the '+shown.daysLeft+' day(s) left.'),
       h('div',{style:{fontSize:11,color:'var(--text3)',marginTop:6}},'Estimate from the sales entered so far; the final amount is in Incentive Working at month end.'),
+      typeof IncPlanForMe==='function'&&e&&h(IncPlanForMe,{sid,emp:e,y:today.getFullYear(),m:today.getMonth()}),
       h('button',{className:'btn btn-ghost btn-sm',style:{marginTop:6},onClick:()=>{setShown(null);setWho('');setMode('');}},'Done')));
 }
 

@@ -226,6 +226,20 @@ const CONTROL_DEFS=[
   {id:'payLeaveEncash',group:'Employees',label:'Leave encashment',hint:'Pay unused leave days at basic ÷ days in month, entered per employee in Pay tools.',def:true},
   {id:'payChangePreview',group:'Employees',label:'Changes before approval',hint:'Pay tools → Changes: net pay changed by more than the % below from last month, with the reason; “Approve all” asks first.',def:true,limit:20,limitLabel:'Flag above (% change)'},
   {id:'paySplit',group:'Employees',label:'Bank and cash split',hint:'Pay part of the salary in cash; Salary Payment and the bank list show only the bank part.',def:true},
+  {id:'ipWords',group:'Employees',label:'Incentive Plan in plain words',hint:'The Monthly Plan opens with each rule written out in sentences, with ₹ examples worked out from your own staff salaries.',def:true},
+  {id:'ipPeriod',group:'Employees',label:'Dates the plan applies to',hint:'Shows the dates the plan covers, whether Incentive Working uses it yet, and when it locks.',def:true},
+  {id:'ipDiff',group:'Employees',label:'Changes from last month',hint:'Lists only the rules that differ from last month’s approved plan, old → new.',def:true},
+  {id:'ipGroups',group:'Employees',label:'Who is on which plan',hint:'One card per plan or designation, listing its employees and their rules. Warns when an employee is assigned to a plan but that category isn’t split by designation, so the assignment does nothing.',def:true},
+  {id:'ipTimeline',group:'Employees',label:'Plan status steps',hint:'Prepare → Sent for approval → Approved (or Returned), with a log of who did each step and when.',def:true},
+  {id:'ipDrift',group:'Employees',label:'Warn when rules change after approval',hint:'Warns on the Monthly Plan and on Incentive Working when ⚙ Incentive Rules & Settings have been edited since the plan was approved, and lists what changed (the month still uses the approved plan).',def:true},
+  {id:'ipInUse',group:'Employees',label:'“Plan in use” label on Incentive Working',hint:'Incentive Working shows which plan it is using: the approved plan, one waiting for approval, or the current rules.',def:true},
+  {id:'ipWizard',group:'Employees',label:'Step-by-step preparing (required)',hint:'A ticked step list for preparing the plan: start, check each category, look at the cost and give reasons. Submitting is blocked until every step is ticked.',def:false},
+  {id:'ipCost',group:'Employees',label:'Cost estimate before submitting',hint:'Works out what the plan would have paid on last month’s sales, compared with last month’s own plan. Flags a rise above the % below.',def:true,limit:10,limitLabel:'Flag a rise above (%)'},
+  {id:'ipChecklist',group:'Employees',label:'Approver checklist (required)',hint:'Before approving, the approver ticks that they have seen the changes, the cost estimate and the reasons. Also adds quick remarks for returning a plan.',def:false},
+  {id:'ipNotes',group:'Employees',label:'Reason for each change',hint:'The person preparing the plan can give a one-line reason for each change. The approver sees the reasons beside the changes.',def:true},
+  {id:'ipStaffSheet',group:'Employees',label:'Plan sheet for each employee',hint:'Print a one-page plan for each employee (targets and slabs in ₹, with a signature line), or send it on WhatsApp.',def:true},
+  {id:'ipStaffPhone',group:'Employees',label:'My plan on the staff phone',hint:'Under 💰 My incentive, staff also see their own plan and how much more service takes them to the next slab.',def:true},
+  {id:'ipReminder',group:'Employees',label:'Reminder when next month’s plan isn’t approved',hint:'From the day below, the Owner / ASM see a note at the top of every page until next month’s plan is approved.',def:true,limit:25,limitLabel:'From day of month'},
   {id:'incRulesGuide',group:'Employees',label:'Incentive Rules made easy',hint:'Incentive Rules & Settings opens with a step bar to jump to each part, a plain-words summary of how incentive is worked out with ₹ examples, and a “Try it” calculator. Nothing changes in the calculation.',def:true},
   {id:'incSimpleView',group:'Employees',label:'Simple / Detailed view on Incentive Working',hint:'A Simple view — Stylist, Service, Membership, Product (sale, target, %), each incentive, deductions and total — next to today’s Detailed table; the choice is remembered on each device.',def:true},
   {id:'incBreakdown',group:'Employees',label:'Breakdown per stylist',hint:'Simple view: click a stylist to see every step — sales, target, ×times, slab, each incentive, deductions and adjustments — to the total.',def:true},
@@ -380,6 +394,7 @@ const CONTROL_AREAS=[
     ['Incentive Working tools',['incRulesGuide','incTracker','incSimulator','incTeam','incFeedback','incClawback','incCap','incFloor','incMixCheck']],
     ['Incentive Working view',['incSimpleView','incBreakdown','incProgress','incWhyZero','incSourceLabel','incDeltaLM','incStatement','incPools','incTieOut']],
     ['Incentive calculation',['incProRata','incProgressive','incCompWeight','incRoundTotal']],
+    ['Incentive Plan',['ipWords','ipPeriod','ipDiff','ipGroups','ipTimeline','ipDrift','ipInUse','ipWizard','ipCost','ipChecklist','ipNotes','ipStaffSheet','ipStaffPhone','ipReminder']],
     ['Both sheets',['payMakerChecker','payChangeLog','payCompare','payBudget','payYearly']],
     ['Advances — giving',['advanceRecoveryPlan','advanceNetFloor','advEligibility','advServiceLimit','advOneOpen','advPhoneRequest','advAck']],
     ['Advances — recovering',['advSkipMonth','advChangePlan','advPartRecovery','advRepaid','advSplit','advLeavers']],
@@ -398,7 +413,7 @@ const CONTROL_AREAS=[
     ['App',['roleHomeScreens','appInstallPrompt','phoneQuickAdd','geminiModelList']],
     ['Look & feel',['dmyDates','compactToolbars','todayStrip','filterChips','keyboardShortcuts','mobileLayout','calendarPolish','billPrintDesign','miniCharts','undoActions']]]}];
 // Rules that stop someone from saving, and rules that send the action for approval — shown as labels.
-const CONTROL_STOPS=new Set(['payMakerChecker','advServiceLimit','aadhaarRequired','ctlTwoPerson','ctlLocks','backdateLock','futureLock','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','billNeedsPo','gstLock','dayCloseLock','staffChangeLock','creditLimit','discountReason','staffOffBlocking','requireMarketingConsent','bankLockFinal','tallyChangeGuard','mapRoleLimits','vagueNatureReason','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']);
+const CONTROL_STOPS=new Set(['ipWizard','ipChecklist','payMakerChecker','advServiceLimit','aadhaarRequired','ctlTwoPerson','ctlLocks','backdateLock','futureLock','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','billNeedsPo','gstLock','dayCloseLock','staffChangeLock','creditLimit','discountReason','staffOffBlocking','requireMarketingConsent','bankLockFinal','tallyChangeGuard','mapRoleLimits','vagueNatureReason','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']);
 const CONTROL_APPROVAL=new Set(['advWriteOff','mapApproval','mapReview','tallyNeedsReview','discountApproval','cancelApproval','poApproval','invoiceApproval','bankFileApproval','deleteApproval','vendorBankApproval']);
 // [{area, subs:[{title, defs}]}] for every switch in CONTROL_DEFS — nothing is left out.
 function controlLayout(){
