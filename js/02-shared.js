@@ -2077,7 +2077,7 @@ function scheduledAmountFor(adv,year,month){
 // An advance's balance is always amount − what has been recovered (a.settled = {'YYYY-MM': amount},
 // written when Salary / Incentive Working is approved). The monthly deduction is a plan, not a recovery.
 function advSettledTotal(a,beforeYm){return Object.entries((a&&a.settled)||{}).reduce((s,[ym,v])=>(!beforeYm||ym<beforeYm)?s+(Number(v)||0):s,0);}
-function advTrueOutstanding(a){return Math.max(0,(Number(a&&a.amount)||0)-advSettledTotal(a));}
+function advTrueOutstanding(a){return Math.max(0,(Number(a&&a.amount)||0)+(Number(a&&a.fee)||0)-advSettledTotal(a));}
 // One-time repair (per outlet) of advances saved by the old Advances form, which set the balance to
 // amount − one monthly deduction before anything was recovered (so ₹10,000 with ₹10,000/month was
 // "Recovered" on the day it was given and never deducted). Only records that match that exact
@@ -2211,7 +2211,7 @@ function advanceBalanceSplitFor(salonId,empName,source,year,month,nextCutoffDate
   const afterNext=new Date(nextY,nextM+1,1);
   list.map(advFixed).filter(a=>a.emp===empName&&(a.status==='Active'||a.status==='Recovered')&&(a.deductFrom||'Salary')===(source||'Salary')).forEach(a=>{
     const later=Object.entries(a.settled||{}).reduce((s,[ym,v])=>ym>=ymKey?s+(Number(v)||0):s,0);
-    const outstanding=Math.max(0,Math.min(Number(a.amount)||0,(Number(a.outstanding)||0)+later));
+    const outstanding=Math.max(0,Math.min((Number(a.amount)||0)+(Number(a.fee)||0),(Number(a.outstanding)||0)+later));
     if(outstanding<=0)return;
     const d=a.date?new Date(a.date+'T00:00:00'):null;
     if(d&&!isNaN(d)&&d>=afterNext)return; // given after next month — not owed yet in this month
@@ -2623,7 +2623,7 @@ function swWorkingsFor(salonId,year,month){
     // deduction never happened, right after it did. Unapproved rows still compute live, same as
     // always, so the figure stays current while there's still something to approve.
     const swM=swMeta[attMonthKey(e.id,year,month)];
-    const advAdj=cols.advAdj
+    let advAdj=cols.advAdj
       ?(swM&&swM.advanceSettled&&Array.isArray(swM.advanceSettledBreakdown)
           ?swM.advanceSettledBreakdown.reduce((s,b)=>s+(Number(b.amount)||0),0)
           :advanceDeductionFor(salonId,e.name,'Salary',year,month))
@@ -2650,6 +2650,8 @@ function swWorkingsFor(salonId,year,month){
     // Service Incentive is intentionally NOT part of this figure — it's shown in its own column
     // for reference but isn't folded into Net Salary here.
     const arrears=typeof salArrearsFor==='function'?salArrearsFor(salonId,e,year,month):0; // back-dated pay change for locked months (js/53)
+    // Part-recovery (js/54 · Controls → advPartRecovery): never recover more than the month's pay can bear.
+    if(!(swM&&swM.advanceSettled)&&typeof advCapToPay==='function')advAdj=advCapToPay(salonId,advAdj,grossAfterLop+arrears+tea-pfEmp-esicEmp-ptAmt-tdsAmt-penAmt);
     const net=grossAfterLop+arrears+tea-pfEmp-esicEmp-ptAmt-tdsAmt-penAmt-advAdj;
     const closingAdvance=Math.max(0,prevAdv+currAdv-advAdj);
     return{...e,totalDays,daysInMonth,lop,lopAmt,grossAfterLop,arrears,svcIncAmt,memIncAmt,prodIncAmt,mgrIncAmt,nonPerfPenalty,totalIncSW,incDetail,tea,pfEmp,pfEr,pfAutoAmt,pfOverridden,esicEmp,esicEr,esicAutoAmt,esicOverridden,ptAmt,ptAutoAmt,ptOverridden,tdsAmt,penAmt,advAdj,prevAdv,currAdv,nextAdv,closingAdvance,net:Math.max(0,net)};
@@ -3722,7 +3724,8 @@ function employeeCostFor(salonId,year,month){
     ...(isRestaurantOutlet(salonId)&&outletSettings(salonId).serviceChargeApplicable&&typeof serviceChargeDistributedFor==='function'
       ?[{name:'Service Charge to Staff',amt:serviceChargeDistributedFor(salonId,year,month),group:'Employee Service Charge'}]:[]),
     {name:'PF Employer Contribution',amt:pfEr},
-    {name:'ESIC Employer Contribution',amt:esicEr}
+    {name:'ESIC Employer Contribution',amt:esicEr},
+    ...(typeof advWrittenOffFor==='function'&&advWrittenOffFor(salonId,year,month)>0?[{name:'Advances Written Off',amt:advWrittenOffFor(salonId,year,month)}]:[])
   ];
   const detail=sw.map(e=>({id:e.id,name:e.name,desig:e.desig,dept:e.dept,totalDays:e.totalDays,grossAfterLop:e.grossAfterLop,tea:e.tea,pfEr:e.pfEr,esicEr:e.esicEr,incentive:incByEmp[e.id]||0,total:e.grossAfterLop+e.tea+e.pfEr+e.esicEr+(incByEmp[e.id]||0)}));
   const tot=lines.reduce((s,l)=>s+l.amt,0);

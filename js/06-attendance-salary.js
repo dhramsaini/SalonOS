@@ -1021,6 +1021,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     const key=outletKey('salonos_advances',salon?.id);
     let all=[];
     try{const raw=JSON.parse(cachedLocalGet(key)||'[]');if(Array.isArray(raw))all=raw;}catch(e){}
+    let capLeft=typeof advSettleCap==='function'?advSettleCap(salon?.id,empName,year,month):Infinity;
     const breakdown=[];
     const next=all.map(a=>{
       if(a.emp!==empName||a.status!=='Active'||(a.deductFrom||'Salary')!=='Salary')return a;
@@ -1028,11 +1029,14 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
       const planned=scheduled!==null?scheduled:(Number(a.repayment)||0);
       const ym=year+'-'+String(month+1).padStart(2,'0');
       const done=Number((a.settled||{})[ym])||0; // already recovered for this month (e.g. when the month was locked)
-      const take=Math.min(Math.max(0,planned-done),Math.max(0,Number(a.outstanding)||0));
-      if(take<=0)return a;
-      breakdown.push({id:a.id,amount:take,ym});
-      const newOutstanding=Math.max(0,(Number(a.outstanding)||0)-take);
-      return{...a,outstanding:newOutstanding,settled:{...(a.settled||{}),[ym]:done+take},status:newOutstanding<=0?'Recovered':a.status};
+      const due=Math.min(Math.max(0,planned-done),Math.max(0,Number(a.outstanding)||0));
+      const take=Math.min(due,Math.max(0,capLeft));capLeft-=take;
+      // Pay too short for the full instalment (Controls → advPartRecovery): the rest moves to next month.
+      const a1=(due-take>0&&typeof advCarryShort==='function')?advCarryShort(a,ym,due-take):a;
+      if(take<=0){if(a1!==a)breakdown.push({id:a.id,amount:0,ym,carry:due-take});return a1;}
+      breakdown.push({id:a.id,amount:take,ym,...(a1!==a?{carry:due-take}:{})});
+      const newOutstanding=Math.max(0,(Number(a1.outstanding)||0)-take);
+      return{...a1,outstanding:newOutstanding,settled:{...(a1.settled||{}),[ym]:done+take},status:newOutstanding<=0?'Recovered':a1.status};
     });
     safeLocalSet(key,JSON.stringify(next));
     return breakdown;
@@ -1045,6 +1049,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     const byId=Object.fromEntries(breakdown.map(b=>[b.id,b.amount]));
     const next=all.map(a=>{
       if(!(a.id in byId))return a;
+      const cb=breakdown.find(b=>b.id===a.id&&b.carry);if(cb&&typeof advUndoCarry==='function')a=advUndoCarry(a,cb.ym,cb.carry);
       const restored=(Number(a.outstanding)||0)+byId[a.id];
       const bym=(breakdown.find(b=>b.id===a.id)||{}).ym;
       const settled={...(a.settled||{})};

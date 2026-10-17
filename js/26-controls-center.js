@@ -222,6 +222,24 @@ const CONTROL_DEFS=[
   {id:'staffIncentiveView',group:'Employees',label:'Staff can see their own incentive on the phone screen',hint:'💰 My incentive: this month’s sales, target and expected incentive, behind a PIN (last 4 digits of the employee’s mobile).',def:false},
   {id:'advanceRecoveryPlan',group:'Employees',label:'Advance recovery plan on the Advances sheet',hint:'Outstanding, this month’s recovery and the payoff month for every employee with an advance.',def:true},
   {id:'advanceNetFloor',group:'Employees',label:'Warn when an advance recovery leaves too little net pay',hint:'Advance recovery plan: flagged when this month’s net pay is below the % of salary + incentive set here.',def:false,limit:40,limitLabel:'Keep at least %'},
+  {id:'advEligibility',group:'Employees',label:'Eligibility check when giving an advance',hint:'The New Advance and Request windows show net pay, what is already owed, the monthly recovery and how long it takes; saving warns when recovery takes more months than below, is more than net pay, or the employee has a leaving date.',def:true,limit:6,limitLabel:'Warn above (months to recover)'},
+  {id:'advServiceLimit',group:'Employees',label:'Limit advances by service and salary',hint:'No advance in the first 3 months; up to half of the limit for 3–12 months’ service; up to the limit (× monthly gross, below) after a year — counting what is already owed.',def:false,limit:1,limitLabel:'Limit (× monthly gross)'},
+  {id:'advOneOpen',group:'Employees',label:'One open advance at a time',hint:'Warns when someone is given a new advance while an earlier one is still being recovered.',def:true},
+  {id:'advPhoneRequest',group:'Employees',label:'Advance request from the staff phone',hint:'Staff ask for an advance on the phone screen (PIN = last 4 digits of their mobile); it waits as Pending Approval on the Advances sheet, and the decision can be sent to them on WhatsApp.',def:true},
+  {id:'advAck',group:'Employees',label:'Signed acknowledgement',hint:'⋯ on an advance: print a one-page acknowledgement with the recovery plan to sign, and attach the signed copy.',def:true},
+  {id:'advSkipMonth',group:'Employees',label:'Skip a month',hint:'⋯ on an advance: move one month’s instalment to the next month, with a reason.',def:true},
+  {id:'advChangePlan',group:'Employees',label:'Change the plan mid-way',hint:'⋯ on an advance: a new monthly amount from a chosen month; the remaining months are worked out again and the old plan is kept.',def:true},
+  {id:'advPartRecovery',group:'Employees',label:'Part-recovery when pay is short',hint:'If net pay can’t cover the instalment, only what the pay can bear is recovered and the rest moves to the next month automatically.',def:true},
+  {id:'advRepaid',group:'Employees',label:'Repaid by the employee',hint:'⋯ on an advance: record money paid back in cash, UPI or bank; it lowers the balance and shortens the plan.',def:true},
+  {id:'advSplit',group:'Employees',label:'Split between salary and incentive',hint:'⋯ on an advance: recover it partly from salary and partly from incentive (two linked records).',def:true},
+  {id:'advLeavers',group:'Employees',label:'Full and final for leavers',hint:'Advance tools → Leavers: everyone with a leaving date who still owes, with one click to recover the whole balance in the final pay.',def:true},
+  {id:'advStatement',group:'Employees',label:'Advance statement per employee',hint:'Month-by-month given, recovered and balance — on screen, as PDF, or on WhatsApp to the employee.',def:true},
+  {id:'advRegister',group:'Employees',label:'Advance register with ageing (all outlets)',hint:'Dashboard → 💰 Advances and Advance tools: outstanding by age, more than one open advance, leavers with dues and recoveries behind plan.',def:true},
+  {id:'advOverdue',group:'Employees',label:'Recovery behind plan',hint:'Advance tools → Behind plan: advances where a month passed without the planned recovery.',def:true},
+  {id:'advTieOut',group:'Employees',label:'Month-end tie-out for advances',hint:'Checks cash advances against Daily Sales, bank advances against linked bank lines, recoveries against approved Salary / Incentive Working, and the balance roll-forward.',def:true},
+  {id:'advTally',group:'Employees',label:'Advance journal for Tally',hint:'Advance tools → Tally journal: given, recovered, repaid and written off as vouchers (debit / credit ledger) in Excel.',def:true},
+  {id:'advFee',group:'Employees',label:'Fee or interest on advances',hint:'⋯ on an advance: add a fee (% of the balance or flat ₹); it is added to the balance and the plan.',def:false},
+  {id:'advWriteOff',group:'Employees',label:'Write off an advance (with approval)',hint:'⋯ on an advance: write off what can’t be recovered — needs Super Admin approval, records the reason and shows as “Advances Written Off” in the P&L.',def:true},
   {id:'phoneCheckin',group:'Employees',label:'Phone check-in with selfie and location',hint:'Attendance → 📲 Check-in screen on the outlet phone; the manager marks check-in days Present. Distance allowed below.',def:false,limit:200,limitLabel:'Metres'},
   {id:'empStatement',group:'Employees',label:'Employee monthly statement on WhatsApp',hint:'Salary Working → Send Payslips adds days present, leave, advance balance and incentive to each message.',def:false},
 ];
@@ -322,7 +340,9 @@ const CONTROL_AREAS=[
   {key:'staff',icon:'💼',title:'Salary & staff',groups:['Employees','Data entry'],subs:[
     ['Employees',['aadhaarRequired','phoneCheckin','paidLeave','leaveRequests','staffIncentiveView','empStatement']],
     ['Pay changes',['salaryRevisions','salaryArrears']],
-    ['Advances',['advanceRecoveryPlan','advanceNetFloor']],
+    ['Advances — giving',['advanceRecoveryPlan','advanceNetFloor','advEligibility','advServiceLimit','advOneOpen','advPhoneRequest','advAck']],
+    ['Advances — recovering',['advSkipMonth','advChangePlan','advPartRecovery','advRepaid','advSplit','advLeavers']],
+    ['Advances — reports & accounts',['advStatement','advRegister','advOverdue','advTieOut','advTally','advFee','advWriteOff']],
     ['Full workings Excel',['payWorkbooks','payWbChooser','payWbPools','payWbWhatIf','payWbPayslips','payWbBank','payWbStatutory','payWbCompare','payWbCtc','payWbExceptions','payWbReco','payWbTrail','payWbIntegrity','payWbAllOutlets','payWorkbookEmail','payWbProtected']]]},
   {key:'close',icon:'✅',title:'Approvals & month close',groups:['Approvals','Month close','Alerts','Reminders'],subs:[
     ['Approvals',['poApproval','invoiceApproval','bankFileApproval','deleteApproval','vendorBankApproval','paymentRun']],
@@ -337,8 +357,8 @@ const CONTROL_AREAS=[
     ['App',['roleHomeScreens','appInstallPrompt','phoneQuickAdd','geminiModelList']],
     ['Look & feel',['dmyDates','compactToolbars','todayStrip','filterChips','keyboardShortcuts','mobileLayout','calendarPolish','billPrintDesign','miniCharts','undoActions']]]}];
 // Rules that stop someone from saving, and rules that send the action for approval — shown as labels.
-const CONTROL_STOPS=new Set(['aadhaarRequired','ctlTwoPerson','ctlLocks','backdateLock','futureLock','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','billNeedsPo','gstLock','dayCloseLock','staffChangeLock','creditLimit','discountReason','staffOffBlocking','requireMarketingConsent','bankLockFinal','tallyChangeGuard','mapRoleLimits','vagueNatureReason','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']);
-const CONTROL_APPROVAL=new Set(['mapApproval','mapReview','tallyNeedsReview','discountApproval','cancelApproval','poApproval','invoiceApproval','bankFileApproval','deleteApproval','vendorBankApproval']);
+const CONTROL_STOPS=new Set(['advServiceLimit','aadhaarRequired','ctlTwoPerson','ctlLocks','backdateLock','futureLock','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','billNeedsPo','gstLock','dayCloseLock','staffChangeLock','creditLimit','discountReason','staffOffBlocking','requireMarketingConsent','bankLockFinal','tallyChangeGuard','mapRoleLimits','vagueNatureReason','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']);
+const CONTROL_APPROVAL=new Set(['advWriteOff','mapApproval','mapReview','tallyNeedsReview','discountApproval','cancelApproval','poApproval','invoiceApproval','bankFileApproval','deleteApproval','vendorBankApproval']);
 // [{area, subs:[{title, defs}]}] for every switch in CONTROL_DEFS — nothing is left out.
 function controlLayout(){
   const placed=new Set();const out=CONTROL_AREAS.map(a=>({...a,list:a.subs.map(([t,ids])=>({title:t,defs:ids.map(id=>{const d=controlDef(id);if(d)placed.add(id);return d;}).filter(Boolean)}))}));

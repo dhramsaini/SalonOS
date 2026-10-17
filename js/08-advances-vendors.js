@@ -44,6 +44,7 @@ function AdvanceSheet({period,salon}={}){
     return[];
   });
   useEffect(()=>{safeLocalSet(advKey(),JSON.stringify(advances));},[advances,advSalonId]);
+  const advReload=()=>{try{const p=JSON.parse(cachedLocalGet(advKey())||'[]');if(Array.isArray(p))setAdvances(stripSeedAdvances(p));}catch(e){}};
   const [showModal,setShowModal]=useState(false);
   const [editItem,setEditItem]=useState(null);
   const [form,setForm]=useState(BLANK);
@@ -85,6 +86,7 @@ function AdvanceSheet({period,salon}={}){
     if(advBlockIfLocked(requestForm.date))return;
     if(!requestForm.emp||!requestForm.amount||!requestForm.repayment||!requestForm.deductionStart){alert('Employee, amount, monthly salary deduction and deduction start date are required.');return;}
     if(!advanceLimitGate(advSalonId,requestForm.emp,Number(requestForm.amount)))return;
+    if(typeof advGate==='function'&&!advGate(advSalonId,requestForm.emp,Number(requestForm.amount),Number(requestForm.repayment)||0,null))return;
     const item={id:nextId(),emp:requestForm.emp,date:requestForm.date,amount:Number(requestForm.amount),
       reason:requestForm.reason,approvedBy:'',repayment:Number(requestForm.repayment),
       mode:'Salary Deduction',bankRef:'',repaymentTerms:'Deduction from Salary',deductionStart:requestForm.deductionStart,
@@ -146,6 +148,7 @@ function AdvanceSheet({period,salon}={}){
     const isSynced=editItem&&editItem.source==='dse';
     if(!isSynced&&!form.bankRef){alert('Bank Reference is required — advances recorded here are always by Bank Transfer. Cash advances go through Daily Sales & Expenses instead.');return;}
     if(!isSynced&&!advanceLimitGate(advSalonId,form.emp,Number(form.amount)-(editItem?Number(editItem.amount)||0:0),editItem?editItem.id:undefined))return;
+    if(!isSynced&&!editItem&&typeof advGate==='function'&&!advGate(advSalonId,form.emp,Number(form.amount),Number(form.repayment)||0,null))return;
     if(typeof ecAdvanceOk==='function'&&!ecAdvanceOk(advSalonId,form,editItem?editItem.id:null,advances))return;
     // Balance = amount − what has actually been recovered (Monthly Deduction is only the plan).
     const outstanding=Number(form.amount)-(editItem&&typeof advSettledTotal==='function'?advSettledTotal(editItem):0);
@@ -272,6 +275,7 @@ function AdvanceSheet({period,salon}={}){
   };
   return React.createElement('div',{className:'fade-in'},
     React.createElement(AdvanceRecoveryPlan,{salon,year:attYear,month:attMonth}),
+    typeof AdvPlusPanel==='function'&&React.createElement(AdvPlusPanel,{salon,year:attYear,month:attMonth,advances,reload:advReload}),
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,React.createElement('div',{className:'page-title'},'Advance to Employees'),React.createElement('div',{className:'page-sub'},'Request advances against future salary, approved by an ASM — or record a Bank Transfer advance directly')),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
@@ -343,6 +347,7 @@ function AdvanceSheet({period,salon}={}){
                 React.createElement('td',null,
                   React.createElement('div',{style:{display:'flex',gap:4,flexWrap:'wrap'}},
                     a.status==='Pending Approval'&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(76,175,125,0.1)',border:'1px solid rgba(76,175,125,0.3)',color:'var(--green)',padding:'4px 8px',borderRadius:'var(--r)',cursor:'pointer',fontSize:11},onClick:()=>openApprove(a)},'✓ Approve'),
+                    typeof AdvMoreButton==='function'&&React.createElement(AdvMoreButton,{sid:advSalonId,a,reload:advReload}),
                     a.status==='Pending Approval'&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,0.1)',border:'1px solid rgba(255,107,107,0.3)',color:'var(--red)',padding:'4px 8px',borderRadius:'var(--r)',cursor:'pointer',fontSize:11},onClick:()=>rejectRequest(a)},'✗ Reject'),
                     React.createElement('button',{className:'btn btn-ghost btn-sm',title:synced?'This advance is synced from Daily Sales & Exp — editing here will be overwritten next time that entry is saved there':undefined,onClick:()=>openEdit(a)},'Edit'),
                     React.createElement('button',{'aria-label':'Delete',className:'btn btn-sm',style:{background:'rgba(255,107,107,0.1)',border:'1px solid rgba(255,107,107,0.3)',color:'var(--red)',padding:'4px 8px',borderRadius:'var(--r)',cursor:'pointer',fontSize:11},title:synced?'Deleting here only removes this copy — it reappears if the Daily Sales & Exp entry is saved again. Clear it there to remove it for good.':undefined,onClick:()=>setShowDelete(a)},React.createElement(IconTrash,{size:14}))
@@ -465,6 +470,7 @@ function AdvanceSheet({period,salon}={}){
     showModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowModal(false)},
       React.createElement('div',{className:'modal',style:{width:560},onClick:e=>e.stopPropagation()},
         React.createElement('div',{className:'modal-title'},editItem?'Edit Advance':'New Advance'),
+        !editItem&&typeof AdvEligibility==='function'&&React.createElement(AdvEligibility,{sid:advSalonId,empName:form.emp,amount:Number(form.amount)||0,monthly:Number(form.repayment)||0}),
         React.createElement('div',{style:{background:'rgba(74,158,255,0.08)',border:'1px solid rgba(74,158,255,0.2)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:14,fontSize:12,color:'var(--blue)'}},
           editItem&&editItem.source==='dse'
             ?'This is a Cash advance synced from Daily Sales & Expenses → Advance To Employees. Edit the amount there — changes made here get overwritten next time that entry is saved.'
@@ -558,6 +564,7 @@ function AdvanceSheet({period,salon}={}){
     showRequestModal&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowRequestModal(false)},
       React.createElement('div',{className:'modal',style:{width:560},onClick:e=>e.stopPropagation()},
         React.createElement('div',{className:'modal-title'},'Request Advance — Deduction from Salary'),
+        typeof AdvEligibility==='function'&&React.createElement(AdvEligibility,{sid:advSalonId,empName:requestForm.emp,amount:Number(requestForm.amount)||0,monthly:Number(requestForm.repayment)||0}),
         React.createElement('div',{style:{background:'rgba(74,158,255,0.08)',border:'1px solid rgba(74,158,255,0.2)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:14,fontSize:12,color:'var(--blue)'}},
           'Repayment terms: this advance will be recovered as a monthly deduction from salary. The request stays "Pending Approval" until an ASM (Assist Manager) approves it.'
         ),
