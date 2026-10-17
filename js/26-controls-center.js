@@ -213,6 +213,7 @@ const CONTROL_DEFS=[
   {id:'bankRecoAlert',group:'Alerts',label:'Bank lines left unexplained for over 7 days',hint:'A strip on Bank Statement counting lines with no Nature and no linked bill.',def:false},
   {id:'budgetAlert',group:'Alerts',label:'Spending ahead of budget this month',hint:'A strip on the Outlet Dashboard when an expense line runs more than 10% ahead of its budget pace (budgets in P&L → MTD).',def:false},
   {id:'missingSalesBanner',group:'Reminders',label:'Show days with no Daily Sales on the outlet screen',hint:'A red strip on Daily Sales & Exp listing this month’s missing days (the nightly 🔔 check is under Automation).',def:false},
+  {id:'aadhaarRequired',group:'Employees',label:'Aadhaar copy required in Master Salary',hint:'On: an employee cannot be saved in Master Salary without the Aadhaar card copy attached. Off: attaching it is optional.',def:false},
   {id:'paidLeave',group:'Employees',label:'Paid leave balance',hint:'Leave earned each month (days below) for the financial year; in Attendance, absent days can be paid from it (Paid leave column).',def:false,limit:1,limitLabel:'Days a month'},
   {id:'leaveRequests',group:'Employees',label:'Leave requests from the staff phone screen',hint:'Staff ask for leave on Attendance → 📲 Staff phone screen; the manager approves in Attendance (📝 Leave requests) and the days are marked.',def:false},
   {id:'staffIncentiveView',group:'Employees',label:'Staff can see their own incentive on the phone screen',hint:'💰 My incentive: this month’s sales, target and expected incentive, behind a PIN (last 4 digits of the employee’s mobile).',def:false},
@@ -316,7 +317,7 @@ const CONTROL_AREAS=[
     ['Review, approval & locks',['mapApproval','mapReview','mapRoleLimits','bankLockFinal','tallyNeedsReview','tallyChangeGuard','bankBigChangeAlert','bankAuditorView']],
     ['Dashboards & reminders',['bankAgeingBoard','mappingSla','bankUnmappedNudge','bankDailyDigest','bankOnePagerReminder','cashForecastAlert']]]},
   {key:'staff',icon:'💼',title:'Salary & staff',groups:['Employees','Data entry'],subs:[
-    ['Employees',['phoneCheckin','paidLeave','leaveRequests','staffIncentiveView','empStatement']],
+    ['Employees',['aadhaarRequired','phoneCheckin','paidLeave','leaveRequests','staffIncentiveView','empStatement']],
     ['Advances',['advanceRecoveryPlan','advanceNetFloor']],
     ['Full workings Excel',['payWorkbooks','payWbChooser','payWbPools','payWbWhatIf','payWbPayslips','payWbBank','payWbStatutory','payWbCompare','payWbCtc','payWbExceptions','payWbReco','payWbTrail','payWbIntegrity','payWbAllOutlets','payWorkbookEmail','payWbProtected']]]},
   {key:'close',icon:'✅',title:'Approvals & month close',groups:['Approvals','Month close','Alerts','Reminders'],subs:[
@@ -332,7 +333,7 @@ const CONTROL_AREAS=[
     ['App',['roleHomeScreens','appInstallPrompt','phoneQuickAdd','geminiModelList']],
     ['Look & feel',['compactToolbars','todayStrip','filterChips','keyboardShortcuts','mobileLayout','calendarPolish','billPrintDesign','miniCharts','undoActions']]]}];
 // Rules that stop someone from saving, and rules that send the action for approval — shown as labels.
-const CONTROL_STOPS=new Set(['ctlTwoPerson','ctlLocks','backdateLock','futureLock','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','billNeedsPo','gstLock','dayCloseLock','staffChangeLock','creditLimit','discountReason','staffOffBlocking','requireMarketingConsent','bankLockFinal','tallyChangeGuard','mapRoleLimits','vagueNatureReason','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']);
+const CONTROL_STOPS=new Set(['aadhaarRequired','ctlTwoPerson','ctlLocks','backdateLock','futureLock','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','billNeedsPo','gstLock','dayCloseLock','staffChangeLock','creditLimit','discountReason','staffOffBlocking','requireMarketingConsent','bankLockFinal','tallyChangeGuard','mapRoleLimits','vagueNatureReason','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']);
 const CONTROL_APPROVAL=new Set(['mapApproval','mapReview','tallyNeedsReview','discountApproval','cancelApproval','poApproval','invoiceApproval','bankFileApproval','deleteApproval','vendorBankApproval']);
 // [{area, subs:[{title, defs}]}] for every switch in CONTROL_DEFS — nothing is left out.
 function controlLayout(){

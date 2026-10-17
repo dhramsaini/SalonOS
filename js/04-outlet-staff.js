@@ -558,7 +558,7 @@ function MasterSalarySheet({salon}={}){
 
   const saveEmployee=()=>{
     if(!form.name||!form.desig||!form.doj){alert('Name, Designation and Date of Joining are required.');return;}
-    if(!form.aadharFile){alert('Uploading a copy of the Aadhaar Card is mandatory.');return;}
+    if(!form.aadharFile&&controlOn('aadhaarRequired',salon&&salon.id)){alert('Uploading a copy of the Aadhaar Card is required for this outlet (Master Settings → Controls → Aadhaar copy required).');return;}
     if(!confirmIdFields({pan:form.pan,aadhar:form.aadhar,mobile:form.mobile,email:form.email,pfNumber:form.pfNumber,esicNumber:form.esicNumber,accountNo:form.accountNo,ifsc:form.ifsc,bankName:form.bankName},'the employee details',salon&&salon.id))return;
     // Professional Tax always tracks the outlet's own applicability — never a manual per-employee
     // choice, since it's the outlet's State (not the person) that decides whether PT applies.
@@ -810,7 +810,7 @@ function MasterSalarySheet({salon}={}){
         )
       ),
       React.createElement('div',{className:'form-group'},
-        React.createElement('label',null,'Aadhaar Card (Upload Copy) *'),
+        React.createElement('label',null,'Aadhaar Card (Upload Copy)'+(controlOn('aadhaarRequired',salon&&salon.id)?' *':' — optional')),
         React.createElement('div',{style:{background:'var(--bg3)',border:'1px dashed var(--border2)',borderRadius:'var(--r)',padding:'10px 14px',display:'flex',alignItems:'center',gap:10}},
           React.createElement('input',{type:'file',accept:'image/*,.pdf',style:{display:'none'},id:'aadhar-upload',onChange:e=>{const f=e.target.files[0];if(f)fvFile('aadharFile')(f);e.target.value='';}}),
           React.createElement('label',{htmlFor:'aadhar-upload',style:{cursor:'pointer',fontSize:12,color:'var(--accent)'}},form.aadharFile?'📎 '+(typeof form.aadharFile==='string'?form.aadharFile:form.aadharFile.name):'📎 Choose file (JPG/PDF)'),
