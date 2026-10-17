@@ -327,3 +327,14 @@ function IncPlanReminderStrip(){
 }
 if(typeof PendingApprovalsStrip==='function'){const _ipStrip=PendingApprovalsStrip;
   PendingApprovalsStrip=function(props){const h=React.createElement;const a=_ipStrip(props);const r=h(IncPlanReminderStrip,null);return a?h('div',null,r,a):r;};}
+
+// ── Help & Guide topic ──
+if(typeof HELP_TOPICS!=='undefined'&&Array.isArray(HELP_TOPICS)&&!HELP_TOPICS.some(t=>t.title==='Incentive Plan — same for everyone, or separate plans'))HELP_TOPICS.push({title:'Incentive Plan — same for everyone, or separate plans',body:[
+  '<b>Same plan for everyone</b> (the default): one set of rules in ⚙ Incentive Rules & Settings applies to every employee. Each person’s incentive is their own sales × the outlet’s rates. Targets are salary × multiplier, so each person’s target still follows their own salary.',
+  '<b>Separate plans</b>: in ⚙ Incentive Rules & Settings turn on <b>Advanced Settings</b>. Each employee then follows their designation’s plan (Hairdresser, Beautician, Pedicurist, Manager). If two people with the same designation need different rules, add a custom plan (for example “Hairdresser – Senior”) and choose it for them under <b>Employee Plan Assignment</b>.',
+  '<b>Turn on “Split by Designation”</b> in each category that should differ (Service, Membership, Product) and fill in every plan’s tab. A category that isn’t split stays one shared rule for everyone, even for employees assigned to a custom plan.',
+  '<b>What can differ per plan</b>: Service slabs and target ×; Membership rates (which rule, A, B or C, is one choice for the outlet); Product % or flat ₹; each manager’s Share %.',
+  '<b>One-off deals</b>: <b>Manual Override by Employee</b> lets you type the ₹ amount for one person in the categories you tick. Everyone else stays automatic.',
+  '<b>Example</b>: Asha (Senior plan, salary ₹25,000) sells ₹1,75,000 of service = 7× salary → 6% slab = ₹10,500. Ravi (Hairdresser plan, salary ₹20,000) sells ₹1,10,000 = 5.5× → 5% slab = ₹5,500. Same formula, different slabs.',
+  '<b>Check it</b>: Incentive Working → Monthly Plan → “Who is on which plan” lists each plan with its employees and warns when an assignment has no effect. Submit the month’s plan for approval; the approved copy keeps every plan’s numbers for that month.'
+]});
