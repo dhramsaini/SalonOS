@@ -22,9 +22,9 @@ const CONTROL_REQUIRES={
   payWbAllOutlets:['payWorkbooks'],payWorkbookEmail:['payWorkbooks'],payWbProtected:['payWorkbooks','payWbChooser'],
   bankUnmappedNudge:['bankAgeingBoard'],cashForecastAlert:['bankAgeingBoard'],bankOnePagerReminder:['bankAgeingBoard'],
   negativeStockBlock:['billReducesStock'],autoIssueStdUsage:['billReducesStock'],discountApproval:['discountReason'],
-  ctlHealth:['ctlCompare'],ctlLastChanged:['ctlHistory']};
+  salaryArrears:['salaryRevisions'],ctlHealth:['ctlCompare'],ctlLastChanged:['ctlHistory']};
 // ── “Show me”: where each switch applies (per switch, else per section) ──
-const CTL_WHERE_ID={aadhaarRequired:'master-salary',dupEmployee:'master-salary',sharedBankAccount:'master-salary',wageSenseCheck:'master-salary',salaryChangeReason:'master-salary',idChecks:'master-salary',
+const CTL_WHERE_ID={salaryRevisions:'master-salary',salaryArrears:'salary-working',aadhaarRequired:'master-salary',dupEmployee:'master-salary',sharedBankAccount:'master-salary',wageSenseCheck:'master-salary',salaryChangeReason:'master-salary',idChecks:'master-salary',
   dupVendor:'vendors',dupInvoice:'vendors',sameBillNewNumber:'vendors',gstMathCheck:'vendors',dateSenseCheck:'vendors',proofAboveLimit:'vendors',billNeedsPo:'vendors',gstLock:'vendors',doubleSaveGuard:'vendors',
   repeatExpense:'daily-sales',crossEntryExpense:'daily-sales',extraZeroCheck:'daily-sales',modeVsBilling:'daily-sales',dseVsBilling:'daily-sales',depositVsBank:'daily-sales',futureLock:'daily-sales',backdateLock:'daily-sales',
   dupAdvancePenalty:'advance',importSeen:'bank-statement',stockTwice:'inventory',negativeStockBlock:'inventory',attendanceSense:'attendance',dataQualityBoard:'page:dashboard',
@@ -47,7 +47,7 @@ const CONTROL_ADDED=(()=>{const m={};const add=(d,ids)=>ids.forEach(i=>m[i]=d);
   add('2026-10-16',['payWorkbooks','payWbPools','payWbWhatIf','payWbPayslips','payWbBank','payWbStatutory','payWbCompare','payWbCtc','payWbExceptions','payWbReco','payWbTrail','payWbIntegrity','payWbChooser','payWbAllOutlets','payWorkbookEmail','payWbProtected','backdateLock',
     'dupEmployee','sharedBankAccount','dupVendor','sameBillNewNumber','repeatExpense','crossEntryExpense','dupAdvancePenalty','importSeen','stockTwice','doubleSaveGuard','extraZeroCheck','modeVsBilling','dseVsBilling','depositVsBank','gstMathCheck','dateSenseCheck','futureLock','attendanceSense','salaryChangeReason','wageSenseCheck','negativeStockBlock','proofAboveLimit','dataQualityBoard',
     'ctlOutletView','ctlCompare','ctlHealth','ctlLinks','ctlShowMe','ctlLastChanged','ctlHistory','ctlOwnerAlert','ctlTwoPerson','ctlLocks','ctlSets','ctlCopyOutlet','ctlOutletLimits','ctlTemporary','ctlRoleRules','ctlHitStats','ctlWhatsNew','ctlExport','geminiModelList']);
-  add('2026-10-17',['aadhaarRequired','dmyDates']);
+  add('2026-10-17',['aadhaarRequired','dmyDates','salaryRevisions','salaryArrears']);
   return m;})();
 // Checks that report how often they fire (others show “not counted”).
 const CTL_COUNTED=new Set(['dupEmployee','sharedBankAccount','dupVendor','sameBillNewNumber','repeatExpense','crossEntryExpense','dupAdvancePenalty','stockTwice','extraZeroCheck','gstMathCheck','dateSenseCheck','wageSenseCheck','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','idChecks',

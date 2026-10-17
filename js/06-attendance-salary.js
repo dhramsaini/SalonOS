@@ -1504,12 +1504,14 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
   // Closing Advance, or continuing through Bank Name/Account No/IFSC Code when Bank Details is
   // switched on. ──
   const swReportTitle='Salary Working — '+MONTHS[selMonth]+' '+selYear+(salon?' — '+salon.name.split('—')[0].trim():'')+(swSelectedIds.size>0?' (selected)':'');
+  const hasArr=workings.some(w=>(Number(w.arrears)||0)!==0);
   const swColDefs=[
     {id:'name',header:'Employee',get:e=>e.name,isText:true},
     {id:'desig',header:'Designation',get:e=>e.desig,isText:true},
     {id:'salary',header:'Salary',get:e=>e.gross},
     {id:'totalDays',header:'Total Days',get:e=>fmtDays(e.totalDays),isText:true},
     {id:'gross',header:'Gross Salary',get:e=>e.grossAfterLop},
+    hasArr&&{id:'arrears',header:'Arrears',get:e=>e.arrears||0},
     cols.serviceInc&&{id:'svcIncAmt',header:'Service Incentive',get:e=>e.svcIncAmt},
     cols.memInc&&{id:'memInc',header:'Mem Inc',get:e=>e.memIncAmt},
     cols.prodInc&&{id:'prodInc',header:'Prod Inc',get:e=>e.prodIncAmt},
@@ -1806,7 +1808,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
               workings.length>0&&React.createElement('input',{type:'checkbox',checked:swAllSelected,onChange:swToggleSelectAll,title:'Select all'})
             ),
             React.createElement('th',{style:{padding:'8px 12px',background:'var(--th-bg)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',position:'sticky',left:36,zIndex:3,minWidth:160,borderRight:'1px solid var(--border2)',borderBottom:'2px solid var(--accent)',textAlign:'left'}},'Employee'),
-            th('Desig.',100),th('Salary'),th('Total Days',80),th('Gross Salary'),
+            th('Desig.',100),th('Salary'),th('Total Days',80),th('Gross Salary'),hasArr&&th('Arrears',90,SW_BG_EARN),
             cols.serviceInc&&th('Svc Incentive',90,SW_BG_EARN),
             cols.memInc&&th('Mem Inc',90,SW_BG_EARN),
             cols.prodInc&&th('Prod Inc',90,SW_BG_EARN),
@@ -1847,6 +1849,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
               td(e.desig,'var(--text2)'),
               td(fmt(e.gross)),td(fmtDays(e.totalDays)),
               td(fmt(e.grossAfterLop),'var(--text)',true),
+              hasArr&&td(e.arrears?fmt(e.arrears):'—',e.arrears<0?'var(--red)':'var(--green)',true),
               cols.serviceInc&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_EARN,cursor:'pointer'},
                 title:'Click to see the incentive working behind this employee\'s figures',onClick:()=>setIncWorkingModal(e)},
                 e.svcIncAmt>0?React.createElement('span',{style:{color:'var(--blue)'}},'+₹'+e.svcIncAmt.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'—')
@@ -1953,6 +1956,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
             td(fmt(exportWorkings.reduce((s,e)=>s+(e.gross||0),0)),'var(--text)',true),
             React.createElement('td',{style:{padding:'8px 8px',borderBottom:'1px solid var(--border)'}},''),
             td(fmt(exportWorkings.reduce((s,e)=>s+(e.grossAfterLop||0),0)),'var(--text)',true),
+            hasArr&&td(fmt(exportWorkings.reduce((s,e)=>s+(e.arrears||0),0)),'var(--green)',true),
             cols.serviceInc&&td(fmt(exportWorkings.reduce((s,e)=>s+(e.svcIncAmt||0),0)),'var(--blue)',true),
             cols.memInc&&td(fmt(exportWorkings.reduce((s,e)=>s+(e.memIncAmt||0),0)),'var(--purple)',true),
             cols.prodInc&&td(fmt(exportWorkings.reduce((s,e)=>s+(e.prodIncAmt||0),0)),'var(--teal)',true),

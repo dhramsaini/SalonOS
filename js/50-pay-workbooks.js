@@ -270,7 +270,8 @@ function pwSalarySheets(ctx,o){
       pen:(r,L)=>pwF('IF('+on('penalties')+',SUMIFS('+pen.amt+','+pen.emp+','+L('name')+r+'),0)',w.penAmt),
       advB:settled?'Settled on approval':'Active advances',advV:settled?mt.advanceSettledBreakdown.reduce((s,b)=>s+(Number(b.amount)||0),0):null,
       adv:(r,L)=>pwF('IF('+on('advAdj')+','+(settled?L('advV')+r:'SUMIFS('+adv.ded+','+adv.emp+','+L('name')+r+','+adv.from+',"Salary")')+',0)',w.advAdj),
-      net:(r,L)=>pwF('MAX(0,'+L('gross')+r+'+'+L('tea')+r+'-'+L('pf')+r+'-'+L('esic')+r+'-'+L('pt')+r+'-'+L('tds')+r+'-'+L('pen')+r+'-'+L('adv')+r+')',w.net),
+      arr:Number(w.arrears)||0,
+      net:(r,L)=>pwF('MAX(0,'+L('gross')+r+'+'+L('arr')+r+'+'+L('tea')+r+'-'+L('pf')+r+'-'+L('esic')+r+'-'+L('pt')+r+'-'+L('tds')+r+'-'+L('pen')+r+'-'+L('adv')+r+')',w.net),
       opA:Number(w.prevAdv)||0,cuA:Number(w.currAdv)||0,nxA:Number(w.nextAdv)||0,clA:(r,L)=>pwF('MAX(0,'+L('opA')+r+'+'+L('cuA')+r+'-'+L('adv')+r+')',w.closingAdvance),
       pfEr:(r,L)=>pwF('IF(AND('+ref('pfReg')+','+L('pfE')+r+'),ROUND('+L('wage')+r+'*'+ref('pfRate')+',0),0)',w.pfEr),esEr:(r,L)=>pwF('IF(AND('+ref('esicReg')+','+L('esE')+r+','+L('salary')+r+'<='+ref('esicLimit')+'),ROUND('+L('salary')+r+'*'+ref('esicEr')+',0),0)',w.esicEr),
       ...Object.fromEntries([['iS','serviceInc','iS'],['iM','memInc','iM'],['iP','prodInc','iP'],['iG','mgrInc','iG'],['iN','nonPerfPenalty','iPen'],['iT','totalInc','tot']].map(([k,c,src])=>[k,()=>pwF('IF('+on(c)+','+ctx.incRef(src,e.id)+',0)')])),
@@ -279,12 +280,12 @@ function pwSalarySheets(ctx,o){
       wNet:(r,L)=>{const S2='IF('+L('wSal')+r+'="",'+L('salary')+r+','+L('wSal')+r+')',D2='IF('+L('wDays')+r+'="",'+L('days')+r+','+L('wDays')+r+')',T2='IF('+L('wTds')+r+'="",'+L('tds')+r+',IF('+on('tds')+','+L('wTds')+r+',0))';
         const g2='ROUND('+S2+'/'+L('dim')+r+'*'+D2+',0)',t2='IF(AND('+on('tea')+','+L('status')+r+'="Active"),ROUND(IF('+ref('teaMode')+'="perDay",'+ref('teaRate')+'*'+D2+','+ref('teaRate')+'),0),0)';
         const e2=esicF(S2).split('ESO').join(L('esO')+r).split('ESE').join(L('esE')+r),p2='IF('+on('pt')+',IF('+L('ptO')+r+'<>"",'+L('ptO')+r+','+ptExpr(S2)+'),0)';
-        return pwF('IF(AND('+L('wSal')+r+'="",'+L('wDays')+r+'="",'+L('wTds')+r+'=""),"",MAX(0,'+g2+'+'+t2+'-'+L('pf')+r+'-'+e2+'-'+p2+'-'+T2+'-'+L('pen')+r+'-'+L('adv')+r+'))');},
+        return pwF('IF(AND('+L('wSal')+r+'="",'+L('wDays')+r+'="",'+L('wTds')+r+'=""),"",MAX(0,'+g2+'+'+L('arr')+r+'+'+t2+'-'+L('pf')+r+'-'+e2+'-'+p2+'-'+T2+'-'+L('pen')+r+'-'+L('adv')+r+'))');},
       wDiff:(r,L)=>pwF('IF('+L('wNet')+r+'="","",'+L('wNet')+r+'-'+L('net')+r+')'),
       st:mt.status||'Draft',ps:mt.paymentStatus||'',mode:mt.mode||'',bank:e.bankName||'',acct:e.accountNo||'',ifsc:e.ifsc||''};});
   pwTitle(S.sw,'Salary Working — '+(salon.name||'')+' — '+PW_MONTHS[m]+' '+y+' · Net = Gross + Tea − PF − ESIC − PT − TDS − Penalty − Advance (never below 0)');
   const T=pwTable(S.sw,2,[{key:'id',h:'Emp ID',w:9,input:true},{key:'name',h:'Employee',w:22,input:true},{key:'desig',h:'Designation',w:16,input:true},{key:'status',h:'Status',w:9,input:true},
-    {key:'salary',h:'Monthly salary',input:true},{key:'basic',h:'Basic',input:true},{key:'days',h:'Payable days',fmt:'0.0#'},{key:'dim',h:'Days in month'},{key:'gross',h:'Gross salary'},{key:'lop',h:'LOP amount'},{key:'tea',h:'Tea'},
+    {key:'salary',h:'Monthly salary',input:true},{key:'basic',h:'Basic',input:true},{key:'days',h:'Payable days',fmt:'0.0#'},{key:'dim',h:'Days in month'},{key:'gross',h:'Gross salary'},{key:'lop',h:'LOP amount'},{key:'arr',h:'Arrears',input:true},{key:'tea',h:'Tea'},
     {key:'pfE',h:'PF applies',input:true},{key:'pfA',h:'PF on actual basic',input:true},{key:'wage',h:'PF wage base'},{key:'pfO',h:'PF typed in',input:true},{key:'pf',h:'PF (Emp)'},
     {key:'esE',h:'ESIC applies',input:true},{key:'esO',h:'ESIC typed in',input:true},{key:'esic',h:'ESIC (Emp)'},{key:'ptO',h:'PT typed in',input:true},{key:'pt',h:'Professional Tax'},
     {key:'tdsE',h:'TDS entered',input:true},{key:'tds',h:'TDS'},{key:'pen',h:'Penalty'},{key:'advB',h:'Advance basis',w:18,input:true},{key:'advV',h:'Advance settled ₹',input:true},{key:'adv',h:'Advance Adj.'},
@@ -293,7 +294,7 @@ function pwSalarySheets(ctx,o){
     {key:'app',h:'SalonOS net',input:true},{key:'chk',h:'Check',w:14},
     ...(o.whatIf?[{key:'wSal',h:'What-if: monthly salary',open:true,w:13},{key:'wDays',h:'What-if: payable days',open:true,w:12,fmt:'0.0#'},{key:'wTds',h:'What-if: TDS',open:true,w:11},{key:'wNet',h:'What-if net'},{key:'wDiff',h:'What-if change'}]:[]),
     {key:'st',h:'Approval',w:11,input:true},{key:'ps',h:'Payment',w:10,input:true},{key:'mode',h:'Mode',w:10,input:true},{key:'bank',h:'Bank',w:16,input:true},{key:'acct',h:'Account no.',w:18,input:true},{key:'ifsc',h:'IFSC',w:13,input:true}],swRows,
-    {total:['salary','basic','gross','lop','tea','pf','esic','pt','tds','pen','adv','net','opA','cuA','nxA','clA','pfEr','esEr','iS','iM','iP','iG','iN','iT','app']});
+    {total:['salary','basic','gross','lop','arr','tea','pf','esic','pt','tds','pen','adv','net','opA','cuA','nxA','clA','pfEr','esEr','iS','iM','iP','iG','iN','iT','app']});
   const swRow={};list.forEach((e,i)=>swRow[e.id]=T.first+i);
   Object.assign(ctx,{E:list,SW:byId,meta,swT:T,swRow,swRef:(k,id)=>swRow[id]?pwRef(S.sw.name)+T.L(k)+swRow[id]:'0',swTot:k=>pwRef(S.sw.name)+T.L(k)+T.totalRow,payRules:R,att,attSummary:e=>attSummaryFor(e,y,m,att[attMonthKey(e.id,y,m)])});
 }
@@ -306,7 +307,7 @@ function pwSheetPayslips(ws,c){
     ws.mergeCells(r,1,r,4);const t=ws.getRow(r).getCell(1);t.value=name+' — Payslip — '+PW_MONTHS[c.m]+' '+c.y;t.font={bold:true,size:13,color:{argb:'FF14335E'}};r++;
     put(r,['Employee',e.name,'Emp ID',String(e.id)]);r++;put(r,['Designation',e.desig||'','Payable days',s('days')],{fmt:'0.0#'});r++;put(r,['Days in month',s('dim'),'Monthly salary',s('salary')]);r++;
     const h=ws.getRow(r);['Earnings','₹','Deductions','₹'].forEach((x,i)=>{h.getCell(i+1).value=x;});pwHeader(h);r++;const e0=r;
-    [['Gross salary','gross','PF','pf'],['Tea','tea','ESIC','esic'],[null,null,'Professional Tax','pt'],[null,null,'TDS','tds'],[null,null,'Penalty','pen'],[null,null,'Advance recovered','adv']].forEach(x=>{put(r,[x[0]||'',x[1]?s(x[1]):'',x[2],s(x[3])]);r++;});
+    [['Gross salary','gross','PF','pf'],['Tea','tea','ESIC','esic'],['Arrears','arr','Professional Tax','pt'],[null,null,'TDS','tds'],[null,null,'Penalty','pen'],[null,null,'Advance recovered','adv']].forEach(x=>{put(r,[x[0]||'',x[1]?s(x[1]):'',x[2],s(x[3])]);r++;});
     put(r,['Total earnings',{formula:'SUM(B'+e0+':B'+(r-1)+')'},'Total deductions',{formula:'SUM(D'+e0+':D'+(r-1)+')'}],{bold:true});const tr=r;r++;
     put(r,['Net salary',{formula:'MAX(0,B'+tr+'-D'+tr+')'},'',''],{bold:true});r++;
     put(r,['Incentive (paid separately)',s('iT'),'Advance still to recover',s('clA')]);r++;put(r,['Bank',[e.bankName,e.accountNo,e.ifsc].filter(Boolean).join(' · ')||'—','','']);r++;
@@ -462,7 +463,7 @@ async function pwSheetAbout(ws,c,integ){
   r++;line('How to read this workbook',undefined,{bold:true});
   ['Blue figures are data from SalonOS — change one and every formula that uses it recalculates.','Black figures are Excel formulas — click a cell to see how it is worked out.','Yellow “What-if” cells are for trying a change — the What-if columns show the result without touching the real figures.',
    'The Check column on each row compares the formula with the figure SalonOS shows. ✓ means they agree.',
-   sal?'Salary Working: Gross = Monthly salary ÷ days in month × payable days; Net = Gross + Tea − PF − ESIC − Professional Tax − TDS − Penalty − Advance Adj.':'Inc Working: Target = Salary × times; incentive = Achieved × Rate %, or the pool / flat / typed-in amount shown in each Basis column.',
+   sal?'Salary Working: Gross = Monthly salary ÷ days in month × payable days (salary as in force that month); Net = Gross + Arrears + Tea − PF − ESIC − Professional Tax − TDS − Penalty − Advance Adj.':'Inc Working: Target = Salary × times; incentive = Achieved × Rate %, or the pool / flat / typed-in amount shown in each Basis column.',
    'Mem Pool works out the membership incentive under the outlet’s rule (A/B/C); Inc Rules works out the manager pool from the month’s collection and target.'].forEach(x=>line('•',x));
   ws.views=[{state:'normal'}];
 }

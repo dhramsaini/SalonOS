@@ -494,7 +494,8 @@ function getEmployeesForMonth(year,month,salonId){
     }
     return false;
   });
-  return sortByDesignation(filtered);
+  // Pay changes with an effective month (js/53 · Controls → salaryRevisions): each employee as paid that month.
+  return sortByDesignation(filtered).map(e=>typeof salPayFor==='function'?salPayFor(e,year,month,salonId):e);
 }
 
 // ── Shared Attendance storage + summary math (used by Attendance sheet & Salary Working) ──
@@ -2615,9 +2616,10 @@ function swWorkingsFor(salonId,year,month){
     // Net Salary = Gross Salary + Tea − PF Emp − ESIC − Prof. Tax − TDS − Advance Adj. − Penalty.
     // Service Incentive is intentionally NOT part of this figure — it's shown in its own column
     // for reference but isn't folded into Net Salary here.
-    const net=grossAfterLop+tea-pfEmp-esicEmp-ptAmt-tdsAmt-penAmt-advAdj;
+    const arrears=typeof salArrearsFor==='function'?salArrearsFor(salonId,e,year,month):0; // back-dated pay change for locked months (js/53)
+    const net=grossAfterLop+arrears+tea-pfEmp-esicEmp-ptAmt-tdsAmt-penAmt-advAdj;
     const closingAdvance=Math.max(0,prevAdv+currAdv-advAdj);
-    return{...e,totalDays,daysInMonth,lop,lopAmt,grossAfterLop,svcIncAmt,memIncAmt,prodIncAmt,mgrIncAmt,nonPerfPenalty,totalIncSW,incDetail,tea,pfEmp,pfEr,pfAutoAmt,pfOverridden,esicEmp,esicEr,esicAutoAmt,esicOverridden,ptAmt,ptAutoAmt,ptOverridden,tdsAmt,penAmt,advAdj,prevAdv,currAdv,nextAdv,closingAdvance,net:Math.max(0,net)};
+    return{...e,totalDays,daysInMonth,lop,lopAmt,grossAfterLop,arrears,svcIncAmt,memIncAmt,prodIncAmt,mgrIncAmt,nonPerfPenalty,totalIncSW,incDetail,tea,pfEmp,pfEr,pfAutoAmt,pfOverridden,esicEmp,esicEr,esicAutoAmt,esicOverridden,ptAmt,ptAutoAmt,ptOverridden,tdsAmt,penAmt,advAdj,prevAdv,currAdv,nextAdv,closingAdvance,net:Math.max(0,net)};
   });
 }
 
@@ -3657,13 +3659,13 @@ function employeeCostFor(salonId,year,month){
   // Salary, Tea and PF/ESIC employer share count only once attendance is final; the employee list
   // itself is still used to place monthly incentives under the right role.
   const swReady=salaryAttendanceReady(salonId,year,month);
-  const sw=swWorkingsFor(salonId,year,month).map(e=>swReady?e:{...e,grossAfterLop:0,tea:0,pfEr:0,esicEr:0});
+  const sw=swWorkingsFor(salonId,year,month).map(e=>swReady?e:{...e,grossAfterLop:0,arrears:0,tea:0,pfEr:0,esicEr:0});
   const inc=incWorkingsFor(salonId,year,month);
   const incByEmp={};inc.forEach(e=>{incByEmp[e.id]=e.totalInc;});
   // "Salary" here is Gross Salary + Tea, matching Salary Working's own "Gross Salary" and "Tea"
   // columns — not just the base gross-after-LOP figure.
   const roleMap=PL_ROLE_MAP.filter(r=>!r.biz||r.biz===bizKeyOf(salonId));
-  const salaryLines=roleMap.map(r=>({name:r.salaryLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+e.grossAfterLop+e.tea,0),group:'Employee Salary'}));
+  const salaryLines=roleMap.map(r=>({name:r.salaryLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+e.grossAfterLop+(e.arrears||0)+e.tea,0),group:'Employee Salary'}));
   const incentiveLines=roleMap.filter(r=>r.incLabel&&!isRestaurantOutlet(salonId)).map(r=>({name:r.incLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+(incByEmp[e.id]||0),0),group:'Employee Monthly Incentive'}));
   const pfEr=sw.reduce((s,e)=>s+e.pfEr,0);
   const esicEr=sw.reduce((s,e)=>s+e.esicEr,0);

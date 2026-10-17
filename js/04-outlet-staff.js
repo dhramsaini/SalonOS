@@ -569,6 +569,14 @@ function MasterSalarySheet({salon}={}){
       gross:Number(form.basic)+Number(form.hra)+Number(form.conv)+Number(form.special)+epfContrib,
       pt:!!(salon&&salon.ptApplicable)};
     if(typeof ecEmployeeOk==='function'&&!ecEmployeeOk(salon&&salon.id,emp,editMode?employees.find(e=>e.id===emp.id):null,employees))return;
+    if(editMode&&typeof salRevNeeded==='function'&&salRevNeeded(salon&&salon.id,employees.find(e=>e.id===emp.id),emp)){
+      const before=employees.find(e=>e.id===emp.id);
+      salRevAsk(salon&&salon.id,before,emp).then(r=>{if(!r)return;const rec=r.rec;
+        setEmployees(prev=>prev.map(e=>e.id===rec.id?rec:e));
+        logAuditEvent(salon&&salon.id,{entity:'Employee',entityId:rec.id,action:'Pay change',summary:rec.name+': gross ₹'+Math.round(before.gross||0).toLocaleString('en-IN')+' → ₹'+Math.round(emp.gross||0).toLocaleString('en-IN')+' from '+salYmLabel(r.plan.start)+(r.plan.arrears.length?' · arrears ₹'+r.plan.arrears.reduce((t,a)=>t+a.amount,0).toLocaleString('en-IN')+' in '+salYmLabel(r.plan.start):'')});
+        setShowAddModal(false);setForm(BLANK);setEditMode(false);});
+      return;
+    }
     if(editMode){setEmployees(prev=>prev.map(e=>e.id===emp.id?emp:e));}
     else{setEmployees(prev=>[...prev,emp]);}
     logAuditEvent(salon&&salon.id,{entity:'Employee',entityId:emp.id,action:editMode?'Edited':'Added',summary:emp.name+' — '+emp.desig+' — Gross CTC ₹'+Math.round(emp.gross).toLocaleString('en-IN')});
@@ -1028,7 +1036,7 @@ function MasterSalarySheet({salon}={}){
                 React.createElement('td',{'data-xr':ri,'data-xc':3,style:{background:sel(3)}},React.createElement('span',{style:{whiteSpace:'nowrap',fontSize:12}},fmtDMY(e.doj))),
                 React.createElement('td',{'data-xr':ri,'data-xc':4,style:{background:sel(4)}},e.dol?React.createElement('span',{style:{whiteSpace:'nowrap',fontSize:12,color:'var(--red)'}},e.dol):'—'),
                 React.createElement('td',{'data-xr':ri,'data-xc':5,style:{background:sel(5)}},React.createElement('span',{className:'badge badge-blue',style:{whiteSpace:'nowrap'}},e.weeklyOff||'Sunday')),
-                React.createElement('td',{'data-xr':ri,'data-xc':6,style:{background:sel(6)}},React.createElement('span',{style:{fontWeight:600,color:'var(--text)',whiteSpace:'nowrap'}},'₹'+(e.gross||0).toLocaleString('en-IN'))),
+                React.createElement('td',{'data-xr':ri,'data-xc':6,style:{background:sel(6)}},React.createElement('span',{style:{fontWeight:600,color:'var(--text)',whiteSpace:'nowrap'}},'₹'+(e.gross||0).toLocaleString('en-IN')),typeof salScheduledLabel==='function'&&salScheduledLabel(salon&&salon.id,e)&&React.createElement('div',{style:{fontSize:10.5,color:'var(--accent)',whiteSpace:'nowrap'}},salScheduledLabel(salon&&salon.id,e))),
                 React.createElement('td',{'data-xr':ri,'data-xc':7,style:{background:sel(7)}},
                   e.bankName?React.createElement('div',null,
                     React.createElement('div',{style:{fontSize:12,color:'var(--text)',whiteSpace:'nowrap'}},e.bankName),
@@ -1120,6 +1128,7 @@ function MasterSalarySheet({salon}={}){
             )
           )
         ),
+        typeof SalPayHistory==='function'&&React.createElement(SalPayHistory,{sid:salon&&salon.id,emp:viewEmp,onChange:ne=>{setEmployees(prev=>prev.map(e=>e.id===ne.id?ne:e));setViewEmp(ne);}}),
         React.createElement('div',{className:'modal-actions'},
           React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowViewModal(false)},'Close'),
           React.createElement('button',{className:'btn btn-primary',onClick:()=>{setShowViewModal(false);openEdit(viewEmp);}},'✏ Edit Employee')
