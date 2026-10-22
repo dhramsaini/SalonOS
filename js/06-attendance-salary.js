@@ -1815,7 +1815,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
 
     React.createElement('div',{className:'card',style:{padding:0}},
       React.createElement('div',{style:{overflowX:'auto'}},
-        React.createElement('table',{style:{borderCollapse:'collapse',width:'100%'}},
+        React.createElement('table',{style:{borderCollapse:'separate',borderSpacing:0,width:'100%'}},
           React.createElement('thead',null,React.createElement.apply(React,['tr',null].concat([
             React.createElement('th',{style:{padding:'8px 10px',background:'var(--th-bg)',position:'sticky',left:0,zIndex:3,width:36,borderRight:'1px solid var(--border2)',borderBottom:'2px solid var(--accent)'}},
               workings.length>0&&React.createElement('input',{type:'checkbox',checked:swAllSelected,onChange:swToggleSelectAll,title:'Select all'})

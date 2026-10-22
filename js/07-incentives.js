@@ -1520,7 +1520,9 @@ function IncentiveComparativeSheet({period,salon}={}){
     }catch(err){}
   };
 
-  const STICKY_W=[0,120,220]; // left offsets for Employee/Designation/Month sticky columns
+  const STICKY_COLW=[160,130,90]; // fixed widths of the frozen Employee/Designation/Month columns
+  const STICKY_W=[0,160,290]; // their left offsets (running total of the widths), so they never overlap or leave a gap
+  const stickyFix=i=>({width:STICKY_COLW[i],minWidth:STICKY_COLW[i],maxWidth:STICKY_COLW[i],boxSizing:'border-box',overflow:'hidden',textOverflow:'ellipsis'});
 
   return React.createElement('div',{className:'fade-in'},
     React.createElement('div',{className:'section-header'},
@@ -1549,9 +1551,10 @@ function IncentiveComparativeSheet({period,salon}={}){
     ),
     React.createElement('div',{className:'card',style:{padding:0}},
       React.createElement('div',{style:{overflowX:'auto',maxHeight:620,overflowY:'auto'}},
-        React.createElement('table',{style:{borderCollapse:'collapse',width:'100%',fontSize:11.5}},
+        React.createElement('style',null,'.ivc-newgrp>td{border-top:2px solid var(--border2)}'),
+        React.createElement('table',{style:{borderCollapse:'separate',borderSpacing:0,width:'100%',fontSize:11.5}},
           React.createElement('thead',null,React.createElement('tr',null,
-            COLS.map((h,i)=>React.createElement('th',{key:h,style:{padding:'8px 9px',position:'sticky',top:0,left:i<3?STICKY_W[i]:undefined,zIndex:i<3?4:3,background:'var(--th-bg)',color:'var(--accent2)',fontSize:9.5,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.03em',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',borderRight:i===2?'2px solid var(--border2)':undefined,textAlign:i<3?'left':'right'}},h))
+            COLS.map((h,i)=>React.createElement('th',{key:h,style:{padding:'8px 9px',position:'sticky',top:0,left:i<3?STICKY_W[i]:undefined,...(i<3?stickyFix(i):{}),zIndex:i<3?4:3,background:'var(--th-bg)',color:'var(--accent2)',fontSize:9.5,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.03em',whiteSpace:'nowrap',borderBottom:'2px solid var(--accent)',borderRight:i===2?'2px solid var(--border2)':undefined,textAlign:i<3?'left':'right'}},h))
           )),
           flatRows.length===0
             ?React.createElement('tbody',null,React.createElement('tr',null,React.createElement('td',{colSpan:COLS.length,style:{textAlign:'center',padding:32,color:'var(--text3)'}},'No Incentive Working data for this period.')))
@@ -1561,10 +1564,10 @@ function IncentiveComparativeSheet({period,salon}={}){
                 const svcSt=achvStyle(svcPct),memSt=achvStyle(memPct),prodSt=achvStyle(prodPct),totSt=achvStyle(totPct);
                 const isNewGroup=idx===0||flatRows[idx-1].emp.id!==emp.id;
                 const stickyBg='var(--bg2)';
-                return React.createElement('tr',{key:emp.id+'_'+r.year+'_'+r.month,style:{borderTop:isNewGroup&&idx>0?'2px solid var(--border2)':undefined}},
-                  React.createElement('td',{style:{padding:'6px 9px',position:'sticky',left:STICKY_W[0],zIndex:2,background:stickyBg,borderRight:'1px solid var(--border)',borderBottom:'1px solid var(--border)',fontWeight:isNewGroup?600:400,color:'var(--text)',whiteSpace:'nowrap'}},isNewGroup?emp.name:''),
-                  React.createElement('td',{style:{padding:'6px 9px',position:'sticky',left:STICKY_W[1],zIndex:2,background:stickyBg,borderRight:'1px solid var(--border)',borderBottom:'1px solid var(--border)',color:'var(--text2)',whiteSpace:'nowrap'}},isNewGroup?emp.desig:''),
-                  React.createElement('td',{style:{padding:'6px 9px',position:'sticky',left:STICKY_W[2],zIndex:2,background:stickyBg,borderRight:'2px solid var(--border2)',borderBottom:'1px solid var(--border)',color:'var(--text2)',whiteSpace:'nowrap'}},MONTHS[r.month].slice(0,3)+' '+r.year),
+                return React.createElement('tr',{key:emp.id+'_'+r.year+'_'+r.month,className:isNewGroup&&idx>0?'ivc-newgrp':undefined},
+                  React.createElement('td',{title:isNewGroup?emp.name:undefined,style:{...stickyFix(0),padding:'6px 9px',position:'sticky',left:STICKY_W[0],zIndex:2,background:stickyBg,borderRight:'1px solid var(--border)',borderBottom:'1px solid var(--border)',fontWeight:isNewGroup?600:400,color:'var(--text)',whiteSpace:'nowrap'}},isNewGroup?emp.name:''),
+                  React.createElement('td',{title:isNewGroup?emp.desig:undefined,style:{...stickyFix(1),padding:'6px 9px',position:'sticky',left:STICKY_W[1],zIndex:2,background:stickyBg,borderRight:'1px solid var(--border)',borderBottom:'1px solid var(--border)',color:'var(--text2)',whiteSpace:'nowrap'}},isNewGroup?emp.desig:''),
+                  React.createElement('td',{style:{...stickyFix(2),padding:'6px 9px',position:'sticky',left:STICKY_W[2],zIndex:2,background:stickyBg,borderRight:'2px solid var(--border2)',borderBottom:'1px solid var(--border)',color:'var(--text2)',whiteSpace:'nowrap'}},MONTHS[r.month].slice(0,3)+' '+r.year),
                   React.createElement('td',{style:{padding:'6px 9px',borderBottom:'1px solid var(--border)',textAlign:'right',color:'var(--text2)',whiteSpace:'nowrap'}},fmt(r.salary)),
                   React.createElement('td',{style:{padding:'6px 9px',borderBottom:'1px solid var(--border)',textAlign:'right',fontWeight:600,whiteSpace:'nowrap',...svcSt}},fmt(r.svcActual)),
                   React.createElement('td',{style:{padding:'6px 9px',borderBottom:'1px solid var(--border)',textAlign:'right',whiteSpace:'nowrap',...svcSt}},timesFmt(r.svcTimesRaw)),
