@@ -277,6 +277,8 @@ const CONTROL_DEFS=[
   {id:'advOneOpen',group:'Employees',label:'One open advance at a time',hint:'Warns when someone is given a new advance while an earlier one is still being recovered.',def:true},
   {id:'advPhoneRequest',group:'Employees',label:'Advance request from the staff phone',hint:'Staff ask for an advance on the phone screen (PIN = last 4 digits of their mobile); it waits as Pending Approval on the Advances sheet, and the decision can be sent to them on WhatsApp.',def:true},
   {id:'advAck',group:'Employees',label:'Signed acknowledgement',hint:'⋯ on an advance: print a one-page acknowledgement with the recovery plan to sign, and attach the signed copy.',def:true},
+  {id:'advPullConfirm',group:'Employees',label:'Confirm before “Adjust now” pulls next month’s advance',hint:'On Salary Working, “Adjust now” under Next Month Adv shows which advances would be pulled into this month and asks for confirmation before taking them off this month’s salary.',def:true},
+  {id:'advPullNote',group:'Employees',label:'Mark advances pulled forward',hint:'Under Adv Adj on Salary Working, a note “incl. ₹… pulled forward from <next month>” when “Adjust now” was used.',def:true},
   {id:'advSkipMonth',group:'Employees',label:'Skip a month',hint:'⋯ on an advance: move one month’s instalment to the next month, with a reason.',def:true},
   {id:'advChangePlan',group:'Employees',label:'Change the plan mid-way',hint:'⋯ on an advance: a new monthly amount from a chosen month; the remaining months are worked out again and the old plan is kept.',def:true},
   {id:'advPartRecovery',group:'Employees',label:'Part-recovery when pay is short',hint:'If net pay can’t cover the instalment, only what the pay can bear is recovered and the rest moves to the next month automatically.',def:true},
@@ -397,7 +399,7 @@ const CONTROL_AREAS=[
     ['Incentive Plan',['ipWords','ipPeriod','ipDiff','ipGroups','ipTimeline','ipDrift','ipInUse','ipWizard','ipCost','ipChecklist','ipNotes','ipStaffSheet','ipStaffPhone','ipReminder']],
     ['Both sheets',['payMakerChecker','payChangeLog','payCompare','payBudget','payYearly']],
     ['Advances — giving',['advanceRecoveryPlan','advanceNetFloor','advEligibility','advServiceLimit','advOneOpen','advPhoneRequest','advAck']],
-    ['Advances — recovering',['advSkipMonth','advChangePlan','advPartRecovery','advRepaid','advSplit','advLeavers']],
+    ['Advances — recovering',['advPullConfirm','advPullNote','advSkipMonth','advChangePlan','advPartRecovery','advRepaid','advSplit','advLeavers']],
     ['Advances — reports & accounts',['advStatement','advRegister','advOverdue','advTieOut','advTally','advFee','advWriteOff']],
     ['Full workings Excel',['payWorkbooks','payWbChooser','payWbPools','payWbWhatIf','payWbPayslips','payWbBank','payWbStatutory','payWbCompare','payWbCtc','payWbExceptions','payWbReco','payWbTrail','payWbIntegrity','payWbAllOutlets','payWorkbookEmail','payWbProtected']]]},
   {key:'close',icon:'✅',title:'Approvals & month close',groups:['Approvals','Month close','Alerts','Reminders'],subs:[
@@ -413,7 +415,7 @@ const CONTROL_AREAS=[
     ['App',['roleHomeScreens','appInstallPrompt','phoneQuickAdd','geminiModelList']],
     ['Look & feel',['dmyDates','compactToolbars','todayStrip','filterChips','keyboardShortcuts','mobileLayout','calendarPolish','billPrintDesign','miniCharts','undoActions']]]}];
 // Rules that stop someone from saving, and rules that send the action for approval — shown as labels.
-const CONTROL_STOPS=new Set(['ipWizard','ipChecklist','payMakerChecker','advServiceLimit','aadhaarRequired','ctlTwoPerson','ctlLocks','backdateLock','futureLock','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','billNeedsPo','gstLock','dayCloseLock','staffChangeLock','creditLimit','discountReason','staffOffBlocking','requireMarketingConsent','bankLockFinal','tallyChangeGuard','mapRoleLimits','vagueNatureReason','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']);
+const CONTROL_STOPS=new Set(['advPullConfirm','ipWizard','ipChecklist','payMakerChecker','advServiceLimit','aadhaarRequired','ctlTwoPerson','ctlLocks','backdateLock','futureLock','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','billNeedsPo','gstLock','dayCloseLock','staffChangeLock','creditLimit','discountReason','staffOffBlocking','requireMarketingConsent','bankLockFinal','tallyChangeGuard','mapRoleLimits','vagueNatureReason','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']);
 const CONTROL_APPROVAL=new Set(['advWriteOff','mapApproval','mapReview','tallyNeedsReview','discountApproval','cancelApproval','poApproval','invoiceApproval','bankFileApproval','deleteApproval','vendorBankApproval']);
 // [{area, subs:[{title, defs}]}] for every switch in CONTROL_DEFS — nothing is left out.
 function controlLayout(){

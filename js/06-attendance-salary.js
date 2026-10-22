@@ -1203,6 +1203,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
   const confirmNextAdvPull=()=>{
     if(!nextAdvPullModal||!nextAdvPullDateInput){swError('Pick a date first.');return;}
     const empId=nextAdvPullModal.empId;
+    const pe=EMPLOYEES.find(e=>e.id===empId);if(pe&&typeof advPullConfirmOk==='function'&&!advPullConfirmOk(salon?.id,pe.name,selYear,selMonth,nextAdvPullDateInput))return;
     const breakdown=pullNextMonthAdvance(empId,nextAdvPullDateInput);
     if(!breakdown.length){swError('No Next Month Advance dated on or before that date to adjust.');setNextAdvPullModal(null);return;}
     const k=metaKey(empId,selYear,selMonth);
@@ -1912,7 +1913,8 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
               cols.advAdj&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',cursor:e.advAdj>0&&onNavTab?'pointer':undefined,background:SW_BG_DED},
                 title:e.advAdj>0&&onNavTab?"This month's scheduled installment — click to view/amend on the Advances sheet":undefined,
                 onClick:e.advAdj>0&&onNavTab?()=>onNavTab('advance'):undefined},
-                e.advAdj>0?React.createElement('span',{style:{color:'var(--red)'}},'−₹'+e.advAdj.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'—')
+                e.advAdj>0?React.createElement('span',{style:{color:'var(--red)'}},'−₹'+e.advAdj.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'—'),
+                e.advAdj>0&&typeof advPullNote==='function'&&advPullNote(salon?.id,m,MONTHS[(selMonth+1)%12])
               ),
               cols.penalties&&td(e.penAmt>0?'−₹'+e.penAmt.toLocaleString('en-IN'):'—','var(--red)',false,SW_BG_DED),
               td(fmt(e.net),'var(--green)',true,SW_BG_NET),
@@ -2014,6 +2016,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
           React.createElement('label',{style:{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:4,fontWeight:600,display:'block'}},'Adjust advances dated on or before'),
           React.createElement('input',{type:'date',className:'form-control',value:nextAdvPullDateInput,onChange:ev=>setNextAdvPullDateInput(ev.target.value)})
         ),
+        typeof AdvPullPreview==='function'&&(()=>{const pe=EMPLOYEES.find(e=>e.id===nextAdvPullModal.empId);return pe?React.createElement(AdvPullPreview,{sid:salon?.id,empName:pe.name,y:selYear,m:selMonth,cutoff:nextAdvPullDateInput}):null;})(),
         React.createElement('div',{style:{display:'flex',gap:10,justifyContent:'flex-end'}},
           React.createElement('button',{className:'btn btn-ghost',onClick:()=>setNextAdvPullModal(null)},'Cancel'),
           React.createElement('button',{className:'btn btn-primary',onClick:confirmNextAdvPull},'✓ Adjust in '+MONTHS[selMonth])

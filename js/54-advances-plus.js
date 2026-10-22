@@ -321,3 +321,41 @@ function AdvMoreModal({sid,id,onClose}){
     Array.isArray(a.planLog)&&a.planLog.length>0&&h('div',{style:{borderTop:'1px solid var(--border)',padding:'10px 0',fontSize:12}},h('div',{style:{fontWeight:600,marginBottom:4}},'History'),a.planLog.slice().reverse().map((x,i)=>h('div',{key:i,style:{color:'var(--text2)'}},new Date(x.at).toLocaleString('en-GB',DMY_DT)+' · '+x.what+(x.by?' · '+x.by:'')))),
     h('div',{className:'modal-actions'},h('button',{className:'btn btn-primary',onClick:onClose},'Close'))));
 }
+
+// ── "Adjust now" (Salary Working → Next Month Adv): confirm before an advance given next month is
+// pulled into this month's salary (Controls → advPullConfirm), and mark the deduction as pulled
+// forward (Controls → advPullNote). ──
+const ADV_PULL_MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
+function advPullDmy(iso){return iso?String(iso).slice(0,10).split('-').reverse().join('/'):'';}
+function advPullYmLabel(ym){const p=String(ym||'').split('-');return p.length===2?ADV_PULL_MON[Number(p[1])-1]+' '+p[0]:String(ym||'');}
+// The advances "Adjust now" would pull: given next month, on or before the cutoff, still due.
+function advPullList(sid,empName,y,m,cutoff){
+  let all=[];try{all=JSON.parse(cachedLocalGet(outletKey('salonos_advances',sid))||'[]')||[];}catch(e){}
+  const n=new Date(y,m+1,1);const nk=n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0');
+  return all.map(a=>typeof advFixed==='function'?advFixed(a):a).filter(a=>a&&a.emp===empName&&a.status==='Active'&&(a.deductFrom||'Salary')==='Salary'&&String(a.date||'').slice(0,7)===nk&&(!cutoff||a.date<=cutoff)&&(Number(a.outstanding)||0)>0)
+    .map(a=>({id:a.id,date:a.date,amount:Number(a.outstanding)||0,plan:(Array.isArray(a.schedule)?a.schedule:[]).filter(s=>Number(s.amount)>0).map(s=>advPullYmLabel(s.month)+' ₹'+(Number(s.amount)||0).toLocaleString('en-IN'))}));
+}
+function advPullConfirmOk(sid,empName,y,m,cutoff){
+  if(!(typeof controlOn==='function'&&controlOn('advPullConfirm',sid)))return true;
+  const L=advPullList(sid,empName,y,m,cutoff);if(!L.length)return true;const tot=L.reduce((s,a)=>s+a.amount,0);const nxt=ADV_PULL_MON[(m+1)%12];
+  const ok=window.confirm('Take ₹'+tot.toLocaleString('en-IN')+' off '+empName+'’s '+ADV_PULL_MON[m]+' '+y+' salary?\n\n'+
+    L.map(a=>'• ₹'+a.amount.toLocaleString('en-IN')+' given on '+advPullDmy(a.date)+(a.plan.length?' — planned: '+a.plan.join(', '):'')).join('\n')+
+    '\n\nThis advance was given in '+nxt+'. It will be deducted from '+ADV_PULL_MON[m]+'’s salary instead of its planned month. To undo, untick “Adjust now” before '+ADV_PULL_MON[m]+'’s salary is approved.');
+  if(!ok&&typeof controlHit==='function')controlHit('advPullConfirm',sid,'b');return ok;
+}
+// Shown inside the "Adjust now" box: what would be pulled.
+function AdvPullPreview({sid,empName,y,m,cutoff}){
+  const h=React.createElement;const L=advPullList(sid,empName,y,m,cutoff);
+  if(!L.length)return h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:12}},'No '+ADV_PULL_MON[(m+1)%12]+' advance dated on or before this date.');
+  const tot=L.reduce((s,a)=>s+a.amount,0);
+  return h('div',{style:{fontSize:12,marginBottom:12,padding:'8px 10px',borderRadius:'var(--r)',background:'rgba(224,165,48,0.12)',border:'1px solid rgba(224,165,48,0.4)'}},
+    h('div',{style:{fontWeight:600,marginBottom:4}},'₹'+tot.toLocaleString('en-IN')+' will come off '+empName+'’s '+ADV_PULL_MON[m]+' salary:'),
+    L.map(a=>h('div',{key:a.id},'• ₹'+a.amount.toLocaleString('en-IN')+' given on '+advPullDmy(a.date)+(a.plan.length?' — planned for '+a.plan.join(', '):''))));
+}
+// Under the Adv Adj amount on Salary Working.
+function advPullNote(sid,meta,nextMonthName){
+  if(!meta||!meta.nextAdvPull||!(typeof controlOn==='function'&&controlOn('advPullNote',sid)))return null;
+  const b=Array.isArray(meta.nextAdvPullBreakdown)?meta.nextAdvPullBreakdown:[];const amt=b.reduce((s,x)=>s+(Number(x.amount)||0),0);if(!amt)return null;
+  return React.createElement('div',{title:'Pulled forward with “Adjust now” (advances dated up to '+advPullDmy(meta.nextAdvPullDate)+'). Untick “Adjust now” under Next Month Adv to deduct it in its own month instead.',
+    style:{fontSize:9.5,color:'#b26a00',marginTop:2,whiteSpace:'nowrap'}},'incl. ₹'+amt.toLocaleString('en-IN')+' pulled forward from '+nextMonthName);
+}
