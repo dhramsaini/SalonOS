@@ -129,3 +129,22 @@ function SalPayHistory({sid,emp,onChange}){
 }
 // Small line under the employee's name in Master Salary when a change is scheduled.
 function salScheduledLabel(sid,e){if(!salRevOn(sid)||!e||!Array.isArray(e.payHistory))return'';const now=salNowYm();const f=e.payHistory.filter(r=>r.from&&r.from>now).sort((a,b)=>a.from.localeCompare(b.from))[0];return f?'📈 '+salM(f.gross)+' from '+salYmLabel(f.from):'';}
+
+// ── EPF coverage from 17 Sep 2026 (Controls → pfCoverage25k) ──
+// The PF wage ceiling rose to ₹25,000 (S.O. 5109(E), 17 Sep 2026), so in a PF-registered outlet
+// every employee whose EPF wage (Basic) is up to ₹25,000 must be a member of EPF, EPS and EDLI from
+// 17 Sep 2026 — enrolment is the employer's duty. Lists active employees with PF not ticked.
+function pfCoverageGaps(sid,y,m){
+  if(sid==null||!(typeof controlOn==='function'&&controlOn('pfCoverage25k',sid)))return[];
+  const rec=typeof getSalonRecordById==='function'?getSalonRecordById(sid):null;if(!rec||!rec.pfApplicable)return[];
+  if(y*12+m<2026*12+8)return[];
+  let E=[];try{E=(getEmployeesForMonth(y,m,sid)||[]).filter(e=>e.status!=='Inactive');}catch(x){}
+  return E.filter(e=>!e.pf&&(Number(e.basic)||0)>0&&(Number(e.basic)||0)<=25000);
+}
+function PfCoverageStrip({sid,y,m}){
+  const h=React.createElement;if(y==null||m==null){const d=new Date();y=d.getFullYear();m=d.getMonth();}
+  const L=pfCoverageGaps(sid,y,m);if(!L.length)return null;
+  return h('div',{style:{background:'rgba(224,165,48,0.12)',border:'1px solid rgba(224,165,48,0.4)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5}},
+    h('b',null,'⚠ PF must be on for '+L.length+' employee'+(L.length===1?'':'s')+': '),L.map(e=>e.name+' (Basic ₹'+Math.round(Number(e.basic)||0).toLocaleString('en-IN')+')').join(', '),
+    h('div',{style:{fontSize:11.5,color:'var(--text2)',marginTop:3}},'From 17 Sep 2026 the PF wage ceiling is ₹25,000, so employees with EPF wages (Basic) up to ₹25,000 must be enrolled in EPF, EPS and EDLI. Tick PF for them in Master Salary (Employment & Salary → Statutory Applicability).'));
+}

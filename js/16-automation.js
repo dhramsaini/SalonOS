@@ -264,7 +264,7 @@ const CLOSE_CHECKLIST=[
   {phase:'6 · Statutory and tax',items:[
     {id:'t-tds',text:'TDS paid by the 7th',tab:'due-dates'},
     {id:'t-gstr1',text:'GSTR-1 filed by the 11th',tab:'outlet-pnl'},
-    {id:'t-pf',text:'PF ECR uploaded and challan paid by the 15th',tab:'salary-working'},
+    {id:'t-pf',text:'PF ECR uploaded and challan paid by the 15th (September 2026 wages: by 31 October)',tab:'salary-working'},
     {id:'t-esic',text:'ESIC contribution uploaded and paid by the 15th',tab:'salary-working'},
     {id:'t-gstr3b',text:'GSTR-3B filed and GST paid by the 20th',tab:'outlet-pnl'},
     {id:'t-pt',text:'Professional Tax paid by the state due day',tab:'due-dates'},

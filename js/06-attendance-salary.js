@@ -1615,6 +1615,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
   if(!salaryAttendanceReady(salon?.id,selYear,selMonth))return React.createElement(AttendanceNotFinalNotice,{monthLabel:MONTHS[selMonth]+' '+selYear,title:'Salary Working Sheet',onNavTab});
   return React.createElement('div',{className:'fade-in',style:{position:'relative'}},
     React.createElement(WatermarkOverlay,{text:monthLocked?'FINAL':'DRAFT',final:monthLocked}),
+    typeof PfCoverageStrip==='function'&&React.createElement(PfCoverageStrip,{sid:salon?.id,y:selYear,m:selMonth}),
     typeof PayToolsBar==='function'&&React.createElement(PayToolsBar,{salon,year:selYear,month:selMonth,kind:'salary',onChanged:()=>setRefreshTick(t=>t+1)}),
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,

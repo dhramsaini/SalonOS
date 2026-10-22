@@ -1912,6 +1912,11 @@ function addMonths(year,month,months){
   const d=new Date(year,month+months,1);
   return{year:d.getFullYear(),month:d.getMonth()};
 }
+// PF (ECR + challan) due date for a wage month: the 15th of the next month, except September 2026,
+// which EPFO extended to 31 October 2026 (circular of 13 Oct 2026, after the wage ceiling rose to
+// ₹25,000 from 17 Sep 2026). Every other month stays on the 15th.
+const PF_DUE_EXCEPTIONS={'2026-08':'2026-10-31'}; // key: year-month0 of the wage month
+function pfDueDateFor(year,month){return PF_DUE_EXCEPTIONS[year+'-'+String(month).padStart(2,'0')]||statutoryDueDateFor(year,month,15);}
 // Due date for a contribution made FOR {year,month}, payable by `day` of the following month.
 function statutoryDueDateFor(year,month,day){
   const next=addMonths(year,month,1);
@@ -1972,7 +1977,7 @@ function autoStatutoryDueItemsFor(salonId,monthsBack){
       const ov=overrides[id]||{};
       const paidKeys=ov.paidKeys||{};
       const paid=pfEmps.length>0&&pfEmps.every(e=>paidKeys[e.id]);
-      const due=statutoryDueDateFor(cal.year,cal.month,15);
+      const due=pfDueDateFor(cal.year,cal.month);
       items.push({id,auto:true,type:'PF Challan',year:cal.year,month:cal.month,desc:'PF for '+label+' — '+pfEmps.length+' employee(s) on PF (Employee + Employer contribution)',due,amount:Math.round(pfTotal),paid,paidAmount:paid?(ov.paidAmount||Math.round(pfTotal)):'',paidDate:paid?(ov.paidDate||''):'',ref:ov.ref||'',bankRowId:ov.bankRowId!=null?ov.bankRowId:null,status:dueStatusFor(due,paid)});
     }
     if(esicTotal>0){
