@@ -473,7 +473,7 @@ function esicEmployerContributionFor(salary,esicApplicableAtSalon,esicEnabledFor
 // Gross CTC as Master Salary works it out today for a saved employee.
 function ctcFor(e,salonRec){
   const parts=['basic','hra','conv','special'].reduce((t,k)=>t+(Number(e[k])||0),0);
-  return parts+epfEmployerContributionFor(e.basic,e.pfOnActualBasic,salonRec&&salonRec.pfApplicable,e.pf)+esicEmployerContributionFor(parts,salonRec&&salonRec.esicApplicable,e.esic,salonRec&&salonRec.id);
+  return parts+epfEmployerContributionFor(typeof msPfWage==='function'?msPfWage(e,salonRec&&salonRec.id):e.basic,e.pfOnActualBasic,salonRec&&salonRec.pfApplicable,e.pf)+esicEmployerContributionFor(parts,salonRec&&salonRec.esicApplicable,e.esic,salonRec&&salonRec.id);
 }
 // Banner: employees whose saved Gross CTC is out of date (saved before the ESIC share was added to CTC,
 // or before the ₹25,000 PF ceiling). Only employees whose CTC is the salary parts plus employer
@@ -593,13 +593,14 @@ function MasterSalarySheet({salon}={}){
     // choice, since it's the outlet's State (not the person) that decides whether PT applies.
     // Gross CTC is always the live auto-sum (Basic + HRA + Conveyance + Special + EPF Employer
     // Contribution) — recomputed at save time so it can never drift from a stale/older total.
-    const epfContrib=epfEmployerContributionFor(form.basic,form.pfOnActualBasic,salon&&salon.pfApplicable,form.pf);
+    const epfContrib=epfEmployerContributionFor(typeof msPfWage==='function'?msPfWage(form,salon&&salon.id):form.basic,form.pfOnActualBasic,salon&&salon.pfApplicable,form.pf);
     const salaryParts=Number(form.basic)+Number(form.hra)+Number(form.conv)+Number(form.special);
     const esicContrib=esicEmployerContributionFor(salaryParts,salon&&salon.esicApplicable,form.esic,salon&&salon.id);
     const emp={...form,id:form.id||nextId(),basic:Number(form.basic)||0,hra:Number(form.hra)||0,conv:Number(form.conv)||0,special:Number(form.special)||0,
       gross:salaryParts+epfContrib+esicContrib,
       pt:!!(salon&&salon.ptApplicable)};
     if(typeof ecEmployeeOk==='function'&&!ecEmployeeOk(salon&&salon.id,emp,editMode?employees.find(e=>e.id===emp.id):null,employees))return;
+    if(typeof msSaveOk==='function'&&!msSaveOk(salon&&salon.id,emp))return;
     if(editMode&&typeof salRevNeeded==='function'&&salRevNeeded(salon&&salon.id,employees.find(e=>e.id===emp.id),emp)){
       const before=employees.find(e=>e.id===emp.id);
       salRevAsk(salon&&salon.id,before,emp).then(r=>{if(!r)return;const rec=r.rec;
@@ -831,6 +832,7 @@ function MasterSalarySheet({salon}={}){
       React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-18'},'Email ID'),React.createElement('input',{id:'f-18',className:'form-control',value:form.email,onChange:fc('email'),placeholder:'email@example.com'}),form.email&&!isValidEmailFormat(form.email)&&fieldWarning('Doesn\u2019t look like a valid email address.')),
       React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-19'},'Status'),React.createElement('select',{id:'f-19',className:'form-control',value:form.status,onChange:fc('status')},['Active','Inactive','On Notice','Resigned'].map(s=>React.createElement('option',{key:s},s))))
     ),
+    typeof MsFormExtras==='function'&&React.createElement(MsFormExtras,{salon,form,setForm,part:'personal'}),
     React.createElement('div',{className:'form-row'},
       React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-20'},'Address'),React.createElement('textarea',{id:'f-20',className:'form-control',rows:2,value:form.address,onChange:fc('address'),placeholder:'Full address with PIN code',style:{resize:'vertical'}}))
     ),
@@ -862,7 +864,7 @@ function MasterSalarySheet({salon}={}){
 
   // 12% of Basic Salary, capped at the statutory PF wage ceiling by default — check
   // "Calculate on actual Basic Salary" to remove the cap and use full Basic instead.
-  const epfEmployerContribution=epfEmployerContributionFor(form.basic,form.pfOnActualBasic,salon&&salon.pfApplicable,form.pf);
+  const epfEmployerContribution=epfEmployerContributionFor(typeof msPfWage==='function'?msPfWage(form,salon&&salon.id):form.basic,form.pfOnActualBasic,salon&&salon.pfApplicable,form.pf);
   const esicEmployerContribution=esicEmployerContributionFor((Number(form.basic)||0)+(Number(form.hra)||0)+(Number(form.conv)||0)+(Number(form.special)||0),salon&&salon.esicApplicable,form.esic,salon&&salon.id);
 
   const employmentFields=()=>React.createElement('div',null,
@@ -876,8 +878,10 @@ function MasterSalarySheet({salon}={}){
       React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-27'},'Date of Left'),React.createElement('input',{id:'f-27',type:'date',className:'form-control',value:form.dol,onChange:fc('dol')}),form.dol&&React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:3}},'→ '+fmtDMY(form.dol)+' (DD/MM/YYYY)')),
       React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-28'},'Status'),React.createElement('select',{id:'f-28',className:'form-control',value:form.status,onChange:fc('status')},['Active','Inactive','On Notice','Resigned'].map(s=>React.createElement('option',{key:s},s))))
     ),
+    typeof MsFormExtras==='function'&&React.createElement(MsFormExtras,{salon,form,setForm,part:'employment'}),
     React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:14,marginBottom:14}},
       React.createElement('div',{style:{fontSize:12,fontWeight:600,color:'var(--text2)',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.06em'}},'Salary Components (₹/month)'),
+      typeof SalaryBuilder==='function'&&React.createElement(SalaryBuilder,{salon,form,setForm}),
       React.createElement('div',{className:'form-row cols3'},
         React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-29'},'Basic Salary'),React.createElement('input',{id:'f-29',className:'form-control',type:'number',value:form.basic,onChange:fc('basic'),placeholder:'0'})),
         React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-30'},'HRA'),React.createElement('input',{id:'f-30',className:'form-control',type:'number',value:form.hra,onChange:fc('hra'),placeholder:'0'})),
@@ -957,6 +961,7 @@ function MasterSalarySheet({salon}={}){
     React.createElement(StaffCertsCard,{sid:salon?.id}),
     typeof PfCoverageStrip==='function'&&React.createElement(PfCoverageStrip,{sid:salon?.id}),
     React.createElement(CtcUpdateStrip,{salon,employees,onUpdate:list=>setEmployees(list)}),
+    typeof MsTools==='function'&&React.createElement(MsTools,{salon,employees,setEmployees}),
     // ── Header ──
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,React.createElement('div',{className:'page-title'},'Master Salary Sheet'),React.createElement('div',{className:'page-sub'},'Employee roster with CTC, bank & document details'+(salon?.name?' · '+salon.name:''))),
@@ -1167,6 +1172,7 @@ function MasterSalarySheet({salon}={}){
           )
         ),
         typeof SalPayHistory==='function'&&React.createElement(SalPayHistory,{sid:salon&&salon.id,emp:viewEmp,onChange:ne=>{setEmployees(prev=>prev.map(e=>e.id===ne.id?ne:e));setViewEmp(ne);}}),
+        typeof MsEmpActions==='function'&&React.createElement(MsEmpActions,{salon,emp:viewEmp,employees,setEmployees,onClose:()=>setShowViewModal(false)}),
         React.createElement('div',{className:'modal-actions'},
           React.createElement('button',{className:'btn btn-ghost',onClick:()=>setShowViewModal(false)},'Close'),
           React.createElement('button',{className:'btn btn-primary',onClick:()=>{setShowViewModal(false);openEdit(viewEmp);}},'✏ Edit Employee')

@@ -956,6 +956,7 @@ function loadAuditLog(salonId){
 // per-outlet feature, add it here too, or its data will survive a delete and can leak into a
 // future outlet that happens to reuse the same numeric id.
 const SALON_SCOPED_KEY_BASES=[
+  'salonos_salary_template','salonos_emp_update_requests',
   'salonos_final_snap',
   'salonos_inc_manual',
   'salonos_inc_plan_notes',
@@ -2539,7 +2540,7 @@ function payGrossFor(e,sid){
   // The ESIC employer share (3.25% of the salary, when ESIC applies — salary up to ₹21,000) that
   // Master Salary adds into Gross CTC (Controls → ctcIncludesEsic) is recognised the same way.
   const parts=['basic','hra','conv','special'].reduce((t,k)=>t+(Number(e[k])||0),0);const gap=g-parts;const b=Number(e.basic)||0;
-  const pfAdds=e.pf?[Math.min(b,15000),Math.min(b,25000),b].map(x=>Math.round(x*0.12)):[];
+  const b2=typeof pfCodeWageOf==='function'?pfCodeWageOf(e):b;const pfAdds=e.pf?[...new Set([b,b2])].flatMap(w=>[Math.min(w,15000),Math.min(w,25000),w]).map(x=>Math.round(x*0.12)):[];
   const esicAdd=(e.esic&&parts>0&&parts<=21000)?Math.round(parts*0.0325):0;
   const known=[...pfAdds,...(esicAdd?[esicAdd,...pfAdds.map(x=>x+esicAdd)]:[])];
   return(parts>0&&gap>0&&known.some(x=>Math.abs(x-gap)<=1))?Math.round(parts):g;
@@ -2596,7 +2597,7 @@ function swWorkingsFor(salonId,year,month){
     // employee side ignored this cap and always used the full uncapped Basic — a real correctness
     // bug, since it made the employee's own deduction disagree with the employer's contribution
     // for the exact same wage base.
-    const pfWageBase=e.pfOnActualBasic?e.basic:pfCappedWage(e.basic,year,month,salonId);
+    const pfWageBase=e.pfOnActualBasic?(typeof msPfWage==='function'?msPfWage(e,salonId):e.basic):pfCappedWage((typeof msPfWage==='function'?msPfWage(e,salonId):e.basic),year,month,salonId);
     const pfAutoAmt=(pfApplicableAtSalon&&e.pf)?Math.round(pfWageBase*0.12):0;
     // PF (Emp) can be manually overridden per employee per month, same pattern as ESIC below —
     // e.g. to match a slightly different rounding the EPFO portal itself produced. Falls back to
@@ -2610,14 +2611,14 @@ function swWorkingsFor(salonId,year,month){
     // costed here even though Master Salary's own CTC card (epfEmployerContributionFor) already
     // correctly showed ₹0 for them — the two screens could permanently disagree.
     const pfEr=(pfApplicableAtSalon&&e.pf)?Math.round(pfWageBase*0.12):0;
-    const esicAutoAmt=(esicApplicableAtSalon&&e.esic&&e.gross<=21000)?Math.round(e.gross*0.0075):0;
+    const esicAutoAmt=(esicApplicableAtSalon&&e.esic&&(typeof msEsicCovered==='function'?msEsicCovered(e,year,month,salonId):e.gross<=21000))?Math.round(e.gross*0.0075):0;
     // ESIC (Emp) can be manually overridden per employee per month — e.g. to match a slightly
     // different rounding the actual ESIC portal produced — via the click-to-edit popup on Salary
     // Working. Falls back to the standard 0.75%-of-Gross calculation whenever no override is set.
     const swMForEsic=swMeta[attMonthKey(e.id,year,month)];
     const esicOverridden=swMForEsic&&swMForEsic.esicOverride!=null&&swMForEsic.esicOverride!=='';
     const esicEmp=cols.esic?(esicOverridden?Number(swMForEsic.esicOverride)||0:esicAutoAmt):0;
-    const esicEr=(esicApplicableAtSalon&&e.esic&&e.gross<=21000)?Math.round(e.gross*0.0325):0;
+    const esicEr=(esicApplicableAtSalon&&e.esic&&(typeof msEsicCovered==='function'?msEsicCovered(e,year,month,salonId):e.gross<=21000))?Math.round(e.gross*0.0325):0;
     // Professional Tax — auto-applied whenever the outlet's own state levies PT (see
     // PT_APPLICABLE_STATES), computed from that state's slabs against Gross Salary. Employee's
     // own `pt` flag is forced true/false to match state applicability (see Master Salary and
@@ -2699,22 +2700,22 @@ function statutoryDeductionsFor(salonId,year,month){
   const esicApplicableAtSalon=!!(salonRec&&salonRec.esicApplicable);
   return EMPLOYEES.map(e=>{
     const swM=swMeta[attMonthKey(e.id,year,month)]||{};
-    const pfWageBase=e.pfOnActualBasic?e.basic:pfCappedWage(e.basic,year,month,salonId);
+    const pfWageBase=e.pfOnActualBasic?(typeof msPfWage==='function'?msPfWage(e,salonId):e.basic):pfCappedWage((typeof msPfWage==='function'?msPfWage(e,salonId):e.basic),year,month,salonId);
     const pfAutoAmt=(pfApplicableAtSalon&&e.pf)?Math.round(pfWageBase*0.12):0;
     const pfEmp=(swM.pfOverride!=null&&swM.pfOverride!=='')?Number(swM.pfOverride)||0:pfAutoAmt;
     const pfEr=(pfApplicableAtSalon&&e.pf)?Math.round(pfWageBase*0.12):0; // employer side isn't separately overridden
     // EPS (Pension), EDLI, and Admin Charges all use the statutory wage ceiling for the month
     // regardless of pfOnActualBasic — that election only raises the EPF contribution itself,
     // never these three, per EPFO's own "pay" definition for Accounts 2/10/21/22.
-    const epsWageBase=pfCappedWage(e.basic,year,month,salonId);
+    const epsWageBase=pfCappedWage((typeof msPfWage==='function'?msPfWage(e,salonId):e.basic),year,month,salonId);
     const pfOn=pfApplicableAtSalon&&e.pf;
-    const eps=pfOn?Math.round(epsWageBase*0.0833):0; // EPS = 8.33% of the capped wage (max ₹1,250 to Aug 2026, ₹2,083 from Oct 2026)
+    const eps=pfOn?Math.round((typeof msEpsWage==='function'?msEpsWage(e,year,month,salonId,epsWageBase):epsWageBase)*0.0833):0; // EPS = 8.33% of the capped wage (max ₹1,250 to Aug 2026, ₹2,083 from Oct 2026)
     const pfErEpf=Math.max(0,pfEr-eps); // Employer's EPF share = Employer 12% − EPS diverted out of it (≈3.67%)
     const edli=pfOn?Math.round(epsWageBase*0.005):0; // EDLI — 0.5% of the capped wage, employer-only
     const adminChargeRaw=pfOn?Math.round(epsWageBase*0.005):0; // Admin Charges — 0.5% of the capped wage; the ₹500/month establishment minimum is applied once, across all employees, in statutoryCellsForMonth below, not per employee
-    const esicAutoAmt=(esicApplicableAtSalon&&e.esic&&e.gross<=21000)?Math.round(e.gross*0.0075):0;
+    const esicAutoAmt=(esicApplicableAtSalon&&e.esic&&(typeof msEsicCovered==='function'?msEsicCovered(e,year,month,salonId):e.gross<=21000))?Math.round(e.gross*0.0075):0;
     const esicEmp=(swM.esicOverride!=null&&swM.esicOverride!=='')?Number(swM.esicOverride)||0:esicAutoAmt;
-    const esicEr=(esicApplicableAtSalon&&e.esic&&e.gross<=21000)?Math.round(e.gross*0.0325):0;
+    const esicEr=(esicApplicableAtSalon&&e.esic&&(typeof msEsicCovered==='function'?msEsicCovered(e,year,month,salonId):e.gross<=21000))?Math.round(e.gross*0.0325):0;
     const ptAutoAmt=ptAmountFor(salonId,salonRec?.state,e.gross,month);
     const ptAmt=(swM.ptOverride!=null&&swM.ptOverride!=='')?Number(swM.ptOverride)||0:ptAutoAmt;
     const tdsAmt=(swM.tdsAmount!=null&&swM.tdsAmount!=='')?Number(swM.tdsAmount)||0:0;

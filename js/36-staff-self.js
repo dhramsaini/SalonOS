@@ -68,7 +68,8 @@ function StaffSelfService({salon}){
   const iso=today.toISOString().slice(0,10);
   const [who,setWho]=useState('');const [mode,setMode]=useState('');const [lr,setLr]=useState({from:iso,to:iso,kind:'Paid leave',reason:''});const [pin,setPin]=useState('');const [shown,setShown]=useState(null);const [,setT]=useState(0);
   const arOn=controlOn('advPhoneRequest',sid);
-  if(!lrOn&&!siOn&&!arOn)return null;
+  const suOn=typeof controlOn==='function'&&controlOn('msSelfUpdate',sid);
+  if(!lrOn&&!siOn&&!arOn&&!suOn)return null;
   const e=emps.find(z=>String(z.id)===String(who));const m=n=>'₹'+Math.round(n).toLocaleString('en-IN');
   const mine=e?loadLeaveRequests(sid).filter(r=>String(r.empId)===String(e.id)).slice(-4).reverse():[];
   const send=()=>{if(!e){toast('Choose your name first','error');return;}if(!lr.from){toast('Choose the first day','error');return;}if(lr.to&&lr.to<lr.from){toast('The last day is before the first day','error');return;}
@@ -83,6 +84,7 @@ function StaffSelfService({salon}){
       lrOn&&h('button',{className:'btn '+(mode==='leave'?'btn-primary':'btn-ghost'),style:{flex:1,justifyContent:'center'},onClick:()=>{setMode(mode==='leave'?'':'leave');setShown(null);}},'📝 Ask for leave'),
       siOn&&h('button',{className:'btn '+(mode==='inc'?'btn-primary':'btn-ghost'),style:{flex:1,justifyContent:'center'},onClick:()=>{setMode(mode==='inc'?'':'inc');setShown(null);}},'💰 My incentive')),
     arOn&&e&&typeof AdvPhoneRequest==='function'&&h(AdvPhoneRequest,{sid,emp:e}),
+    suOn&&e&&typeof MsSelfUpdate==='function'&&h(MsSelfUpdate,{key:'su'+e.id,sid,emp:e}),
     mode==='leave'&&h('div',{style:{marginTop:10,display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}},
       h('label',{style:{fontSize:12,color:'var(--text3)'}},'From',h('input',{type:'date',className:'form-control',value:lr.from,onChange:ev=>setLr({...lr,from:ev.target.value})})),
       h('label',{style:{fontSize:12,color:'var(--text3)'}},'To',h('input',{type:'date',className:'form-control',value:lr.to,onChange:ev=>setLr({...lr,to:ev.target.value})})),

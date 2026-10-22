@@ -259,15 +259,15 @@ function pwSalarySheets(ctx,o){
   for(let c=3;c<3+dim;c++)S.att.getColumn(c).alignment={horizontal:'center'};const attRow={};list.forEach((e,i)=>attRow[e.id]=A.first+i);
   // Salary Working
   const ref=k=>R.refs[k],on=k=>R.refs['col_'+k];
-  const swRows=list.map(e=>{const w=byId[e.id]||{};const mt=meta[attMonthKey(e.id,y,m)]||{};const ar=attRow[e.id];const wageCalc=e.pfOnActualBasic?null:pfCappedWage(e.basic,y,m,sid);const ovr=v=>v!=null&&v!==''?Number(v)||0:null;
+  const swRows=list.map(e=>{const w=byId[e.id]||{};const mt=meta[attMonthKey(e.id,y,m)]||{};const ar=attRow[e.id];const msW=typeof msPfWage==='function'?msPfWage(e,sid):(Number(e.basic)||0);const wageCalc=e.pfOnActualBasic?null:pfCappedWage(msW,y,m,sid);const ovr=v=>v!=null&&v!==''?Number(v)||0:null;
     const settled=!!(mt.advanceSettled&&Array.isArray(mt.advanceSettledBreakdown));
-    const esicF=(sal)=>'IF('+on('esic')+',IF(ESO<>"",ESO,IF(AND('+ref('esicReg')+',ESE,'+sal+'<='+ref('esicLimit')+'),ROUND('+sal+'*'+ref('esicRate')+',0),0)),0)';
-    return{id:e.id,name:e.name,desig:e.desig||'',status:e.status||'',salary:payGrossFor(e,sid),basic:Number(e.basic)||0,
+    const esicF=(sal)=>'IF('+on('esic')+',IF(ESO<>"",ESO,IF(AND('+ref('esicReg')+',ESE,OR('+sal+'<='+ref('esicLimit')+',ESC)),ROUND('+sal+'*'+ref('esicRate')+',0),0)),0)';
+    return{id:e.id,name:e.name,desig:e.desig||'',status:e.status||'',salary:payGrossFor(e,sid),basic:msW,
       days:r=>pwF(pwRef(S.att.name)+A.L('pay')+ar,w.totalDays),dim:r=>pwF(ref('dim')),gross:(r,L)=>pwF('ROUND('+L('salary')+r+'/'+L('dim')+r+'*'+L('days')+r+',0)',w.grossAfterLop),lop:(r,L)=>pwF('MAX(0,'+L('salary')+r+'-'+L('gross')+r+')',w.lopAmt),
       tea:(r,L)=>pwF('IF(AND('+on('tea')+','+L('status')+r+'="Active"),ROUND(IF('+ref('teaMode')+'="perDay",'+ref('teaRate')+'*'+L('days')+r+','+ref('teaRate')+'),0),0)',w.tea),
       pfE:!!e.pf,pfA:!!e.pfOnActualBasic,wage:(r,L)=>e.pfOnActualBasic?pwF(L('basic')+r):(wageCalc===Math.min(Number(e.basic)||0,ceiling)?pwF('MIN('+L('basic')+r+','+ref('pfCeil')+')',wageCalc):wageCalc),
       pfO:ovr(mt.pfOverride),pf:(r,L)=>pwF('IF('+on('pfEmp')+',IF('+L('pfO')+r+'<>"",'+L('pfO')+r+',IF(AND('+ref('pfReg')+','+L('pfE')+r+'),ROUND('+L('wage')+r+'*'+ref('pfRate')+',0),0)),0)',w.pfEmp),
-      esE:!!e.esic,esO:ovr(mt.esicOverride),esic:(r,L)=>pwF(esicF(L('salary')+r).split('ESO').join(L('esO')+r).split('ESE').join(L('esE')+r),w.esicEmp),
+      esE:!!e.esic,esC:!!((Number(w.esicEmp)||0)+(Number(w.esicEr)||0)>0),esO:ovr(mt.esicOverride),esic:(r,L)=>pwF(esicF(L('salary')+r).split('ESO').join(L('esO')+r).split('ESE').join(L('esE')+r).split('ESC').join(L('esC')+r),w.esicEmp),
       ptO:ovr(mt.ptOverride),pt:(r,L)=>pwF('IF('+on('pt')+',IF('+L('ptO')+r+'<>"",'+L('ptO')+r+','+ptExpr(L('salary')+r)+'),0)',w.ptAmt),
       tdsE:ovr(mt.tdsAmount)||0,tds:(r,L)=>pwF('IF('+on('tds')+','+L('tdsE')+r+',0)',w.tdsAmt),
       pen:(r,L)=>pwF('IF('+on('penalties')+',SUMIFS('+pen.amt+','+pen.emp+','+L('name')+r+'),0)',w.penAmt),
@@ -276,13 +276,13 @@ function pwSalarySheets(ctx,o){
       arr:Number(w.arrears)||0,xe:Number(w.extraEarn)||0,xd:Number(w.extraDed)||0,
       net:(r,L)=>pwF('MAX(0,'+L('gross')+r+'+'+L('arr')+r+'+'+L('xe')+r+'-'+L('xd')+r+'+'+L('tea')+r+'-'+L('pf')+r+'-'+L('esic')+r+'-'+L('pt')+r+'-'+L('tds')+r+'-'+L('pen')+r+'-'+L('adv')+r+')',w.net),
       opA:Number(w.prevAdv)||0,cuA:Number(w.currAdv)||0,nxA:Number(w.nextAdv)||0,clA:(r,L)=>pwF('MAX(0,'+L('opA')+r+'+'+L('cuA')+r+'-'+L('adv')+r+')',w.closingAdvance),
-      pfEr:(r,L)=>pwF('IF(AND('+ref('pfReg')+','+L('pfE')+r+'),ROUND('+L('wage')+r+'*'+ref('pfRate')+',0),0)',w.pfEr),esEr:(r,L)=>pwF('IF(AND('+ref('esicReg')+','+L('esE')+r+','+L('salary')+r+'<='+ref('esicLimit')+'),ROUND('+L('salary')+r+'*'+ref('esicEr')+',0),0)',w.esicEr),
+      pfEr:(r,L)=>pwF('IF(AND('+ref('pfReg')+','+L('pfE')+r+'),ROUND('+L('wage')+r+'*'+ref('pfRate')+',0),0)',w.pfEr),esEr:(r,L)=>pwF('IF(AND('+ref('esicReg')+','+L('esE')+r+',OR('+L('salary')+r+'<='+ref('esicLimit')+','+L('esC')+r+')),ROUND('+L('salary')+r+'*'+ref('esicEr')+',0),0)',w.esicEr),
       ...Object.fromEntries([['iS','serviceInc','iS'],['iM','memInc','iM'],['iP','prodInc','iP'],['iG','mgrInc','iG'],['iN','nonPerfPenalty','iPen'],['iT','totalInc','tot']].map(([k,c,src])=>[k,()=>pwF('IF('+on(c)+','+ctx.incRef(src,e.id)+',0)')])),
       app:Number(w.net)||0,chk:(r,L)=>pwCheck(L('net')+r,L('app')+r),
       wSal:null,wDays:null,wTds:null,
       wNet:(r,L)=>{const S2='IF('+L('wSal')+r+'="",'+L('salary')+r+','+L('wSal')+r+')',D2='IF('+L('wDays')+r+'="",'+L('days')+r+','+L('wDays')+r+')',T2='IF('+L('wTds')+r+'="",'+L('tds')+r+',IF('+on('tds')+','+L('wTds')+r+',0))';
         const g2='ROUND('+S2+'/'+L('dim')+r+'*'+D2+',0)',t2='IF(AND('+on('tea')+','+L('status')+r+'="Active"),ROUND(IF('+ref('teaMode')+'="perDay",'+ref('teaRate')+'*'+D2+','+ref('teaRate')+'),0),0)';
-        const e2=esicF(S2).split('ESO').join(L('esO')+r).split('ESE').join(L('esE')+r),p2='IF('+on('pt')+',IF('+L('ptO')+r+'<>"",'+L('ptO')+r+','+ptExpr(S2)+'),0)';
+        const e2=esicF(S2).split('ESO').join(L('esO')+r).split('ESE').join(L('esE')+r).split('ESC').join(L('esC')+r),p2='IF('+on('pt')+',IF('+L('ptO')+r+'<>"",'+L('ptO')+r+','+ptExpr(S2)+'),0)';
         return pwF('IF(AND('+L('wSal')+r+'="",'+L('wDays')+r+'="",'+L('wTds')+r+'=""),"",MAX(0,'+g2+'+'+L('arr')+r+'+'+L('xe')+r+'-'+L('xd')+r+'+'+t2+'-'+L('pf')+r+'-'+e2+'-'+p2+'-'+T2+'-'+L('pen')+r+'-'+L('adv')+r+'))');},
       wDiff:(r,L)=>pwF('IF('+L('wNet')+r+'="","",'+L('wNet')+r+'-'+L('net')+r+')'),
       st:mt.status||'Draft',ps:mt.paymentStatus||'',mode:mt.mode||'',bank:e.bankName||'',acct:e.accountNo||'',ifsc:e.ifsc||''};});
@@ -290,7 +290,7 @@ function pwSalarySheets(ctx,o){
   const T=pwTable(S.sw,2,[{key:'id',h:'Emp ID',w:9,input:true},{key:'name',h:'Employee',w:22,input:true},{key:'desig',h:'Designation',w:16,input:true},{key:'status',h:'Status',w:9,input:true},
     {key:'salary',h:'Monthly salary',input:true},{key:'basic',h:'Basic',input:true},{key:'days',h:'Payable days',fmt:'0.0#'},{key:'dim',h:'Days in month'},{key:'gross',h:'Gross salary'},{key:'lop',h:'LOP amount'},{key:'arr',h:'Arrears',input:true},{key:'xe',h:'Other earnings (bonus, overtime, encashment)',input:true},{key:'xd',h:'Other deductions (late / early, notice)',input:true},{key:'tea',h:'Tea'},
     {key:'pfE',h:'PF applies',input:true},{key:'pfA',h:'PF on actual basic',input:true},{key:'wage',h:'PF wage base'},{key:'pfO',h:'PF typed in',input:true},{key:'pf',h:'PF (Emp)'},
-    {key:'esE',h:'ESIC applies',input:true},{key:'esO',h:'ESIC typed in',input:true},{key:'esic',h:'ESIC (Emp)'},{key:'ptO',h:'PT typed in',input:true},{key:'pt',h:'Professional Tax'},
+    {key:'esE',h:'ESIC applies',input:true},{key:'esC',h:'ESIC continues to period end',input:true},{key:'esO',h:'ESIC typed in',input:true},{key:'esic',h:'ESIC (Emp)'},{key:'ptO',h:'PT typed in',input:true},{key:'pt',h:'Professional Tax'},
     {key:'tdsE',h:'TDS entered',input:true},{key:'tds',h:'TDS'},{key:'pen',h:'Penalty'},{key:'advB',h:'Advance basis',w:18,input:true},{key:'advV',h:'Advance settled ₹',input:true},{key:'adv',h:'Advance Adj.'},
     {key:'net',h:'Net salary'},{key:'opA',h:'Op. advance',input:true},{key:'cuA',h:'Curr month adv',input:true},{key:'nxA',h:'Next month adv',input:true},{key:'clA',h:'Closing advance'},
     {key:'pfEr',h:'Employer PF'},{key:'esEr',h:'Employer ESIC'},{key:'iS',h:'Service Inc'},{key:'iM',h:'Mem Inc'},{key:'iP',h:'Prod Inc'},{key:'iG',h:'MGR Inc'},{key:'iN',h:'Non-perf. penalty'},{key:'iT',h:'Total Inc'},
@@ -326,12 +326,12 @@ function pwSheetStatutory(ws,c){
   const st={};(statutoryDeductionsFor(c.sid,c.y,c.m)||[]).forEach(x=>{st[x.id]=x;});const R=c.payRules.refs;const ceiling=pfWageCeilingFor(c.y,c.m);
   pwTitle(ws,'PF (ECR), ESIC and Professional Tax — '+PW_MONTHS[c.m]+' '+c.y+' · linked to Salary Working');
   const pfL=c.E.filter(e=>{const s=st[e.id]||{};return(Number(s.pfEmp)||0)+(Number(s.pfEr)||0)>0;});
-  const pfRows=pfL.map(e=>{const s=st[e.id]||{};const epsW=pfCappedWage(e.basic,c.y,c.m,c.sid);const capF=epsW===Math.min(Number(e.basic)||0,ceiling)?pwF('MIN('+c.swRef('basic',e.id)+','+R.pfCeil+')',epsW):epsW;
+  const pfRows=pfL.map(e=>{const s=st[e.id]||{};const bW=typeof msPfWage==='function'?msPfWage(e,c.sid):(Number(e.basic)||0);const epsW=pfCappedWage(bW,c.y,c.m,c.sid);const epsWg=typeof msEpsWage==='function'?msEpsWage(e,c.y,c.m,c.sid,epsW):epsW;const capF=epsW===Math.min(bW,ceiling)?pwF('MIN('+c.swRef('basic',e.id)+','+R.pfCeil+')',epsW):epsW;
     return{uan:String(e.pfNumber||''),name:e.name,gw:()=>pwF(c.swRef('gross',e.id)),epf:()=>pwF(c.swRef('wage',e.id)),eps:capF,ee:()=>pwF(c.swRef('pf',e.id)),er:()=>pwF(c.swRef('pfEr',e.id)),
-      epsC:(r,L)=>pwF('ROUND('+L('eps')+r+'*'+R.epsRate+',0)',s.eps),erE:(r,L)=>pwF('MAX(0,'+L('er')+r+'-'+L('epsC')+r+')',s.pfErEpf),edli:(r,L)=>pwF('ROUND('+L('eps')+r+'*'+R.edliRate+',0)',s.edli),adm:(r,L)=>pwF('ROUND('+L('eps')+r+'*'+R.edliRate+',0)',s.adminChargeRaw),
+      epsM:epsW?epsWg/epsW:0,epsC:(r,L)=>pwF('ROUND('+L('eps')+r+'*'+R.epsRate+'*'+L('epsM')+r+',0)',s.eps),erE:(r,L)=>pwF('MAX(0,'+L('er')+r+'-'+L('epsC')+r+')',s.pfErEpf),edli:(r,L)=>pwF('ROUND('+L('eps')+r+'*'+R.edliRate+',0)',s.edli),adm:(r,L)=>pwF('ROUND('+L('eps')+r+'*'+R.edliRate+',0)',s.adminChargeRaw),
       ncp:Number((c.SW[e.id]||{}).lop)||0,app:Number(s.eps)||0,chk:(r,L)=>pwCheck(L('epsC')+r,L('app')+r)};});
   const P=pwTable(ws,3,[{key:'uan',h:'UAN',w:15,input:true},{key:'name',h:'Employee',w:22,input:true},{key:'gw',h:'Gross wages'},{key:'epf',h:'EPF wages'},{key:'eps',h:'EPS / EDLI wages'},{key:'ee',h:'Employee 12%'},{key:'er',h:'Employer 12%'},
-    {key:'epsC',h:'EPS 8.33%'},{key:'erE',h:'Employer EPF (12% − EPS)'},{key:'edli',h:'EDLI 0.5%'},{key:'adm',h:'Admin 0.5%'},{key:'ncp',h:'NCP (LOP) days',input:true,fmt:'0.0#'},{key:'app',h:'SalonOS EPS',input:true},{key:'chk',h:'Check',w:14}],pfRows,{total:['gw','epf','eps','ee','er','epsC','erE','edli','adm'],noFreeze:true});
+    {key:'epsM',h:'EPS share (1 = member)',input:true,fmt:'0.00##'},{key:'epsC',h:'EPS 8.33%'},{key:'erE',h:'Employer EPF (12% − EPS)'},{key:'edli',h:'EDLI 0.5%'},{key:'adm',h:'Admin 0.5%'},{key:'ncp',h:'NCP (LOP) days',input:true,fmt:'0.0#'},{key:'app',h:'SalonOS EPS',input:true},{key:'chk',h:'Check',w:14}],pfRows,{total:['gw','epf','eps','ee','er','epsC','erE','edli','adm'],noFreeze:true});
   ws.getRow(2).getCell(1).value='PF — ECR';ws.getRow(2).getCell(1).font={bold:true,color:{argb:'FF14335E'}};
   let r=(P.totalRow||P.last)+1;ws.getRow(r).getCell(1).value='Admin charges payable (₹500 minimum for the establishment)';ws.getRow(r).getCell(11).value=pwF('IF('+P.L('adm')+P.totalRow+'>0,MAX(500,'+P.L('adm')+P.totalRow+'),0)');ws.getRow(r).getCell(11).numFmt='#,##0';r+=3;
   ws.getRow(r-1).getCell(1).value='ESIC';ws.getRow(r-1).getCell(1).font={bold:true,color:{argb:'FF14335E'}};

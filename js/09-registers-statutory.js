@@ -1426,7 +1426,7 @@ function fundPositionAsOf(salonId,asOfIso,monthsBack){
       const paidKeys=(dueOverrides['auto-pf-'+cal.year+'-'+cal.month]||{}).paidKeys||{};
       pfEmps.forEach(e=>{if(!paidKeys[e.id])pfPayable+=(e.pfEmp||0)+(e.pfEr||0);});
     }
-    const esicEmps=swW.filter(e=>e.esic&&e.gross<=21000&&((e.esicEmp||0)+(e.esicEr||0))>0);
+    const esicEmps=swW.filter(e=>e.esic&&((e.esicEmp||0)+(e.esicEr||0))>0);
     if(esicEmps.length){
       const paidKeys=(dueOverrides['auto-esic-'+cal.year+'-'+cal.month]||{}).paidKeys||{};
       esicEmps.forEach(e=>{if(!paidKeys[e.id])esicPayable+=(e.esicEmp||0)+(e.esicEr||0);});
@@ -1507,7 +1507,7 @@ function fundPositionExpectedOutgo(salonId,asOfIso){
         salary:sw.reduce((s,e)=>s+e.net,0),
         incentive:iw.reduce((s,e)=>s+e.totalInc,0),
         pf:sw.filter(e=>e.pf).reduce((s,e)=>s+(e.pfEmp||0)+(e.pfEr||0),0),
-        esic:sw.filter(e=>e.esic&&e.gross<=21000).reduce((s,e)=>s+(e.esicEmp||0)+(e.esicEr||0),0),
+        esic:sw.filter(e=>e.esic&&((e.esicEmp||0)+(e.esicEr||0))>0).reduce((s,e)=>s+(e.esicEmp||0)+(e.esicEr||0),0),
         pt:ptApplies?sw.reduce((s,e)=>s+(e.ptAmt||0),0):0};
     }
   }
@@ -1961,7 +1961,7 @@ function autoStatutoryDueItemsFor(salonId,monthsBack){
     if(!workings.length)continue;
     const label=new Date(cal.year,cal.month,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
     const pfEmps=workings.filter(e=>e.pf&&((e.pfEmp||0)+(e.pfEr||0))>0);
-    const esicEmps=workings.filter(e=>e.esic&&e.gross<=21000&&((e.esicEmp||0)+(e.esicEr||0))>0);
+    const esicEmps=workings.filter(e=>e.esic&&((e.esicEmp||0)+(e.esicEr||0))>0);
     const ptEmps=workings.filter(e=>(e.ptAmt||0)>0);
     const pfTotal=pfEmps.reduce((s,e)=>s+(e.pfEmp||0)+(e.pfEr||0),0);
     const esicTotal=esicEmps.reduce((s,e)=>s+(e.esicEmp||0)+(e.esicEr||0),0);

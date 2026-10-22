@@ -134,6 +134,7 @@
         eq('Net = 20,000 + 800 − 1,968 − 150 = ₹18,682',e3.net,18682);
         eq('Salary paid excludes the EPF employer share added into Gross CTC (38,200 + 3,000 → 38,200)',payGrossFor({gross:41200,basic:38200,hra:0,conv:0,special:0,pf:true}),38200);
         eq('Salary paid also excludes the ESIC employer share in Gross CTC (18,000 + 1,080 PF + 585 ESIC → 18,000)',payGrossFor({gross:19665,basic:9000,hra:3600,conv:1600,special:3800,pf:true,esic:true}),18000);
+        eq('50% wages rule: Basic 19,000 + Special 9,800, HRA + Conveyance 9,200 (under half) → PF wage 28,800; HRA-heavy 10,000 / 25,000 / 0 / 0 → 17,500',[pfCodeWageOf({basic:19000,hra:7600,conv:1600,special:9800}),pfCodeWageOf({basic:10000,hra:25000,conv:0,special:0})],[28800,17500]);
         eq('A Gross that differs from the parts for another reason is paid as it is',[payGrossFor({gross:20000,basic:18000,hra:0,conv:0,special:0,pf:true}),payGrossFor({gross:41200,basic:38200,hra:0,conv:0,special:0,pf:false})],[20000,41200]);
         eq('PF wage ceiling: ₹15,000 to Aug 2026, ₹25,000 from Oct 2026; capped wage on ₹30,000 basic',[pfWageCeilingFor(2026,7),pfWageCeilingFor(2026,9),pfCappedWage(30000,2026,7),pfCappedWage(30000,2026,8),pfCappedWage(30000,2026,9)],[15000,25000,15000,19667,25000]);
         eq('Outlet with PF off: no PF',e4.pfEmp,0);

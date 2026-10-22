@@ -142,7 +142,7 @@ function pfCoverageGaps(sid,y,m){
   const rec=typeof getSalonRecordById==='function'?getSalonRecordById(sid):null;if(!rec||!rec.pfApplicable)return[];
   if(y*12+m<2026*12+8)return[];
   let E=[];try{E=(getEmployeesForMonth(y,m,sid)||[]).filter(e=>e.status!=='Inactive');}catch(x){}
-  return E.filter(e=>!e.pf&&(Number(e.basic)||0)>0&&(Number(e.basic)||0)<=25000);
+  const w=e=>typeof msPfWage==='function'?msPfWage(e,sid):(Number(e.basic)||0);return E.filter(e=>!e.pf&&w(e)>0&&w(e)<=25000);
 }
 function PfCoverageStrip({sid,y,m}){
   const h=React.createElement;if(y==null||m==null){const d=new Date();y=d.getFullYear();m=d.getMonth();}
