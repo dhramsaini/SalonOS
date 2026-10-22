@@ -61,7 +61,7 @@ function IncManualSetup({sid,year,month,onChanged}){
     cfg.who!=='off'&&h('div',{style:{marginBottom:8}},h('span',{style:{fontSize:12,fontWeight:600,marginRight:10}},'What to type'),
       radio('imr-mode-'+sid,'total',cfg.mode,'Whole incentive amount',()=>setC({mode:'total'})),radio('imr-mode-'+sid,'parts',cfg.mode,'Part by part',()=>setC({mode:'parts'}))),
     cfg.who!=='off'&&cfg.mode==='parts'&&h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},IM_PARTS.map(([k,l])=>h('label',{key:k,style:{fontSize:12,display:'inline-flex',gap:4,alignItems:'center',marginRight:8,cursor:locked?'not-allowed':'pointer'}},
-      h('input',{type:'checkbox',checked:!!cfg.parts[k],disabled:locked,onChange:e=>setC({parts:{...cfg.parts,[k]:e.target.checked}})}),l+(k==='mgr'?' (managers only)':'')))),
+      h('input',{type:'checkbox',checked:!!cfg.parts[k],disabled:locked,onChange:e=>setC({parts:{...cfg.parts,[k]:e.target.checked}})}),l))),
     cfg.who!=='off'&&h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},cfg.mode==='total'?'Whole amount = the employee’s incentive before advance recovery; overtime, penalty and the automatic adjustments are not added to it, advance recovery is still taken off.':'Each typed part replaces the calculated one; the rest is still worked out as usual. Overtime and Penalty typed here replace the OT working and the Penalty column.'));
 }
 // ── Typing the amounts: Incentive Working sheet (shown only when Manual Incentive is set up) ──
@@ -83,7 +83,7 @@ function IncManualPanel({salon,year,month,onChanged,onOpenRules}){
   const fields=cfg.mode==='total'?[['total','Incentive amount']]:IM_PARTS.filter(([k])=>cfg.parts[k]);
   const calcOf=(w,k)=>k==='total'?Math.max(0,(w.totalInc||0)+(w.advAdj||0)):k==='svc'?w.svcIncAmt:k==='mem'?w.memIncAmt:k==='prod'?w.prodIncAmt:k==='mgr'?w.mgrIncAmt:k==='ot'?w.otAmt:w.penaltyAmt;
   const isMgr=w=>typeof MANAGER_DESIGNATIONS!=='undefined'&&MANAGER_DESIGNATIONS.has(w.desig);
-  const fill=()=>{scope.forEach(w=>fields.forEach(([k])=>{if(k==='mgr'&&!isMgr(w))return;const a=(amt[w.id]||{})[k];if(a==null)imSetAmt(sid,year,month,w.id,k,Math.round(Number(calcOf(w,k))||0));}));bump();};
+  const fill=()=>{scope.forEach(w=>fields.forEach(([k])=>{if(k==='mgr'&&!isMgr(w)&&!Number(calcOf(w,k)))return;const a=(amt[w.id]||{})[k];if(a==null)imSetAmt(sid,year,month,w.id,k,Math.round(Number(calcOf(w,k))||0));}));bump();};
   const clear=()=>{if(!window.confirm('Clear every amount typed here for '+label+'? The calculated amounts will be used again.'))return;const A=imAll(sid);const k=imYm(year,month);if(A[k]){A[k].amt={};imSaveAll(sid,A);}bump();};
   const fmt=n=>'₹'+Math.round(Number(n)||0).toLocaleString('en-IN');
   return h('div',{className:'card',style:{marginBottom:12}},head,
@@ -95,8 +95,7 @@ function IncManualPanel({salon,year,month,onChanged,onOpenRules}){
         h('thead',null,h('tr',null,h('th',null,'Employee'),fields.map(([k,l])=>h('th',{key:k,style:{textAlign:'right'}},l)),h('th',{style:{textAlign:'right'}},'Total incentive now'))),
         h('tbody',null,scope.map(w=>{const a=amt[w.id]||{};
           return h('tr',{key:w.id+'_'+tick},h('td',null,w.name,h('div',{style:{fontSize:10.5,color:'var(--text3)'}},w.desig||'')),
-            fields.map(([k])=>h('td',{key:k,style:{textAlign:'right'}},k==='mgr'&&!isMgr(w)?h('span',{style:{color:'var(--text3)',fontSize:11.5}},'—'):
-              h('input',{type:'number',min:0,className:'form-control',disabled:locked,style:{width:110,padding:'3px 6px',textAlign:'right',marginLeft:'auto',fontWeight:a[k]!=null?700:400},
+            fields.map(([k])=>h('td',{key:k,style:{textAlign:'right'}},              h('input',{type:'number',min:0,className:'form-control',disabled:locked,style:{width:110,padding:'3px 6px',textAlign:'right',marginLeft:'auto',fontWeight:a[k]!=null?700:400},
                 defaultValue:a[k]!=null?a[k]:'',placeholder:String(Math.round(Number(calcOf(w,k))||0)),title:'Calculated: '+fmt(calcOf(w,k))+' — leave blank to use it',
                 onBlur:e=>{const v=e.target.value.trim();if(String(v)===String(a[k]!=null?a[k]:''))return;imSetAmt(sid,year,month,w.id,k,v);bump();}}))),
             h('td',{style:{textAlign:'right',fontWeight:700}},fmt(LIVE[w.id]?LIVE[w.id].totalInc:0)));})))),

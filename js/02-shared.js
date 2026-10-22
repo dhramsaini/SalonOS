@@ -3114,7 +3114,8 @@ function incentiveModel1(ctx){
   // incentiveManualOverrideFor) replaces this with a hand-typed ₹ amount for just that employee —
   // Manager Incentive never had an outlet-wide manual mode, so this is the only way to override
   // it for one or two managers without changing the Share %-of-pool calculation for everyone else.
-  const mgrIncAmt=!(appl.manager&&MANAGER_DESIGNATIONS.has(ctx.employee?.desig))?0
+  // A Manager amount typed in ✍ Manual Incentive (ctx.mgrTyped) counts for any employee, not only managers.
+  const mgrIncAmt=!(appl.manager&&(MANAGER_DESIGNATIONS.has(ctx.employee?.desig)||ctx.mgrTyped))?0
     :ctx.mgrManualOverride?(Number(ctx.mgrManualAmt)||0)
     :managerShareAmountFor(ctx.salonId,ctx.year,ctx.month,ctx.employee.id);
   return{svcIncAmt,memIncAmt,prodIncAmt,mgrIncAmt,totalInc:svcIncAmt+memIncAmt+prodIncAmt+mgrIncAmt,svcRateUsed,memRateUsed,prodRateUsed};
@@ -3527,7 +3528,7 @@ function incWorkingsForLive(salonId,year,month){
       svcRate,memRate,prodRate,svcPct,memPct,prodPct,svcTimesRaw,memTimesRaw,prodTimesRaw,
       totalActual,totalTarget,employee:e,membershipIncentiveMap,calcMode:effCalcMode,prodGlobalRate,
       prodRuleType,prodFlatAmount,svcManualAmt,memManualAmt,prodManualAmt,svcGroup,splitMode,
-      mgrManualOverride:!!manualOv.mgr,mgrManualAmt
+      mgrManualOverride:!!manualOv.mgr,mgrManualAmt,mgrTyped:!!(_mi&&_mi.mgr!=null)
     });
     // Advance Adj. — this month's installment for any advance the employee has flagged to be
     // recovered from Incentive rather than Salary (see "Recover Against" on the Advances sheet).

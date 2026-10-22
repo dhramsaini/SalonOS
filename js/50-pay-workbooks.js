@@ -158,7 +158,7 @@ function pwIncentive(sid,y,m,S,o){
       {key:'iX',h:'Adjustments (team, feedback, clawback, cap / floor)',input:true},{key:'tot',h:'Total incentive'},{key:'app',h:'SalonOS total',input:true},{key:'chk',h:'Check',w:14},
       ...(o.whatIf?[{key:'wX',h:'What-if: extra service sale ₹',open:true,w:14},{key:'wS',h:'What-if svc incentive'},{key:'wT',h:'What-if total'}]:[])];
     const list=W.filter(o.empOk);
-    const rows=list.map(w=>{const isMgr=MANAGER_DESIGNATIONS.has(w.desig);const cm=w.calcMode||{};const ov=w.manualOv||{};const g=splitMode.service?incentiveGroupFor(w,sid):'__all';const sl=slabRef[g]||slabRef.__all||{base:'0'};
+    const rows=list.map(w=>{const isMgr=MANAGER_DESIGNATIONS.has(w.desig)||!!(w.manualInc&&w.manualInc.mgr!=null);const cm=w.calcMode||{};const ov=w.manualOv||{};const g=splitMode.service?incentiveGroupFor(w,sid):'__all';const sl=slabRef[g]||slabRef.__all||{base:'0'};
       const im=iwMeta[attMonthKey(w.id,y,m)];const settled=!!(im&&im.advanceSettled&&Array.isArray(im.advanceSettledBreakdown));const a=actuals[incActualKey(w.id,y,m)]||{};
       const svcB=cm.svc==='manualAmt'?'Manual ₹':cm.svc==='manualRate'?'Manual rate %':'Rate slab';
       const memB=cm.mem==='manualAmt'?'Manual ₹':cm.mem==='manualRate'?'Manual rate %':'Membership rule '+memRule+' (pool)';

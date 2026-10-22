@@ -1224,7 +1224,7 @@ React.createElement.apply(React,['tr',null].concat([
               cols.amounts&&(imOn&&imCellOn(salon?.id,selYear,selMonth,e.id,'prod')?imCell(e,'prod',locked):e.calcMode.prod==='manualAmt'
                 ?React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'}},amtInput(e.id,'prodAmt',e.prodManualAmt,locked))
                 :td2(e.prodIncAmt>0?fmt(e.prodIncAmt):'—',e.prodIncAmt>0?'var(--teal)':'var(--text3)')),
-              cols.amounts&&(imOn&&MANAGER_DESIGNATIONS.has(e.desig)&&imCellOn(salon?.id,selYear,selMonth,e.id,'mgr')?imCell(e,'mgr',locked):e.manualOv?.mgr
+              cols.amounts&&(imOn&&imCellOn(salon?.id,selYear,selMonth,e.id,'mgr')?imCell(e,'mgr',locked):e.manualOv?.mgr
                 ?React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'},title:'This employee is individually set to Manual for Manager Incentive'},amtInput(e.id,'mgrAmt',e.mgrManualAmt,locked))
                 :td2(e.mgrIncAmt>0?fmt(e.mgrIncAmt):'—',e.mgrIncAmt>0?'var(--orange)':'var(--text3)')),
               cols.ot&&imOn&&imCellOn(salon?.id,selYear,selMonth,e.id,'ot')?imCell(e,'ot',locked,'var(--orange)'):cols.ot&&React.createElement('td',{key:'otAmt',style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right',color:e.otAmt>0?'var(--orange)':'var(--text3)'},
