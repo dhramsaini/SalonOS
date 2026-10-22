@@ -1852,10 +1852,10 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
             const swLocked=m.status==='Approved'||monthLocked;
             const swRowBg=swRowIdx%2===1?'rgba(120,130,150,0.05)':undefined;
             return React.createElement.apply(React,['tr',{key:e.id,style:{background:swSelectedIds.has(e.id)?'rgba(47,95,224,0.06)':swRowBg}}].concat([
-              React.createElement('td',{style:{padding:'9px 10px',position:'sticky',left:0,zIndex:2,background:swSelectedIds.has(e.id)?'rgba(47,95,224,0.1)':(swRowBg||'var(--bg2)'),borderRight:'1px solid var(--border2)',borderBottom:'1px solid var(--border)'}},
+              React.createElement('td',{style:{padding:'9px 10px',position:'sticky',left:0,zIndex:2,background:opaqueStickyBg(swSelectedIds.has(e.id)?'rgba(47,95,224,0.1)':swRowBg),borderRight:'1px solid var(--border2)',borderBottom:'1px solid var(--border)'}},
                 React.createElement('input',{type:'checkbox',checked:swSelectedIds.has(e.id),onChange:()=>swToggleSelect(e.id)})
               ),
-              React.createElement('td',{style:{padding:'9px 12px',position:'sticky',left:36,zIndex:2,background:swSelectedIds.has(e.id)?'rgba(47,95,224,0.1)':(swRowBg||'var(--bg2)'),borderRight:'1px solid var(--border2)',borderBottom:'1px solid var(--border)'}},
+              React.createElement('td',{style:{padding:'9px 12px',position:'sticky',left:36,zIndex:2,background:opaqueStickyBg(swSelectedIds.has(e.id)?'rgba(47,95,224,0.1)':swRowBg),borderRight:'1px solid var(--border2)',borderBottom:'1px solid var(--border)'}},
                 React.createElement('div',{style:{fontWeight:500,color:'var(--text)',fontSize:12}},e.name),
                 React.createElement('div',{style:{fontSize:10,color:'var(--text3)'}},e.id)
               ),
