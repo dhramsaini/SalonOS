@@ -3552,7 +3552,7 @@ function incWorkingsForLive(salonId,year,month){
     const otNormalHours=Number(otA.otNormalHours)||Number(prevOt.otNormalHours)||0;
     const otHours=Number(otA.otHours)||0;
     const otDays=new Date(year,month+1,0).getDate();
-    const otAmt=cols.ot&&otApplicable&&otNormalHours>0&&otHours>0?Math.round(salary/otDays/otNormalHours*otHours):0;
+    const otAmt=_mi&&_mi.ot!=null?_mi.ot:(cols.ot&&otApplicable&&otNormalHours>0&&otHours>0?Math.round(salary/otDays/otNormalHours*otHours):0); // ✍ typed overtime replaces the OT working
     // Incentive adjustments (js/55): team share, client feedback, clawback, cap and floor.
     const incBase=totalInc+otAmt-penaltyAmt-advAdj;
     const incAdj=_mi&&_mi.total!=null?null:typeof incAdjFor==='function'?incAdjFor(salonId,e,year,month,incBase,{salary,svcRate:svcRateUsed!=null?svcRateUsed:svcRate,prodRate:prodRateUsed!=null?prodRateUsed:prodRate}):null;

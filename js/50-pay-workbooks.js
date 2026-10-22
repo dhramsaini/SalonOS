@@ -181,7 +181,7 @@ function pwIncentive(sid,y,m,S,o){
         bG:mgrB,sG:isMgr&&!ov.mgr?Number((mgrIn.shares||{})[w.id])||0:null,vG:isMgr&&ov.mgr?Number(w.mgrManualAmt)||0:null,
         iG:(r,L)=>pwF(!isMgr?'0':'IF('+R.refs.applMgr+','+(ov.mgr?L('vG')+r:'ROUND('+R.refs.pool+'*'+L('sG')+r+'/100,0)')+',0)',w.mgrIncAmt),
         oA:!!w.otApplicable,oN:Number(w.otNormalHours)||0,oH:Number(w.otHours)||0,
-        iO:(r,L)=>pwF('IF(AND('+R.refs.colOT+','+L('oA')+r+','+L('oN')+r+'>0,'+L('oH')+r+'>0),ROUND('+L('salary')+r+'/'+R.refs.dim+'/'+L('oN')+r+'*'+L('oH')+r+',0),0)',w.otAmt),
+        iO:(r,L)=>(w.manualInc&&w.manualInc.ot!=null)?pwF(String(Number(w.manualInc.ot)||0),w.otAmt):pwF('IF(AND('+R.refs.colOT+','+L('oA')+r+','+L('oN')+r+'>0,'+L('oH')+r+'>0),ROUND('+L('salary')+r+'/'+R.refs.dim+'/'+L('oN')+r+'*'+L('oH')+r+',0),0)',w.otAmt),
         pen:(w.manualInc&&w.manualInc.pen!=null)?Number(w.penaltyAmt)||0:Number(a.penaltyAmt)||0,iPen:(r,L)=>pwF((w.manualInc&&w.manualInc.pen!=null)?L('pen')+r:'IF('+R.refs.colPen+','+L('pen')+r+',0)',w.penaltyAmt),
         advB:settled?'Settled on approval':'Active advances',advV:settled?im.advanceSettledBreakdown.reduce((s,b)=>s+(Number(b.amount)||0),0):null,
         iAdv:(r,L)=>pwF('IF('+R.refs.colAdv+','+(settled?L('advV')+r:'SUMIFS('+o.adv.ded+','+o.adv.emp+','+L('name')+r+','+o.adv.from+',"Incentive")')+',0)',w.advAdj),

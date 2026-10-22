@@ -1,7 +1,7 @@
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ✍ Manual incentive (Incentive Working) — type the incentive by hand for all employees or only the
 // ones you pick, either as one whole amount or part by part (Service, Membership, Product, Manager,
-// Penalty). Switched on and set up in ⚙ Incentive Rules & Settings → Manual Incentive (per month,
+// Overtime, Penalty). Switched on and set up in ⚙ Incentive Rules & Settings → Manual Incentive (per month,
 // carried forward); the amounts are typed on the Incentive Working sheet.
 //   • A part typed here is fed into the same per-employee manual path the engine already has
 //     (manualOv + svc/mem/prod/mgr manual amounts in incWorkingsForLive), so Incentive Payment, the
@@ -11,7 +11,7 @@
 //     the automatic adjustments are not added to it. Advance recovery is still taken off.
 // Stored per month: salonos_inc_manual_outlet_<id> = {'YYYY-MM':{cfg:{who,emps,mode,parts},amt:{empId:{…}}}}.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-const IM_PARTS=[['svc','Service'],['mem','Membership'],['prod','Product'],['mgr','Manager'],['pen','Penalty']];
+const IM_PARTS=[['svc','Service'],['mem','Membership'],['prod','Product'],['mgr','Manager'],['ot','Overtime'],['pen','Penalty']];
 const IM_MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
 let IM_BYPASS=false;
 function imYm(y,m){return y+'-'+String(m+1).padStart(2,'0');}
@@ -33,7 +33,7 @@ function incManualFor(sid,e,y,m){
   if(IM_BYPASS)return null;
   const cfg=imCfg(sid,y,m);if(cfg.who==='off'||!imInScope(cfg,e.id))return null;
   const a=imAmts(sid,y,m)[e.id]||{};const v=k=>a[k]==null||a[k]===''?null:Number(a[k])||0;
-  const out={svc:null,mem:null,prod:null,mgr:null,pen:null,total:null};
+  const out={svc:null,mem:null,prod:null,mgr:null,ot:null,pen:null,total:null};
   if(cfg.mode==='total')out.total=v('total');else IM_PARTS.forEach(([k])=>{if(cfg.parts[k])out[k]=v(k);});
   return Object.values(out).some(x=>x!=null)?out:null;
 }
@@ -62,7 +62,7 @@ function IncManualSetup({sid,year,month,onChanged}){
       radio('imr-mode-'+sid,'total',cfg.mode,'Whole incentive amount',()=>setC({mode:'total'})),radio('imr-mode-'+sid,'parts',cfg.mode,'Part by part',()=>setC({mode:'parts'}))),
     cfg.who!=='off'&&cfg.mode==='parts'&&h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},IM_PARTS.map(([k,l])=>h('label',{key:k,style:{fontSize:12,display:'inline-flex',gap:4,alignItems:'center',marginRight:8,cursor:locked?'not-allowed':'pointer'}},
       h('input',{type:'checkbox',checked:!!cfg.parts[k],disabled:locked,onChange:e=>setC({parts:{...cfg.parts,[k]:e.target.checked}})}),l+(k==='mgr'?' (managers only)':'')))),
-    cfg.who!=='off'&&h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},cfg.mode==='total'?'Whole amount = the employee’s incentive before advance recovery; overtime, penalty and the automatic adjustments are not added to it, advance recovery is still taken off.':'Each typed part replaces the calculated one; the rest is still worked out as usual. Penalty typed here replaces the Penalty column.'));
+    cfg.who!=='off'&&h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},cfg.mode==='total'?'Whole amount = the employee’s incentive before advance recovery; overtime, penalty and the automatic adjustments are not added to it, advance recovery is still taken off.':'Each typed part replaces the calculated one; the rest is still worked out as usual. Overtime and Penalty typed here replace the OT working and the Penalty column.'));
 }
 // ── Typing the amounts: Incentive Working sheet (shown only when Manual Incentive is set up) ──
 function IncManualPanel({salon,year,month,onChanged,onOpenRules}){
@@ -81,7 +81,7 @@ function IncManualPanel({salon,year,month,onChanged,onOpenRules}){
   if(!open)return h('div',{className:'card',style:{marginBottom:12,padding:'10px 14px'}},head);
   const calc=imCalculated(sid,year,month);const scope=calc.filter(w=>imInScope(cfg,w.id));const LIVE={};try{(incWorkingsFor(sid,year,month)||[]).forEach(x=>LIVE[x.id]=x);}catch(x){}
   const fields=cfg.mode==='total'?[['total','Incentive amount']]:IM_PARTS.filter(([k])=>cfg.parts[k]);
-  const calcOf=(w,k)=>k==='total'?Math.max(0,(w.totalInc||0)+(w.advAdj||0)):k==='svc'?w.svcIncAmt:k==='mem'?w.memIncAmt:k==='prod'?w.prodIncAmt:k==='mgr'?w.mgrIncAmt:w.penaltyAmt;
+  const calcOf=(w,k)=>k==='total'?Math.max(0,(w.totalInc||0)+(w.advAdj||0)):k==='svc'?w.svcIncAmt:k==='mem'?w.memIncAmt:k==='prod'?w.prodIncAmt:k==='mgr'?w.mgrIncAmt:k==='ot'?w.otAmt:w.penaltyAmt;
   const isMgr=w=>typeof MANAGER_DESIGNATIONS!=='undefined'&&MANAGER_DESIGNATIONS.has(w.desig);
   const fill=()=>{scope.forEach(w=>fields.forEach(([k])=>{if(k==='mgr'&&!isMgr(w))return;const a=(amt[w.id]||{})[k];if(a==null)imSetAmt(sid,year,month,w.id,k,Math.round(Number(calcOf(w,k))||0));}));bump();};
   const clear=()=>{if(!window.confirm('Clear every amount typed here for '+label+'? The calculated amounts will be used again.'))return;const A=imAll(sid);const k=imYm(year,month);if(A[k]){A[k].amt={};imSaveAll(sid,A);}bump();};
@@ -109,7 +109,7 @@ function IncManualPanel({salon,year,month,onChanged,onOpenRules}){
 // ── Typing straight into Incentive Working's Incentive Amounts columns ──
 // Is this employee's part (svc/mem/prod/mgr/pen, or 'total') typed by hand this month?
 function imCellOn(sid,y,m,empId,k){const cfg=imCfg(sid,y,m);if(cfg.who==='off'||!imInScope(cfg,empId))return false;return k==='total'?cfg.mode==='total':(cfg.mode==='parts'&&!!(cfg.parts||{})[k]);}
-function imCalcOf(w,k){if(!w)return 0;return k==='total'?Math.max(0,(w.totalInc||0)+(w.advAdj||0)):k==='svc'?w.svcIncAmt:k==='mem'?w.memIncAmt:k==='prod'?w.prodIncAmt:k==='mgr'?w.mgrIncAmt:w.penaltyAmt;}
+function imCalcOf(w,k){if(!w)return 0;return k==='total'?Math.max(0,(w.totalInc||0)+(w.advAdj||0)):k==='svc'?w.svcIncAmt:k==='mem'?w.memIncAmt:k==='prod'?w.prodIncAmt:k==='mgr'?w.mgrIncAmt:k==='ot'?w.otAmt:w.penaltyAmt;}
 function ImAmtCell({sid,y,m,w,k,calc,locked,onChanged,color}){
   const h=React.createElement;const a=(imAmts(sid,y,m)[w.id]||{})[k];const c=Math.round(Number(imCalcOf(calc,k))||0);
   const lk=locked||(typeof isIWEffectiveLockedFor==='function'&&isIWEffectiveLockedFor(sid,y,m));

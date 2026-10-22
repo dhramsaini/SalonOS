@@ -1227,7 +1227,7 @@ React.createElement.apply(React,['tr',null].concat([
               cols.amounts&&(imOn&&MANAGER_DESIGNATIONS.has(e.desig)&&imCellOn(salon?.id,selYear,selMonth,e.id,'mgr')?imCell(e,'mgr',locked):e.manualOv?.mgr
                 ?React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'},title:'This employee is individually set to Manual for Manager Incentive'},amtInput(e.id,'mgrAmt',e.mgrManualAmt,locked))
                 :td2(e.mgrIncAmt>0?fmt(e.mgrIncAmt):'—',e.mgrIncAmt>0?'var(--orange)':'var(--text3)')),
-              cols.ot&&React.createElement('td',{key:'otAmt',style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right',color:e.otAmt>0?'var(--orange)':'var(--text3)'},
+              cols.ot&&imOn&&imCellOn(salon?.id,selYear,selMonth,e.id,'ot')?imCell(e,'ot',locked,'var(--orange)'):cols.ot&&React.createElement('td',{key:'otAmt',style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right',color:e.otAmt>0?'var(--orange)':'var(--text3)'},
                   title:e.otAmt>0?'Overtime: ₹'+Math.round(e.salary).toLocaleString('en-IN')+' ÷ '+e.otDays+' days ÷ '+e.otNormalHours+' hrs × '+e.otHours+' OT hrs — edit in Incentive Rules & Settings → Overtime (OT) Working':'Enter OT hours in Incentive Rules & Settings → Overtime (OT) Working'},
                 e.otAmt>0?fmt(e.otAmt):'—'),
               cols.amounts&&(imOn&&imCellOn(salon?.id,selYear,selMonth,e.id,'total')?imCell(e,'total',locked,'var(--accent)'):td2(fmt(e.totalInc),'var(--accent)',true)),
