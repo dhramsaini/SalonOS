@@ -1802,7 +1802,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
             // Balance are
             // computed live from the rows above them; the rest are entered per day.
             React.createElement('tr',{key:'sales-section-header'},
-              React.createElement('td',{colSpan:3+days.length,style:{padding:'10px 12px',background:'rgba(47,95,224,0.12)',fontSize:11,fontWeight:700,color:'var(--accent2)',textTransform:'uppercase',letterSpacing:'0.06em',borderTop:'2px solid var(--accent)',borderBottom:'1px solid var(--border)'}},'Daily Sales & Collection')
+              React.createElement('td',{colSpan:3+days.length,style:{padding:'10px 12px',background:'rgba(47,95,224,0.12)',fontSize:11,fontWeight:700,color:'var(--accent2)',textTransform:'uppercase',letterSpacing:'0.06em',borderTop:'2px solid var(--accent)',borderBottom:'1px solid var(--border)'}},React.createElement('span',{style:{position:'sticky',left:12,display:'inline-block'}},'Daily Sales & Collection'))
             ),
             ...SALES_ORDER.map(sri=>{const row=SALES_ROWS[sri];
               const isComputed=row.type==='computed';
