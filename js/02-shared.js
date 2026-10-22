@@ -956,6 +956,7 @@ function loadAuditLog(salonId){
 // per-outlet feature, add it here too, or its data will survive a delete and can leak into a
 // future outlet that happens to reuse the same numeric id.
 const SALON_SCOPED_KEY_BASES=[
+  'salonos_inc_manual',
   'salonos_inc_plan_notes',
   'bankStatementDir','cradleeDir','staffReportDir',
   'salonos_advances','salonos_bank_last_auto','salonos_bank_statement_rows','salonos_billing_invoices',
@@ -3473,7 +3474,7 @@ function incWorkingsForLive(salonId,year,month){
     if(!cols.product){prodActual=0;prodTarget=0;}
     // Penalty — a manual deduction from this employee's Incentive, entered directly on the
     // Incentive Working sheet (independent of Salary Working's own separate Penalty Sheet).
-    const penaltyAmt=cols.penalty?(Number((actuals[incActualKey(e.id,year,month)]||{}).penaltyAmt)||0):0;
+    let penaltyAmt=cols.penalty?(Number((actuals[incActualKey(e.id,year,month)]||{}).penaltyAmt)||0):0;
     const totalTarget=svcTarget+memTarget+prodTarget;
     const totalActual=svcActual+memActual+prodActual;
     const svcTimesRaw=salary?svcActual/salary:0;
@@ -3489,13 +3490,16 @@ function incWorkingsForLive(salonId,year,month){
     const prodRate=r.prodRate!=null?Number(r.prodRate):INCENTIVE_RATE_DEFAULTS.prodRate;
     // Manual Amount overrides — only read/used when that category's Rate/Amount Source is set to
     // "Manual Amount ₹" under Incentive Rules & Settings; ignored (but preserved) otherwise.
-    const svcManualAmt=r.svcAmt!=null?Number(r.svcAmt):0;
-    const memManualAmt=r.memAmt!=null?Number(r.memAmt):0;
-    const prodManualAmt=r.prodAmt!=null?Number(r.prodAmt):0;
-    const mgrManualAmt=r.mgrAmt!=null?Number(r.mgrAmt):0;
+    let svcManualAmt=r.svcAmt!=null?Number(r.svcAmt):0;
+    let memManualAmt=r.memAmt!=null?Number(r.memAmt):0;
+    let prodManualAmt=r.prodAmt!=null?Number(r.prodAmt):0;
+    let mgrManualAmt=r.mgrAmt!=null?Number(r.mgrAmt):0;
     // Per-employee manual override — forces that ONE employee's category into manual-amount
     // treatment regardless of the outlet-wide calcMode above, without touching anyone else's.
-    const manualOv=incentiveManualOverrideFor(salonId,e.id);
+    let manualOv=incentiveManualOverrideFor(salonId,e.id);
+    // ✍ Manual incentive (js/59): typed parts go through the same per-employee manual path; a typed penalty replaces the Penalty column.
+    const _mi=typeof incManualFor==='function'?incManualFor(salonId,e,year,month):null;
+    if(_mi){manualOv={...manualOv};if(_mi.svc!=null){manualOv.svc=true;svcManualAmt=_mi.svc;}if(_mi.mem!=null){manualOv.mem=true;memManualAmt=_mi.mem;}if(_mi.prod!=null){manualOv.prod=true;prodManualAmt=_mi.prod;}if(_mi.mgr!=null){manualOv.mgr=true;mgrManualAmt=_mi.mgr;}if(_mi.pen!=null)penaltyAmt=_mi.pen;}
     const effCalcMode={
       svc:manualOv.svc?'manualAmt':calcMode.svc,
       mem:manualOv.mem?'manualAmt':calcMode.mem,
@@ -3534,7 +3538,7 @@ function incWorkingsForLive(salonId,year,month){
     const otAmt=cols.ot&&otApplicable&&otNormalHours>0&&otHours>0?Math.round(salary/otDays/otNormalHours*otHours):0;
     // Incentive adjustments (js/55): team share, client feedback, clawback, cap and floor.
     const incBase=totalInc+otAmt-penaltyAmt-advAdj;
-    const incAdj=typeof incAdjFor==='function'?incAdjFor(salonId,e,year,month,incBase,{salary,svcRate:svcRateUsed!=null?svcRateUsed:svcRate,prodRate:prodRateUsed!=null?prodRateUsed:prodRate}):null;
+    const incAdj=_mi&&_mi.total!=null?null:typeof incAdjFor==='function'?incAdjFor(salonId,e,year,month,incBase,{salary,svcRate:svcRateUsed!=null?svcRateUsed:svcRate,prodRate:prodRateUsed!=null?prodRateUsed:prodRate}):null;
     return{...e,salary,svcTarget,svcActual:Math.round(svcActual),memTarget,memActual:Math.round(memActual),prodTarget,prodActual:Math.round(prodActual),
       otApplicable,otNormalHours,otHours,otDays,otAmt,proRata:prf,
       totalTarget:Math.round(totalTarget),totalActual:Math.round(totalActual),svcTimesRaw,memTimesRaw,prodTimesRaw,totalTimesRaw,svcPct,memPct,prodPct,
@@ -3542,7 +3546,7 @@ function incWorkingsForLive(salonId,year,month){
       memRateUsed:memRateUsed!=null?memRateUsed:memRate,prodRateUsed:prodRateUsed!=null?prodRateUsed:prodRate,
       svcManualAmt,memManualAmt,prodManualAmt,mgrManualAmt,calcMode:effCalcMode,manualOv,prodRuleType,prodFlatAmount,
       svcIncAmt,memIncAmt,prodIncAmt,mgrIncAmt:mgrIncAmt||0,
-      penaltyAmt,advAdj,totalInc:incAdj?incAdj.total:Math.max(0,incBase),incAdj,fromReport,activeModel};
+      penaltyAmt,advAdj,totalInc:_mi&&_mi.total!=null?Math.max(0,_mi.total-advAdj):incAdj?incAdj.total:Math.max(0,incBase),incAdj,manualInc:_mi,fromReport,activeModel};
   });
 }
 

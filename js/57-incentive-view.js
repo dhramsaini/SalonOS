@@ -63,11 +63,12 @@ function incBreakdownLines(sid,y,m,w){
   add('Service incentive',ivM(w.svcIncAmt),cm.svc==='manualAmt'?'typed in by hand':pg&&pg.bands.length?'progressive: '+pg.bands.map(b=>ivM(b.part)+' × '+b.rate+'%').join(' + '):(w.svcRateUsed||0)+'% of '+ivM(w.svcActual)+(cm.svc==='manualRate'?' (rate typed in)':' (slab for '+ivX(w.svcTimesRaw)+')'),'earn');
   add('Membership incentive',ivM(w.memIncAmt),cm.mem==='manualAmt'?'typed in by hand':cm.mem==='manualRate'?(w.memRateUsed||0)+'% of '+ivM(w.memActual):'membership rule ('+ivM(w.memActual)+' sold; includes any pool share)','earn');
   add('Product incentive',ivM(w.prodIncAmt),cm.prod==='manualAmt'?'typed in by hand':w.prodRuleType==='B'?'flat amount':(w.prodRateUsed||0)+'% of '+ivM(w.prodActual),'earn');
-  if(Number(w.mgrIncAmt))add('Manager incentive',ivM(w.mgrIncAmt),'share of the manager pool','earn');
+  if(Number(w.mgrIncAmt))add('Manager incentive',ivM(w.mgrIncAmt),w.manualOv&&w.manualOv.mgr?'typed in by hand':'share of the manager pool','earn');
   if(Number(w.otAmt))add('Overtime',ivM(w.otAmt),ivM(w.salary)+' ÷ '+w.otDays+' days ÷ '+w.otNormalHours+' h × '+w.otHours+' h','earn');
-  if(Number(w.penaltyAmt))add('Penalty','− '+ivM(w.penaltyAmt),'','ded');
+  if(Number(w.penaltyAmt))add('Penalty','− '+ivM(w.penaltyAmt),w.manualInc&&w.manualInc.pen!=null?'typed in ✍ Manual incentive':'','ded');
   if(Number(w.advAdj))add('Advance recovered','− '+ivM(w.advAdj),'','ded');
   const a=w.incAdj||{};if(a.team)add('Team incentive',ivM(a.team),'','earn');if(a.feedback)add('Client feedback','− '+ivM(a.feedback),'average '+a.fbAvg+'★','ded');if(a.clawback)add('Clawback','− '+ivM(a.clawback),(a.clawLines||[]).length+' bill(s)','ded');if(a.capped)add('Cap','− '+ivM(a.capped),'','ded');if(a.floored)add('New-joiner floor top-up',ivM(a.floored),'','earn');
+  if(w.manualInc&&w.manualInc.total!=null)add('Incentive typed in by hand',ivM(w.manualInc.total),'✍ Manual incentive — replaces the lines above; advance recovery is still taken off','earn');
   add('Total incentive',ivM(w.totalInc),'never below ₹0','total');return L;
 }
 function incStatementText(sid,y,m,w){return 'Incentive statement — '+w.name+' — '+IV_MON[m]+' '+y+'\n'+incBreakdownLines(sid,y,m,w).map(l=>l.label+': '+l.value+(l.note?' ('+l.note+')':'')).join('\n');}

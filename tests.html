@@ -1547,7 +1547,7 @@
         saveControls({});
         eq('Front desk operations: staff hours, unconfirmed, add-ons, scheduled price, session package, shared service, UPI link, company payment, preferences, birthday code, PO receiving, stock request, spot check, Code 128, stock statement, slow stock',
           [hrs,unc,add,schV,sess,spl,sc.length&&sc[0].name,upi,corp,pref,bd,bcv,po,sreq,spot,code,[stS.inQ,stS.closing],slow],
-          [[true,'',true,true,''],'a','Spa',[1,1200,1],[1,5,'1500',0,0],[700,300],'Ravi',[true,true,''],['',0,300,300],'Drink: Tea · Chat: quiet','1-12,3-5,3-5,3-5',['blocked',300],['','Partly received',8,'','Received',5],['','',3,14,'Sent','Sent'],[2,1,-400,10],[true,13,107,true,true],[5,7],'Serum:100']);
+          [[true,'',true,true,''],'a','Spa',[1,1200,1],[1,5,'1500',0,0],[700,300],'Ravi',[true,true,''],['',0,300,300],'Drink: Tea · Chat: quiet','1-12,3-5,3-5,3-5',['blocked',300],['','Partly received',8,'','Received',5],['','',3,14,'Sent','Sent'],[2,1,-400,10],[true,13,107,true,true],[5,fdAddD(T,-20)>'2026-09-30'?9:7],'Serum:100']);
       }catch(err){results.push({name:'Front desk operations',ok:false,got:String(err&&err.stack||err),want:'no error'});}
       try{
         const S=940;const U0=sessionStorage.getItem('salonos_user');const day=n=>localIsoOf(new Date(Date.now()-n*864e5));

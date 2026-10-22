@@ -182,11 +182,11 @@ function pwIncentive(sid,y,m,S,o){
         iG:(r,L)=>pwF(!isMgr?'0':'IF('+R.refs.applMgr+','+(ov.mgr?L('vG')+r:'ROUND('+R.refs.pool+'*'+L('sG')+r+'/100,0)')+',0)',w.mgrIncAmt),
         oA:!!w.otApplicable,oN:Number(w.otNormalHours)||0,oH:Number(w.otHours)||0,
         iO:(r,L)=>pwF('IF(AND('+R.refs.colOT+','+L('oA')+r+','+L('oN')+r+'>0,'+L('oH')+r+'>0),ROUND('+L('salary')+r+'/'+R.refs.dim+'/'+L('oN')+r+'*'+L('oH')+r+',0),0)',w.otAmt),
-        pen:Number(a.penaltyAmt)||0,iPen:(r,L)=>pwF('IF('+R.refs.colPen+','+L('pen')+r+',0)',w.penaltyAmt),
+        pen:(w.manualInc&&w.manualInc.pen!=null)?Number(w.penaltyAmt)||0:Number(a.penaltyAmt)||0,iPen:(r,L)=>pwF((w.manualInc&&w.manualInc.pen!=null)?L('pen')+r:'IF('+R.refs.colPen+','+L('pen')+r+',0)',w.penaltyAmt),
         advB:settled?'Settled on approval':'Active advances',advV:settled?im.advanceSettledBreakdown.reduce((s,b)=>s+(Number(b.amount)||0),0):null,
         iAdv:(r,L)=>pwF('IF('+R.refs.colAdv+','+(settled?L('advV')+r:'SUMIFS('+o.adv.ded+','+o.adv.emp+','+L('name')+r+','+o.adv.from+',"Incentive")')+',0)',w.advAdj),
         iX:(w.incAdj?Number(w.incAdj.adj)||0:0),
-        tot:(r,L)=>pwF('MAX(0,'+['iS','iM','iP','iG','iO'].map(k=>L(k)+r).join('+')+'-'+L('iPen')+r+'-'+L('iAdv')+r+')+'+L('iX')+r,w.totalInc),app:Number(w.totalInc)||0,chk:(r,L)=>pwCheck(L('tot')+r,L('app')+r),
+        tot:(r,L)=>pwF((w.manualInc&&w.manualInc.total!=null)?'MAX(0,'+(Number(w.manualInc.total)||0)+'-'+L('iAdv')+r+')':'MAX(0,'+['iS','iM','iP','iG','iO'].map(k=>L(k)+r).join('+')+'-'+L('iPen')+r+'-'+L('iAdv')+r+')+'+L('iX')+r,w.totalInc),app:Number(w.totalInc)||0,chk:(r,L)=>pwCheck(L('tot')+r,L('app')+r),
         wX:null,
         wS:(r,L)=>{const a2='('+L('aS')+r+'+'+L('wX')+r+')';const x2='IF('+L('salary')+r+'=0,0,'+a2+'/'+L('salary')+r+')';const rate2=svcB==='Rate slab'?slab(x2):L('rS')+r;
           return pwF('IF('+L('wX')+r+'="","",IF('+R.refs.applSvc+','+(svcB==='Manual ₹'?L('vS')+r:'ROUND('+a2+'*'+rate2+'/100,0)')+',0))');},
@@ -423,7 +423,9 @@ function pwSheetExceptions(ws,c){
   c.INC.list.forEach(w=>{const cm=w.calcMode||{};const ov=w.manualOv||{};const nm=w.name;
     ['svc','mem','prod'].forEach(k=>{if(cm[k]==='manualAmt')out.push({emp:nm,issue:'Incentive typed in by hand',detail:({svc:'Service',mem:'Membership',prod:'Product'})[k]+' amount',amt:w[k+'IncAmt']});});
     if(ov.mgr)out.push({emp:nm,issue:'Manager incentive typed in by hand',detail:'Not from the pool',amt:w.mgrIncAmt});
-    if(w.penaltyAmt>0)out.push({emp:nm,issue:'Incentive penalty',detail:'Entered on Incentive Working',amt:w.penaltyAmt});
+    if(w.penaltyAmt>0)out.push({emp:nm,issue:'Incentive penalty',detail:(w.manualInc&&w.manualInc.pen!=null)?'Typed in ✍ Manual incentive':'Entered on Incentive Working',amt:w.penaltyAmt});
+    if(w.manualInc&&w.manualInc.total!=null)out.push({emp:nm,issue:'Incentive typed in by hand',detail:'Whole amount (✍ Manual incentive), before advance recovery',amt:w.manualInc.total});
+    if(w.manualInc&&w.manualInc.mgr!=null)out.push({emp:nm,issue:'Incentive typed in by hand',detail:'Manager amount',amt:w.mgrIncAmt});
     if(!w.fromReport&&(w.svcActual||w.memActual||w.prodActual))out.push({emp:nm,issue:'Sales typed in (no CRADLE report)',detail:'Service '+Math.round(w.svcActual)+' · Membership '+Math.round(w.memActual)+' · Product '+Math.round(w.prodActual),amt:null});});
   pwTitle(ws,'Exceptions — '+out.length+' item(s) to look at before approving · '+PW_MONTHS[c.m]+' '+c.y);
   pwTable(ws,2,[{key:'emp',h:'Employee',w:24},{key:'issue',h:'What',w:34},{key:'detail',h:'Detail',w:52},{key:'amt',h:'Amount ₹'}],out.length?out:[{emp:'—',issue:'Nothing unusual found',detail:'',amt:null}],{xSplit:1});
