@@ -858,7 +858,7 @@ function AttendanceSheet({period,salon,user}={}){
         React.createElement('div',{style:{padding:'10px 14px',fontSize:12,fontWeight:600,color:'var(--text)',borderBottom:'1px solid var(--border)'}},'Daily Attendance Sheet — '+months[selMonth]+' '+selYear),
         React.createElement('div',{style:{padding:'6px 14px',fontSize:10.5,color:'var(--text3)',borderBottom:'1px solid var(--border)'}},'A blank day can only be marked once the previous day already has a status. Weekoff / Not Joined / Left are set automatically from Weekly Off, DOJ and DOL, but can always be overridden — e.g. mark a Weekoff as Present if the employee worked that day, or mark any other day as Weekoff if they took it off instead.'),
         React.createElement('div',{style:{overflowX:'auto'}},
-          React.createElement('table',{style:{borderCollapse:'collapse',fontSize:11,width:'100%'}},
+          React.createElement('table',{style:{borderCollapse:'separate',borderSpacing:0,fontSize:11,width:'100%'}},
             React.createElement('thead',null,
               React.createElement('tr',null,
                 React.createElement('th',{style:{padding:'8px 12px',background:'var(--th-bg)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',position:'sticky',left:0,zIndex:3,whiteSpace:'nowrap',borderRight:'1px solid var(--border2)',minWidth:160}},'Name of Employee'),
