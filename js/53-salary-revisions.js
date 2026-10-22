@@ -52,7 +52,7 @@ function salPlan(sid,prev,emp,fromYm){
   const arrears=[];
   if(salArrOn(sid)&&salPayChanged(prev,emp))locked.forEach(ym=>{const p=salYmParts(ym);const old=salPayFor(prev,p.y,p.m,sid);const dim=new Date(p.y,p.m+1,0).getDate();
     let days=dim;try{const w=(swWorkingsFor(sid,p.y,p.m)||[]).find(x=>String(x.id)===String(prev.id));if(w)days=Number(w.totalDays)||0;}catch(e){}
-    const amt=Math.round(((Number(emp.gross)||0)-(Number(old.gross)||0))/dim*days);if(amt)arrears.push({forYm:ym,payYm:start,amount:amt,days,dim,oldGross:Number(old.gross)||0,newGross:Number(emp.gross)||0});});
+    const ng=payGrossFor(emp,sid),og=payGrossFor(old,sid);const amt=Math.round((ng-og)/dim*days);if(amt)arrears.push({forYm:ym,payYm:start,amount:amt,days,dim,oldGross:og,newGross:ng});});
   return{start,locked,arrears};
 }
 // The record to save: history + arrears added, and the master's own pay = this month's pay.

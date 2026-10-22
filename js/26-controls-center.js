@@ -215,6 +215,7 @@ const CONTROL_DEFS=[
   {id:'bankRecoAlert',group:'Alerts',label:'Bank lines left unexplained for over 7 days',hint:'A strip on Bank Statement counting lines with no Nature and no linked bill.',def:false},
   {id:'budgetAlert',group:'Alerts',label:'Spending ahead of budget this month',hint:'A strip on the Outlet Dashboard when an expense line runs more than 10% ahead of its budget pace (budgets in P&L → MTD).',def:false},
   {id:'missingSalesBanner',group:'Reminders',label:'Show days with no Daily Sales on the outlet screen',hint:'A red strip on Daily Sales & Exp listing this month’s missing days (the nightly 🔔 check is under Automation).',def:false},
+  {id:'payExcludesEmployerPf',group:'Employees',label:'Salary paid excludes the employer’s PF',hint:'Salary Working pays Basic + HRA + Conveyance + Special. The EPF Employer Contribution that Master Salary adds into Gross CTC is the employer’s own cost (booked as employer PF), so it is not paid out as salary. ESIC’s ₹21,000 limit, Professional Tax, overtime, arrears and the Full-workings Excel use the same salary. Months already final keep their saved figures.',def:true},
   {id:'aadhaarRequired',group:'Employees',label:'Aadhaar copy required in Master Salary',hint:'On: an employee cannot be saved in Master Salary without the Aadhaar card copy attached. Off: attaching it is optional.',def:false},
   {id:'salaryRevisions',group:'Employees',label:'Master Salary changes ask “with effect from”',hint:'Any change in Master Salary (pay, designation, department, weekly off, PF / ESIC, bank details …) asks from which month it applies. Each employee keeps a history: every month uses the details in force then, locked months never change, and a future change can be entered now — it applies by itself when its month comes. Name, contact, PAN / Aadhaar, documents and joining / leaving dates are corrections and apply to every month.',def:true},
   {id:'salaryArrears',group:'Employees',label:'Arrears for back-dated pay changes',hint:'When a pay change goes back into months already locked, those months keep the old pay and the difference — (new − old) ÷ days in month × payable days — is added as Arrears to the first open month’s salary. Off: no arrears are worked out.',def:true},
@@ -392,7 +393,7 @@ const CONTROL_AREAS=[
     ['Review, approval & locks',['mapApproval','mapReview','mapRoleLimits','bankLockFinal','tallyNeedsReview','tallyChangeGuard','bankBigChangeAlert','bankAuditorView']],
     ['Dashboards & reminders',['bankAgeingBoard','mappingSla','bankUnmappedNudge','bankDailyDigest','bankOnePagerReminder','cashForecastAlert']]]},
   {key:'staff',icon:'💼',title:'Salary & staff',groups:['Employees','Data entry'],subs:[
-    ['Employees',['aadhaarRequired','phoneCheckin','paidLeave','leaveRequests','staffIncentiveView','empStatement']],
+    ['Employees',['payExcludesEmployerPf','aadhaarRequired','phoneCheckin','paidLeave','leaveRequests','staffIncentiveView','empStatement']],
     ['Pay changes',['salaryRevisions','salaryArrears']],
     ['Salary Working tools',['payHold','payOneOffs','payOvertime','payLateEarly','payLeaveEncash','payFnF','paySplit','payProvisions','payChangePreview']],
     ['Incentive Working tools',['incRulesGuide','incTracker','incSimulator','incTeam','incFeedback','incClawback','incCap','incFloor','incMixCheck']],

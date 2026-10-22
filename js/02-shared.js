@@ -2525,8 +2525,24 @@ function saveIWCols(cols,salonId){safeLocalSet(outletKey('salonos_iw_cols',salon
 
 // ── Shared Salary Working computation — single source of truth so Salary Working,
 // Incentive Working and P&L's Employee Cost always agree on the same numbers ──
+// Monthly salary actually paid = Basic + HRA + Conveyance + Special. Gross CTC (e.gross) also
+// carries the EPF Employer Contribution — the employer's own cost, booked separately as employer PF
+// — so it must not be paid out as salary (Controls → payExcludesEmployerPf, on by default).
+// Rows already converted by salPayView keep their pay figure (e.ctc holds the CTC).
+function payGrossFor(e,sid){
+  if(!e)return 0;const g=Number(e.gross)||0;if(e.ctc!=null)return g;
+  if(typeof controlOn==='function'&&sid!=null&&!controlOn('payExcludesEmployerPf',sid))return g;
+  // Only the part of Gross CTC that IS the employer's PF is taken off: the gap between Gross and the
+  // salary parts must equal what Master Salary adds — 12% of Basic capped at ₹15,000 (before 17 Sep
+  // 2026), at ₹25,000 (from then), or uncapped (PF on actual basic). Any other gap (e.g. Gross typed
+  // in with only Basic filled) is left alone and Gross is paid as before.
+  const parts=['basic','hra','conv','special'].reduce((t,k)=>t+(Number(e[k])||0),0);const gap=g-parts;const b=Number(e.basic)||0;
+  const pfAdds=[Math.min(b,15000),Math.min(b,25000),b].map(x=>Math.round(x*0.12));
+  return(e.pf&&parts>0&&gap>0&&pfAdds.some(x=>Math.abs(x-gap)<=1))?Math.round(parts):g;
+}
+function salPayView(e,sid){if(!e||e.ctc!=null)return e;return{...e,ctc:Number(e.gross)||0,gross:payGrossFor(e,sid)};}
 function swWorkingsFor(salonId,year,month){
-  const EMPLOYEES=getEmployeesForMonth(year,month,salonId);
+  const EMPLOYEES=getEmployeesForMonth(year,month,salonId).map(e=>salPayView(e,salonId));
   const attStore=loadAttendance(salonId);
   const cols=loadSWCols(salonId);
   const teaCfg=loadTeaConfig(salonId);
@@ -2669,7 +2685,7 @@ function swWorkingsFor(salonId,year,month){
 // control what's shown on the Salary Working screen day-to-day, and shouldn't cause a compliance
 // report to silently show ₹0 for a deduction whose column happens to be hidden there. ──
 function statutoryDeductionsFor(salonId,year,month){
-  const EMPLOYEES=getEmployeesForMonth(year,month,salonId);
+  const EMPLOYEES=getEmployeesForMonth(year,month,salonId).map(e=>salPayView(e,salonId));
   const swMeta=loadSWMeta(salonId);
   const salonRec=getSalonRecordById(salonId);
   // Same outlet-level gate as swWorkingsFor (see its comment) — an outlet with PF/ESIC turned

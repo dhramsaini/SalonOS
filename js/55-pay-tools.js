@@ -58,7 +58,7 @@ function payExtrasFor(sid,e,y,m,ctx){
     hold:ptOn('payHold',sid)&&x.hold&&x.hold.on?x.hold:null,cash:ptOn('paySplit',sid)?Math.max(0,Number(x.cashPart)||0):0};
 }
 // ── 4 · provisions ──
-function payProvisionFor(sid,e){const basic=Number(e.basic)||0,gross=Number(e.gross)||0;const ceil=ptLim('payProvisions',7000,sid);
+function payProvisionFor(sid,e){const basic=Number(e.basic)||0,gross=payGrossFor(e,sid);const ceil=ptLim('payProvisions',7000,sid);
   return{bonus:gross<=21000?Math.round(Math.min(basic,ceil)*0.0833):0,gratuity:Math.round(basic*0.0481)};}
 function payProvisionsTotal(sid,y,m){if(!ptOn('payProvisions',sid))return{bonus:0,gratuity:0};const E=getEmployeesForMonth(y,m,sid)||[];return E.reduce((t,e)=>{const p=payProvisionFor(sid,e);return{bonus:t.bonus+p.bonus,gratuity:t.gratuity+p.gratuity};},{bonus:0,gratuity:0});}
 

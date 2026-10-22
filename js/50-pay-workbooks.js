@@ -262,7 +262,7 @@ function pwSalarySheets(ctx,o){
   const swRows=list.map(e=>{const w=byId[e.id]||{};const mt=meta[attMonthKey(e.id,y,m)]||{};const ar=attRow[e.id];const wageCalc=e.pfOnActualBasic?null:pfCappedWage(e.basic,y,m,sid);const ovr=v=>v!=null&&v!==''?Number(v)||0:null;
     const settled=!!(mt.advanceSettled&&Array.isArray(mt.advanceSettledBreakdown));
     const esicF=(sal)=>'IF('+on('esic')+',IF(ESO<>"",ESO,IF(AND('+ref('esicReg')+',ESE,'+sal+'<='+ref('esicLimit')+'),ROUND('+sal+'*'+ref('esicRate')+',0),0)),0)';
-    return{id:e.id,name:e.name,desig:e.desig||'',status:e.status||'',salary:Number(e.gross)||0,basic:Number(e.basic)||0,
+    return{id:e.id,name:e.name,desig:e.desig||'',status:e.status||'',salary:payGrossFor(e,sid),basic:Number(e.basic)||0,
       days:r=>pwF(pwRef(S.att.name)+A.L('pay')+ar,w.totalDays),dim:r=>pwF(ref('dim')),gross:(r,L)=>pwF('ROUND('+L('salary')+r+'/'+L('dim')+r+'*'+L('days')+r+',0)',w.grossAfterLop),lop:(r,L)=>pwF('MAX(0,'+L('salary')+r+'-'+L('gross')+r+')',w.lopAmt),
       tea:(r,L)=>pwF('IF(AND('+on('tea')+','+L('status')+r+'="Active"),ROUND(IF('+ref('teaMode')+'="perDay",'+ref('teaRate')+'*'+L('days')+r+','+ref('teaRate')+'),0),0)',w.tea),
       pfE:!!e.pf,pfA:!!e.pfOnActualBasic,wage:(r,L)=>e.pfOnActualBasic?pwF(L('basic')+r):(wageCalc===Math.min(Number(e.basic)||0,ceiling)?pwF('MIN('+L('basic')+r+','+ref('pfCeil')+')',wageCalc):wageCalc),
@@ -416,7 +416,7 @@ function pwSheetExceptions(ws,c){
       if(w.esicOverridden)out.push({emp:L,issue:'ESIC typed in by hand',detail:'Standard would be '+Math.round(w.esicAutoAmt||0),amt:w.esicEmp});
       if(w.ptOverridden)out.push({emp:L,issue:'PT typed in by hand',detail:'Standard would be '+Math.round(w.ptAutoAmt||0),amt:w.ptAmt});
       if(w.tdsAmt>0)out.push({emp:L,issue:'TDS deducted',detail:'Entered by hand',amt:w.tdsAmt});
-      if(Number(e.gross)>0&&w.net<Number(e.gross)*lim/100)out.push({emp:L,issue:'Net below '+lim+'% of salary',detail:'Net '+Math.round(w.net)+' of salary '+Math.round(e.gross),amt:w.net});
+      {const pg=payGrossFor(e,c.sid);if(pg>0&&w.net<pg*lim/100)out.push({emp:L,issue:'Net below '+lim+'% of salary',detail:'Net '+Math.round(w.net)+' of salary '+Math.round(pg),amt:w.net});}
       if(w.grossAfterLop>0&&w.advAdj>w.grossAfterLop*0.25)out.push({emp:L,issue:'Large advance recovery',detail:'More than 25% of gross',amt:w.advAdj});
       if(w.net>0&&!e.accountNo&&/bank/i.test(mt.mode||''))out.push({emp:L,issue:'Bank transfer but no account number',detail:'Add bank details in Master Salary',amt:w.net});
       if(mt.status!=='Approved')out.push({emp:L,issue:'Not approved yet',detail:'Status: '+(mt.status||'Draft'),amt:null});});}
