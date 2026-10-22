@@ -268,7 +268,7 @@ function pwSalarySheets(ctx,o){
       pfE:!!e.pf,pfA:!!e.pfOnActualBasic,wage:(r,L)=>e.pfOnActualBasic?pwF(L('basic')+r):(wageCalc===Math.min(Number(e.basic)||0,ceiling)?pwF('MIN('+L('basic')+r+','+ref('pfCeil')+')',wageCalc):wageCalc),
       pfO:ovr(mt.pfOverride),pf:(r,L)=>pwF('IF('+on('pfEmp')+',IF('+L('pfO')+r+'<>"",'+L('pfO')+r+',IF(AND('+ref('pfReg')+','+L('pfE')+r+'),ROUND('+L('wage')+r+'*'+ref('pfRate')+',0),0)),0)',w.pfEmp),
       esE:!!e.esic,esC:!!((Number(w.esicEmp)||0)+(Number(w.esicEr)||0)>0),esO:ovr(mt.esicOverride),esic:(r,L)=>pwF(esicF(L('salary')+r).split('ESO').join(L('esO')+r).split('ESE').join(L('esE')+r).split('ESC').join(L('esC')+r),w.esicEmp),
-      ptO:ovr(mt.ptOverride),pt:(r,L)=>pwF('IF('+on('pt')+',IF('+L('ptO')+r+'<>"",'+L('ptO')+r+','+ptExpr(L('salary')+r)+'),0)',w.ptAmt),
+      ptO:(e.ptExempt&&typeof controlOn==='function'&&controlOn('ptExemption',sid)&&ovr(mt.ptOverride)==null)?0:ovr(mt.ptOverride),pt:(r,L)=>pwF('IF('+on('pt')+',IF('+L('ptO')+r+'<>"",'+L('ptO')+r+','+ptExpr(L('salary')+r)+'),0)',w.ptAmt),
       tdsE:ovr(mt.tdsAmount)||0,tds:(r,L)=>pwF('IF('+on('tds')+','+L('tdsE')+r+',0)',w.tdsAmt),
       pen:(r,L)=>pwF('IF('+on('penalties')+',SUMIFS('+pen.amt+','+pen.emp+','+L('name')+r+'),0)',w.penAmt),
       advB:settled?'Settled on approval':'Active advances',advV:settled?mt.advanceSettledBreakdown.reduce((s,b)=>s+(Number(b.amount)||0),0):null,

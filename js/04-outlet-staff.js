@@ -465,6 +465,17 @@ function OutletDashboard({salon,period,onNavTab}){
 // the outlet is ESIC-registered, the employee is on ESIC and the salary is within the ₹21,000 ESIC
 // limit. An employer cost like employer PF, so it is part of Gross CTC (Controls → ctcIncludesEsic);
 // Salary Working never pays it out (payGrossFor in js/02).
+// Professional Tax exemptions as per each state's PT rules (the exempt categories of persons; a
+// salary below the state's threshold already pays nil through the PT slabs). Karnataka: the
+// Karnataka Tax on Professions… Act, 1976 and its exemption notification under Section 29;
+// Maharashtra: Section 27A of the Maharashtra State Tax on Professions… Act, 1975. Always check
+// the state's latest notification. seniorAge is checked against the employee's Date of Birth.
+const PT_EXEMPT_RULES={
+  'Karnataka':{seniorAge:60,reasons:['Physically challenged — permanent disability of 40% or more (certificate)','Blind, deaf or dumb person','Member of the Armed Forces (combatant or non-combatant)','Ex-serviceman','Senior citizen (60 or older)']},
+  'Maharashtra':{seniorAge:65,reasons:['Permanent physical disability, including blindness (certificate)','Parent / guardian of a person with intellectual disability or other notified disability','Senior citizen (65 or older)','Member of the Armed Forces','Badli worker in the textile industry','Woman agent under the Mahila Pradhan Kshetriya Bachat Yojana']}};
+const PT_EXEMPT_DEFAULT={seniorAge:65,reasons:['Person with disability (as notified by the state)','Parent / guardian of a person with disability (if the state allows)','Senior citizen (state age limit)','Member of the Armed Forces']};
+function ptExemptRulesFor(state){return PT_EXEMPT_RULES[state]||PT_EXEMPT_DEFAULT;}
+const PT_EXEMPT_REASONS=PT_EXEMPT_DEFAULT.reasons;
 function esicEmployerContributionFor(salary,esicApplicableAtSalon,esicEnabledForEmployee,sid){
   if(!esicApplicableAtSalon||!esicEnabledForEmployee)return 0;
   if(typeof controlOn==='function'&&sid!=null&&!controlOn('ctcIncludesEsic',sid))return 0;
@@ -912,9 +923,13 @@ function MasterSalarySheet({salon}={}){
           salon.esicApplicable&&React.createElement('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--text2)',cursor:'pointer'}},
             React.createElement('input',{type:'checkbox',checked:form.esic,onChange:fc('esic')}),'ESIC'
           ),
-          salon.ptApplicable&&React.createElement('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--text2)'}},
-            React.createElement('input',{type:'checkbox',checked:true,disabled:true,style:{cursor:'not-allowed'}}),'Professional Tax (auto-applied — '+(salon.state||'this outlet\'s state')+')'
-          ),
+          salon.ptApplicable&&(typeof controlOn==='function'&&controlOn('ptExemption',salon.id)
+            ?React.createElement('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--text2)',cursor:'pointer'},title:'Untick for an employee exempt from Professional Tax'},
+              React.createElement('input',{type:'checkbox',checked:!form.ptExempt,onChange:e=>{const on=e.target.checked;setForm(f=>({...f,ptExempt:!on,ptExemptReason:on?'':(f.ptExemptReason||ptExemptRulesFor(salon.state).reasons[0])}));}}),'Professional Tax ('+(salon.state||'this outlet\'s state')+')'+(form.ptExempt?' — exempt':''))
+            :React.createElement('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--text2)'}},
+              React.createElement('input',{type:'checkbox',checked:true,disabled:true,style:{cursor:'not-allowed'}}),'Professional Tax (auto-applied — '+(salon.state||'this outlet\'s state')+')')),
+          salon.ptApplicable&&form.ptExempt&&typeof controlOn==='function'&&controlOn('ptExemption',salon.id)&&React.createElement('select',{className:'form-control',style:{width:'auto',fontSize:12,padding:'3px 6px'},value:form.ptExemptReason||ptExemptRulesFor(salon.state).reasons[0],onChange:fc('ptExemptReason'),title:'Exempt category as per '+(salon.state||'the state')+' Professional Tax rules — keep the certificate on file'},
+            [...new Set([...ptExemptRulesFor(salon.state).reasons,...(form.ptExemptReason?[form.ptExemptReason]:[])])].map(r=>React.createElement('option',{key:r},r))),
           salon.tdsApplicable&&React.createElement('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--text2)',cursor:'pointer'}},
             React.createElement('input',{type:'checkbox',checked:form.tds,onChange:fc('tds')}),'TDS'
           )

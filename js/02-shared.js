@@ -2623,7 +2623,7 @@ function swWorkingsFor(salonId,year,month){
     // PT_APPLICABLE_STATES), computed from that state's slabs against Gross Salary. Employee's
     // own `pt` flag is forced true/false to match state applicability (see Master Salary and
     // Outlet forms), so this doesn't re-check e.pt — the state alone decides it.
-    const ptAutoAmt=ptAmountFor(salonId,salonRec?.state,e.gross,month);
+    const ptAutoAmt=(e.ptExempt&&typeof controlOn==='function'&&controlOn('ptExemption',salonId))?0:ptAmountFor(salonId,salonRec?.state,e.gross,month); // exempt employee (Master Salary) → no PT
     // PT (Professional Tax) can be manually overridden per employee per month, same pattern as
     // ESIC/PF above — e.g. for an employee whose actual PT differs from the standard state slab
     // for some reason specific to them. Falls back to the standard state-slab calculation
@@ -2716,7 +2716,7 @@ function statutoryDeductionsFor(salonId,year,month){
     const esicAutoAmt=(esicApplicableAtSalon&&e.esic&&(typeof msEsicCovered==='function'?msEsicCovered(e,year,month,salonId):e.gross<=21000))?Math.round(e.gross*0.0075):0;
     const esicEmp=(swM.esicOverride!=null&&swM.esicOverride!=='')?Number(swM.esicOverride)||0:esicAutoAmt;
     const esicEr=(esicApplicableAtSalon&&e.esic&&(typeof msEsicCovered==='function'?msEsicCovered(e,year,month,salonId):e.gross<=21000))?Math.round(e.gross*0.0325):0;
-    const ptAutoAmt=ptAmountFor(salonId,salonRec?.state,e.gross,month);
+    const ptAutoAmt=(e.ptExempt&&typeof controlOn==='function'&&controlOn('ptExemption',salonId))?0:ptAmountFor(salonId,salonRec?.state,e.gross,month); // exempt employee (Master Salary) → no PT
     const ptAmt=(swM.ptOverride!=null&&swM.ptOverride!=='')?Number(swM.ptOverride)||0:ptAutoAmt;
     const tdsAmt=(swM.tdsAmount!=null&&swM.tdsAmount!=='')?Number(swM.tdsAmount)||0:0;
     return{id:e.id,name:e.name,desig:e.desig,pfEmp,pfEr,eps,pfErEpf,edli,adminChargeRaw,esicEmp,esicEr,ptAmt,tdsAmt};

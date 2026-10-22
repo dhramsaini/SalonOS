@@ -103,6 +103,9 @@ function MsFormExtras({salon,form,setForm,part}){
 // Save-time checks (Master Salary).
 function msSaveOk(sid,emp){
   if(msOn('msDob',sid)&&emp.dob){const a=msAge(emp.dob,emp.doj||undefined);if(a!=null&&a<18){window.alert(emp.name+' would be '+a+' on the date of joining — someone under 18 can’t be employed. Check the Date of Birth.');if(typeof controlHit==='function')controlHit('msDob',sid,'b');return false;}}
+  if(emp.ptExempt&&msOn('ptExemption',sid)){const st=msSalon(sid).state;const R=typeof ptExemptRulesFor==='function'?ptExemptRulesFor(st):null;
+    if(R&&/senior/i.test(emp.ptExemptReason||'')){const a=msAge(emp.dob);if(a==null){if(!window.confirm(emp.name+' is marked exempt from Professional Tax as a senior citizen, but has no Date of Birth. Save anyway?'))return false;}
+      else if(a<R.seniorAge){window.alert(emp.name+' is '+a+' — '+(st||'this state')+' exempts senior citizens from Professional Tax only from age '+R.seniorAge+'. Choose another reason or keep PT on.');return false;}}}
   const mw=msOn('msMinWage',sid)?Number(controlLimit('msMinWage',sid))||0:0;const pay=msParts(emp);
   if(mw>0&&pay>0&&pay<mw&&!window.confirm(emp.name+'’s salary '+msM(pay)+' is below the minimum wage set for this outlet ('+msM(mw)+' a month). Save anyway?'))return false;
   return true;
