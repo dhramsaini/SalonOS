@@ -66,7 +66,7 @@ function IncManualSetup({sid,year,month,onChanged}){
 }
 // ── Typing the amounts: Incentive Working sheet (shown only when Manual Incentive is set up) ──
 function IncManualPanel({salon,year,month,onChanged,onOpenRules}){
-  const h=React.createElement;const sid=salon&&salon.id;const [open,setOpen]=useState(true);const [tick,setTick]=useState(0);
+  const h=React.createElement;const sid=salon&&salon.id;const [open,setOpen]=useState(false);const [tick,setTick]=useState(0);
   if(sid==null)return null;const cfg=imCfg(sid,year,month);if(cfg.who==='off')return null;
   const amt=imAmts(sid,year,month);const label=IM_MON[month]+' '+year;
   const locked=typeof isIWEffectiveLockedFor==='function'&&isIWEffectiveLockedFor(sid,year,month);
@@ -75,6 +75,7 @@ function IncManualPanel({salon,year,month,onChanged,onOpenRules}){
   const head=h('div',{style:{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}},
     h('b',{style:{cursor:'pointer'},onClick:()=>setOpen(!open)},'✍ Manual incentive'),
     h('span',{style:{fontSize:12,color:'#2f5fe0'}},(cfg.who==='all'?'All employees':(cfg.emps||[]).length+' selected employee(s)')+' · '+(cfg.mode==='total'?'whole incentive amount':IM_PARTS.filter(([k])=>cfg.parts[k]).map(x=>x[1]).join(', ')||'no part chosen')+' · '+typedCount+' typed'),
+    h('span',{style:{fontSize:11.5,color:'var(--text3)'}},'Type the amounts in the Incentive Amounts columns below, or open this list'),
     onOpenRules&&h('button',{className:'btn btn-ghost btn-sm',style:{padding:'1px 8px'},onClick:onOpenRules},'Change in ⚙ Incentive Rules & Settings'),
     h('span',{style:{marginLeft:'auto',fontSize:12,color:'var(--text3)',cursor:'pointer'},onClick:()=>setOpen(!open)},open?'▴ Hide':'▾ Open'));
   if(!open)return h('div',{className:'card',style:{marginBottom:12,padding:'10px 14px'}},head);
@@ -103,4 +104,20 @@ function IncManualPanel({salon,year,month,onChanged,onOpenRules}){
         h('button',{className:'btn btn-ghost btn-sm',onClick:fill},'⬇ Fill blanks with the calculated amounts'),
         h('button',{className:'btn btn-ghost btn-sm',onClick:clear},'✕ Clear typed amounts')),
       h('div',{style:{fontSize:11.5,color:'var(--text3)'}},'A blank box uses the calculated amount (shown in grey). '+(cfg.mode==='total'?'The amount typed is the incentive before advance recovery.':'Each typed part replaces the calculated one.'))));
+}
+
+// ── Typing straight into Incentive Working's Incentive Amounts columns ──
+// Is this employee's part (svc/mem/prod/mgr/pen, or 'total') typed by hand this month?
+function imCellOn(sid,y,m,empId,k){const cfg=imCfg(sid,y,m);if(cfg.who==='off'||!imInScope(cfg,empId))return false;return k==='total'?cfg.mode==='total':(cfg.mode==='parts'&&!!(cfg.parts||{})[k]);}
+function imCalcOf(w,k){if(!w)return 0;return k==='total'?Math.max(0,(w.totalInc||0)+(w.advAdj||0)):k==='svc'?w.svcIncAmt:k==='mem'?w.memIncAmt:k==='prod'?w.prodIncAmt:k==='mgr'?w.mgrIncAmt:w.penaltyAmt;}
+function ImAmtCell({sid,y,m,w,k,calc,locked,onChanged,color}){
+  const h=React.createElement;const a=(imAmts(sid,y,m)[w.id]||{})[k];const c=Math.round(Number(imCalcOf(calc,k))||0);
+  const lk=locked||(typeof isIWEffectiveLockedFor==='function'&&isIWEffectiveLockedFor(sid,y,m));
+  const tip=(k==='total'?'Whole incentive typed by hand (before advance recovery)':'Typed by hand — ✍ Manual Incentive')+'. Calculated: ₹'+c.toLocaleString('en-IN')+'. Leave blank to use the calculated amount.';
+  return h('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right',background:'rgba(244,196,48,0.12)'},title:tip},
+    h('input',{key:k+'|'+(a==null?'':a),type:'number',min:0,defaultValue:a==null?'':a,placeholder:String(c),disabled:!!lk,
+      onBlur:e=>{const v=String(e.target.value).trim();if(v===String(a==null?'':a))return;imSetAmt(sid,y,m,w.id,k,v);onChanged&&onChanged();},
+      onKeyDown:e=>{if(e.key==='Enter')e.target.blur();},
+      style:{width:84,textAlign:'right',background:lk?'var(--bg2)':'var(--bg3)',border:'1px solid '+(a!=null?'#2f5fe0':'var(--border)'),borderRadius:4,color:color||'var(--text)',fontWeight:a!=null?700:400,fontSize:11.5,padding:'4px 6px',cursor:lk?'not-allowed':'text'}}),
+    k==='total'&&a!=null&&Number(w.advAdj)>0&&h('div',{style:{fontSize:9.5,color:'var(--text3)',marginTop:2}},'pays ₹'+Math.round(Number(w.totalInc)||0).toLocaleString('en-IN')+' after advance'));
 }

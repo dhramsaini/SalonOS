@@ -403,6 +403,11 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
 
   // Incentive data per employee — shared with Salary Working & P&L's Employee Cost
   const incData=incWorkingsFor(salon?.id,selYear,selMonth);
+  // ✍ Manual Incentive (js/59): the Incentive Amounts cells it covers become boxes; the grey figure
+  // in an empty box is the calculated amount, used until something is typed.
+  const imOn=typeof imCellOn==='function'&&typeof imCfg==='function'&&imCfg(salon?.id,selYear,selMonth).who!=='off';
+  const imCalcById={};if(imOn){try{imCalculated(salon?.id,selYear,selMonth).forEach(w=>{imCalcById[w.id]=w;});}catch(x){}}
+  const imCell=(e,k,locked,color)=>typeof ImAmtCell==='function'?React.createElement(ImAmtCell,{key:'im'+k,sid:salon?.id,y:selYear,m:selMonth,w:e,k,calc:imCalcById[e.id],locked,onChanged:()=>setActualsTick(t=>t+1),color}):null;
   // ── Send Summary for Approval — same separation as Salary Working's own version above (see
   // that comment for the full rationale): a read-only snapshot of each employee's final
   // incentive figures (Service/Membership/Product/Manager Incentive, Penalty, Total) goes
@@ -434,9 +439,13 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
     saveIncentiveActuals(actuals,salon?.id);
     setActualsTick(t=>t+1);
   };
+  // Keyed by the saved figure so the box re-reads it whenever it changes (a report import, Sales from
+  // Billing, cloud data arriving); a blur only saves when the box was actually changed, so clicking
+  // in and out of a box can never write 0 over a figure it wasn't showing yet.
+  const iwBoxChanged=(e,val)=>String(e.target.value).trim()!==String(val||'');
   const actualInput=(empId,field,val,disabled)=>React.createElement('input',{
-    type:'number',defaultValue:val||'',placeholder:'0',disabled:!!disabled,
-    onBlur:e=>setActual(empId,field,e.target.value),
+    key:field+'|'+(val||''),type:'number',defaultValue:val||'',placeholder:'0',disabled:!!disabled,
+    onBlur:e=>{if(iwBoxChanged(e,val))setActual(empId,field,e.target.value);},
     onKeyDown:e=>{if(e.key==='Enter')e.target.blur();},
     style:{width:72,textAlign:'right',background:disabled?'var(--bg2)':'var(--bg3)',border:'1px solid var(--border)',borderRadius:4,color:disabled?'var(--text3)':'var(--text)',fontSize:11.5,padding:'4px 6px',cursor:disabled?'not-allowed':'text'}
   });
@@ -457,8 +466,8 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
   // generic per-field), used for the Svc/Mem/Prod Inc columns when that category's Rate & Amount
   // Source is set to "Manual Amount ₹".
   const amtInput=(empId,field,val,disabled)=>React.createElement('input',{
-    type:'number',defaultValue:val||'',placeholder:'0',disabled:!!disabled,
-    onBlur:e=>setRate(empId,field,e.target.value),
+    key:field+'|'+(val||''),type:'number',defaultValue:val||'',placeholder:'0',disabled:!!disabled,
+    onBlur:e=>{if(iwBoxChanged(e,val))setRate(empId,field,e.target.value);},
     onKeyDown:e=>{if(e.key==='Enter')e.target.blur();},
     style:{width:76,textAlign:'right',background:disabled?'var(--bg2)':'var(--bg3)',border:'1px solid var(--border)',borderRadius:4,color:disabled?'var(--text3)':'var(--text)',fontSize:11.5,padding:'4px 6px',cursor:disabled?'not-allowed':'text'}
   });
@@ -1204,24 +1213,24 @@ React.createElement.apply(React,['tr',null].concat([
                     :e.prodRuleType==='B'
                       ?React.createElement('span',{title:'Flat ₹ amount from the Product Incentive Rule\'s Rule 2 — same for every employee, change under Incentive Rules & Settings',style:{color:'var(--accent2)',fontSize:11.5}},'Flat ₹'+e.prodFlatAmount+' 🔗')
                       :React.createElement('span',{title:'Linked from the Product Incentive Rule below — change under Incentive Rules & Settings',style:{color:'var(--accent2)',fontSize:11.5}},e.prodRateUsed+'% 🔗')),
-              cols.penalty&&React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'}},actualInput(e.id,'penaltyAmt',e.penaltyAmt,locked)),
+              cols.penalty&&(imOn&&imCellOn(salon?.id,selYear,selMonth,e.id,'pen')?imCell(e,'pen',locked,'var(--red)'):React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'}},actualInput(e.id,'penaltyAmt',e.penaltyAmt,locked))),
               cols.advAdj&&React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'},title:'The installment amount for any advance recovered against Incentive is set on the Advances sheet, not editable here'},e.advAdj>0?React.createElement('span',{style:{color:'var(--red)'}},'−'+fmt(e.advAdj)):React.createElement('span',{style:{color:'var(--text3)'}},'—')),
-              cols.amounts&&(e.calcMode.svc==='manualAmt'
+              cols.amounts&&(imOn&&imCellOn(salon?.id,selYear,selMonth,e.id,'svc')?imCell(e,'svc',locked):e.calcMode.svc==='manualAmt'
                 ?React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'}},amtInput(e.id,'svcAmt',e.svcManualAmt,locked))
                 :td2(e.svcIncAmt>0?fmt(e.svcIncAmt):'—',e.svcIncAmt>0?'var(--green)':'var(--text3)')),
-              cols.amounts&&(e.calcMode.mem==='manualAmt'
+              cols.amounts&&(imOn&&imCellOn(salon?.id,selYear,selMonth,e.id,'mem')?imCell(e,'mem',locked):e.calcMode.mem==='manualAmt'
                 ?React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'}},amtInput(e.id,'memAmt',e.memManualAmt,locked))
                 :td2(e.memIncAmt>0?fmt(e.memIncAmt):'—',e.memIncAmt>0?'var(--purple)':'var(--text3)')),
-              cols.amounts&&(e.calcMode.prod==='manualAmt'
+              cols.amounts&&(imOn&&imCellOn(salon?.id,selYear,selMonth,e.id,'prod')?imCell(e,'prod',locked):e.calcMode.prod==='manualAmt'
                 ?React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'}},amtInput(e.id,'prodAmt',e.prodManualAmt,locked))
                 :td2(e.prodIncAmt>0?fmt(e.prodIncAmt):'—',e.prodIncAmt>0?'var(--teal)':'var(--text3)')),
-              cols.amounts&&(e.manualOv?.mgr
+              cols.amounts&&(imOn&&MANAGER_DESIGNATIONS.has(e.desig)&&imCellOn(salon?.id,selYear,selMonth,e.id,'mgr')?imCell(e,'mgr',locked):e.manualOv?.mgr
                 ?React.createElement('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right'},title:'This employee is individually set to Manual for Manager Incentive'},amtInput(e.id,'mgrAmt',e.mgrManualAmt,locked))
                 :td2(e.mgrIncAmt>0?fmt(e.mgrIncAmt):'—',e.mgrIncAmt>0?'var(--orange)':'var(--text3)')),
               cols.ot&&React.createElement('td',{key:'otAmt',style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right',color:e.otAmt>0?'var(--orange)':'var(--text3)'},
                   title:e.otAmt>0?'Overtime: ₹'+Math.round(e.salary).toLocaleString('en-IN')+' ÷ '+e.otDays+' days ÷ '+e.otNormalHours+' hrs × '+e.otHours+' OT hrs — edit in Incentive Rules & Settings → Overtime (OT) Working':'Enter OT hours in Incentive Rules & Settings → Overtime (OT) Working'},
                 e.otAmt>0?fmt(e.otAmt):'—'),
-              cols.amounts&&td2(fmt(e.totalInc),'var(--accent)',true),
+              cols.amounts&&(imOn&&imCellOn(salon?.id,selYear,selMonth,e.id,'total')?imCell(e,'total',locked,'var(--accent)'):td2(fmt(e.totalInc),'var(--accent)',true)),
               cols.bankDetails&&td2(e.bankName||'—','var(--text2)'),
               cols.bankDetails&&td2(e.accountNo||'—','var(--text2)'),
               cols.bankDetails&&td2(e.ifsc||'—','var(--text2)'),
