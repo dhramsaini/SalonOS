@@ -743,6 +743,8 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
       )
     ),
 
+    typeof IncManualSetup==='function'&&React.createElement(IncManualSetup,{sid:salon?.id,year:selYear,month:selMonth,onChanged:()=>setActualsTick(t=>t+1)}),
+
     // ── Incentive Plans — the 4 built-in designation groups, plus any custom plans this outlet
     // has added for cases where two employees sharing a Designation need genuinely different
     // incentive rules. Each plan gets its own slabs/rates in every section below, same as the
@@ -1120,7 +1122,7 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
       React.createElement('span',{style:{color:'var(--accent2)',cursor:'pointer',textDecoration:'underline'},onClick:()=>setIwSelectedIds(new Set())},'clear selection')
     ),
     typeof IncPlanInUseChip==='function'&&React.createElement(IncPlanInUseChip,{sid:salon?.id,y:selYear,m:selMonth}),
-    typeof IncManualPanel==='function'&&React.createElement(IncManualPanel,{salon,year:selYear,month:selMonth,onChanged:()=>setActualsTick(t=>t+1)}),
+    typeof IncManualPanel==='function'&&React.createElement(IncManualPanel,{salon,year:selYear,month:selMonth,onChanged:()=>setActualsTick(t=>t+1),onOpenRules:()=>setShowSettings(true)}),
     typeof IncSimpleView==='function'&&React.createElement(IncSimpleView,{salon,year:selYear,month:selMonth,rows:incData,onChanged:()=>setActualsTick(t=>t+1)}),
     React.createElement('div',{className:'card',style:{padding:0,display:(typeof incViewIsSimple==='function'&&incViewIsSimple(salon?.id))?'none':undefined}},
       React.createElement('div',{style:{overflowX:'auto'}},
