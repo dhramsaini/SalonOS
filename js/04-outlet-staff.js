@@ -461,6 +461,35 @@ function OutletDashboard({salon,period,onNavTab}){
 // (pfWageCeilingFor — ₹25,000 from 17 Sep 2026) by default (uncapped if pfOnActualBasic is set). Zero whenever PF doesn't apply —
 // either the outlet isn't PF-registered, or this employee individually isn't on PF. This is a
 // real cost to the employer and must be included in Gross CTC, not shown as a side note next to it.
+// ESIC Employer Contribution — 3.25% of the monthly salary (Basic + HRA + Conveyance + Special) when
+// the outlet is ESIC-registered, the employee is on ESIC and the salary is within the ₹21,000 ESIC
+// limit. An employer cost like employer PF, so it is part of Gross CTC (Controls → ctcIncludesEsic);
+// Salary Working never pays it out (payGrossFor in js/02).
+function esicEmployerContributionFor(salary,esicApplicableAtSalon,esicEnabledForEmployee,sid){
+  if(!esicApplicableAtSalon||!esicEnabledForEmployee)return 0;
+  if(typeof controlOn==='function'&&sid!=null&&!controlOn('ctcIncludesEsic',sid))return 0;
+  const w=Number(salary)||0;return w>0&&w<=21000?Math.round(w*0.0325):0;
+}
+// Gross CTC as Master Salary works it out today for a saved employee.
+function ctcFor(e,salonRec){
+  const parts=['basic','hra','conv','special'].reduce((t,k)=>t+(Number(e[k])||0),0);
+  return parts+epfEmployerContributionFor(e.basic,e.pfOnActualBasic,salonRec&&salonRec.pfApplicable,e.pf)+esicEmployerContributionFor(parts,salonRec&&salonRec.esicApplicable,e.esic,salonRec&&salonRec.id);
+}
+// Banner: employees whose saved Gross CTC is out of date (saved before the ESIC share was added to CTC,
+// or before the ₹25,000 PF ceiling). Only employees whose CTC is the salary parts plus employer
+// shares are offered — their salary paid stays exactly the same.
+function CtcUpdateStrip({salon,employees,onUpdate}){
+  const h=React.createElement;if(!salon)return null;
+  const L=(employees||[]).filter(e=>{const parts=['basic','hra','conv','special'].reduce((t,k)=>t+(Number(e[k])||0),0);if(!(parts>0))return false;
+    const g=Number(e.gross)||0;const pay=typeof payGrossFor==='function'?payGrossFor(e,salon.id):g;if(!(g===parts||pay===parts))return false;return Math.abs(ctcFor(e,salon)-g)>1;});
+  if(!L.length)return null;
+  const run=()=>{if(!window.confirm('Update Gross CTC for '+L.length+' employee(s) to Basic + HRA + Conveyance + Special + employer PF + employer ESIC?\n\nThe salary they are paid does not change.'))return;
+    const ids=new Set(L.map(e=>e.id));onUpdate((employees||[]).map(e=>ids.has(e.id)?{...e,gross:ctcFor(e,salon)}:e));
+    try{logAuditEvent(salon.id,{entity:'Employee',entityId:'CTC',action:'Gross CTC updated',summary:L.length+' employee(s): employer PF / ESIC share brought up to date'});}catch(x){}};
+  return h('div',{style:{background:'rgba(47,95,224,0.08)',border:'1px solid rgba(47,95,224,0.3)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}},
+    h('span',{style:{flex:1,minWidth:220}},h('b',null,'Gross CTC is out of date for '+L.length+' employee'+(L.length===1?'':'s')),' — it doesn’t yet include the employer ESIC share (or the new PF ceiling): '+L.slice(0,6).map(e=>e.name+' ₹'+Math.round(Number(e.gross)||0).toLocaleString('en-IN')+' → ₹'+ctcFor(e,salon).toLocaleString('en-IN')).join(', ')+(L.length>6?' …':'')+'. Salary paid stays the same.'),
+    h('button',{className:'btn btn-primary btn-sm',onClick:run},'↻ Update CTC'));
+}
 function epfEmployerContributionFor(basic,pfOnActualBasic,pfApplicableAtSalon,pfEnabledForEmployee,year,month){
   if(!pfApplicableAtSalon||!pfEnabledForEmployee)return 0;
   const wageBase=pfOnActualBasic?(Number(basic)||0):pfCappedWage(basic,year,month);
@@ -565,8 +594,10 @@ function MasterSalarySheet({salon}={}){
     // Gross CTC is always the live auto-sum (Basic + HRA + Conveyance + Special + EPF Employer
     // Contribution) — recomputed at save time so it can never drift from a stale/older total.
     const epfContrib=epfEmployerContributionFor(form.basic,form.pfOnActualBasic,salon&&salon.pfApplicable,form.pf);
+    const salaryParts=Number(form.basic)+Number(form.hra)+Number(form.conv)+Number(form.special);
+    const esicContrib=esicEmployerContributionFor(salaryParts,salon&&salon.esicApplicable,form.esic,salon&&salon.id);
     const emp={...form,id:form.id||nextId(),basic:Number(form.basic)||0,hra:Number(form.hra)||0,conv:Number(form.conv)||0,special:Number(form.special)||0,
-      gross:Number(form.basic)+Number(form.hra)+Number(form.conv)+Number(form.special)+epfContrib,
+      gross:salaryParts+epfContrib+esicContrib,
       pt:!!(salon&&salon.ptApplicable)};
     if(typeof ecEmployeeOk==='function'&&!ecEmployeeOk(salon&&salon.id,emp,editMode?employees.find(e=>e.id===emp.id):null,employees))return;
     if(editMode&&typeof salRevNeeded==='function'&&salRevNeeded(salon&&salon.id,employees.find(e=>e.id===emp.id),emp)){
@@ -832,6 +863,7 @@ function MasterSalarySheet({salon}={}){
   // 12% of Basic Salary, capped at the statutory PF wage ceiling by default — check
   // "Calculate on actual Basic Salary" to remove the cap and use full Basic instead.
   const epfEmployerContribution=epfEmployerContributionFor(form.basic,form.pfOnActualBasic,salon&&salon.pfApplicable,form.pf);
+  const esicEmployerContribution=esicEmployerContributionFor((Number(form.basic)||0)+(Number(form.hra)||0)+(Number(form.conv)||0)+(Number(form.special)||0),salon&&salon.esicApplicable,form.esic,salon&&salon.id);
 
   const employmentFields=()=>React.createElement('div',null,
     React.createElement('div',{className:'form-row cols3'},
@@ -861,7 +893,11 @@ function MasterSalarySheet({salon}={}){
             React.createElement('input',{type:'checkbox',checked:!!form.pfOnActualBasic,onChange:fc('pfOnActualBasic')}),'Calculate on actual Basic Salary (ignore the '+pfCeilingLabel()+' ceiling)'
           )
         ),
-        React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-33'},'Gross CTC (auto-sum)'),React.createElement('input',{id:'f-33',className:'form-control',type:'number',readOnly:true,disabled:true,style:{color:'var(--text3)',cursor:'not-allowed'},value:(Number(form.basic)||0)+(Number(form.hra)||0)+(Number(form.conv)||0)+(Number(form.special)||0)+epfEmployerContribution,placeholder:'Auto-calculated'}),React.createElement('div',{style:{fontSize:10,color:'var(--text3)',marginTop:3}},'Basic + HRA + Conveyance + Special'+(epfEmployerContribution?' + EPF Employer Contribution':''))),
+        esicEmployerContribution>0&&React.createElement('div',{className:'form-group'},
+          React.createElement('label',null,'ESIC Employer Contribution'),
+          React.createElement('input',{className:'form-control',type:'number',value:esicEmployerContribution,readOnly:true,disabled:true,style:{color:'var(--text3)',cursor:'not-allowed'}}),
+          React.createElement('div',{style:{fontSize:10,color:'var(--text3)',marginTop:3}},'3.25% of salary (ESIC applies up to ₹21,000) — included in Gross CTC')),
+        React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-33'},'Gross CTC (auto-sum)'),React.createElement('input',{id:'f-33',className:'form-control',type:'number',readOnly:true,disabled:true,style:{color:'var(--text3)',cursor:'not-allowed'},value:(Number(form.basic)||0)+(Number(form.hra)||0)+(Number(form.conv)||0)+(Number(form.special)||0)+epfEmployerContribution+esicEmployerContribution,placeholder:'Auto-calculated'}),React.createElement('div',{style:{fontSize:10,color:'var(--text3)',marginTop:3}},'Basic + HRA + Conveyance + Special'+(epfEmployerContribution?' + EPF Employer Contribution':'')+(esicEmployerContribution?' + ESIC Employer Contribution':''))),
       ),
       (salon&&(salon.pfApplicable||salon.esicApplicable||salon.ptApplicable||salon.tdsApplicable))&&React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'12px 14px',marginBottom:14}},
         React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8}},'Statutory Applicability — for this employee'),
@@ -920,6 +956,7 @@ function MasterSalarySheet({salon}={}){
     React.createElement(ExitChecklistCard,{sid:salon?.id}),
     React.createElement(StaffCertsCard,{sid:salon?.id}),
     typeof PfCoverageStrip==='function'&&React.createElement(PfCoverageStrip,{sid:salon?.id}),
+    React.createElement(CtcUpdateStrip,{salon,employees,onUpdate:list=>setEmployees(list)}),
     // ── Header ──
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,React.createElement('div',{className:'page-title'},'Master Salary Sheet'),React.createElement('div',{className:'page-sub'},'Employee roster with CTC, bank & document details'+(salon?.name?' · '+salon.name:''))),

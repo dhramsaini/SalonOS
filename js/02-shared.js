@@ -2536,9 +2536,13 @@ function payGrossFor(e,sid){
   // salary parts must equal what Master Salary adds — 12% of Basic capped at ₹15,000 (before 17 Sep
   // 2026), at ₹25,000 (from then), or uncapped (PF on actual basic). Any other gap (e.g. Gross typed
   // in with only Basic filled) is left alone and Gross is paid as before.
+  // The ESIC employer share (3.25% of the salary, when ESIC applies — salary up to ₹21,000) that
+  // Master Salary adds into Gross CTC (Controls → ctcIncludesEsic) is recognised the same way.
   const parts=['basic','hra','conv','special'].reduce((t,k)=>t+(Number(e[k])||0),0);const gap=g-parts;const b=Number(e.basic)||0;
-  const pfAdds=[Math.min(b,15000),Math.min(b,25000),b].map(x=>Math.round(x*0.12));
-  return(e.pf&&parts>0&&gap>0&&pfAdds.some(x=>Math.abs(x-gap)<=1))?Math.round(parts):g;
+  const pfAdds=e.pf?[Math.min(b,15000),Math.min(b,25000),b].map(x=>Math.round(x*0.12)):[];
+  const esicAdd=(e.esic&&parts>0&&parts<=21000)?Math.round(parts*0.0325):0;
+  const known=[...pfAdds,...(esicAdd?[esicAdd,...pfAdds.map(x=>x+esicAdd)]:[])];
+  return(parts>0&&gap>0&&known.some(x=>Math.abs(x-gap)<=1))?Math.round(parts):g;
 }
 function salPayView(e,sid){if(!e||e.ctc!=null)return e;return{...e,ctc:Number(e.gross)||0,gross:payGrossFor(e,sid)};}
 function swWorkingsFor(salonId,year,month){

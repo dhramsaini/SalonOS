@@ -42,7 +42,10 @@ function salPayFor(e,y,m,sid){
 function salArrearsFor(sid,e,y,m){if(!e||!Array.isArray(e.arrears)||!salArrOn(sid))return 0;const ym=salYm(y,m);return Math.round(e.arrears.filter(a=>a&&a.payYm===ym).reduce((s,a)=>s+(Number(a.amount)||0),0));}
 function salArrearsLines(e,y,m){const ym=salYm(y,m);return(e&&Array.isArray(e.arrears)?e.arrears:[]).filter(a=>a&&a.payYm===ym);}
 function salPayChanged(prev,emp){return!!prev&&SAL_PAY_FIELDS.some(k=>Math.round(Number(prev[k])||0)!==Math.round(Number(emp[k])||0));}
-function salRevNeeded(sid,prev,emp){return salRevOn(sid)&&salChangedFields(prev,emp).length>0;}
+function salRevNeeded(sid,prev,emp){if(!salRevOn(sid))return false;const f=salChangedFields(prev,emp);
+  // Only Gross CTC moved (an employer PF / ESIC share added or updated) while the salary paid is the same → not a pay change.
+  if(f.length===1&&f[0]==='gross'&&typeof payGrossFor==='function'&&payGrossFor(prev,sid)===payGrossFor(emp,sid))return false;
+  return f.length>0;}
 function salLocked(sid,ym){const p=salYmParts(ym);return(typeof isMonthLockedFor==='function'&&isMonthLockedFor(sid,p.y,p.m))||!!(typeof ffBlock==='function'&&ffBlock(sid,ym,'pay'));}
 // First month (from the joining month, at most 36 months back) that isn't locked.
 function salFirstOpen(sid,e){const now=salNowYm();let ym=e&&e.doj?String(e.doj).slice(0,7):salYmAdd(now,-36);if(ym<salYmAdd(now,-36))ym=salYmAdd(now,-36);while(ym<now&&salLocked(sid,ym))ym=salYmAdd(ym,1);return ym;}
