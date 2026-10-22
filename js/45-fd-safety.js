@@ -133,6 +133,7 @@ function fdListSubtotal(sid,items){return Math.round((items||[]).reduce((s,it)=>
 // ── B7 · cancel / refund reason and approval ──
 function fdCancelOk(sid,bill,what){
   if(isBackdateBlocked(sid,bill.date)){window.alert(backdateBlockMessage(sid));return null;}
+  {const ffm=typeof ffBlock==='function'&&ffBlock(sid,bill.date,'billing');if(ffm){window.alert(ffm);return null;}}
   const reason=window.prompt((what==='refund'?'Refund':'Cancel')+' '+bill.id+' ('+FD_M(billCalc(bill).total)+') — reason:','');if(reason==null)return null;if(!String(reason).trim()){window.alert('A reason is required.');return null;}
   if(!fdDayOpenFor(sid,bill.date,what))return null;
   if(controlOn('cancelApproval',sid)&&billCalc(bill).total>(controlLimit('cancelApproval',sid)||2000)&&!requireApproval({control:'cancelApproval',sid,key:sid+'|'+what+'|'+bill.id,summary:(what==='refund'?'Refund':'Cancel')+' bill '+bill.id+' of '+FD_M(billCalc(bill).total)+' ('+bill.customer+') — '+reason}))return null;

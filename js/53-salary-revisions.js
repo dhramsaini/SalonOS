@@ -43,7 +43,7 @@ function salArrearsFor(sid,e,y,m){if(!e||!Array.isArray(e.arrears)||!salArrOn(si
 function salArrearsLines(e,y,m){const ym=salYm(y,m);return(e&&Array.isArray(e.arrears)?e.arrears:[]).filter(a=>a&&a.payYm===ym);}
 function salPayChanged(prev,emp){return!!prev&&SAL_PAY_FIELDS.some(k=>Math.round(Number(prev[k])||0)!==Math.round(Number(emp[k])||0));}
 function salRevNeeded(sid,prev,emp){return salRevOn(sid)&&salChangedFields(prev,emp).length>0;}
-function salLocked(sid,ym){const p=salYmParts(ym);return typeof isMonthLockedFor==='function'&&isMonthLockedFor(sid,p.y,p.m);}
+function salLocked(sid,ym){const p=salYmParts(ym);return(typeof isMonthLockedFor==='function'&&isMonthLockedFor(sid,p.y,p.m))||!!(typeof ffBlock==='function'&&ffBlock(sid,ym,'pay'));}
 // First month (from the joining month, at most 36 months back) that isn't locked.
 function salFirstOpen(sid,e){const now=salNowYm();let ym=e&&e.doj?String(e.doj).slice(0,7):salYmAdd(now,-36);if(ym<salYmAdd(now,-36))ym=salYmAdd(now,-36);while(ym<now&&salLocked(sid,ym))ym=salYmAdd(ym,1);return ym;}
 // What a change from `fromYm` does: which month it really starts, and the arrears for locked months.
@@ -115,7 +115,7 @@ function SalPayHistory({sid,emp,onChange}){
     try{logAuditEvent(sid,{entity:'Employee',entityId:emp.id,action:'Scheduled pay change removed',summary:emp.name+': '+salM(r.gross)+' from '+salYmLabel(r.from)});}catch(e){}};
   const removeArr=a=>{if(!window.confirm('Remove the arrears of '+salM(a.amount)+' for '+salYmLabel(a.forYm)+'?'))return;onChange({...emp,arrears:emp.arrears.filter(x=>x!==a)});
     try{logAuditEvent(sid,{entity:'Employee',entityId:emp.id,action:'Arrears removed',summary:emp.name+': '+salM(a.amount)+' for '+salYmLabel(a.forYm)});}catch(e){}};
-  const paidLocked=ym=>{const p=salYmParts(ym);return typeof isMonthLockedFor==='function'&&isMonthLockedFor(sid,p.y,p.m);};
+  const paidLocked=ym=>{const p=salYmParts(ym);return(typeof isMonthLockedFor==='function'&&isMonthLockedFor(sid,p.y,p.m))||!!(typeof ffBlock==='function'&&ffBlock(sid,ym,'pay'));};
   return h('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:14,marginTop:12}},
     h('div',{style:{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:8}},'Master Salary history'),
     hist.map((r,i)=>h('div',{key:i,style:{display:'flex',gap:8,alignItems:'center',fontSize:12.5,padding:'4px 0',borderTop:i?'1px solid var(--border)':'none'}},

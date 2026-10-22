@@ -146,6 +146,7 @@ function BillEditor({sid,initial,editId,onSave,onClose,existingIds}){
     if(!String(form.customer).trim()){toast('Customer name is required','error');return;}
     if(!form.items.length){toast('Add at least one service or product','error');return;}
     if(isBackdateBlocked(sid,form.date)||(editId&&initial&&isBackdateBlocked(sid,initial.date))){toast(backdateBlockMessage(sid),'error');return;}
+    {const ffm=typeof ffBlock==='function'&&(ffBlock(sid,form.date,'billing')||(editId&&initial&&ffBlock(sid,initial.date,'billing')));if(ffm){toast(ffm,'error');return;}}
     const rateDisc=typeof fdRateDiscount==='function'?fdRateDiscount(sid,form.items):0;const sub=typeof fdListSubtotal==='function'?fdListSubtotal(sid,form.items):t.subtotal;const discPct=sub?((Number(form.discount)||0)-(Number(form.couponDisc)||0)+rateDisc)/sub*100:0;
     if(rateDisc>0&&controlOn('discountReason',sid)&&discPct>(controlLimit('discountReason',sid)||10)&&!String(form.discountReason||'').trim()){toast('Rates below the menu price give '+FD_M(rateDisc)+' off — enter the discount reason','error');return;}
     if(editId&&initial&&controlOn('staffChangeLock',sid)&&!isSuperAdminUser(currentSessionUser())){const was=(initial.items||[]).map(x=>x.name+'|'+(x.staffId||'')).join(';'),now=form.items.map(x=>x.name+'|'+(x.staffId||'')).join(';');if(was!==now&&(initial.items||[]).length===form.items.length&&(initial.items||[]).every((x,i)=>x.name===form.items[i].name)){toast('Changing who did a service on a saved bill needs a Super Admin (Controls → Stylist change lock)','error');return;}}

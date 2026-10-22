@@ -172,6 +172,7 @@ const CONTROL_DEFS=[
   {id:'payWbAllOutlets',group:'Data entry',label:'Full workings: all outlets in one workbook',hint:'Adds ⬇ Salary workings — all outlets to the Reports Hub: one Summary sheet plus each outlet’s sheets.',def:true},
   {id:'payWorkbookEmail',group:'Data entry',label:'Full workings: email',hint:'Adds 📧 Email to the download window, and emails the salary full workings to the outlet’s report recipients once, automatically, when the month auto-locks after every employee is approved. Needs the updated email function deployed.',def:false},
   {id:'payWbProtected',group:'Data entry',label:'Full workings: protected copy',hint:'Offers a protected copy in the download window — formulas visible but cells locked, only the yellow what-if cells can be typed in.',def:false},
+  {id:'finalFreeze',group:'Data entry',label:'Final months can’t change',hint:'Once a month’s Salary or Incentive is approved and locked, its Daily Sales & Exp is marked Final, or its P&L is marked Final, the figures are saved and nothing may change them: billing, advances, posts into Daily Sales & Exp and salary changes dated in that month are refused for everyone, and later changes elsewhere (Master Salary, incentive rules, imports, recurring bills) don’t alter the saved Salary, Incentive and P&L figures. A Super Admin un-finalizes / unlocks the month (with a reason) to make a correction.',def:true},
   {id:'backdateLock',group:'Data entry',label:'Block back-dated entries',hint:'Entries dated more than the days below before today cannot be added, changed or removed — Daily Sales & Exp, Attendance, Advances, Penalties, Vendor bills and Billing (bills, edits, cancellations, refunds). 0 = today only. A Super Admin is never blocked.',def:false,limit:3,limitLabel:'Allow entries up to (days back)'},
   {id:'ctlOutletView',group:'Controls page',label:'Outlet view',hint:'Rules tab: pick one outlet to see every switch as it applies there, and switch it for that outlet directly.',def:true},
   {id:'ctlCompare',group:'Controls page',label:'Outlet comparison grid',hint:'Check-up tab: switches × outlets for each area, differences shaded; click a cell to change that outlet.',def:true},
@@ -380,6 +381,7 @@ const CONTROL_AREAS=[
   {key:'checks',icon:'🛡',title:'Entry checks',groups:['Entry checks'],subs:[
     ['Duplicates',['dupEmployee','sharedBankAccount','dupVendor','dupInvoice','sameBillNewNumber','repeatExpense','crossEntryExpense','dupAdvancePenalty','importSeen','stockTwice','doubleSaveGuard']],
     ['Wrong figures',['extraZeroCheck','modeVsBilling','dseVsBilling','depositVsBank','gstMathCheck','gstLock','idChecks','wageSenseCheck','attendanceSense']],
+    ['Final months',['finalFreeze']],
     ['Dates',['backdateLock','futureLock','dateSenseCheck']],
     ['Rules that stop an entry',['salaryChangeReason','negativeStockBlock','proofAboveLimit','billNeedsPo']],
     ['Overview',['dataQualityBoard']]]},
@@ -415,7 +417,7 @@ const CONTROL_AREAS=[
     ['App',['roleHomeScreens','appInstallPrompt','phoneQuickAdd','geminiModelList']],
     ['Look & feel',['dmyDates','compactToolbars','todayStrip','filterChips','keyboardShortcuts','mobileLayout','calendarPolish','billPrintDesign','miniCharts','undoActions']]]}];
 // Rules that stop someone from saving, and rules that send the action for approval — shown as labels.
-const CONTROL_STOPS=new Set(['advPullConfirm','ipWizard','ipChecklist','payMakerChecker','advServiceLimit','aadhaarRequired','ctlTwoPerson','ctlLocks','backdateLock','futureLock','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','billNeedsPo','gstLock','dayCloseLock','staffChangeLock','creditLimit','discountReason','staffOffBlocking','requireMarketingConsent','bankLockFinal','tallyChangeGuard','mapRoleLimits','vagueNatureReason','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']);
+const CONTROL_STOPS=new Set(['finalFreeze','advPullConfirm','ipWizard','ipChecklist','payMakerChecker','advServiceLimit','aadhaarRequired','ctlTwoPerson','ctlLocks','backdateLock','futureLock','salaryChangeReason','negativeStockBlock','proofAboveLimit','dupInvoice','billNeedsPo','gstLock','dayCloseLock','staffChangeLock','creditLimit','discountReason','staffOffBlocking','requireMarketingConsent','bankLockFinal','tallyChangeGuard','mapRoleLimits','vagueNatureReason','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']);
 const CONTROL_APPROVAL=new Set(['advWriteOff','mapApproval','mapReview','tallyNeedsReview','discountApproval','cancelApproval','poApproval','invoiceApproval','bankFileApproval','deleteApproval','vendorBankApproval']);
 // [{area, subs:[{title, defs}]}] for every switch in CONTROL_DEFS — nothing is left out.
 function controlLayout(){

@@ -155,7 +155,7 @@ function fdOpenShift(sid){return fdShifts(sid).find(s=>!s.closedAt)||null;}
 function fdPettyKey(sid){return outletKey('salonos_petty_cash',sid);}
 function fdPetty(sid){return fdArr(fdPettyKey(sid));}
 function fdPettyHeads(){return typeof EXPENSE_ROWS!=='undefined'?EXPENSE_ROWS.map((r,i)=>({i,name:r.name})).filter(x=>!/Commission|Salary|Incentive|Advance|Tip|Rent|Royalty|Electricity|Professional|Telephone|Internet/i.test(x.name)):[];}
-function fdPostPetty(sid,iso,rowIdx,delta){if(rowIdx==null||rowIdx<0)return false;const d=new Date(iso+'T00:00:00');if(typeof isMonthLockedFor==='function'&&isMonthLockedFor(sid,d.getFullYear(),d.getMonth()))return false;
+function fdPostPetty(sid,iso,rowIdx,delta){if(rowIdx==null||rowIdx<0)return false;const d=new Date(iso+'T00:00:00');if(typeof isMonthLockedFor==='function'&&isMonthLockedFor(sid,d.getFullYear(),d.getMonth()))return false;if(typeof ffBlock==='function'&&ffBlock(sid,iso,'dsePost'))return false;
   const ek=outletKey('salonos_daily_sales_data',sid);const E=fdJ(ek,{})||{};const row={...(E[iso]||{})};row[rowIdx]=Math.round(((Number(row[rowIdx])||0)+delta)*100)/100;E[iso]=row;safeLocalSet(ek,JSON.stringify(E));return true;}
 function fdAddPetty(sid,e){
   const amt=Math.round((Number(e.amount)||0)*100)/100;if(!(amt>0))return'Enter the amount';if(!String(e.note||'').trim())return'Write what it was for';const iso=fdTodayIso();

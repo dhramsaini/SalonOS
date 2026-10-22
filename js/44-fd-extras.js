@@ -117,7 +117,7 @@ function FdRefundModal({sid,bill,onClose,onDone}){
 
 // ── Bills → Daily Sales & Exp (Controls → billingFeedsDailySales) ──
 function fdFillDailySales(sid,iso){
-  const d=new Date(iso+'T00:00:00');if(typeof isMonthLockedFor==='function'&&isMonthLockedFor(sid,d.getFullYear(),d.getMonth()))return'The month is locked.';
+  const d=new Date(iso+'T00:00:00');if(typeof isMonthLockedFor==='function'&&isMonthLockedFor(sid,d.getFullYear(),d.getMonth()))return'The month is locked.';{const ffm=typeof ffBlock==='function'&&ffBlock(sid,iso,'dsePost');if(ffm)return ffm;}
   const ds=fdDaySummary(sid,iso);const k=outletKey('salonos_daily_sales_collection_data',sid);const all=fdJ(k,{})||{};const cur=all[iso]||{};
   const had=[cur[0],cur[1],cur[2]].some(v=>Number(v)>0);if(had&&!window.confirm('Daily Sales for '+iso.split('-').reverse().join('/')+' already has Cash / Card / UPI entered. Replace them with the billed figures?'))return'Cancelled.';
   all[iso]={...cur,0:Math.round(ds.modes.Cash||0),1:Math.round(ds.modes.Card||0),2:Math.round(ds.modes.UPI||0)};safeLocalSet(k,JSON.stringify(all));

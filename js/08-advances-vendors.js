@@ -10,7 +10,7 @@ function AdvanceSheet({period,salon}={}){
   const advIsLocked=(dateStr)=>{
     const p=String(dateStr||'').split('-');
     if(p.length!==3)return false;
-    return isMonthLockedFor(salon?.id,Number(p[0]),Number(p[1])-1)||isBackdateBlocked(salon?.id,dateStr);
+    return isMonthLockedFor(salon?.id,Number(p[0]),Number(p[1])-1)||isBackdateBlocked(salon?.id,dateStr)||!!(typeof ffBlock==='function'&&ffBlock(salon?.id,dateStr,'advance'));
   };
   const advBlockIfLocked=(dateStr)=>{
     if(!advIsLocked(dateStr))return false;
