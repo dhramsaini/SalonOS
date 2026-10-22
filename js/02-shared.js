@@ -2498,7 +2498,7 @@ function ptAmountFor(salonId,state,grossSalary,month){
 // that term from Net Salary / Total Incentive (not just from the displayed column), and that
 // exclusion is honored consistently everywhere: the sheet's own screen, P&L's Employee Cost, and
 // every export (CSV/Word/PDF/Excel), since they all call these same shared functions.
-const SW_COLS_DEFAULT={tea:true,serviceInc:true,memInc:true,prodInc:true,mgrInc:true,nonPerfPenalty:true,totalInc:true,advAdj:true,penalties:true,prevMonthAdv:true,currMonthAdv:true,nextMonthAdv:false,pfEmp:true,esic:true,pt:true,tds:true,bankDetails:false};
+const SW_COLS_DEFAULT={grossCtc:true,tea:true,serviceInc:true,memInc:true,prodInc:true,mgrInc:true,nonPerfPenalty:true,totalInc:true,advAdj:true,penalties:true,prevMonthAdv:true,currMonthAdv:true,nextMonthAdv:false,pfEmp:true,esic:true,pt:true,tds:true,bankDetails:false};
 function loadSWCols(salonId){
   try{const raw=JSON.parse(cachedLocalGet(outletKey('salonos_sw_cols',salonId))||'null');if(raw&&typeof raw==='object')return{...SW_COLS_DEFAULT,...raw};}catch(e){}
   return{...SW_COLS_DEFAULT};

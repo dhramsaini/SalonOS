@@ -1519,6 +1519,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
   const swColDefs=[
     {id:'name',header:'Employee',get:e=>e.name,isText:true},
     {id:'desig',header:'Designation',get:e=>e.desig,isText:true},
+    cols.grossCtc&&{id:'ctc',header:'Gross CTC',get:e=>(e.ctc!=null?e.ctc:e.gross)},
     {id:'salary',header:'Salary',get:e=>e.gross},
     {id:'totalDays',header:'Total Days',get:e=>fmtDays(e.totalDays),isText:true},
     {id:'gross',header:'Gross Salary',get:e=>e.grossAfterLop},
@@ -1735,6 +1736,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     React.createElement('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:14}},
       React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.08em',fontWeight:600}},'Column Applicability — toggle on/off'),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        React.createElement(ColToggle,{k:'grossCtc',label:'Gross CTC'}),
         React.createElement(ColToggle,{k:'serviceInc',label:'Service Incentive'}),
         React.createElement(ColToggle,{k:'memInc',label:'Mem Inc'}),
         React.createElement(ColToggle,{k:'prodInc',label:'Prod Inc'}),
@@ -1821,7 +1823,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
               workings.length>0&&React.createElement('input',{type:'checkbox',checked:swAllSelected,onChange:swToggleSelectAll,title:'Select all'})
             ),
             React.createElement('th',{style:{padding:'8px 12px',background:'var(--th-bg)',color:'var(--accent2)',fontSize:10,fontWeight:700,textTransform:'uppercase',position:'sticky',left:36,zIndex:3,minWidth:160,borderRight:'1px solid var(--border2)',borderBottom:'2px solid var(--accent)',textAlign:'left'}},'Employee'),
-            th('Desig.',100),th('Salary'),th('Total Days',80),th('Gross Salary'),hasArr&&th('Arrears',90,SW_BG_EARN),hasX&&th('Other earnings',90,SW_BG_EARN),hasX&&th('Other deductions',90),hasHold&&th('Hold',90),
+            th('Desig.',100),cols.grossCtc&&th('Gross CTC'),th('Salary'),th('Total Days',80),th('Gross Salary'),hasArr&&th('Arrears',90,SW_BG_EARN),hasX&&th('Other earnings',90,SW_BG_EARN),hasX&&th('Other deductions',90),hasHold&&th('Hold',90),
             cols.serviceInc&&th('Svc Incentive',90,SW_BG_EARN),
             cols.memInc&&th('Mem Inc',90,SW_BG_EARN),
             cols.prodInc&&th('Prod Inc',90,SW_BG_EARN),
@@ -1860,7 +1862,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
                 React.createElement('div',{style:{fontSize:10,color:'var(--text3)'}},e.id)
               ),
               td(e.desig,'var(--text2)'),
-              td(fmt(e.gross)),td(fmtDays(e.totalDays)),
+              cols.grossCtc&&td(fmt((e.ctc!=null?e.ctc:e.gross)),'var(--text2)'),td(fmt(e.gross)),td(fmtDays(e.totalDays)),
               td(fmt(e.grossAfterLop),'var(--text)',true),
               hasArr&&td(e.arrears?fmt(e.arrears):'—',e.arrears<0?'var(--red)':'var(--green)',true),
               hasX&&td(e.extraEarn?fmt(e.extraEarn):'—','var(--green)',true),hasX&&td(e.extraDed?'−'+fmt(e.extraDed):'—','var(--red)',true),hasHold&&td(e.hold?'⏸ '+e.hold.reason:'—','var(--red)'),
@@ -1968,6 +1970,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
             React.createElement('td',{style:{padding:'9px 10px',position:'sticky',left:0,zIndex:2,background:'var(--th-bg)',borderRight:'1px solid var(--border2)',borderTop:'2px solid var(--accent)'}},''),
             React.createElement('td',{style:{padding:'9px 12px',position:'sticky',left:36,zIndex:2,background:'var(--th-bg)',borderRight:'1px solid var(--border2)',borderTop:'2px solid var(--accent)',fontWeight:700,fontSize:12,color:'var(--accent2)'}},swSelectedIds.size>0?'Total (selected)':'Total'),
             React.createElement('td',{style:{padding:'9px 12px',borderTop:'2px solid var(--accent)'}},''),
+            cols.grossCtc&&td(fmt(exportWorkings.reduce((s,e)=>s+(Number((e.ctc!=null?e.ctc:e.gross))||0),0)),'var(--text2)',true),
             td(fmt(exportWorkings.reduce((s,e)=>s+(e.gross||0),0)),'var(--text)',true),
             React.createElement('td',{style:{padding:'8px 8px',borderBottom:'1px solid var(--border)'}},''),
             td(fmt(exportWorkings.reduce((s,e)=>s+(e.grossAfterLop||0),0)),'var(--text)',true),
