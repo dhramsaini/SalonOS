@@ -1330,6 +1330,9 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
   // Build per-employee working — shared with Incentive Working & P&L's Employee Cost,
   // so Total Days (from Attendance) and every derived figure always agree everywhere.
   const workings=swWorkingsFor(salon?.id,selYear,selMonth);
+  // ✍ Manual salary (js/62): typed boxes in the table; the grey figure is the calculated one.
+  const smOn=typeof smCfg==='function'&&smCfg(salon?.id,selYear,selMonth).who!=='off';
+  const smCalcById={};if(smOn){try{smCalculated(salon?.id,selYear,selMonth).forEach(w=>{smCalcById[w.id]=w;});}catch(x){}}
 
   // ── Send Summary for Approval — a snapshot of each employee's final salary figures (Gross,
   // Tea, PF, ESIC, PT, TDS, Advance Adj., Net) goes straight to Salon Manager/ASM for a plain
@@ -1616,6 +1619,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
   return React.createElement('div',{className:'fade-in',style:{position:'relative'}},
     React.createElement(WatermarkOverlay,{text:monthLocked?'FINAL':'DRAFT',final:monthLocked}),
     typeof PfCoverageStrip==='function'&&React.createElement(PfCoverageStrip,{sid:salon?.id,y:selYear,m:selMonth}),
+    typeof SalManualPanel==='function'&&React.createElement(SalManualPanel,{salon,year:selYear,month:selMonth,locked:monthLocked,onChanged:()=>setRefreshTick(t=>t+1)}),
     typeof PayToolsBar==='function'&&React.createElement(PayToolsBar,{salon,year:selYear,month:selMonth,kind:'salary',onChanged:()=>setRefreshTick(t=>t+1)}),
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,
@@ -1853,6 +1857,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
           React.createElement('tbody',null,swVisibleWorkings.map((e,swRowIdx)=>{
             const m=metaFor(e.id);
             const swLocked=m.status==='Approved'||monthLocked;
+            const smC=(k,bg,color)=>smOn&&typeof SmAmtCell==='function'&&smCellOn(salon?.id,selYear,selMonth,e.id,k)?React.createElement(SmAmtCell,{key:'sm'+k,sid:salon?.id,y:selYear,m:selMonth,w:e,k,calc:smCalcById[e.id],locked:swLocked,onChanged:()=>setRefreshTick(t=>t+1),bg,color}):null;
             const swRowBg=swRowIdx%2===1?'rgba(120,130,150,0.05)':undefined;
             return React.createElement.apply(React,['tr',{key:e.id,style:{background:swSelectedIds.has(e.id)?'rgba(47,95,224,0.06)':swRowBg}}].concat([
               React.createElement('td',{style:{padding:'9px 10px',position:'sticky',left:0,zIndex:2,background:opaqueStickyBg(swSelectedIds.has(e.id)?'rgba(47,95,224,0.1)':swRowBg),borderRight:'1px solid var(--border2)',borderBottom:'1px solid var(--border)'}},
@@ -1864,7 +1869,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
               ),
               td(e.desig,'var(--text2)'),
               cols.grossCtc&&td(fmt((e.ctc!=null?e.ctc:e.gross)),'var(--text2)'),td(fmt(e.gross)),td(fmtDays(e.totalDays)),
-              td(fmt(e.grossAfterLop),'var(--text)',true),
+              smC('gross')||td(fmt(e.grossAfterLop),'var(--text)',true),
               hasArr&&td(e.arrears?fmt(e.arrears):'—',e.arrears<0?'var(--red)':'var(--green)',true),
               hasX&&td(e.extraEarn?fmt(e.extraEarn):'—','var(--green)',true),hasX&&td(e.extraDed?'−'+fmt(e.extraDed):'—','var(--red)',true),hasHold&&td(e.hold?'⏸ '+e.hold.reason:'—','var(--red)'),
               cols.serviceInc&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_EARN,cursor:'pointer'},
@@ -1891,25 +1896,25 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
                 title:'Click to see the incentive working behind this employee\'s figures',onClick:()=>setIncWorkingModal(e)},
                 e.totalIncSW>0?React.createElement('span',{style:{color:'var(--green)'}},rupee(e.totalIncSW)):React.createElement('span',{style:{color:'var(--text3)'}},'—')
               ),
-              cols.tea&&td(e.tea>0?'+₹'+e.tea.toLocaleString('en-IN'):'—','var(--teal)',false,SW_BG_EARN),
-              cols.pfEmp&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_DED,cursor:'pointer'},
+              cols.tea&&(smC('tea',SW_BG_EARN,'var(--teal)')||td(e.tea>0?'+₹'+e.tea.toLocaleString('en-IN'):'—','var(--teal)',false,SW_BG_EARN)),
+              cols.pfEmp&&smC('pf',SW_BG_DED,'var(--orange)')||cols.pfEmp&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_DED,cursor:'pointer'},
                 title:'Click to see the PF working, or override it for this employee this month',onClick:()=>openPfWorking(e)},
                 React.createElement('span',{style:{color:'var(--orange)'}},e.pfEmp>0?'−₹'+e.pfEmp.toLocaleString('en-IN'):'—'),
                 e.pfOverridden&&React.createElement('span',{title:'Manually overridden this month',style:{marginLeft:4,fontSize:9,color:'var(--blue)'}},'✎')
               ),
-              cols.esic&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_DED,cursor:'pointer'},
+              cols.esic&&smC('esic',SW_BG_DED,'var(--orange)')||cols.esic&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_DED,cursor:'pointer'},
                 title:'Click to see the ESIC working, or override it for this employee this month',onClick:()=>openEsicWorking(e)},
                 React.createElement('span',{style:{color:'var(--orange)'}},e.esicEmp>0?'−₹'+e.esicEmp.toLocaleString('en-IN'):'—'),
                 e.esicOverridden&&React.createElement('span',{title:'Manually overridden this month',style:{marginLeft:4,fontSize:9,color:'var(--blue)'}},'✎')
               ),
-              cols.pt&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_DED,cursor:'pointer'},
+              cols.pt&&smC('pt',SW_BG_DED,'var(--orange)')||cols.pt&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_DED,cursor:'pointer'},
                 title:'Click to see the PT working, or override it for this employee this month',onClick:()=>openPtWorking(e)},
                 !ptApplies&&!e.ptOverridden
                   ?React.createElement('span',{style:{color:'var(--text3)'}},'N/A')
                   :(e.ptAmt>0?React.createElement('span',{style:{color:'var(--orange)'}},'−₹'+e.ptAmt.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'₹0')),
                 e.ptOverridden&&React.createElement('span',{title:'Manually overridden this month',style:{marginLeft:4,fontSize:9,color:'var(--blue)'}},'✎')
               ),
-              cols.tds&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_DED,cursor:'pointer'},
+              cols.tds&&smC('tds',SW_BG_DED,'var(--orange)')||cols.tds&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_DED,cursor:'pointer'},
                 title:'Click to enter TDS for this employee this month',onClick:()=>openTdsEntry(e)},
                 e.tdsAmt>0?React.createElement('span',{style:{color:'var(--orange)'}},'−₹'+e.tdsAmt.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'—')
               ),
@@ -1919,8 +1924,8 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
                 e.advAdj>0?React.createElement('span',{style:{color:'var(--red)'}},'−₹'+e.advAdj.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'—'),
                 e.advAdj>0&&typeof advPullNote==='function'&&advPullNote(salon?.id,m,MONTHS[(selMonth+1)%12])
               ),
-              cols.penalties&&td(e.penAmt>0?'−₹'+e.penAmt.toLocaleString('en-IN'):'—','var(--red)',false,SW_BG_DED),
-              td(fmt(e.net),'var(--green)',true,SW_BG_NET),
+              cols.penalties&&(smC('pen',SW_BG_DED,'var(--red)')||td(e.penAmt>0?'−₹'+e.penAmt.toLocaleString('en-IN'):'—','var(--red)',false,SW_BG_DED)),
+              smC('net',SW_BG_NET,'var(--green)')||td(fmt(e.net),'var(--green)',true,SW_BG_NET),
               cols.prevMonthAdv&&td(e.prevAdv>0?rupee(e.prevAdv):'—',undefined,false,SW_BG_ADV),
               cols.currMonthAdv&&td(e.currAdv>0?rupee(e.currAdv):'—',undefined,false,SW_BG_ADV),
               cols.nextMonthAdv&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',background:SW_BG_ADV}},

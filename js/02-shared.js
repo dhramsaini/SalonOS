@@ -956,6 +956,7 @@ function loadAuditLog(salonId){
 // per-outlet feature, add it here too, or its data will survive a delete and can leak into a
 // future outlet that happens to reuse the same numeric id.
 const SALON_SCOPED_KEY_BASES=[
+  'salonos_sal_manual',
   'salonos_salary_template','salonos_emp_update_requests',
   'salonos_final_snap',
   'salonos_inc_manual',
@@ -2678,9 +2679,12 @@ function swWorkingsFor(salonId,year,month){
     const px=typeof payExtrasFor==='function'?payExtrasFor(salonId,e,year,month):null;const extraEarn=px?px.earn:0,extraDed=px?px.ded:0;
     // Part-recovery (js/54 · Controls → advPartRecovery): never recover more than the month's pay can bear.
     if(!(swM&&swM.advanceSettled)&&typeof advCapToPay==='function')advAdj=advCapToPay(salonId,advAdj,grossAfterLop+arrears+extraEarn-extraDed+tea-pfEmp-esicEmp-ptAmt-tdsAmt-penAmt);
-    const net=grossAfterLop+arrears+extraEarn-extraDed+tea-pfEmp-esicEmp-ptAmt-tdsAmt-penAmt-advAdj;
+    // ✍ Manual salary (js/62): typed parts replace the calculated ones; a typed Net Salary is the pay before advance recovery.
+    const _sm=typeof salManualFor==='function'?salManualFor(salonId,e,year,month):null;const smT=k=>!!(_sm&&_sm[k]!=null);
+    const smG=smT('gross')?_sm.gross:grossAfterLop,smTea=smT('tea')?_sm.tea:tea,smPf=smT('pf')?_sm.pf:pfEmp,smEs=smT('esic')?_sm.esic:esicEmp,smPt=smT('pt')?_sm.pt:ptAmt,smTds=smT('tds')?_sm.tds:tdsAmt,smPen=smT('pen')?_sm.pen:penAmt;
+    const net=smT('net')?_sm.net-advAdj:smG+arrears+extraEarn-extraDed+smTea-smPf-smEs-smPt-smTds-smPen-advAdj;
     const closingAdvance=Math.max(0,prevAdv+currAdv-advAdj);
-    return{...e,totalDays,daysInMonth,lop,lopAmt,grossAfterLop,arrears,extraEarn,extraDed,payExtra:px,hold:px&&px.hold,cashPart:px?px.cash:0,svcIncAmt,memIncAmt,prodIncAmt,mgrIncAmt,nonPerfPenalty,totalIncSW,incDetail,tea,pfEmp,pfEr,pfAutoAmt,pfOverridden,esicEmp,esicEr,esicAutoAmt,esicOverridden,ptAmt,ptAutoAmt,ptOverridden,tdsAmt,penAmt,advAdj,prevAdv,currAdv,nextAdv,closingAdvance,net:Math.max(0,net)};
+    return{...e,totalDays,daysInMonth,lop,lopAmt,grossAfterLop,arrears,extraEarn,extraDed,payExtra:px,hold:px&&px.hold,cashPart:px?px.cash:0,svcIncAmt,memIncAmt,prodIncAmt,mgrIncAmt,nonPerfPenalty,totalIncSW,incDetail,tea,pfEmp,pfEr,pfAutoAmt,pfOverridden,esicEmp,esicEr,esicAutoAmt,esicOverridden,ptAmt,ptAutoAmt,ptOverridden,tdsAmt,penAmt,advAdj,prevAdv,currAdv,nextAdv,closingAdvance,net:Math.max(0,net),...(_sm?{grossAfterLop:smG,lopAmt:Math.max(0,e.gross-smG),tea:smTea,pfEmp:smPf,esicEmp:smEs,ptAmt:smPt,tdsAmt:smTds,penAmt:smPen,salManual:_sm}:{})};
   });
 }
 
@@ -2702,7 +2706,8 @@ function statutoryDeductionsFor(salonId,year,month){
     const swM=swMeta[attMonthKey(e.id,year,month)]||{};
     const pfWageBase=e.pfOnActualBasic?(typeof msPfWage==='function'?msPfWage(e,salonId):e.basic):pfCappedWage((typeof msPfWage==='function'?msPfWage(e,salonId):e.basic),year,month,salonId);
     const pfAutoAmt=(pfApplicableAtSalon&&e.pf)?Math.round(pfWageBase*0.12):0;
-    const pfEmp=(swM.pfOverride!=null&&swM.pfOverride!=='')?Number(swM.pfOverride)||0:pfAutoAmt;
+    const _smS=typeof salManualFor==='function'?salManualFor(salonId,e,year,month):null; // ✍ Manual salary PF / ESIC / PT
+    const pfEmp=_smS&&_smS.pf!=null?_smS.pf:((swM.pfOverride!=null&&swM.pfOverride!=='')?Number(swM.pfOverride)||0:pfAutoAmt);
     const pfEr=(pfApplicableAtSalon&&e.pf)?Math.round(pfWageBase*0.12):0; // employer side isn't separately overridden
     // EPS (Pension), EDLI, and Admin Charges all use the statutory wage ceiling for the month
     // regardless of pfOnActualBasic — that election only raises the EPF contribution itself,
@@ -2714,10 +2719,10 @@ function statutoryDeductionsFor(salonId,year,month){
     const edli=pfOn?Math.round(epsWageBase*0.005):0; // EDLI — 0.5% of the capped wage, employer-only
     const adminChargeRaw=pfOn?Math.round(epsWageBase*0.005):0; // Admin Charges — 0.5% of the capped wage; the ₹500/month establishment minimum is applied once, across all employees, in statutoryCellsForMonth below, not per employee
     const esicAutoAmt=(esicApplicableAtSalon&&e.esic&&(typeof msEsicCovered==='function'?msEsicCovered(e,year,month,salonId):e.gross<=21000))?Math.round(e.gross*0.0075):0;
-    const esicEmp=(swM.esicOverride!=null&&swM.esicOverride!=='')?Number(swM.esicOverride)||0:esicAutoAmt;
+    const esicEmp=_smS&&_smS.esic!=null?_smS.esic:((swM.esicOverride!=null&&swM.esicOverride!=='')?Number(swM.esicOverride)||0:esicAutoAmt);
     const esicEr=(esicApplicableAtSalon&&e.esic&&(typeof msEsicCovered==='function'?msEsicCovered(e,year,month,salonId):e.gross<=21000))?Math.round(e.gross*0.0325):0;
     const ptAutoAmt=(e.ptExempt&&typeof controlOn==='function'&&controlOn('ptExemption',salonId))?0:ptAmountFor(salonId,salonRec?.state,e.gross,month); // exempt employee (Master Salary) → no PT
-    const ptAmt=(swM.ptOverride!=null&&swM.ptOverride!=='')?Number(swM.ptOverride)||0:ptAutoAmt;
+    const ptAmt=_smS&&_smS.pt!=null?_smS.pt:((swM.ptOverride!=null&&swM.ptOverride!=='')?Number(swM.ptOverride)||0:ptAutoAmt);
     const tdsAmt=(swM.tdsAmount!=null&&swM.tdsAmount!=='')?Number(swM.tdsAmount)||0:0;
     return{id:e.id,name:e.name,desig:e.desig,pfEmp,pfEr,eps,pfErEpf,edli,adminChargeRaw,esicEmp,esicEr,ptAmt,tdsAmt};
   });

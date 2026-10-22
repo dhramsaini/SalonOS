@@ -260,21 +260,21 @@ function pwSalarySheets(ctx,o){
   // Salary Working
   const ref=k=>R.refs[k],on=k=>R.refs['col_'+k];
   const swRows=list.map(e=>{const w=byId[e.id]||{};const mt=meta[attMonthKey(e.id,y,m)]||{};const ar=attRow[e.id];const msW=typeof msPfWage==='function'?msPfWage(e,sid):(Number(e.basic)||0);const wageCalc=e.pfOnActualBasic?null:pfCappedWage(msW,y,m,sid);const ovr=v=>v!=null&&v!==''?Number(v)||0:null;
-    const settled=!!(mt.advanceSettled&&Array.isArray(mt.advanceSettledBreakdown));
+    const settled=!!(mt.advanceSettled&&Array.isArray(mt.advanceSettledBreakdown));const sm=w.salManual||{};const smv=k=>sm[k]!=null;
     const esicF=(sal)=>'IF('+on('esic')+',IF(ESO<>"",ESO,IF(AND('+ref('esicReg')+',ESE,OR('+sal+'<='+ref('esicLimit')+',ESC)),ROUND('+sal+'*'+ref('esicRate')+',0),0)),0)';
     return{id:e.id,name:e.name,desig:e.desig||'',status:e.status||'',salary:payGrossFor(e,sid),basic:msW,
-      days:r=>pwF(pwRef(S.att.name)+A.L('pay')+ar,w.totalDays),dim:r=>pwF(ref('dim')),gross:(r,L)=>pwF('ROUND('+L('salary')+r+'/'+L('dim')+r+'*'+L('days')+r+',0)',w.grossAfterLop),lop:(r,L)=>pwF('MAX(0,'+L('salary')+r+'-'+L('gross')+r+')',w.lopAmt),
-      tea:(r,L)=>pwF('IF(AND('+on('tea')+','+L('status')+r+'="Active"),ROUND(IF('+ref('teaMode')+'="perDay",'+ref('teaRate')+'*'+L('days')+r+','+ref('teaRate')+'),0),0)',w.tea),
+      days:r=>pwF(pwRef(S.att.name)+A.L('pay')+ar,w.totalDays),dim:r=>pwF(ref('dim')),gross:(r,L)=>smv('gross')?pwF(String(sm.gross),w.grossAfterLop):pwF('ROUND('+L('salary')+r+'/'+L('dim')+r+'*'+L('days')+r+',0)',w.grossAfterLop),lop:(r,L)=>pwF('MAX(0,'+L('salary')+r+'-'+L('gross')+r+')',w.lopAmt),
+      tea:(r,L)=>smv('tea')?pwF(String(sm.tea),w.tea):pwF('IF(AND('+on('tea')+','+L('status')+r+'="Active"),ROUND(IF('+ref('teaMode')+'="perDay",'+ref('teaRate')+'*'+L('days')+r+','+ref('teaRate')+'),0),0)',w.tea),
       pfE:!!e.pf,pfA:!!e.pfOnActualBasic,wage:(r,L)=>e.pfOnActualBasic?pwF(L('basic')+r):(wageCalc===Math.min(Number(e.basic)||0,ceiling)?pwF('MIN('+L('basic')+r+','+ref('pfCeil')+')',wageCalc):wageCalc),
-      pfO:ovr(mt.pfOverride),pf:(r,L)=>pwF('IF('+on('pfEmp')+',IF('+L('pfO')+r+'<>"",'+L('pfO')+r+',IF(AND('+ref('pfReg')+','+L('pfE')+r+'),ROUND('+L('wage')+r+'*'+ref('pfRate')+',0),0)),0)',w.pfEmp),
-      esE:!!e.esic,esC:!!((Number(w.esicEmp)||0)+(Number(w.esicEr)||0)>0),esO:ovr(mt.esicOverride),esic:(r,L)=>pwF(esicF(L('salary')+r).split('ESO').join(L('esO')+r).split('ESE').join(L('esE')+r).split('ESC').join(L('esC')+r),w.esicEmp),
-      ptO:(e.ptExempt&&typeof controlOn==='function'&&controlOn('ptExemption',sid)&&ovr(mt.ptOverride)==null)?0:ovr(mt.ptOverride),pt:(r,L)=>pwF('IF('+on('pt')+',IF('+L('ptO')+r+'<>"",'+L('ptO')+r+','+ptExpr(L('salary')+r)+'),0)',w.ptAmt),
-      tdsE:ovr(mt.tdsAmount)||0,tds:(r,L)=>pwF('IF('+on('tds')+','+L('tdsE')+r+',0)',w.tdsAmt),
-      pen:(r,L)=>pwF('IF('+on('penalties')+',SUMIFS('+pen.amt+','+pen.emp+','+L('name')+r+'),0)',w.penAmt),
+      pfO:smv('pf')?sm.pf:ovr(mt.pfOverride),pf:(r,L)=>pwF('IF('+on('pfEmp')+',IF('+L('pfO')+r+'<>"",'+L('pfO')+r+',IF(AND('+ref('pfReg')+','+L('pfE')+r+'),ROUND('+L('wage')+r+'*'+ref('pfRate')+',0),0)),0)',w.pfEmp),
+      esE:!!e.esic,esC:!!((Number(w.esicEmp)||0)+(Number(w.esicEr)||0)>0),esO:smv('esic')?sm.esic:ovr(mt.esicOverride),esic:(r,L)=>pwF(esicF(L('salary')+r).split('ESO').join(L('esO')+r).split('ESE').join(L('esE')+r).split('ESC').join(L('esC')+r),w.esicEmp),
+      ptO:smv('pt')?sm.pt:(e.ptExempt&&typeof controlOn==='function'&&controlOn('ptExemption',sid)&&ovr(mt.ptOverride)==null)?0:ovr(mt.ptOverride),pt:(r,L)=>pwF('IF('+on('pt')+',IF('+L('ptO')+r+'<>"",'+L('ptO')+r+','+ptExpr(L('salary')+r)+'),0)',w.ptAmt),
+      tdsE:smv('tds')?sm.tds:(ovr(mt.tdsAmount)||0),tds:(r,L)=>pwF('IF('+on('tds')+','+L('tdsE')+r+',0)',w.tdsAmt),
+      pen:(r,L)=>smv('pen')?pwF(String(sm.pen),w.penAmt):pwF('IF('+on('penalties')+',SUMIFS('+pen.amt+','+pen.emp+','+L('name')+r+'),0)',w.penAmt),
       advB:settled?'Settled on approval':'Active advances',advV:settled?mt.advanceSettledBreakdown.reduce((s,b)=>s+(Number(b.amount)||0),0):null,
       adv:(r,L)=>pwF('IF('+on('advAdj')+','+(settled?L('advV')+r:'SUMIFS('+adv.ded+','+adv.emp+','+L('name')+r+','+adv.from+',"Salary")')+',0)',w.advAdj),
       arr:Number(w.arrears)||0,xe:Number(w.extraEarn)||0,xd:Number(w.extraDed)||0,
-      net:(r,L)=>pwF('MAX(0,'+L('gross')+r+'+'+L('arr')+r+'+'+L('xe')+r+'-'+L('xd')+r+'+'+L('tea')+r+'-'+L('pf')+r+'-'+L('esic')+r+'-'+L('pt')+r+'-'+L('tds')+r+'-'+L('pen')+r+'-'+L('adv')+r+')',w.net),
+      net:(r,L)=>smv('net')?pwF('MAX(0,'+sm.net+'-'+L('adv')+r+')',w.net):pwF('MAX(0,'+L('gross')+r+'+'+L('arr')+r+'+'+L('xe')+r+'-'+L('xd')+r+'+'+L('tea')+r+'-'+L('pf')+r+'-'+L('esic')+r+'-'+L('pt')+r+'-'+L('tds')+r+'-'+L('pen')+r+'-'+L('adv')+r+')',w.net),
       opA:Number(w.prevAdv)||0,cuA:Number(w.currAdv)||0,nxA:Number(w.nextAdv)||0,clA:(r,L)=>pwF('MAX(0,'+L('opA')+r+'+'+L('cuA')+r+'-'+L('adv')+r+')',w.closingAdvance),
       pfEr:(r,L)=>pwF('IF(AND('+ref('pfReg')+','+L('pfE')+r+'),ROUND('+L('wage')+r+'*'+ref('pfRate')+',0),0)',w.pfEr),esEr:(r,L)=>pwF('IF(AND('+ref('esicReg')+','+L('esE')+r+',OR('+L('salary')+r+'<='+ref('esicLimit')+','+L('esC')+r+')),ROUND('+L('salary')+r+'*'+ref('esicEr')+',0),0)',w.esicEr),
       ...Object.fromEntries([['iS','serviceInc','iS'],['iM','memInc','iM'],['iP','prodInc','iP'],['iG','mgrInc','iG'],['iN','nonPerfPenalty','iPen'],['iT','totalInc','tot']].map(([k,c,src])=>[k,()=>pwF('IF('+on(c)+','+ctx.incRef(src,e.id)+',0)')])),
