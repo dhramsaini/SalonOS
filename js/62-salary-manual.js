@@ -31,6 +31,7 @@ function salManualFor(sid,e,y,m){
   if(SM_BYPASS||sid==null)return null;const c=smCfg(sid,y,m);if(c.who==='off'||!smInScope(c,e.id))return null;
   const a=smAmts(sid,y,m)[e.id]||{};const v=k=>a[k]==null||a[k]===''?null:Number(a[k])||0;const o={gross:null,tea:null,pf:null,esic:null,pt:null,tds:null,pen:null,adv:null,net:null};
   if(c.mode==='net')o.net=v('net');else SM_PARTS.forEach(([k])=>{if(c.parts[k])o[k]=v(k);});
+  if(o.adv!=null&&a.advBy&&typeof a.advBy==='object')o.advBy=a.advBy; // amount chosen per advance
   return Object.values(o).some(x=>x!=null)?o:null;
 }
 function smCalculated(sid,y,m){SM_BYPASS=true;try{return(typeof ffLive==='function'?ffLive(()=>swWorkingsFor(sid,y,m)):swWorkingsFor(sid,y,m))||[];}catch(e){return[];}finally{SM_BYPASS=false;}}
@@ -45,18 +46,55 @@ function smAdvList(sid,list){if(list)return list;try{return JSON.parse(cachedLoc
 function salManualAdvDue(sid,empName,y,m,list){
   const ym=smYm(y,m),end=ym+'-31';
   return smAdvList(sid,list).map(a=>typeof advFixed==='function'?advFixed(a):a).filter(a=>a&&a.emp===empName&&(a.deductFrom||'Salary')==='Salary'&&(a.status==='Active'||a.status==='Recovered')&&String(a.date||'')<=end)
-    .map(a=>{const out=typeof advTrueOutstanding==='function'?advTrueOutstanding(a):Math.max(0,Number(a.outstanding)||0);return{id:a.id,date:String(a.date||''),cap:out+(Number((a.settled||{})[ym])||0)};})
+    .map(a=>{const out=typeof advTrueOutstanding==='function'?advTrueOutstanding(a):Math.max(0,Number(a.outstanding)||0);const cap=out+(Number((a.settled||{})[ym])||0);
+      const sch=typeof scheduledAmountFor==='function'?scheduledAmountFor(a,y,m):null;const plan=Math.min(cap,Math.max(0,sch!==null?sch:(Number(a.repayment)||0)));
+      return{id:a.id,date:String(a.date||''),amount:Number(a.amount)||0,reason:a.reason||'',cap,plan};})
     .filter(x=>x.cap>0).sort((a,b)=>a.date.localeCompare(b.date)||String(a.id).localeCompare(String(b.id)));
 }
 function salManualAdvMap(sid,empId,empName,y,m,list){
   const sm=salManualFor(sid,{id:empId},y,m);if(!sm||sm.adv==null)return null;
-  let left=Math.max(0,Number(sm.adv)||0);const mp={};
-  salManualAdvDue(sid,empName,y,m,list).forEach(x=>{const t=Math.min(left,x.cap);if(t>0){mp[x.id]=t;left-=t;}});return mp;
+  const due=salManualAdvDue(sid,empName,y,m,list);const mp={};
+  if(sm.advBy){due.forEach(x=>{const t=Math.min(Math.max(0,Number(sm.advBy[x.id])||0),x.cap);if(t>0)mp[x.id]=t;});return mp;} // chosen advance by advance
+  let left=Math.max(0,Number(sm.adv)||0);due.forEach(x=>{const t=Math.min(left,x.cap);if(t>0){mp[x.id]=t;left-=t;}});return mp;   // a plain total: oldest first
+}
+// Save the amount to recover from each advance (nothing typed = back to the plan).
+function smSetAdvBy(sid,y,m,empId,map){const A=smAll(sid);const k=smYm(y,m);const r=A[k]=A[k]||{};if(!r.cfg){const c={...smCfg(sid,y,m)};delete c.carried;r.cfg=c;}
+  const a=r.amt=r.amt||{};const e=a[empId]={...(a[empId]||{})};const old=e.adv;const clean={};Object.entries(map||{}).forEach(([id,v])=>{const n=Number(v);if(v!==''&&v!=null&&!isNaN(n)&&n>=0)clean[id]=n;});
+  if(!Object.keys(clean).length){delete e.adv;delete e.advBy;}else{e.advBy=clean;e.adv=Object.values(clean).reduce((t,x)=>t+x,0);}smSaveAll(sid,A);
+  if(typeof payLogChange==='function')payLogChange(sid,'salary',y,m,empId,'Manual advance',old==null?'':old,e.adv==null?'':e.adv+' ('+Object.entries(clean).map(([i,v])=>i+' ₹'+v).join(', ')+')');}
+// The Advance Adj. cell: a button showing what is recovered (and from which advance) that opens
+// the "choose advance" window.
+function SmAdvCell({sid,y,m,w,calc,locked,onChanged,bg,color}){
+  const h=React.createElement;const [open,setOpen]=useState(false);const [vals,setVals]=useState({});
+  const rec=smAmts(sid,y,m)[w.id]||{};const typed=rec.adv!=null;const due=salManualAdvDue(sid,w.name,y,m);const planTot=Math.round(Number(calc?calc.advAdj:0)||0);
+  const by=rec.advBy||(typed&&due.length?(()=>{const mp={};let left=Number(rec.adv)||0;due.forEach(x=>{const t=Math.min(left,x.cap);if(t>0){mp[x.id]=t;left-=t;}});return mp;})():{});
+  const dmy=iso=>iso?String(iso).slice(0,10).split('-').reverse().join('/'):'—';const rs=n=>'₹'+Math.round(Number(n)||0).toLocaleString('en-IN');
+  const openIt=()=>{if(locked)return;const v={};due.forEach(x=>{v[x.id]=typed?(by[x.id]!=null?by[x.id]:0):x.plan;});setVals(v);setOpen(true);};
+  const save=()=>{for(const x of due){const n=Number(vals[x.id])||0;if(n>x.cap){window.alert(x.id+': only '+rs(x.cap)+' is still due on this advance.');return;}}smSetAdvBy(sid,y,m,w.id,vals);setOpen(false);onChanged&&onChanged();};
+  const usePlan=()=>{smSetAdvBy(sid,y,m,w.id,{});setOpen(false);onChanged&&onChanged();};
+  const tot=Object.values(vals).reduce((t,x)=>t+(Number(x)||0),0);
+  return h('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right',background:bg||'rgba(244,196,48,0.12)',whiteSpace:'nowrap'}},
+    !due.length?h('span',{style:{fontSize:11,color:'var(--text3)'},title:'No advance is due for this employee'},'no advance due'):
+    h('div',{style:{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2}},
+      h('button',{type:'button',disabled:!!locked,onClick:openIt,title:'Choose the advance(s) to recover from and how much',
+        style:{minWidth:84,textAlign:'right',padding:'4px 6px',borderRadius:4,border:'1px solid '+(typed?'#2f5fe0':'var(--border)'),background:locked?'var(--bg2)':'var(--bg3)',color:typed?(color||'var(--text)'):'var(--text3)',fontWeight:typed?700:400,fontSize:11.5,cursor:locked?'not-allowed':'pointer'}},
+        (typed?rs(rec.adv):rs(planTot)+' plan')+' ▾'),
+      typed&&h('div',{style:{fontSize:9.5,color:'var(--text3)'}},Object.entries(by).filter(([,v])=>v>0).map(([id,v])=>id+' '+rs(v)).join(' · ')||'nothing recovered'),
+      !typed&&h('div',{style:{fontSize:9.5,color:'var(--text3)'}},'of '+rs(due.reduce((t,x)=>t+x.cap,0))+' due')),
+    open&&h('div',{className:'modal-overlay',onClick:()=>setOpen(false),style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:2000}},
+      h('div',{onClick:e=>e.stopPropagation(),style:{background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:'var(--r3)',padding:20,width:600,maxWidth:'94vw',textAlign:'left',whiteSpace:'normal'}},
+        h('div',{style:{fontSize:16,fontWeight:700,marginBottom:4}},'Advance Adj. — '+w.name+' — '+SM_MON[m]+' '+y),
+        h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:10}},'Type how much to recover from each advance this month (0 to skip it). It is recorded against that advance when the row is approved.'),
+        h('div',{className:'table-wrap'},h('table',null,h('thead',null,h('tr',null,['Advance','Given on','Amount','Still due','Plan this month','Recover now'].map((x,i)=>h('th',{key:i,style:i>1?{textAlign:'right'}:null},x)))),
+          h('tbody',null,due.map(x=>h('tr',{key:x.id},h('td',null,h('b',null,x.id),x.reason?h('div',{style:{fontSize:10.5,color:'var(--text3)'}},x.reason):null),h('td',null,dmy(x.date)),h('td',{style:{textAlign:'right'}},rs(x.amount)),h('td',{style:{textAlign:'right'}},rs(x.cap)),h('td',{style:{textAlign:'right',color:'var(--text3)'}},rs(x.plan)),
+            h('td',{style:{textAlign:'right'}},h('input',{type:'number',min:0,max:x.cap,className:'form-control',style:{width:100,textAlign:'right',padding:'3px 6px',marginLeft:'auto'},value:vals[x.id]==null?'':vals[x.id],onChange:e=>setVals({...vals,[x.id]:e.target.value})}))))))),
+        h('div',{style:{display:'flex',gap:8,alignItems:'center',marginTop:12,flexWrap:'wrap'}},h('b',null,'Total '+rs(tot)),h('span',{style:{flex:1}}),
+          h('button',{className:'btn btn-ghost btn-sm',onClick:usePlan},'↺ Use the plan'),h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setOpen(false)},'Cancel'),h('button',{className:'btn btn-primary btn-sm',onClick:save},'✓ Save')))));
 }
 
 // A table cell that is a box (Salary Working).
 function SmAmtCell({sid,y,m,w,k,calc,locked,onChanged,bg,color}){
-  const h=React.createElement;const a=(smAmts(sid,y,m)[w.id]||{})[k];const c=Math.round(Number(smCalcOf(calc,k))||0);
+  const h=React.createElement;if(k==='adv')return h(SmAdvCell,{sid,y,m,w,calc,locked,onChanged,bg,color});const a=(smAmts(sid,y,m)[w.id]||{})[k];const c=Math.round(Number(smCalcOf(calc,k))||0);
   return h('td',{style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right',background:bg||'rgba(244,196,48,0.12)'},title:(k==='net'?'Net Salary typed by hand (before advance recovery)':'Typed by hand — ✍ Manual salary')+'. Calculated: ₹'+c.toLocaleString('en-IN')+'. Leave blank to use the calculated figure.'},
     h('input',{key:k+'|'+(a==null?'':a),type:'number',min:0,defaultValue:a==null?'':a,placeholder:String(c),disabled:!!locked,
       onBlur:e=>{const v=String(e.target.value).trim();if(v===String(a==null?'':a))return;smSetAmt(sid,y,m,w.id,k,v);onChanged&&onChanged();},
