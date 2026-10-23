@@ -1,7 +1,7 @@
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ✍ Manual salary (Salary Working) — type salary figures by hand for all employees or only the ones
 // you pick, either the whole Net Salary or part by part (Gross Salary, Tea, PF, ESIC, Prof. Tax,
-// TDS, Penalties). Switched on and set up on the Salary Working sheet itself (per month, carried
+// TDS, Penalties, Advance Adj.). Switched on and set up on the Salary Working sheet itself (per month, carried
 // forward); the typed figures sit in the table's own cells, a blank box keeps the calculated one.
 //   • Parts replace the calculated figure in Net Salary; PF / ESIC / PT typed here also go to the
 //     PF / ESIC / PT figures and challans (statutoryDeductionsFor), like the existing overrides.
@@ -9,7 +9,7 @@
 //     is still taken off (it is settled on the Advances sheet).
 // Store: salonos_sal_manual_outlet_<id> = {'YYYY-MM':{cfg:{who,emps,mode,parts},amt:{empId:{…}}}}.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-const SM_PARTS=[['gross','Gross Salary'],['tea','Tea'],['pf','PF (Emp)'],['esic','ESIC (Emp)'],['pt','Prof. Tax'],['tds','TDS'],['pen','Penalties']];
+const SM_PARTS=[['gross','Gross Salary'],['tea','Tea'],['pf','PF (Emp)'],['esic','ESIC (Emp)'],['pt','Prof. Tax'],['tds','TDS'],['pen','Penalties'],['adv','Advance Adj.']];
 const SM_MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
 let SM_BYPASS=false;
 function smYm(y,m){return y+'-'+String(m+1).padStart(2,'0');}
@@ -29,12 +29,30 @@ function smCellOn(sid,y,m,id,k){const c=smCfg(sid,y,m);if(c.who==='off'||!smInSc
 // Engine hook (swWorkingsFor / statutoryDeductionsFor): null, or {gross,tea,pf,esic,pt,tds,pen,net} with null = not typed.
 function salManualFor(sid,e,y,m){
   if(SM_BYPASS||sid==null)return null;const c=smCfg(sid,y,m);if(c.who==='off'||!smInScope(c,e.id))return null;
-  const a=smAmts(sid,y,m)[e.id]||{};const v=k=>a[k]==null||a[k]===''?null:Number(a[k])||0;const o={gross:null,tea:null,pf:null,esic:null,pt:null,tds:null,pen:null,net:null};
+  const a=smAmts(sid,y,m)[e.id]||{};const v=k=>a[k]==null||a[k]===''?null:Number(a[k])||0;const o={gross:null,tea:null,pf:null,esic:null,pt:null,tds:null,pen:null,adv:null,net:null};
   if(c.mode==='net')o.net=v('net');else SM_PARTS.forEach(([k])=>{if(c.parts[k])o[k]=v(k);});
   return Object.values(o).some(x=>x!=null)?o:null;
 }
 function smCalculated(sid,y,m){SM_BYPASS=true;try{return(typeof ffLive==='function'?ffLive(()=>swWorkingsFor(sid,y,m)):swWorkingsFor(sid,y,m))||[];}catch(e){return[];}finally{SM_BYPASS=false;}}
-function smCalcOf(w,k){if(!w)return 0;return k==='net'?Math.max(0,(Number(w.net)||0)+(Number(w.advAdj)||0)):k==='gross'?w.grossAfterLop:k==='tea'?w.tea:k==='pf'?w.pfEmp:k==='esic'?w.esicEmp:k==='pt'?w.ptAmt:k==='tds'?w.tdsAmt:w.penAmt;}
+function smCalcOf(w,k){if(!w)return 0;return k==='net'?Math.max(0,(Number(w.net)||0)+(Number(w.advAdj)||0)):k==='gross'?w.grossAfterLop:k==='tea'?w.tea:k==='pf'?w.pfEmp:k==='esic'?w.esicEmp:k==='pt'?w.ptAmt:k==='tds'?w.tdsAmt:k==='adv'?w.advAdj:w.penAmt;}
+
+// ── Advance Adj. typed by hand, linked to the advances given ──
+// The typed amount is spread over the employee's Salary advances, oldest first, up to what each
+// still has to recover this month; {advanceId: amount}, or null when no advance amount is typed.
+// Used by swWorkingsFor (Advance Adj.), Salary Working approval (applyAdvanceSettlement) and
+// reconcileAdvanceRecoveries, so the advances register records exactly what was deducted.
+function smAdvList(sid,list){if(list)return list;try{return JSON.parse(cachedLocalGet(outletKey('salonos_advances',sid))||'[]')||[];}catch(e){return[];}}
+function salManualAdvDue(sid,empName,y,m,list){
+  const ym=smYm(y,m),end=ym+'-31';
+  return smAdvList(sid,list).map(a=>typeof advFixed==='function'?advFixed(a):a).filter(a=>a&&a.emp===empName&&(a.deductFrom||'Salary')==='Salary'&&(a.status==='Active'||a.status==='Recovered')&&String(a.date||'')<=end)
+    .map(a=>{const out=typeof advTrueOutstanding==='function'?advTrueOutstanding(a):Math.max(0,Number(a.outstanding)||0);return{id:a.id,date:String(a.date||''),cap:out+(Number((a.settled||{})[ym])||0)};})
+    .filter(x=>x.cap>0).sort((a,b)=>a.date.localeCompare(b.date)||String(a.id).localeCompare(String(b.id)));
+}
+function salManualAdvMap(sid,empId,empName,y,m,list){
+  const sm=salManualFor(sid,{id:empId},y,m);if(!sm||sm.adv==null)return null;
+  let left=Math.max(0,Number(sm.adv)||0);const mp={};
+  salManualAdvDue(sid,empName,y,m,list).forEach(x=>{const t=Math.min(left,x.cap);if(t>0){mp[x.id]=t;left-=t;}});return mp;
+}
 
 // A table cell that is a box (Salary Working).
 function SmAmtCell({sid,y,m,w,k,calc,locked,onChanged,bg,color}){
@@ -44,6 +62,7 @@ function SmAmtCell({sid,y,m,w,k,calc,locked,onChanged,bg,color}){
       onBlur:e=>{const v=String(e.target.value).trim();if(v===String(a==null?'':a))return;smSetAmt(sid,y,m,w.id,k,v);onChanged&&onChanged();},
       onKeyDown:e=>{if(e.key==='Enter')e.target.blur();},
       style:{width:84,textAlign:'right',background:locked?'var(--bg2)':'var(--bg3)',border:'1px solid '+(a!=null?'#2f5fe0':'var(--border)'),borderRadius:4,color:color||'var(--text)',fontWeight:a!=null?700:400,fontSize:11.5,padding:'4px 6px',cursor:locked?'not-allowed':'text'}}),
+    k==='adv'&&h('div',{style:{fontSize:9.5,color:'var(--text3)',marginTop:2}},(()=>{const due=salManualAdvDue(sid,w.name,y,m).reduce((t,x)=>t+x.cap,0);return due>0?'of '+'₹'+Math.round(due).toLocaleString('en-IN')+' due':'no advance due';})()),
     k==='net'&&a!=null&&Number(w.advAdj)>0&&h('div',{style:{fontSize:9.5,color:'var(--text3)',marginTop:2}},'pays ₹'+Math.round(Number(w.net)||0).toLocaleString('en-IN')+' after advance'));
 }
 
@@ -72,6 +91,6 @@ function SalManualPanel({salon,year,month,onChanged,locked}){
       cfg.who!=='off'&&cfg.mode==='parts'&&h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},SM_PARTS.map(([k,l])=>h('label',{key:k,style:{fontSize:12,display:'inline-flex',gap:4,alignItems:'center',marginRight:8,cursor:locked?'not-allowed':'pointer'}},
         h('input',{type:'checkbox',checked:!!cfg.parts[k],disabled:locked,onChange:e=>setC({parts:{...cfg.parts,[k]:e.target.checked}})}),l))),
       cfg.who!=='off'&&!locked&&h('div',null,h('button',{className:'btn btn-ghost btn-sm',onClick:clear},'✕ Clear typed figures')),
-      h('div',{style:{fontSize:11.5,color:'var(--text3)'}},cfg.mode==='net'?'Net Salary typed = the pay before advance recovery; the month’s advance instalment is still taken off. ':'Each typed part replaces the calculated one in Net Salary; PF, ESIC and Prof. Tax typed here also go to the PF / ESIC / PT challans and statements. ',
+      h('div',{style:{fontSize:11.5,color:'var(--text3)'}},cfg.mode==='net'?'Net Salary typed = the pay before advance recovery; the month’s advance instalment is still taken off. ':'Each typed part replaces the calculated one in Net Salary; PF, ESIC and Prof. Tax typed here also go to the PF / ESIC / PT challans and statements. Advance Adj. is recovered from the employee’s advances, oldest first, never more than they still owe — and recorded against each advance when the row is approved. ',
         'The boxes appear in the table below — a blank box keeps the calculated figure (shown in grey). Changes are kept in 🧰 Pay tools → Change log when that is on.')));
 }

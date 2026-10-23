@@ -1021,12 +1021,13 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     const key=outletKey('salonos_advances',salon?.id);
     let all=[];
     try{const raw=JSON.parse(cachedLocalGet(key)||'[]');if(Array.isArray(raw))all=raw;}catch(e){}
-    let capLeft=typeof advSettleCap==='function'?advSettleCap(salon?.id,empName,year,month):Infinity;
+    const smEmp=EMPLOYEES.find(x=>x.name===empName);const smMap=smEmp&&typeof salManualAdvMap==='function'?salManualAdvMap(salon?.id,smEmp.id,empName,year,month,all):null; // typed Advance Adj.
+    let capLeft=smMap?Infinity:(typeof advSettleCap==='function'?advSettleCap(salon?.id,empName,year,month):Infinity);
     const breakdown=[];
     const next=all.map(a=>{
       if(a.emp!==empName||a.status!=='Active'||(a.deductFrom||'Salary')!=='Salary')return a;
       const scheduled=scheduledAmountFor(a,year,month);
-      const planned=scheduled!==null?scheduled:(Number(a.repayment)||0);
+      const planned=smMap?(smMap[a.id]||0):(scheduled!==null?scheduled:(Number(a.repayment)||0));
       const ym=year+'-'+String(month+1).padStart(2,'0');
       const done=Number((a.settled||{})[ym])||0; // already recovered for this month (e.g. when the month was locked)
       const due=Math.min(Math.max(0,planned-done),Math.max(0,Number(a.outstanding)||0));
@@ -1918,7 +1919,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
                 title:'Click to enter TDS for this employee this month',onClick:()=>openTdsEntry(e)},
                 e.tdsAmt>0?React.createElement('span',{style:{color:'var(--orange)'}},'−₹'+e.tdsAmt.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'—')
               ),
-              cols.advAdj&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',cursor:e.advAdj>0&&onNavTab?'pointer':undefined,background:SW_BG_DED},
+              cols.advAdj&&smC('adv',SW_BG_DED,'var(--red)')||cols.advAdj&&React.createElement('td',{style:{padding:'8px 8px',fontSize:12,textAlign:'right',fontWeight:400,borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',cursor:e.advAdj>0&&onNavTab?'pointer':undefined,background:SW_BG_DED},
                 title:e.advAdj>0&&onNavTab?"This month's scheduled installment — click to view/amend on the Advances sheet":undefined,
                 onClick:e.advAdj>0&&onNavTab?()=>onNavTab('advance'):undefined},
                 e.advAdj>0?React.createElement('span',{style:{color:'var(--red)'}},'−₹'+e.advAdj.toLocaleString('en-IN')):React.createElement('span',{style:{color:'var(--text3)'}},'—'),

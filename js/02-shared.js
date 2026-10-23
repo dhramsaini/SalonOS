@@ -2181,6 +2181,7 @@ function reconcileAdvanceRecoveries(sid){
       let months=[];
       if(hasSched)months=a.schedule.filter(s=>Number(s.amount)>0).map(s=>s.month);
       else if(a.date&&Number(a.repayment)>0){let y=+a.date.slice(0,4),m=+a.date.slice(5,7)-1;for(let i=0;i<36;i++){const ym=y+'-'+String(m+1).padStart(2,'0');if(ym>curYm)break;months.push(ym);m++;if(m>11){m=0;y++;}}}
+      if(src==='Salary'&&typeof smAll==='function'){const SA=smAll(sid);Object.keys(SA).forEach(ym=>{const am=(SA[ym]||{}).amt||{};if(Object.values(am).some(v=>v&&v.adv!=null))months.push(ym);});}
       months=[...new Set(months)].filter(ym=>/^\d{4}-\d{2}$/.test(ym)&&ym<=curYm).sort();
       let a2=a;
       months.forEach(ym=>{
@@ -2190,7 +2191,8 @@ function reconcileAdvanceRecoveries(sid){
         const rec=id?(src==='Salary'?sw:iw)[attMonthKey(id,y,m)]:null;
         const final=(src==='Salary'?isMonthLockedFor(sid,y,m):isIWEffectiveLockedFor(sid,y,m))||!!(rec&&rec.status==='Approved');
         if(!final)return;
-        const planned=hasSched?(scheduledAmountFor(a2,y,m)||0):(Number(a2.repayment)||0);
+        const mp=src==='Salary'&&id&&typeof salManualAdvMap==='function'?salManualAdvMap(sid,id,a.emp,y,m,all):null; // typed Advance Adj. (Salary Working)
+        const planned=mp?(mp[a.id]||0):hasSched?(scheduledAmountFor(a2,y,m)||0):(Number(a2.repayment)||0);
         let done=Number((a2.settled||{})[ym])||0;
         if(rec&&Array.isArray(rec.advanceSettledBreakdown)){const b=rec.advanceSettledBreakdown.find(x=>x.id===a.id&&!x.ym);if(b)done+=Number(b.amount)||0;}
         const take=Math.min(Math.max(0,planned-done),Number(a2.outstanding)||0);
@@ -2679,6 +2681,8 @@ function swWorkingsFor(salonId,year,month){
     const px=typeof payExtrasFor==='function'?payExtrasFor(salonId,e,year,month):null;const extraEarn=px?px.earn:0,extraDed=px?px.ded:0;
     // Part-recovery (js/54 · Controls → advPartRecovery): never recover more than the month's pay can bear.
     if(!(swM&&swM.advanceSettled)&&typeof advCapToPay==='function')advAdj=advCapToPay(salonId,advAdj,grossAfterLop+arrears+extraEarn-extraDed+tea-pfEmp-esicEmp-ptAmt-tdsAmt-penAmt);
+    // ✍ Manual salary: a typed Advance Adj. is recovered from the employee's advances (js/62), until the row is approved.
+    if(!(swM&&swM.advanceSettled)&&typeof salManualAdvMap==='function'){const mp=salManualAdvMap(salonId,e.id,e.name,year,month);if(mp)advAdj=Object.values(mp).reduce((t,v)=>t+v,0);}
     // ✍ Manual salary (js/62): typed parts replace the calculated ones; a typed Net Salary is the pay before advance recovery.
     const _sm=typeof salManualFor==='function'?salManualFor(salonId,e,year,month):null;const smT=k=>!!(_sm&&_sm[k]!=null);
     const smG=smT('gross')?_sm.gross:grossAfterLop,smTea=smT('tea')?_sm.tea:tea,smPf=smT('pf')?_sm.pf:pfEmp,smEs=smT('esic')?_sm.esic:esicEmp,smPt=smT('pt')?_sm.pt:ptAmt,smTds=smT('tds')?_sm.tds:tdsAmt,smPen=smT('pen')?_sm.pen:penAmt;

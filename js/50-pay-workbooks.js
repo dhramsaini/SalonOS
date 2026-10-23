@@ -272,7 +272,7 @@ function pwSalarySheets(ctx,o){
       tdsE:smv('tds')?sm.tds:(ovr(mt.tdsAmount)||0),tds:(r,L)=>pwF('IF('+on('tds')+','+L('tdsE')+r+',0)',w.tdsAmt),
       pen:(r,L)=>smv('pen')?pwF(String(sm.pen),w.penAmt):pwF('IF('+on('penalties')+',SUMIFS('+pen.amt+','+pen.emp+','+L('name')+r+'),0)',w.penAmt),
       advB:settled?'Settled on approval':'Active advances',advV:settled?mt.advanceSettledBreakdown.reduce((s,b)=>s+(Number(b.amount)||0),0):null,
-      adv:(r,L)=>pwF('IF('+on('advAdj')+','+(settled?L('advV')+r:'SUMIFS('+adv.ded+','+adv.emp+','+L('name')+r+','+adv.from+',"Salary")')+',0)',w.advAdj),
+      adv:(r,L)=>(smv('adv')&&!settled)?pwF(String(Number(w.advAdj)||0),w.advAdj):pwF('IF('+on('advAdj')+','+(settled?L('advV')+r:'SUMIFS('+adv.ded+','+adv.emp+','+L('name')+r+','+adv.from+',"Salary")')+',0)',w.advAdj),
       arr:Number(w.arrears)||0,xe:Number(w.extraEarn)||0,xd:Number(w.extraDed)||0,
       net:(r,L)=>smv('net')?pwF('MAX(0,'+sm.net+'-'+L('adv')+r+')',w.net):pwF('MAX(0,'+L('gross')+r+'+'+L('arr')+r+'+'+L('xe')+r+'-'+L('xd')+r+'+'+L('tea')+r+'-'+L('pf')+r+'-'+L('esic')+r+'-'+L('pt')+r+'-'+L('tds')+r+'-'+L('pen')+r+'-'+L('adv')+r+')',w.net),
       opA:Number(w.prevAdv)||0,cuA:Number(w.currAdv)||0,nxA:Number(w.nextAdv)||0,clA:(r,L)=>pwF('MAX(0,'+L('opA')+r+'+'+L('cuA')+r+'-'+L('adv')+r+')',w.closingAdvance),
