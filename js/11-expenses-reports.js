@@ -2299,9 +2299,12 @@ function ReportsHub(){
     {id:'penalty',icon:'⚠',title:'Penalty Register',sub:'Disciplinary deductions'},
     {id:'compliance',icon:'📋',title:'Compliance Calendar',sub:'PF, ESIC, GST, TDS due dates'},
     {id:'daily',icon:'📆',title:'Daily Sales Report',sub:'Date-wise revenue & expenses'},
+    // Super Admin / Salon Owner only (js/63 · Controls → dceReport).
+    ...((typeof dceAllowed==='function'&&dceAllowed()&&typeof controlOn==='function'&&controlOn('dceReport'))?[{id:'dce',icon:'🧾',title:'Daily Collection & Expenses',sub:'Outlet-wise collection, expenses and cash — any day or range'}]:[]),
   ];
 
   const exportReport=async(type)=>{
+    if(type==='dce'){if(typeof dceExcel==='function'){const t=typeof localIsoOf==='function'?localIsoOf(new Date()):new Date().toISOString().slice(0,10);await dceExcel(DCE_LAST||dceBuild(((typeof salonsForCurrentUser==='function'?salonsForCurrentUser(SALONS):SALONS)||[]).filter(x=>x&&x.status!=='Inactive').map(x=>x.id),t,t));}return;}
     const rows=[];
     if(type==='revenue'){
       rows.push(['"Category"','"Amount (₹)"','"% of Revenue"']);
@@ -2463,7 +2466,7 @@ function ReportsHub(){
     // Expanded report view
     activeReport&&React.createElement('div',{className:'card fade-in',style:{marginBottom:20}},
       React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}},
-        React.createElement('div',{className:'card-title',style:{margin:0}},REPORTS.find(r=>r.id===activeReport)?.icon+' '+REPORTS.find(r=>r.id===activeReport)?.title+' — '+MONTHS[selMonth]+' '+selYear),
+        React.createElement('div',{className:'card-title',style:{margin:0}},REPORTS.find(r=>r.id===activeReport)?.icon+' '+REPORTS.find(r=>r.id===activeReport)?.title+(activeReport==='dce'?'':' — '+MONTHS[selMonth]+' '+selYear)),
         React.createElement('div',{style:{display:'flex',gap:8}},
           React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},onClick:()=>exportReport(activeReport)},'\u2b07 Export CSV'),
           React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setActiveReport(null)},'✕ Close')
@@ -2669,6 +2672,7 @@ function ReportsHub(){
 
       // Daily sales — Cash/Card/UPI is the only real revenue breakdown Collection Reco tracks;
       // no real data anywhere splits this by Service/Product/Gift, so that's not fabricated here.
+      activeReport==='dce'&&typeof DailyCollExpReport==='function'&&React.createElement(DailyCollExpReport,null),
       activeReport==='daily'&&React.createElement('div',{className:'table-wrap'},
         React.createElement('table',null,
           React.createElement('thead',null,React.createElement('tr',null,['Date','Cash Sale','Card Sale','UPI Sale','Total Sale'].map(h=>React.createElement('th',{key:h},h)))),

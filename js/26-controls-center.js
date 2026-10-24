@@ -205,6 +205,7 @@ const CONTROL_DEFS=[
   {id:'filterChips',group:'Look & feel',label:'Show active filters',hint:'Filters in Billing and Clients show as chips you can clear with one tap.',def:true},
   {id:'collRecoNeedsMapping',group:'Month close',label:'Collection Reco only after every bank credit of the month is mapped',hint:'Each credit line needs a Nature, and card / UPI settlements a Date as per Cradlee, before the month’s Collection Reco is shown or downloaded.',def:true},
   {id:'monthFinalNeedsMapping',group:'Month close',label:'Mark Month Final only after every bank line of the month is mapped',hint:'Debits need a Nature (vendor payments a vendor or linked bill); credits a Nature (card / UPI settlements a Date as per Cradlee). Applies to P&L Final and Daily Sales & Exp Month Final.',def:true},
+  {id:'dceReport',group:'Month close',label:'Daily Collection & Expenses report',hint:'Reports Hub → Daily Collection & Expenses, for the Super Admin and the Salon Owner: outlet-wise collection by mode, expenses by head, collection − expenses and the cash drawer for any day or date range, with Excel, WhatsApp and print.',def:true},
   {id:'monthFinalRule',group:'Month close',label:'Mark Month Final only from the month’s last day',hint:'Daily Sales & Exp and Attendance cannot be finalised before the month ends.',def:true},
   {id:'poApproval',group:'Approvals',label:'Purchase order above the limit needs Super Admin approval',hint:'Inventory → 🧾 Purchase orders: a PO above the limit is sent for approval before it can be used for a bill.',def:false,limit:25000},
   {id:'invoiceApproval',group:'Approvals',label:'Vendor bill above the limit needs Super Admin approval',hint:'The person entering it sends a request; it saves once a Super Admin approves.',def:false,limit:50000},
@@ -430,6 +431,7 @@ const CONTROL_AREAS=[
   {key:'close',icon:'✅',title:'Approvals & month close',groups:['Approvals','Month close','Alerts','Reminders'],subs:[
     ['Approvals',['poApproval','invoiceApproval','bankFileApproval','deleteApproval','vendorBankApproval','paymentRun']],
     ['Month close',['monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']],
+    ['Reports',['dceReport']],
     ['Alerts & reminders',['payablesDueAlert','bankRecoAlert','budgetAlert','missingSalesBanner']]]},
   {key:'ctl',icon:'🎛',title:'Controls page',groups:['Controls page'],subs:[
     ['Seeing what’s set',['ctlOutletView','ctlCompare','ctlHealth','ctlLinks','ctlShowMe']],
