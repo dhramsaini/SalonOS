@@ -453,7 +453,7 @@ function CollectionReco({salon,onNavTab}={}){
   // imports fine, with that column simply treated as ₹0.
   const MANDATORY=['Center Name','InvoiceDate'];
   const [rows,setRows]=useState(()=>{
-    try{return JSON.parse(cachedLocalGet(outletKey('salonos_cradlee_collection_rows',salonId))||'[]');}catch(e){return[];}
+    try{return collRowsFix(JSON.parse(cachedLocalGet(outletKey('salonos_cradlee_collection_rows',salonId))||'[]'));}catch(e){return[];}
   });
   const [fileName,setFileName]=useState('');
   const [message,setMessage]=useState('');
@@ -934,8 +934,9 @@ function CollectionReco({salon,onNavTab}={}){
     const hasSuppliedTotal=rawTotal!==undefined&&rawTotal!==null&&String(rawTotal).trim()!=='';
     const suppliedTotal=clean(rawTotal);
     const calculatedTotal=cash+card+upi+wallet+district+luzo+online;
-    const total=hasSuppliedTotal?suppliedTotal:calculatedTotal;
-    return{id:Date.now()+idx,centerName:String(center||'').trim(),invoiceDate:normalizeDate(date,swap),cash,card,upi,wallet,district,luzo,online,total,calculatedTotal,isValid:hasSuppliedTotal?suppliedTotal===calculatedTotal:true};
+    // Total is always the sum of the modes; a different total in the file is kept as a note.
+    const total=calculatedTotal;
+    return{id:Date.now()+idx,centerName:String(center||'').trim(),invoiceDate:normalizeDate(date,swap),cash,card,upi,wallet,district,luzo,online,total,calculatedTotal,fileTotal:hasSuppliedTotal&&suppliedTotal!==calculatedTotal?suppliedTotal:null,isValid:true};
   };
 
   // opts (from the "Get the Collection Report from Cradlee" card): {from,to} ISO dates to keep only that
@@ -1291,7 +1292,7 @@ function CollectionReco({salon,onNavTab}={}){
             React.createElement('td',null,r.invoiceDate),
             React.createElement('td',null,money(r.cash)),React.createElement('td',null,money(r.card)),React.createElement('td',null,money(r.upi)),React.createElement('td',null,money(r.wallet)),React.createElement('td',null,money(r.district)),React.createElement('td',null,money(r.luzo)),React.createElement('td',null,money(r.online)),
             React.createElement('td',{style:{fontWeight:600}},money(r.total)),
-            React.createElement('td',null,React.createElement('span',{className:'badge '+(r.isValid?'badge-green':'badge-red')},r.isValid?'Total Matched':'Expected '+money(r.calculatedTotal))),
+            React.createElement('td',null,(r.fileTotal!=null&&Number(r.fileTotal)!==Number(r.total)?React.createElement('span',{className:'badge badge-amber',title:'The imported file said '+money(r.fileTotal)+'; Total here is Cash + Card + UPI + Wallet + District + Luzo + Online.'},'File total '+money(r.fileTotal)+' — corrected'):React.createElement('span',{className:'badge badge-green'},'Total Matched'))),
             React.createElement('td',null,React.createElement('button',{'aria-label':'Delete',className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},title:'Delete this row',onClick:()=>{if(confirm('Delete this row?'))setRows(prev=>prev.filter(x=>x.id!==r.id));}},React.createElement(IconTrash,{size:14})))
           ))),
           React.createElement('tfoot',null,React.createElement('tr',{style:{background:'var(--bg3)',fontWeight:700}},
@@ -1367,7 +1368,7 @@ function CollectionSheetView({salon,onNavTab}={}){
   // imports fine, with that column simply treated as ₹0.
   const MANDATORY=['Center Name','InvoiceDate'];
   const [rows,setRows]=useState(()=>{
-    try{return JSON.parse(cachedLocalGet(outletKey('salonos_cradlee_collection_rows',salonId))||'[]');}catch(e){return[];}
+    try{return collRowsFix(JSON.parse(cachedLocalGet(outletKey('salonos_cradlee_collection_rows',salonId))||'[]'));}catch(e){return[];}
   });
   const [fileName,setFileName]=useState('');
   const [message,setMessage]=useState('');
@@ -1721,8 +1722,9 @@ function CollectionSheetView({salon,onNavTab}={}){
     const hasSuppliedTotal=rawTotal!==undefined&&rawTotal!==null&&String(rawTotal).trim()!=='';
     const suppliedTotal=clean(rawTotal);
     const calculatedTotal=cash+card+upi+wallet+district+luzo+online;
-    const total=hasSuppliedTotal?suppliedTotal:calculatedTotal;
-    return{id:Date.now()+idx,centerName:String(center||'').trim(),invoiceDate:normalizeDate(date,swap),cash,card,upi,wallet,district,luzo,online,total,calculatedTotal,isValid:hasSuppliedTotal?suppliedTotal===calculatedTotal:true};
+    // Total is always the sum of the modes; a different total in the file is kept as a note.
+    const total=calculatedTotal;
+    return{id:Date.now()+idx,centerName:String(center||'').trim(),invoiceDate:normalizeDate(date,swap),cash,card,upi,wallet,district,luzo,online,total,calculatedTotal,fileTotal:hasSuppliedTotal&&suppliedTotal!==calculatedTotal?suppliedTotal:null,isValid:true};
   };
 
   const loadWorkbook=async(file)=>{

@@ -1665,7 +1665,7 @@ function plRevenueGrossFor(sid,year,month){
 // rows add up to the number instead of just trusting a total.
 function collectionRowsForMonth(salonId,year,month){
   let rows=[];
-  try{rows=JSON.parse(cachedLocalGet(outletKey('salonos_cradlee_collection_rows',salonId))||'[]');}catch(e){}
+  try{rows=collRowsFix(JSON.parse(cachedLocalGet(outletKey('salonos_cradlee_collection_rows',salonId))||'[]'));}catch(e){}
   return rows.filter(r=>{
     const iso=toISO(r.invoiceDate);
     if(!iso)return false;

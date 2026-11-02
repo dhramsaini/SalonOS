@@ -1129,6 +1129,21 @@ function loadPenalties(salonId){
 // Daily Sales & Exp's own data store, read standalone — needed by Daily Incentive's linked
 // Tip to Employee / Staff Overtime views, which display (not duplicate) figures already entered
 // in Daily Sales & Exp rather than asking for the same numbers twice.
+// Collection Summary / Collection Reco rows: Total is always Cash + Card + UPI + Wallet + District +
+// Luzo + Online. A different total in the imported file is kept as fileTotal (shown as a note).
+// Rows imported before this rule had the file's total stored as total — corrected on read.
+const COLL_MODES=['cash','card','upi','wallet','district','luzo','online'];
+function collRowFix(r){
+  if(!r||typeof r!=='object')return r;const sum=Math.round(COLL_MODES.reduce((t,k)=>t+(Number(r[k])||0),0)*100)/100;
+  const ft=r.fileTotal!=null?r.fileTotal:(Number(r.total)!==sum&&r.total!=null&&r.total!==''?Number(r.total)||0:null);
+  if(Number(r.total)===sum&&r.calculatedTotal===sum&&r.isValid===true&&(r.fileTotal===undefined?ft==null:r.fileTotal===ft))return r;
+  return{...r,total:sum,calculatedTotal:sum,fileTotal:ft,isValid:true};
+}
+function collRowsFix(rows){return Array.isArray(rows)?rows.map(collRowFix):[];}
+function repairCollectionTotals(sid){
+  try{const k=outletKey('salonos_cradlee_collection_rows',sid);const raw=cachedLocalGet(k);if(!raw)return 0;const rows=JSON.parse(raw)||[];let n=0;
+    const fixed=rows.map(r=>{const f=collRowFix(r);if(f!==r)n++;return f;});if(n)safeLocalSet(k,JSON.stringify(fixed));return n;}catch(e){return 0;}
+}
 function loadDseDataFor(salonId){
   try{return JSON.parse(cachedLocalGet(outletKey('salonos_daily_sales_data',salonId))||'{}');}catch(e){return{};}
 }

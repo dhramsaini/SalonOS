@@ -930,7 +930,9 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
       ),
 
       mgrRuleType==='A'&&React.createElement(React.Fragment,null,
-        React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:10}},'Based on the whole salon\'s collection vs target for '+MONTHS[selMonth]+' '+selYear+'. Total Collection is linked automatically from Collection Reco — untick an item below to leave it out of the total.'),
+        React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:10}},'Based on the whole salon\'s collection vs target for '+MONTHS[selMonth]+' '+selYear+'. Total Collection is linked automatically from Collection Reco — untick an item below to leave it out of the total. ',
+          React.createElement('a',{href:'#',role:'button',style:{color:'var(--accent2)',fontWeight:600,textDecoration:'underline',cursor:'pointer',whiteSpace:'nowrap'},title:'Open Collection Summary to check or import the collection figures',
+            onClick:e=>{e.preventDefault();try{setShowSettings(false);}catch(x){}const nav=window.__salonosNav;if(nav&&nav.setSalonTab)nav.setSalonTab('collection');}},'📥 Open Collection Summary')),
         React.createElement('div',{style:{display:'flex',gap:14,flexWrap:'wrap',marginBottom:12}},
           MGR_COLLECTION_ITEMS.map(it=>React.createElement('label',{key:it.key,style:{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--text2)',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'5px 10px',cursor:'pointer'}},
             React.createElement('input',{type:'checkbox',checked:!!mgrCollItems[it.key],onChange:()=>toggleMgrCollItem(it.key)}),
