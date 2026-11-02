@@ -642,6 +642,13 @@ function isMonthLockedFor(salonId,year,month){
   const rec=loadMonthLocks(salonId)[monthLockCode(year,month)];
   return !!(rec&&rec.locked);
 }
+// Vendors (bills and payments) follow only a whole-month lock from Master Sheet → 🔒 Months and a
+// Final P&L — not Salary Working / Incentive Working locks (auto-lock on approval, "🔒 Lock", or
+// "Lock Entire Month" pressed there, which carries from:'sw' / 'iw').
+function isVendorMonthLockedFor(salonId,year,month){
+  const rec=loadMonthLocks(salonId)[monthLockCode(year,month)];
+  return !!(rec&&rec.locked&&(rec.source==='pnl-final'||(rec.source==='manual'&&!rec.from)));
+}
 // ── Back-dated entries (Master Settings → Controls → backdateLock): an entry dated more than N
 // days before today can't be added, changed or removed — on Daily Sales & Exp, Attendance,
 // Advances, Penalties, Vendor bills and Billing. N = 0 allows today only. A Super Admin is never
@@ -698,14 +705,14 @@ function monthLockedMessage(salonId,dateStr){
   const why={auto:'it locked itself when every employee’s Salary Working row for '+mon+' was marked Approved'+when,
     'pnl-final':'its P&L was marked Final'+who+when,
     'manual-sw':'it was locked from Salary Working'+who+when,
-    manual:'it was locked by hand'+who+when+' (Master Sheet → 🔒 Months, Salary Working or Incentive Working)'}[rec.source]||('it was locked'+who+when);
+    manual:rec.from?'it was locked with “Lock Entire Month” in '+(rec.from==='iw'?'Incentive Working':'Salary Working')+who+when:'it was locked from Master Sheet → 🔒 Months'+who+when}[rec.source]||('it was locked'+who+when);
   const how=rec.source==='pnl-final'?'un-finalize the P&L':rec.source==='auto'?'unlock it in Salary Working or Master Sheet → 🔒 Months':'unlock it in Master Sheet → 🔒 Months or Salary Working';
   return mon+' is locked because '+why+'. Nobody can add or change entries dated in it while it is locked. A Super Admin can '+how+', with a reason.';
 }
-function setMonthLockFor(salonId,year,month,locked,source,by){
+function setMonthLockFor(salonId,year,month,locked,source,by,from){
   const map=loadMonthLocks(salonId);
   const k=monthLockCode(year,month);
-  if(locked)map[k]={locked:true,source:source||'manual',by:by||'',at:new Date().toISOString()};
+  if(locked)map[k]={locked:true,source:source||'manual',by:by||'',at:new Date().toISOString(),...(from?{from}:{})};
   else delete map[k];
   saveMonthLocks(map,salonId);
   if(locked)reconcileAdvanceRecoveries(salonId);
@@ -1305,7 +1312,7 @@ function duplicateInvoiceMessage(inv,vendorName){
 function saveVendorInvoices(invoices,salonId,opts){
   const prev=loadVendorInvoices(salonId);const byId={};prev.forEach(i=>{if(i&&i.id!=null)byId[i.id]=i;});
   const u=currentSessionUser();const refused=[];
-  const lockedYm=ym=>{if(!ym)return false;const p=ym.split('-').map(Number);return isMonthLockedFor(salonId,p[0],p[1]-1);};
+  const lockedYm=ym=>{if(!ym)return false;const p=ym.split('-').map(Number);return isVendorMonthLockedFor(salonId,p[0],p[1]-1);};
   const strip=i=>{const c={...i};delete c.payments;delete c.approval;return JSON.stringify(c);};
   const seen=new Set();
   let out=(invoices||[]).map(inv=>{

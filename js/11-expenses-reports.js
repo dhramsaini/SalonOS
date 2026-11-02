@@ -132,7 +132,7 @@ function RecurringExpensesSheet({salon}={}){
     if(!f.billDate){toast('Enter the bill date','error');return;}
     {const ym=invoiceBookMonthOf({bookingDate:f.bookingDate,invoiceDate:f.billDate});
      if(!f.editId&&!canBookInvoiceInMonth(ym)){toast(invoiceMonthBlockMessage(),'error');return;}
-     const p=ym.split('-').map(Number);if(ym&&isMonthLockedFor(salonId,p[0],p[1]-1)){toast('That month is locked — the bill can’t be booked in it.','error');return;}}
+     const p=ym.split('-').map(Number);if(ym&&isVendorMonthLockedFor(salonId,p[0],p[1]-1)){toast('That month is locked — the bill can’t be booked in it.','error');return;}}
     if(!(Number(f.amount)>0)){toast('Enter the bill amount','error');return;}
     if(!f.periodFrom||!f.periodTo||f.periodTo<f.periodFrom){toast('Choose the months this bill covers','error');return;}
     if(outletSettings(salonId).attachmentRequired&&!f.attachment){toast('This outlet requires the bill copy to be attached','error');return;}

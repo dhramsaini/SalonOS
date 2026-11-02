@@ -998,7 +998,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
   // offered here too so it doesn't require navigating away from Salary Working to use it.
   const lockEntireMonth=()=>{
     if(!window.confirm('Lock the ENTIRE month of '+MONTHS[selMonth]+' '+selYear+' for this outlet? Attendance, Salary Working AND Incentive Working will all become read-only until unlocked — same as the Master Sheet \'🔒 Months\' panel.'))return;
-    setMonthLockFor(salon?.id,selYear,selMonth,true,'manual');
+    setMonthLockFor(salon?.id,selYear,selMonth,true,'manual',(currentSessionUser()||{}).name||'','sw'); // from Salary Working: Vendors stay open
     setMonthLockTick(t=>t+1);
     success('Entire month '+MONTHS[selMonth]+' '+selYear+' locked');
   };

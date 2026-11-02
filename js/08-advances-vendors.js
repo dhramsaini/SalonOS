@@ -885,11 +885,11 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
   const vendIsLocked=(dateStr)=>{
     const p=String(dateStr||'').split('-');
     if(p.length!==3)return false;
-    return isMonthLockedFor(salonId,Number(p[0]),Number(p[1])-1)||isBackdateBlocked(salonId,dateStr);
+    return isVendorMonthLockedFor(salonId,Number(p[0]),Number(p[1])-1)||isBackdateBlocked(salonId,dateStr);
   };
   const vendBlockIfLocked=(dateStr)=>{
     if(!vendIsLocked(dateStr))return false;
-    {const p=String(dateStr||'').split('-');if(p.length===3&&!isMonthLockedFor(salonId,Number(p[0]),Number(p[1])-1)){toastError(backdateBlockMessage(salonId));return true;}}
+    {const p=String(dateStr||'').split('-');if(p.length===3&&!isVendorMonthLockedFor(salonId,Number(p[0]),Number(p[1])-1)){toastError(backdateBlockMessage(salonId));return true;}}
     toastError(monthLockedMessage(salonId,dateStr));
     return true;
   };
