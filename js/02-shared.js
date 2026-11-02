@@ -647,6 +647,8 @@ function isMonthLockedFor(salonId,year,month){
 // "Lock Entire Month" pressed there, which carries from:'sw' / 'iw').
 function isVendorMonthLockedFor(salonId,year,month){
   const rec=loadMonthLocks(salonId)[monthLockCode(year,month)];
+  // Vendors' own month lock (js/66, Controls → vendorMonthLock): only it and a Final P&L.
+  if(typeof vlOn==='function'&&vlOn(salonId))return !!(rec&&rec.locked&&rec.source==='pnl-final')||!!vlRec(salonId,year,month);
   return !!(rec&&rec.locked&&(rec.source==='pnl-final'||(rec.source==='manual'&&!rec.from)));
 }
 // ── Back-dated entries (Master Settings → Controls → backdateLock): an entry dated more than N
@@ -979,7 +981,7 @@ function loadAuditLog(salonId){
 // per-outlet feature, add it here too, or its data will survive a delete and can leak into a
 // future outlet that happens to reuse the same numeric id.
 const SALON_SCOPED_KEY_BASES=[
-  'salonos_sal_manual','salonos_bank_accounts',
+  'salonos_sal_manual','salonos_bank_accounts','salonos_vendor_month_locks',
   'salonos_salary_template','salonos_emp_update_requests',
   'salonos_final_snap',
   'salonos_inc_manual',

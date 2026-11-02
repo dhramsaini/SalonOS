@@ -887,10 +887,11 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     if(p.length!==3)return false;
     return isVendorMonthLockedFor(salonId,Number(p[0]),Number(p[1])-1)||isBackdateBlocked(salonId,dateStr);
   };
+  const [showVL,setShowVL]=useState(false); // Vendors → 🔒 Months (js/66)
   const vendBlockIfLocked=(dateStr)=>{
     if(!vendIsLocked(dateStr))return false;
     {const p=String(dateStr||'').split('-');if(p.length===3&&!isVendorMonthLockedFor(salonId,Number(p[0]),Number(p[1])-1)){toastError(backdateBlockMessage(salonId));return true;}}
-    toastError(monthLockedMessage(salonId,dateStr));
+    toastError(typeof vendorLockedMessage==='function'?vendorLockedMessage(salonId,dateStr):monthLockedMessage(salonId,dateStr));
     return true;
   };
 
@@ -1490,6 +1491,8 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         React.createElement('div',{className:'page-sub'},'Master vendor registry, invoices and payment tracking')
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        typeof vlOn==='function'&&vlOn(salonId)&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Lock Vendors month by month',onClick:()=>setShowVL(true)},'🔒 Months'+(vlLockedCount(salonId)?' ('+vlLockedCount(salonId)+' locked)':'')),
+        showVL&&React.createElement(VendorMonthLocks,{sid:salonId,onClose:()=>setShowVL(false)}),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:downloadInvoiceTemplate},'⬇ Import Template'),
         React.createElement('input',{ref:bulkFileRef,type:'file',accept:'.xlsx,.xls',style:{display:'none'},onChange:handleBulkImportFile}),
         React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:bulkBusy,onClick:()=>bulkFileRef.current&&bulkFileRef.current.click()},bulkBusy?'Importing…':'📥 Bulk Import Invoices'),

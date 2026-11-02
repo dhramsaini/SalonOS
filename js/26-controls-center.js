@@ -7,6 +7,7 @@
 // Stored in one shared record (salonos_controls) so every user and device follows the same rules.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 const CONTROL_DEFS=[
+  {id:'vendorMonthLock',group:'Entry checks',label:'Lock Vendors month by month',hint:'Vendors gets its own “🔒 Months”: a locked month’s bills and payments can’t be added, changed or removed; unlocking needs a Super Admin and a reason. Salary Working, Incentive Working and the Master Sheet month lock no longer lock Vendors; a Final P&L still does. Off: Vendors follow the Master Sheet month lock and a Final P&L.',def:true},
   {id:'invoiceTds',group:'Entry checks',label:'TDS on vendor bills',hint:'Add / Edit Invoice gets “Deduct TDS” with the Section (old sections before 1 Apr 2026, new payment codes from then), Rate % and amount — worked out on the value before GST and changeable. The vendor’s balance becomes the net payable; the TDS goes to Tally, the TDS Summary and the TDS due date.',def:true},
   {id:'billNeedsPo',group:'Entry checks',label:'A vendor bill above the limit needs an approved purchase order',hint:'Vendors: saving such a bill asks which approved PO of that vendor it is against (a bill more than 10% above the PO is confirmed).',def:false,limit:25000},
   {id:'dupInvoice',group:'Entry checks',label:'Block a vendor invoice number entered twice',hint:'Same vendor + same invoice no. (Vendors, Daily Sales & Exp, Bank Statement).',def:true},
@@ -409,7 +410,7 @@ const CONTROL_AREAS=[
     ['Wrong figures',['extraZeroCheck','modeVsBilling','dseVsBilling','depositVsBank','gstMathCheck','gstLock','idChecks','wageSenseCheck','attendanceSense']],
     ['Final months',['finalFreeze']],
     ['Dates',['backdateLock','futureLock','dateSenseCheck']],
-    ['Vendor bills',['invoiceTds']],
+    ['Vendor bills',['invoiceTds','vendorMonthLock']],
     ['Rules that stop an entry',['salaryChangeReason','negativeStockBlock','proofAboveLimit','billNeedsPo']],
     ['Overview',['dataQualityBoard']]]},
   {key:'bank',icon:'🏦',title:'Bank mapping',groups:['Bank mapping'],subs:[
