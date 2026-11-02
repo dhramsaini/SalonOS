@@ -19,7 +19,7 @@ const INC_PLAN_BASES=['salonos_incentive_applicability','salonos_incentive_calc_
   'salonos_manager_incentive_collection_items','salonos_mgr_incentive_rule_type','salonos_mgr_incentive_rule_b',
   'salonos_mem_incentive_rule_type','salonos_mem_rule_a_settings','salonos_mem_rule_a_rows','salonos_mem_rule_b_settings',
   'salonos_mem_rule_b_rows','salonos_mem_rule_c_settings','salonos_mem_rule_c_rows','salonos_product_incentive_rule',
-  'salonos_product_incentive_rule_type','salonos_product_incentive_flat_rule'];
+  'salonos_product_incentive_rule_type','salonos_product_incentive_flat_rule','salonos_inc_svc_formula'];
 const INC_PLAN_MAKERS=['Super Admin','Salon Owner','Owner','ASM'];
 function incPlanKeyMatch(sid,key){
   if(typeof key!=='string')return false;

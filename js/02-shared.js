@@ -3526,7 +3526,8 @@ function incWorkingsForLive(salonId,year,month){
     let svcActual,memActual,prodActual;
     const fromReport=!!reportRow;
     if(reportRow){
-      svcActual=(Number(reportRow['ServiceSale'])||0)+(Number(reportRow['PackageSale'])||0)+(typeof incCompWeight==='function'?incCompWeight(salonId):0.5)*(Number(reportRow['ComplementarySale'])||0);
+      const sw=typeof incSvcWeights==='function'?incSvcWeights(salonId):{svc:1,pkg:1,comp:0.5}; // ⚙ Rules → Service Achieved — what counts
+      svcActual=sw.svc*(Number(reportRow['ServiceSale'])||0)+sw.pkg*(Number(reportRow['PackageSale'])||0)+sw.comp*(Number(reportRow['ComplementarySale'])||0);
       memActual=Number(reportRow['MemberShipSale'])||0;
       prodActual=Number(reportRow['ProductSale'])||0;
     }else{

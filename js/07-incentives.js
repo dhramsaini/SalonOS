@@ -833,6 +833,7 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
       )
     ),
 
+    typeof IncSvcFormulaCard==='function'&&React.createElement(IncSvcFormulaCard,{sid:salon?.id,onChanged:()=>setActualsTick(t=>t+1)}),
     // Target Multipliers — editable ×Times of Salary for each category's Target
     React.createElement('div',{className:'card',style:{marginBottom:14}},
       React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:2,textTransform:'uppercase',letterSpacing:'0.08em',fontWeight:600}},'Target Multipliers'),

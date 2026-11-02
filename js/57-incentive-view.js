@@ -16,7 +16,30 @@ function ivM(n){const v=Number(n)||0;return '₹'+(Math.abs(v%1)>0.004?v.toLocal
 function ivX(n){return(Math.round((Number(n)||0)*100)/100)+'×';}
 
 // ── calculation choices ──
-function incCompWeight(sid){return ivOn('incCompWeight',sid)?Math.max(0,Math.min(100,ivLim('incCompWeight',50,sid)))/100:0.5;}
+function incCompWeightCtl(sid){return ivOn('incCompWeight',sid)?Math.max(0,Math.min(100,ivLim('incCompWeight',50,sid)))/100:0.5;}
+// Service Achieved = Service Sale × % + Package Sale × % + Complementary Sale × % — each part ticked on
+// or off with its own %, set in ⚙ Incentive Rules & Settings (outlet-wise; part of the Monthly Plan).
+// Not set yet: Service 100%, Package 100%, Complementary at the Controls share (50%), as before.
+function incSvcFormulaKey(sid){return outletKey('salonos_inc_svc_formula',sid);}
+function incSvcFormula(sid){const d={svc:{on:true,pct:100},pkg:{on:true,pct:100},comp:{on:true,pct:Math.round(incCompWeightCtl(sid)*100)}};
+  let v=null;try{v=JSON.parse(cachedLocalGet(incSvcFormulaKey(sid))||'null');}catch(e){}if(!v||typeof v!=='object')return d;
+  return{svc:{...d.svc,...(v.svc||{})},pkg:{...d.pkg,...(v.pkg||{})},comp:{...d.comp,...(v.comp||{})}};}
+function incSvcWeights(sid){const f=incSvcFormula(sid);const w=x=>x.on?Math.max(0,Number(x.pct)||0)/100:0;return{svc:w(f.svc),pkg:w(f.pkg),comp:w(f.comp)};}
+function incSvcFormulaText(sid){const f=incSvcFormula(sid);const L=[['svc','Service'],['pkg','Package'],['comp','Complementary']].filter(([k])=>f[k].on).map(([k,l])=>(Number(f[k].pct)===100?'':Number(f[k].pct)+'% of ')+l);return L.length?L.join(' + '):'nothing counted';}
+function incCompWeight(sid){return incSvcWeights(sid).comp;}
+function IncSvcFormulaCard({sid,onChanged}){
+  const h=React.createElement;const [,t]=useState(0);if(sid==null)return null;const f=incSvcFormula(sid);
+  const save=(k,p)=>{const nf={...f,[k]:{...f[k],...p}};safeLocalSet(incSvcFormulaKey(sid),JSON.stringify(nf));t(x=>x+1);onChanged&&onChanged();};
+  return h('div',{className:'card',style:{marginBottom:14}},
+    h('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:2,textTransform:'uppercase',letterSpacing:'0.08em',fontWeight:600}},'Service Achieved — what counts'),
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:10}},'From the Staff Work Report. Tick what counts towards Service Achieved and the % of each.'),
+    h('div',{style:{display:'flex',gap:14,flexWrap:'wrap'}},[['svc','Service Sale'],['pkg','Package Sale'],['comp','Complementary Sale']].map(([k,l])=>
+      h('div',{key:k,style:{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderRadius:'var(--r)',border:'1px solid '+(f[k].on?'rgba(74,158,255,0.4)':'var(--border)'),background:f[k].on?'rgba(74,158,255,0.08)':'var(--bg3)'}},
+        h('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:12.5,fontWeight:600,cursor:'pointer'}},h('input',{type:'checkbox',checked:!!f[k].on,onChange:e=>save(k,{on:e.target.checked})}),l),
+        h('input',{key:k+'|'+f[k].pct,type:'number',min:0,max:200,className:'form-control',style:{width:70,fontSize:12,padding:'3px 6px',textAlign:'right'},disabled:!f[k].on,defaultValue:f[k].pct,
+          onBlur:e=>{const v=Math.max(0,Math.min(200,Number(e.target.value)||0));if(v!==Number(f[k].pct))save(k,{pct:v});}}),h('span',{style:{fontSize:12}},'%')))),
+    h('div',{style:{fontSize:12,marginTop:8}},'Service Achieved = ',h('b',null,incSvcFormulaText(sid))));
+}
 function incProRataFactor(sid,e,y,m){if(!ivOn('incProRata',sid))return 1;try{const att=loadAttendance(sid);const s=attSummaryFor(e,y,m,att[attMonthKey(e.id,y,m)]);const dim=new Date(y,m+1,0).getDate();const f=(Number(s.totalDaysPayable)||0)/dim;return f>0&&f<1?Math.round(f*10000)/10000:1;}catch(x){return 1;}}
 function incSlabBands(sid,group){const sl=(typeof loadServiceSlabs==='function'?loadServiceSlabs(sid,group):[])||[];const base=Number(sl[0]&&sl[0].rate)||0;
   const tiers=sl.slice(1).map(t=>({th:Number(t.threshold),rate:Number(t.rate)||0})).filter(t=>!isNaN(t.th)).sort((a,b)=>a.th-b.th);return{base,tiers};}
@@ -57,7 +80,7 @@ function incBreakdownLines(sid,y,m,w){
   const L=[];const add=(label,value,note,kind)=>L.push({label,value,note:note||'',kind:kind||''});const cm=w.calcMode||{};
   add('Monthly salary',ivM(w.salary));
   if(w.proRata&&w.proRata!==1)add('Pro-rata factor',(Math.round(w.proRata*1000)/10)+'%','payable days ÷ days in month — targets scaled');
-  add('Service achieved',ivM(w.svcActual),w.fromReport?'Service + Package + '+Math.round(incCompWeight(sid)*100)+'% of Complementary (CRADLE report)':'typed in Incentive Working');
+  add('Service achieved',ivM(w.svcActual),w.fromReport?incSvcFormulaText(sid)+' (Staff Work Report)':'typed in Incentive Working');
   add('Service target',ivM(w.svcTarget),w.svcPct+'% reached · '+ivX(w.svcTimesRaw)+' of salary');
   const pg=cm.svc!=='manualRate'&&cm.svc!=='manualAmt'?incProgressiveAmt(sid,w.svcActual,w.svcTimesRaw,(typeof incentiveGroupFor==='function'&&(loadIncentiveSplitMode(sid)||{}).service)?incentiveGroupFor(w,sid):undefined):null;
   add('Service incentive',ivM(w.svcIncAmt),cm.svc==='manualAmt'?'typed in by hand':pg&&pg.bands.length?'progressive: '+pg.bands.map(b=>ivM(b.part)+' × '+b.rate+'%').join(' + '):(w.svcRateUsed||0)+'% of '+ivM(w.svcActual)+(cm.svc==='manualRate'?' (rate typed in)':' (slab for '+ivX(w.svcTimesRaw)+')'),'earn');
