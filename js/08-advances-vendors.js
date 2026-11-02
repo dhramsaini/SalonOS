@@ -805,29 +805,49 @@ function PenaltySheet({period,salon}={}){
 // cut from 5% to 2% by Finance Act 2024, effective 1 Oct 2024 — reflected here since that change
 // predates the new Act and applies regardless of which Act is otherwise in force. ──
 const TDS_SECTIONS_OLD=[
-  {code:'194C',label:'194C — Payment to Contractors',rate:2},
-  {code:'194J',label:'194J — Professional / Technical Services',rate:10},
+  {code:'194C',label:'194C — Contractor (company / firm / others)',rate:2},
+  {code:'194C-IH',label:'194C — Contractor (Individual / HUF)',rate:1},
+  {code:'194J',label:'194J(b) — Professional Services',rate:10},
+  {code:'194J(a)',label:'194J(a) — Technical Services / Call centre / Royalty on films',rate:2},
   {code:'194H',label:'194H — Commission or Brokerage',rate:2},
+  {code:'194D',label:'194D — Insurance Commission',rate:2},
   {code:'194I(a)',label:'194I(a) — Rent (Plant & Machinery)',rate:2},
   {code:'194I(b)',label:'194I(b) — Rent (Land / Building / Furniture)',rate:10},
+  {code:'194IB',label:'194-IB — Rent paid by Individual / HUF (not under audit), above ₹50,000 a month',rate:2},
+  {code:'194IA',label:'194-IA — Purchase of Immovable Property (₹50 lakh or more)',rate:1},
+  {code:'194M',label:'194M — Contract / Professional / Commission paid by Individual / HUF (not under audit)',rate:2},
   {code:'194Q',label:'194Q — Purchase of Goods',rate:0.1},
+  {code:'194O',label:'194O — E-commerce Operator payments',rate:0.1},
+  {code:'194R',label:'194R — Business Perquisite / Benefit',rate:10},
   {code:'194A',label:'194A — Interest (other than securities)',rate:10},
+  {code:'194T',label:'194T — Salary / Remuneration / Interest to Partners',rate:10},
+  {code:'195',label:'195 — Payment to Non-resident (rate as per Act / DTAA)',rate:''},
   {code:'Other',label:'Other',rate:''},
 ];
 // ── New Act (Income-tax Act, 2025) — applies to deductions from 1 April 2026 onward. The old
 // 194-series sections are consolidated into Section 393, identified by a 4-digit payment code
 // instead of a section letter; rates and thresholds carry over unchanged, only the identifier
 // changes. Payment codes below are the commonly-cited indicative mapping pending final CBDT
-// notification — confirm against the notified list before relying on these for an actual filing. ──
+// notification — confirm against the notified list before relying on these for an actual filing.
+// 1007 and 1025 are marked "check code": only one source gives them, as an inferred mapping. ──
 const TDS_SECTIONS_NEW=[
-  {code:'393-1024',label:'Payment Code 1024 — Contractor Payments (§393(1) Sl.6(i)) · was 194C',rate:2},
+  {code:'393-1024',label:'Payment Code 1024 — Contractor, company / firm / others (§393(1) Sl.6(i)) · was 194C',rate:2},
+  {code:'393-1023',label:'Payment Code 1023 — Contractor, Individual / HUF (§393(1) Sl.6(i)) · was 194C',rate:1},
   {code:'393-1027',label:'Payment Code 1027 — Professional Services (§393(1) Sl.6(iii)) · was 194J',rate:10},
   {code:'393-1026',label:'Payment Code 1026 — Technical Services (§393(1) Sl.6(iii)) · was 194J',rate:2},
+  {code:'393-1028',label:'Payment Code 1028 — Director’s fees / commission (not salary) (§393(1) Sl.6(iii)) · was 194J',rate:10},
   {code:'393-1006',label:'Payment Code 1006 — Commission or Brokerage (§393(1) Sl.1(ii)) · was 194H',rate:2},
+  {code:'393-1005',label:'Payment Code 1005 — Insurance Commission (§393(1) Sl.1(i)) · was 194D',rate:2},
   {code:'393-1008',label:'Payment Code 1008 — Rent, Plant & Machinery (§393(1) Sl.2(ii)) · was 194I(a)',rate:2},
   {code:'393-1009',label:'Payment Code 1009 — Rent, Land / Building / Furniture (§393(1) Sl.2(ii)) · was 194I(b)',rate:10},
+  {code:'393-1007',label:'Payment Code 1007 (check code) — Rent paid by Individual / HUF, not under audit (§393(1) Sl.2(i)) · was 194-IB',rate:2},
+  {code:'393-1025',label:'Payment Code 1025 (check code) — Contract / Professional / Commission paid by Individual / HUF (§393(1) Sl.6(ii)) · was 194M',rate:2},
   {code:'393-1031',label:'Payment Code 1031 — Purchase of Goods (§393(1) Sl.8(ii)) · was 194Q',rate:0.1},
+  {code:'393-1035',label:'Payment Code 1035 — E-commerce Operator payments (§393(1) Sl.8(v)) · was 194O',rate:0.1},
+  {code:'393-1033',label:'Payment Code 1033 — Business Perquisite / Benefit (§393(1) Sl.8(iv)) · was 194R',rate:10},
   {code:'393-1022',label:'Payment Code 1022 — Interest, other than securities (§393(1) Sl.5) · was 194A',rate:10},
+  {code:'393-1067',label:'Payment Code 1067 — Salary / Remuneration / Interest to Partners (§393(3) Sl.7) · was 194T',rate:10},
+  {code:'393-1057',label:'Payment Code 1057 — Payment to Non-resident (§393(2)) · was 195',rate:''},
   {code:'Other',label:'Other',rate:''},
 ];
 const TDS_ACT_CUTOVER_ISO='2026-04-01'; // Income-tax Act, 2025 came into force on this date
