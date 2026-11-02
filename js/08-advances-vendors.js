@@ -15,7 +15,7 @@ function AdvanceSheet({period,salon}={}){
   const advBlockIfLocked=(dateStr)=>{
     if(!advIsLocked(dateStr))return false;
     {const p=String(dateStr||'').split('-');if(p.length===3&&!isMonthLockedFor(salon?.id,Number(p[0]),Number(p[1])-1)){advError(backdateBlockMessage(salon?.id));return true;}}
-    advError('That month is locked — nobody can change it while it is locked. A Super Admin can unlock it, with a reason (Salary Working, Master Sheet → Months, or un-finalize the P&L).');
+    advError(monthLockedMessage(salon?.id,dateStr));
     return true;
   };
   const EMPLOYEES=getEmployeesForMonth(attYear,attMonth,salon?.id);
@@ -647,7 +647,7 @@ function PenaltySheet({period,salon}={}){
   const penBlockIfLocked=(dateStr)=>{
     if(!penIsLocked(dateStr))return false;
     {const p=String(dateStr||'').split('-');if(p.length===3&&!isMonthLockedFor(salon?.id,Number(p[0]),Number(p[1])-1)){penError(backdateBlockMessage(salon?.id));return true;}}
-    penError('That month is locked — nobody can change it while it is locked. A Super Admin can unlock it, with a reason (Salary Working, Master Sheet → Months, or un-finalize the P&L).');
+    penError(monthLockedMessage(salon?.id,dateStr));
     return true;
   };
   const EMPLOYEES=getEmployeesForMonth(attYear,attMonth,salon?.id);
@@ -890,7 +890,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
   const vendBlockIfLocked=(dateStr)=>{
     if(!vendIsLocked(dateStr))return false;
     {const p=String(dateStr||'').split('-');if(p.length===3&&!isMonthLockedFor(salonId,Number(p[0]),Number(p[1])-1)){toastError(backdateBlockMessage(salonId));return true;}}
-    toastError('That month is locked — nobody can change it while it is locked. A Super Admin can unlock it, with a reason (Salary Working, Master Sheet → Months, or un-finalize the P&L).');
+    toastError(monthLockedMessage(salonId,dateStr));
     return true;
   };
 

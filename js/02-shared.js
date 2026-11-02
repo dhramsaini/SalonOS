@@ -686,6 +686,22 @@ function monthLockRecordFor(salonId,year,month){
 }
 // source: 'manual' (toggled from Master Sheet) or 'auto' (every employee's Salary Working
 // row was Approved). by: display name of whoever triggered it, for the tooltip.
+// Why a month is locked, in words: how it got locked (the lock record keeps source, by and at) and
+// how to unlock it — used in every "That month is locked" message.
+function monthLockedMessage(salonId,dateStr){
+  const p=String(dateStr||'').split(/[-\/]/);let y,m;
+  if(p.length===3&&p[0].length===4){y=Number(p[0]);m=Number(p[1])-1;}else if(p.length===3){y=Number(p[2]);m=Number(p[1])-1;}
+  const rec=y!=null?loadMonthLocks(salonId)[monthLockCode(y,m)]:null;
+  const mon=y!=null?['January','February','March','April','May','June','July','August','September','October','November','December'][m]+' '+y:'That month';
+  if(!rec)return mon+' is locked — nobody can change it while it is locked. A Super Admin can unlock it, with a reason (Salary Working, Master Sheet → Months, or un-finalize the P&L).';
+  const when=rec.at?' on '+String(rec.at).slice(0,10).split('-').reverse().join('/'):'',who=rec.by?' by '+rec.by:'';
+  const why={auto:'it locked itself when every employee’s Salary Working row for '+mon+' was marked Approved'+when,
+    'pnl-final':'its P&L was marked Final'+who+when,
+    'manual-sw':'it was locked from Salary Working'+who+when,
+    manual:'it was locked by hand'+who+when+' (Master Sheet → 🔒 Months, Salary Working or Incentive Working)'}[rec.source]||('it was locked'+who+when);
+  const how=rec.source==='pnl-final'?'un-finalize the P&L':rec.source==='auto'?'unlock it in Salary Working or Master Sheet → 🔒 Months':'unlock it in Master Sheet → 🔒 Months or Salary Working';
+  return mon+' is locked because '+why+'. Nobody can add or change entries dated in it while it is locked. A Super Admin can '+how+', with a reason.';
+}
 function setMonthLockFor(salonId,year,month,locked,source,by){
   const map=loadMonthLocks(salonId);
   const k=monthLockCode(year,month);
