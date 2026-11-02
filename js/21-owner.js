@@ -197,7 +197,7 @@ function cashForecastFor(sid,opening,nDays){
 function CashForecastSheet({salon}={}){
   const h=React.createElement;const sid=salon?.id;
   const k=outletKey('salonos_cash_forecast_opening',sid);
-  const lastBank=(()=>{const rows=(loadBankStatementRows(sid)||[]).filter(r=>r.closingBalance!=null&&r.closingBalance!=='').map(r=>({iso:toISO(r.transactionDate||r.date),b:Number(r.closingBalance)})).filter(x=>x.iso&&!isNaN(x.b)).sort((a,b)=>a.iso.localeCompare(b.iso));return rows.length?rows[rows.length-1]:null;})();
+  const lastBank=typeof mbOn==='function'&&mbOn(sid)?mbLatestBalance(sid,loadBankStatementRows(sid)||[]):(()=>{const rows=(loadBankStatementRows(sid)||[]).filter(r=>r.closingBalance!=null&&r.closingBalance!=='').map(r=>({iso:toISO(r.transactionDate||r.date),b:Number(r.closingBalance)})).filter(x=>x.iso&&!isNaN(x.b)).sort((a,b)=>a.iso.localeCompare(b.iso));return rows.length?rows[rows.length-1]:null;})();
   const lastCount=(()=>{const c=loadCashCounts(sid);const ks=Object.keys(c).sort();return ks.length?{iso:ks[ks.length-1],amt:c[ks[ks.length-1]].count}:null;})();
   const [opening,setOpening]=useState(()=>cachedLocalGet(k)||String(Math.round((lastBank?lastBank.b:0)+(lastCount?lastCount.amt:0))));
   const [open,setOpen]=useState(null);const [nDays,setNDays]=useState(30);

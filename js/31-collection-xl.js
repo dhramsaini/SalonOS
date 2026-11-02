@@ -12,6 +12,7 @@ function collectionRecoDataFor(sid,year,month){
   let cradlee=[],bank=[],reasons={},cash={},inc={wallet:true,district:true,luzo:true,online:true};
   try{cradlee=JSON.parse(cachedLocalGet(outletKey('salonos_cradlee_collection_rows',sid))||'[]')||[];}catch(e){}
   try{bank=JSON.parse(cachedLocalGet(outletKey('salonos_bank_statement_rows',sid))||'[]')||[];}catch(e){}
+  if(typeof mbSettleRows==='function')bank=mbSettleRows(sid,bank);
   try{reasons=JSON.parse(cachedLocalGet(outletKey('salonos_collection_reason_diff',sid))||'{}')||{};}catch(e){}
   try{cash=JSON.parse(cachedLocalGet(outletKey('salonos_daily_sales_collection_data',sid))||'{}')||{};}catch(e){}
   try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_cs_card_include_cols',sid))||'null');if(v&&typeof v==='object')inc=v;}catch(e){}

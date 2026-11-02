@@ -125,7 +125,7 @@ function TallyExportSheet({salon,onNavTab}={}){
       const p=pushed.bank[r.id];
       const cp=tallyBankCounterparty(r,vendors,vendorLedgerNameFor,map);const parts=tallyBankSplitParts(r,vendors,vendorLedgerNameFor,map);
       list.push({key:'b'+r.id,kind:'bank',id:r.id,date:r.transactionDate||'',iso:dmyToIso(r.transactionDate),type:parts?(Number(r.debit)>0?'Payment':'Receipt'):tallyBankVoucherType(r,cp),
-        party:parts?'Split: '+parts.map(q=>q.ledger+' '+Math.round(q.amount)).join(' + '):cp.ledger,other:map.bankLedger||'(bank ledger not set)',ref:r.refNo||'',narr:r.description||'',amount:Number(r.debit)||Number(r.credit)||0,
+        party:parts?'Split: '+parts.map(q=>q.ledger+' '+Math.round(q.amount)).join(' + '):cp.ledger,other:(typeof tallyRowBankLedger==='function'?tallyRowBankLedger(map,r):map.bankLedger)||'(bank ledger not set)',ref:r.refNo||'',narr:r.description||'',amount:Number(r.debit)||Number(r.credit)||0,
         status:p?(p.sig===tallyBankSig(r)?'sent':'changed'):'new',sentAt:p&&p.at,suspense:cp.kind==='suspense',via:cp.kind==='nature'?'Type: '+cp.nature:cp.kind==='vendor'?'Supplier':'No match'});
     });
     payrollItems.forEach(e=>{
@@ -245,6 +245,7 @@ function TallyExportSheet({salon,onNavTab}={}){
   };
   const syncNow=async(only)=>{
     if(!map.bankLedger&&(only?only.bank.size:filteredBankRows.length)){setTab('ledgers');tallyErr('Enter the Bank ledger name first (Ledgers tab).');return;}
+    {const gap=typeof mbTallyGap==='function'?mbTallyGap(salonId,map,only?filteredBankRows.filter(r=>only.bank&&only.bank.has(r.id)):filteredBankRows):[];if(gap.length){setTab('ledgers');tallyErr('Enter the Tally ledger for '+gap.join(', ')+' first (Ledgers tab).');return;}}
     setBusy('sync');setProgress({done:0,total:0});
     try{
       const res=await tallySyncVouchers(salonId,conn,{from:fromDate||'0000',to:toDate||'',company:conn.company,only,onProgress:(d,t)=>setProgress({done:d,total:t})});
@@ -287,6 +288,7 @@ function TallyExportSheet({salon,onNavTab}={}){
   const downloadBank=()=>{
     if(!map.bankLedger){setTab('ledgers');tallyErr('Enter the Bank ledger name first (Ledgers tab).');return;}
     if(!filteredBankRows.length){tallyErr('No bank transactions in '+periodLabel+'.');return;}
+    {const gap=typeof mbTallyGap==='function'?mbTallyGap(salonId,map,filteredBankRows):[];if(gap.length){setTab('ledgers');tallyErr('Enter the Tally ledger for '+gap.join(', ')+' first (Ledgers tab).');return;}}
     downloadTextFile(buildTallyBankVouchersXml(filteredBankRows,map.bankLedger,vendors,{vendorLedgerNameFor,map}),'Tally_Bank_'+outletTag+'.xml');
     logIt({action:'Downloaded Bank vouchers XML',period:periodLabel,sent:filteredBankRows.length});
     success(filteredBankRows.length+' bank voucher(s) — import via Gateway of Tally → Import Data → Vouchers. Then mark them “already in Tally” on the Vouchers tab.');
@@ -302,6 +304,7 @@ function TallyExportSheet({salon,onNavTab}={}){
     const entries=tallyVoucherEntries({invoices:filteredInvoices,bankRows:filteredBankRows,payItems:filteredPays,payroll:payrollItems,vendors,vName:vendorLedgerNameFor,cName:categoryLedgerNameFor,gstBlocked:gstInputBlocked,map});
     if(!entries.length){tallyErr('No vouchers in '+periodLabel+'.');return;}
     if(filteredBankRows.length&&!map.bankLedger){setTab('ledgers');tallyErr('Enter the Bank ledger name first (Ledgers tab).');return;}
+    {const gap=typeof mbTallyGap==='function'?mbTallyGap(salonId,map,filteredBankRows):[];if(gap.length){setTab('ledgers');tallyErr('Enter the Tally ledger for '+gap.join(', ')+' first (Ledgers tab).');return;}}
     XLSX.writeFile(buildTallyVouchersWorkbook(entries,outletTag.slice(0,6).toUpperCase()),'Tally_Vouchers_'+outletTag+'.xlsx');
     logIt({action:'Downloaded Vouchers Excel',period:periodLabel,sent:entries.length});
     success(entries.length+' voucher(s) in Excel, each with its narration — Gateway of Tally → Import → Vouchers (Excel). Import Masters first.');
@@ -496,6 +499,7 @@ function TallyExportSheet({salon,onNavTab}={}){
           live&&h('button',{className:'btn btn-ghost btn-sm',disabled:!!busy,onClick:()=>fetchLedgersFromTally(false)},busy==='fetch'?'Reading…':'⟳ Read ledgers from Tally'),
           ledgerCache&&h('button',{className:'btn btn-ghost btn-sm',onClick:autoMatch},'✨ Auto-match names'),
           live&&missingInTally&&missingInTally.length>0&&h('button',{className:'btn btn-primary btn-sm',disabled:!!busy,onClick:()=>askCreate()},busy==='create'?'Creating…':'👁 Preview & create '+missingInTally.length+' missing in Tally'))),
+      typeof MbTallyLedgers==='function'&&h(MbTallyLedgers,{sid:salonId,map,updateMap,ledgers:ledgerCache&&ledgerCache.ledgers,inTally}),
       h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},ledgerCache?'Tally has '+ledgerCache.ledgers.length+' ledgers'+(ledgerCache.company?' ('+ledgerCache.company+')':'')+' · read '+when(ledgerCache.fetchedAt)+'. Names must match Tally exactly; leave a field blank to use the SalonOS name.':'Tally matches ledgers by exact name. Read Tally’s list to see which exist and to get suggestions while typing.')),
     h('datalist',{id:'tally-ledger-names'},((ledgerCache&&ledgerCache.ledgers)||[]).map(l=>h('option',{key:l.name,value:l.name}))),
     h('div',{className:'card'},
@@ -1386,6 +1390,8 @@ function PtSummaryReport({salon}={}){
 // Date Tracker, Vendor Sheet's own invoice balances) — never a separately-maintained figure that
 // could drift out of sync with what those sheets actually show. ──
 function bankBalanceAsOf(salonId,asOfIso){
+  // Several bank accounts: each account's latest balance, added up (js/64).
+  if(typeof mbOn==='function'&&mbOn(salonId)){const x=mbLatestBalance(salonId,loadBankStatementRows(salonId),asOfIso);return x?x.b:null;}
   const rows=loadBankStatementRows(salonId)
     .map(r=>({iso:toISO(r.transactionDate),closingBalance:r.closingBalance}))
     .filter(r=>r.iso&&r.iso<=asOfIso&&r.closingBalance!=null&&r.closingBalance!=='');

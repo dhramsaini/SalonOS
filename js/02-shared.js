@@ -956,7 +956,7 @@ function loadAuditLog(salonId){
 // per-outlet feature, add it here too, or its data will survive a delete and can leak into a
 // future outlet that happens to reuse the same numeric id.
 const SALON_SCOPED_KEY_BASES=[
-  'salonos_sal_manual',
+  'salonos_sal_manual','salonos_bank_accounts',
   'salonos_salary_template','salonos_emp_update_requests',
   'salonos_final_snap',
   'salonos_inc_manual',
@@ -1806,11 +1806,12 @@ function tallyBankCounterparty(r,vendors,vendorLedgerNameFor,map){
 // Tally voucher type for a bank line: Contra between bank and cash, else Payment (money out) / Receipt (in).
 function tallyBankVoucherType(r,cp){return cp.contra?'Contra':(Number(r.debit)>0?'Payment':'Receipt');}
 // opts: {vendorLedgerNameFor, map} — without them (older callers) vendors keep their own names.
-function buildTallyBankVouchersXml(rows,bankLedgerName,vendors,opts){
+function buildTallyBankVouchersXml(rows,bankLedgerNameIn,vendors,opts){
   const o=opts||{};
   const msgs=rows.filter(r=>r.debit||r.credit).map(r=>{
     const isDebit=Number(r.debit)>0;
     const amt=isDebit?Number(r.debit):Number(r.credit);
+    const bankLedgerName=(o.map&&typeof tallyRowBankLedger==='function'&&tallyRowBankLedger(o.map,r))||bankLedgerNameIn; // the line's own bank account (js/64)
     const cp=tallyBankCounterparty(r,vendors,o.vendorLedgerNameFor,o.map);
     const parts=tallyBankSplitParts(r,vendors,o.vendorLedgerNameFor,o.map);
     const counterparty=parts?parts[0].ledger:cp.ledger;
@@ -1936,7 +1937,7 @@ function tallyVoucherEntries(o){
   });
   (o.bankRows||[]).filter(r=>r.debit||r.credit).forEach(r=>{
     const cp=tallyBankCounterparty(r,o.vendors,o.vName,o.map),isDr=Number(r.debit)>0,amt=isDr?Number(r.debit):Number(r.credit);
-    const bank=(o.map&&o.map.bankLedger)||'Bank';const parts=tallyBankSplitParts(r,o.vendors,o.vName,o.map);
+    const bank=(o.map&&(typeof tallyRowBankLedger==='function'?tallyRowBankLedger(o.map,r):o.map.bankLedger))||'Bank';const parts=tallyBankSplitParts(r,o.vendors,o.vName,o.map);
     out.push({iso:tallyIsoOf(r.transactionDate),date:dmy(r.transactionDate),type:parts?(isDr?'Payment':'Receipt'):tallyBankVoucherType(r,cp),ref:r.refNo||'',refDate:'',narr:tallyBankNarration(r),
       lines:parts?(isDr?[...parts.map(q=>[q.ledger,q.amount]),[bank,-amt]]:[[bank,amt],...parts.map(q=>[q.ledger,-q.amount])]):isDr?[[cp.ledger,amt],[bank,-amt]]:[[bank,amt],[cp.ledger,-amt]]});
   });
@@ -2031,6 +2032,7 @@ function buildTallyVendorPaymentVouchersXml(items,vendorLedgerNameFor,map){
 function tallyExtraLedgers(invoices,bankRows,vendors,vendorLedgerNameFor,map,gstInputBlocked,taken,payItems,payroll){
   const out=[],seen=new Set((taken||[]).map(n=>String(n).toLowerCase()));
   const add=(name,parent,type,note)=>{const k=String(name||'').toLowerCase();if(!name||seen.has(k))return;seen.add(k);out.push({name,parent,type,note});};
+  (bankRows||[]).forEach(r=>{const bl=typeof tallyRowBankLedger==='function'?tallyRowBankLedger(map,r):'';if(bl&&map&&bl!==map.bankLedger)add(bl,'Bank Accounts','Bank','Another bank account of this outlet');});
   if(!gstInputBlocked&&invoices.some(i=>i.docNature!=='Performa Invoice'&&Number(i.roundOff)))add('Round Off','Indirect Expenses','System','Purchase round-off');
   bankRows.filter(r=>r.debit||r.credit).forEach(r=>{
     const parts=tallyBankSplitParts(r,vendors,vendorLedgerNameFor,map);
@@ -2062,6 +2064,7 @@ function settlementDateFromNarration(desc){
 function loadBankSettlementsByDate(salonId){
   let bankRows=[];
   try{bankRows=JSON.parse(cachedLocalGet(outletKey('salonos_bank_statement_rows',salonId))||'[]');}catch(e){}
+  if(typeof mbSettleRows==='function')bankRows=mbSettleRows(salonId,bankRows); // only accounts that receive settlements
   const map={};
   bankRows.forEach(r=>{
     if(!r.cradleeDate||(r.nature!=='Card Settlement'&&r.nature!=='UPI Settlement'))return;
@@ -4007,6 +4010,7 @@ async function tallySyncVouchers(salonId,cfg,opts){
   let pays=pend.pays.filter(g=>inTo(g.date));
   let payroll=pend.payroll.filter(e=>!o.to||e.iso<=o.to);
   if(o.only){invs=invs.filter(i=>o.only.inv&&o.only.inv.has(i.id));rows=rows.filter(r=>o.only.bank&&o.only.bank.has(r.id));pays=pays.filter(g=>o.only.pay&&o.only.pay.has(g.key));payroll=payroll.filter(e=>o.only.payroll&&o.only.payroll.has(e.key));}
+  {const gap=typeof mbTallyGap==='function'?mbTallyGap(salonId,map,rows):[];if(gap.length)throw new Error('Enter the Tally ledger for '+gap.join(', ')+' first (Tally Integration → Ledgers).');}
   const out={sent:0,failed:[],ledgersCreated:0,changed:pend.changed,at:new Date().toISOString()};
   if(!invs.length&&!rows.length&&!pays.length&&!payroll.length)return out;
   // 1 · Ledgers the vouchers need.

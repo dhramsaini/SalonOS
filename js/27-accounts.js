@@ -221,7 +221,7 @@ function parseTallyTrialBalanceRows(rows){
 function salonOsBalancesFor(sid,toIso,vendorLedgerNameFor,bankLedger){
   const inv=loadVendorInvoices(sid)||[];const vendors=(loadVendors(sid)||[]).filter(v=>v&&v.status!=='Inactive');
   const rows=vendors.map(v=>{const L=vendorLedgerFor(inv,v.id,null,toIso);return{kind:'Vendor',label:v.name,ledger:vendorLedgerNameFor(v.id),ours:L.closing};}).filter(r=>Math.abs(r.ours)>0.5||inv.some(i=>String(i.vendorId)===String((vendors.find(v=>v.name===r.label)||{}).id)));
-  if(bankLedger){let bal=null;try{const br=(loadBankStatementRows(sid)||[]).filter(r=>r&&vlIso(r.transactionDate)&&vlIso(r.transactionDate)<=toIso&&Number(r.closingBalance));
+  if(bankLedger){let bal=null;try{const br=(typeof mbRowsOf==='function'?mbRowsOf(sid,loadBankStatementRows(sid)||[],mbPrimaryId(sid)):(loadBankStatementRows(sid)||[])).filter(r=>r&&vlIso(r.transactionDate)&&vlIso(r.transactionDate)<=toIso&&Number(r.closingBalance));
       if(br.length){br.sort((a,b)=>vlIso(a.transactionDate).localeCompare(vlIso(b.transactionDate)));bal=Number(br[br.length-1].closingBalance);}}catch(e){}
     if(bal!=null&&isFinite(bal))rows.push({kind:'Bank',label:'Bank (statement balance)',ledger:bankLedger,ours:-bal});}
   return rows;

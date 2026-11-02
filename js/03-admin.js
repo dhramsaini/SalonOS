@@ -1186,6 +1186,7 @@ function MasterSheet({onSelect,salons,setSalons,user}){
         ),
         (()=>{const mismatch=bankIfscMismatch(form.bankName,form.bankIFSC);return mismatch&&React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,background:'rgba(255,107,107,0.1)',border:'1px solid rgba(255,107,107,0.35)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:14,fontSize:12,color:'var(--red)'}},
           '⚠ ',mismatch);})(),
+        typeof MbMasterAccounts==='function'&&form.id?React.createElement(MbMasterAccounts,{sid:form.id}):null,
 
         React.createElement('div',{style:{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.06em',margin:'18px 0 4px',paddingTop:14,borderTop:'1px solid var(--border)'}},'Statutory Compliance'),
         React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginBottom:10,lineHeight:1.5}},'Portal login details are stored in this browser like everything else in this app — there\'s no backend here. These are real government portal credentials, more sensitive than an ordinary password, so treat this the same as you would any other place you\'d store them, and don\'t rely on this as your only record.'),

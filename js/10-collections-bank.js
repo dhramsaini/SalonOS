@@ -487,7 +487,7 @@ function CollectionReco({salon,onNavTab}={}){
     try{
       let bankRows=[];
       try{bankRows=JSON.parse(cachedLocalGet(outletKey('salonos_bank_statement_rows',salonId))||'[]');}catch(e){}
-      const settlements=bankRows.filter(r=>(r.nature==='Card Settlement'||r.nature==='UPI Settlement')&&r.cradleeDate)
+      const settlements=(typeof mbSettleRows==='function'?mbSettleRows(salonId,bankRows):bankRows).filter(r=>(r.nature==='Card Settlement'||r.nature==='UPI Settlement')&&r.cradleeDate)
         .map(r=>({date:r.cradleeDate,nature:r.nature,amount:r.credit}));
       if(!rows.length)throw new Error('Import a Collection Report first — there\'s nothing to reconcile yet.');
       if(!settlements.length)throw new Error('No Card Settlement / UPI Settlement rows found in Bank Statement yet — import a bank statement and classify (or auto-classify) those rows first.');
@@ -2757,6 +2757,9 @@ function BankStatement({salon,onNavTab}={}){
   // A brand-new outlet with nothing imported yet has no meaningful choice, so the toggle itself
   // only renders once rows.length>0 (see the Upload Bank Statement card below).
   const [importMode,setImportMode]=useState('append');
+  // Multiple bank accounts (js/64): the account the next upload goes into, and the account shown.
+  const [upAcct,setUpAcct]=useState(()=>typeof mbPrimaryId==='function'?mbPrimaryId(salonId):'');
+  const [acctView,setAcctView]=useState('all');
   const [fileName,setFileName]=useState('');
   const [message,setMessage]=useState('');
   const [dragging,setDragging]=useState(false);
@@ -2908,9 +2911,9 @@ function BankStatement({salon,onNavTab}={}){
   // imported by itself, keeping only that period and skipping duplicates.
   const BANK_ACCOUNT_TYPES=['Current','Savings','OD / CC','Salary','NRE / NRO','Other'];
   const acctKey=outletKey('salonos_bank_accounts',salonId);
-  const [bankAccounts,setBankAccounts]=useState(()=>{try{const a=JSON.parse(cachedLocalGet(acctKey)||'[]');return Array.isArray(a)?a:[];}catch(e){return[];}});
+  const [bankAccounts,setBankAccounts]=useState(()=>{if(typeof mbOn==='function'&&mbOn(salonId))return mbAccounts(salonId);try{const a=JSON.parse(cachedLocalGet(acctKey)||'[]');return Array.isArray(a)?a:[];}catch(e){return[];}});
   useEffect(()=>{safeLocalSet(acctKey,JSON.stringify(bankAccounts));},[bankAccounts,acctKey]);
-  const [gAcctId,setGAcctId]=useState(()=>{try{return(JSON.parse(cachedLocalGet(acctKey)||'[]')[0]||{}).id||'';}catch(e){return'';}});
+  const [gAcctId,setGAcctId]=useState(()=>{if(typeof mbOn==='function'&&mbOn(salonId))return mbPrimaryId(salonId);try{return(JSON.parse(cachedLocalGet(acctKey)||'[]')[0]||{}).id||'';}catch(e){return'';}});
   const gAcct=bankAccounts.find(a=>a.id===gAcctId)||bankAccounts[0]||null;
   const gIso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   const gToday=new Date();
@@ -2990,7 +2993,7 @@ function BankStatement({salon,onNavTab}={}){
           stop=true;setWaitSince(0);setWatchInfo('');
           setGStatus({text:'Found "'+file.name+'" — importing…',bad:false});
           guidedPendingRef.current=true;
-          await loadWorkbookRef.current(file,{from:gFrom,to:gTo,append:true});
+          await loadWorkbookRef.current(file,{from:gFrom,to:gTo,append:true,acct:gAcct&&gAcct.id});
           lastAutoRef.current=file.name+'|'+file.lastModified;
           safeLocalSet(outletKey('salonos_bank_last_auto',salonId),lastAutoRef.current);
           return;
@@ -3014,7 +3017,7 @@ function BankStatement({salon,onNavTab}={}){
     setWaitSince(0);setWatchInfo('');
     setGStatus({text:'Importing "'+f.name+'"…',bad:false});
     guidedPendingRef.current=true;
-    await loadWorkbookRef.current(f,{from:gFrom,to:gTo,append:true});
+    await loadWorkbookRef.current(f,{from:gFrom,to:gTo,append:true,acct:gAcct&&gAcct.id});
   };
   // Show the import's own result (rows added / skipped, or why it failed) right in this card.
   const guidedPendingRef=useRef(false);
@@ -3332,6 +3335,7 @@ function BankStatement({salon,onNavTab}={}){
   // opts (from the guided download): {from,to} ISO dates to keep only that period, append:true.
   const loadWorkbook=async(file,opts)=>{
     setMessage('');setFileName(file.name);
+    const mbA=typeof mbOn==='function'&&mbOn(salonId)?((opts&&opts.acct&&mbFind(salonId,opts.acct)?opts.acct:'')||upAcct||mbPrimaryId(salonId)):null;let mbWarn='';
     try{
       let sheet;
       if(isPdfFile(file)){
@@ -3351,7 +3355,7 @@ function BankStatement({salon,onNavTab}={}){
       const headerRowIdx=findHeaderRowIndex(sheet.raw);
       const headerRow=(sheet.raw[headerRowIdx]||[]).map(h=>String(h||'').trim());
       // Remember which bank / account this statement is from (Tally Integration picks the bank ledger from it).
-      try{const acNo=bankAccountNoFromHeader(sheet.raw.slice(0,Math.max(headerRowIdx,0)));if(acNo||bank)saveBankStatementInfo(salonId,{bank:bank&&bank!=='Generic'?bank:'',accountNo:acNo,file:file.name});}catch(e){}
+      try{const acNo=bankAccountNoFromHeader(sheet.raw.slice(0,Math.max(headerRowIdx,0)));if(acNo||bank)saveBankStatementInfo(salonId,{bank:bank&&bank!=='Generic'?bank:'',accountNo:acNo,file:file.name});if(mbA)mbWarn=mbHeaderWarning(salonId,mbA,acNo);}catch(e){if(mbA&&/^This statement is for /.test(e.message))throw e;}
       let json=sheet.raw.slice(headerRowIdx+1)
         .map(r=>{const obj={};headerRow.forEach((h,ci)=>{if(h)obj[h]=r[ci]!==undefined?r[ci]:'';});return obj;})
         .filter(o=>Object.values(o).some(v=>String(v).trim()!==''));
@@ -3399,9 +3403,11 @@ function BankStatement({salon,onNavTab}={}){
         note=' Note: this file\u2019s columns don\u2019t look like the '+bank+' format you\u2019ve selected \u2014 double-check the Bank dropdown above if any fields look off.';
       }
       imported=applyAutoClassification(imported);
+      if(mbA)imported=imported.map(r=>({...r,acct:mbA}));
       const autoClassified=imported.filter(r=>r.nature).length;
       const formatNote=(usedAutoDetect?' using automatic column detection.':' using the '+bank+' format.')+note+periodNote
-        +(skippedLines>0?' · '+skippedLines+' non-transaction line'+(skippedLines===1?'':'s')+' (headings, address, totals, bank notes) ignored':'');
+        +(skippedLines>0?' · '+skippedLines+' non-transaction line'+(skippedLines===1?'':'s')+' (headings, address, totals, bank notes) ignored':'')
+        +(mbA?' · into '+mbLabel(mbFind(salonId,mbA)):'')+(mbWarn?' '+mbWarn:'');
       // Append mode: add only to what's already there, skipping rows that look like the same
       // transaction already imported (same date, description, debit, credit and closing balance
       // — a bank statement export re-covering an overlapping date range is the normal case this
@@ -3409,7 +3415,7 @@ function BankStatement({salon,onNavTab}={}){
       // the original one-shot behavior of wiping the table and starting over.
       if((importMode==='append'||(opts&&opts.append))&&rows.length){
         const dedupeKey=(r)=>[r.transactionDate,r.description,r.debit,r.credit,r.closingBalance].join('|');
-        const existingKeys=new Set(rows.map(dedupeKey));
+        const existingKeys=new Set((mbA?mbRowsOf(salonId,rows,mbA):rows).map(dedupeKey)); // same account only
         const freshOnes=imported.filter(r=>!existingKeys.has(dedupeKey(r)));
         const dupCount=imported.length-freshOnes.length;
         let nextId=rows.reduce((m,r)=>Math.max(m,Number(r.id)||0),0)+1;
@@ -3420,8 +3426,13 @@ function BankStatement({salon,onNavTab}={}){
           +(dupCount?' · '+dupCount+' row'+(dupCount===1?'':'s')+' already in the statement '+(dupCount===1?'was':'were')+' skipped as duplicate'+(dupCount===1?'':'s')+'.':'.')
           +(withFreshIds.filter(r=>r.nature).length?' · '+withFreshIds.filter(r=>r.nature).length+' auto-classified (Nature + Date as per Cradlee).':''));
       }else{
+        if(mbA){ // fresh upload replaces this account's lines only; other accounts stay
+          const keep=rows.filter(r=>mbAcctOf(r,salonId)!==mbA);let nid=keep.reduce((m,r)=>Math.max(m,Number(r.id)||0),0)+1;
+          imported=imported.map(r=>({...r,id:nid++}));autoMatchPendingRef.current=new Set(imported.map(r=>r.id));setRows([...keep,...imported]);
+        }else{
         autoMatchPendingRef.current=new Set(imported.map(r=>r.id));
         setRows(imported);
+        }
         setMessage('Imported '+imported.length+' transaction'+(imported.length===1?'':'s')+' from '+file.name+formatNote+(autoClassified?' · '+autoClassified+' auto-classified (Nature + Date as per Cradlee).':'')+' Double-check a few rows below, then edit Nature and Date as per Cradlee as needed.');
       }
     }catch(err){setMessage('Import failed: '+err.message);}
@@ -3706,6 +3717,7 @@ function BankStatement({salon,onNavTab}={}){
     }
   };
   const filtered=rows.filter(r=>{
+    if(acctView!=='all'&&typeof mbOn==='function'&&mbOn(salonId)&&mbAcctOf(r,salonId)!==acctView)return false;
     if(search&&![r.transactionDate,r.description,r.refNo,r.nature,r.cradleeDate].join(' ').toLowerCase().includes(search.toLowerCase()))return false;
     for(const qf of quickFilters){if(!matchesQuickFilter(r,qf))return false;}
     for(const col of FILTER_COLS){
@@ -4503,6 +4515,7 @@ function BankStatement({salon,onNavTab}={}){
     ),
     React.createElement('div',{className:'card',style:{marginBottom:16}},
       React.createElement('div',{className:'card-title'},'Upload Bank Statement'),
+      typeof MbUploadPicker==='function'&&React.createElement(MbUploadPicker,{sid:salonId,value:upAcct,rows,onChange:v=>{setUpAcct(v);const fm=mbFormatFor(mbFind(salonId,v),BANKS);if(fm)setBank(fm);}}),
       rows.length>0&&React.createElement('div',{style:{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}},
         [{v:'append',label:'➕ Append to existing statement',desc:'Adds new rows to the '+rows.length+' already imported \u2014 duplicates are skipped automatically'},
          {v:'replace',label:'🔄 Upload fresh statement',desc:'Replaces all '+rows.length+' currently imported rows with just this file'}
@@ -4517,7 +4530,7 @@ function BankStatement({salon,onNavTab}={}){
       rows.length>0&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:14,marginTop:-6}},
         importMode==='append'
           ?'The next file you upload will be added to what\u2019s already here. Rows with the same date, description, debit, credit and closing balance as an existing row are treated as the same transaction and skipped, so re-uploading an overlapping date range is safe.'
-          :React.createElement('span',{style:{color:'var(--orange)'}},'\u26a0 The next file you upload will remove all '+rows.length+' currently imported rows first \u2014 use this only if this file is the complete, correct statement on its own.')
+          :React.createElement('span',{style:{color:'var(--orange)'}},'\u26a0 The next file you upload will remove all '+(typeof mbOn==='function'&&mbOn(salonId)?(n=>n+' row'+(n===1?'':'s'))(mbRowsOf(salonId,rows,upAcct||mbPrimaryId(salonId)).length)+' of '+mbLabel(mbFind(salonId,upAcct||mbPrimaryId(salonId)))+' (other bank accounts stay)':rows.length+' currently imported rows')+' first \u2014 use this only if this file is the complete, correct statement on its own.')
       ),
       React.createElement('input',{ref:fileRef,type:'file',accept:'.xlsx,.xls,.csv,.pdf',style:{display:'none'},onChange:onFile}),
       React.createElement('div',{onDragOver:e=>{e.preventDefault();setDragging(true)},onDragLeave:()=>setDragging(false),onDrop,
@@ -4569,6 +4582,7 @@ function BankStatement({salon,onNavTab}={}){
             React.createElement('div',{className:'search-bar',style:{maxWidth:320}},React.createElement('span',null,React.createElement(IconSearch,{size:13})),React.createElement('input',{value:search,onChange:e=>setSearch(e.target.value),placeholder:'Search transaction…'}))
           )
         ),
+        typeof MbFilterChips==='function'&&React.createElement(MbFilterChips,{sid:salonId,rows,value:acctView,onChange:setAcctView}),
         (()=>{
           return React.createElement('div',{style:{marginBottom:12}},
             React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:6}},'Quick filters — click to toggle, combine as many as you like'),
@@ -4629,7 +4643,7 @@ function BankStatement({salon,onNavTab}={}){
             React.createElement('td',{style:{position:'sticky',left:0,zIndex:2,background:'var(--bg2)'}},React.createElement('input',{type:'checkbox',checked:selected.has(r.id),onChange:()=>toggleSelect(r.id)})),
             React.createElement('td',{'data-xr':ri,'data-xc':0,style:{whiteSpace:'nowrap',position:'sticky',left:32,zIndex:2,borderRight:'2px solid var(--accent)',background:opaqueStickyBg(cellRange.isSelected(ri,0)?'rgba(47,95,224,0.35)':null)}},r.transactionDate),
             React.createElement('td',{'data-xr':ri,'data-xc':1,style:{whiteSpace:'nowrap',background:cellRange.isSelected(ri,1)?'rgba(47,95,224,0.12)':undefined}},r.valueDate),
-            React.createElement('td',{'data-xr':ri,'data-xc':2,style:{minWidth:220,background:cellRange.isSelected(ri,2)?'rgba(47,95,224,0.12)':undefined}},r.description||'—'),
+            React.createElement('td',{'data-xr':ri,'data-xc':2,style:{minWidth:220,background:cellRange.isSelected(ri,2)?'rgba(47,95,224,0.12)':undefined}},r.description||'—',typeof mbRowTag==='function'&&mbRowTag(salonId,r)),
             React.createElement('td',{'data-xr':ri,'data-xc':3,style:{whiteSpace:'nowrap',background:cellRange.isSelected(ri,3)?'rgba(47,95,224,0.12)':undefined}},r.refNo||'—'),
             React.createElement('td',{'data-xr':ri,'data-xc':4,style:{color:r.debit?'var(--red)':'var(--text3)',whiteSpace:'nowrap',background:cellRange.isSelected(ri,4)?'rgba(47,95,224,0.12)':undefined}},r.debit?money(r.debit):'—'),
             React.createElement('td',{'data-xr':ri,'data-xc':5,style:{color:r.credit?'var(--green)':'var(--text3)',whiteSpace:'nowrap',background:cellRange.isSelected(ri,5)?'rgba(47,95,224,0.12)':undefined}},r.credit?money(r.credit):'—'),

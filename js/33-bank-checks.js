@@ -146,7 +146,12 @@ function bankEditGuard(sid,r,k,v){
 // ── Running balance check: previous closing + credit − debit = closing ──
 function bankBalanceBreaks(sid,rows){
   if(!controlOn('bankBalanceCheck',sid))return[];
-  const L=(rows||bankRowsFor(sid)).map((r,i)=>({r,i,iso:toISO(r&&r.transactionDate)||''})).filter(o=>o.iso&&o.r&&o.r.closingBalance!=null&&o.r.closingBalance!==''&&!isNaN(Number(o.r.closingBalance))&&(Number(o.r.debit)||Number(o.r.credit)||Number(o.r.closingBalance)));
+  // Each bank account has its own running balance (js/64).
+  if(typeof mbOn==='function'&&mbOn(sid))return mbGroups(sid,rows||bankRowsFor(sid)).flatMap(([,rs])=>bankBalanceBreaksOf(rs));
+  return bankBalanceBreaksOf(rows||bankRowsFor(sid));
+}
+function bankBalanceBreaksOf(rowsIn){
+  const L=(rowsIn||[]).map((r,i)=>({r,i,iso:toISO(r&&r.transactionDate)||''})).filter(o=>o.iso&&o.r&&o.r.closingBalance!=null&&o.r.closingBalance!==''&&!isNaN(Number(o.r.closingBalance))&&(Number(o.r.debit)||Number(o.r.credit)||Number(o.r.closingBalance)));
   if(L.length<2)return[];
   const run=dir=>{const S=L.slice().sort((a,b)=>a.iso.localeCompare(b.iso)||(a.i-b.i)*dir);const br=[];
     for(let k=1;k<S.length;k++){const p0=S[k-1].r,cu=S[k].r;const exp=Number(p0.closingBalance)+(Number(cu.credit)||0)-(Number(cu.debit)||0);const got=Number(cu.closingBalance);
