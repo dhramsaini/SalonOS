@@ -2549,8 +2549,30 @@ function payGrossFor(e,sid){
   return(parts>0&&gap>0&&known.some(x=>Math.abs(x-gap)<=1))?Math.round(parts):g;
 }
 function salPayView(e,sid){if(!e||e.ctc!=null)return e;return{...e,ctc:Number(e.gross)||0,gross:payGrossFor(e,sid)};}
+// ── Employees with no attendance in the month (Controls → hideNoAttendance) are left out of Salary
+// Working and Incentive Working — nobody present, on a half day or on paid leave all month. Someone
+// is still shown if they have arrears this month or a figure typed by hand (salary), or sales /
+// overtime / penalty / a typed figure (incentive), so no amount is ever dropped silently.
+function hasMonthAttendance(sid,e,y,m){
+  try{const rec=loadAttendance(sid)[attMonthKey(e.id,y,m)];if(!rec)return false;const s=attSummaryFor(e,y,m,rec);
+    return((Number(s.present)||0)+(Number(s.half)||0)+(Number(s.paidLeave)||0))>0;}catch(x){return true;}
+}
+function hideNoAttOn(sid){return typeof controlOn==='function'&&controlOn('hideNoAttendance',sid);}
+function swShowEmployee(sid,e,y,m){
+  if(!hideNoAttOn(sid)||hasMonthAttendance(sid,e,y,m))return true;
+  if(typeof salArrearsFor==='function'&&salArrearsFor(sid,e,y,m))return true;
+  if(typeof salManualFor==='function'&&salManualFor(sid,e,y,m))return true;
+  return false;
+}
+function incShowEmployee(sid,e,y,m){
+  if(!hideNoAttOn(sid)||hasMonthAttendance(sid,e,y,m))return true;
+  if(typeof incManualFor==='function'&&incManualFor(sid,e,y,m))return true;
+  try{const row=staffWorkReportRowFor(sid,y,m,e.billingId);if(row&&['ServiceSale','PackageSale','ComplementarySale','MemberShipSale','ProductSale'].some(k=>Number(row[k])>0))return true;
+    const a=loadIncentiveActuals(sid)[incActualKey(e.id,y,m)]||{};if((Number(a.svcActual)||0)+(Number(a.memActual)||0)+(Number(a.prodActual)||0)+(Number(a.otHours)||0)+(Number(a.penaltyAmt)||0)>0)return true;}catch(x){}
+  return false;
+}
 function swWorkingsFor(salonId,year,month){
-  const EMPLOYEES=getEmployeesForMonth(year,month,salonId).map(e=>salPayView(e,salonId));
+  const EMPLOYEES=getEmployeesForMonth(year,month,salonId).map(e=>salPayView(e,salonId)).filter(e=>swShowEmployee(salonId,e,year,month));
   const attStore=loadAttendance(salonId);
   const cols=loadSWCols(salonId);
   const teaCfg=loadTeaConfig(salonId);
@@ -3454,7 +3476,7 @@ function incWorkingsFor(salonId,year,month){
   return typeof withIncPlan==='function'?withIncPlan(salonId,year,month,()=>incWorkingsForLive(salonId,year,month)):incWorkingsForLive(salonId,year,month);
 }
 function incWorkingsForLive(salonId,year,month){
-  const EMPLOYEES=getEmployeesForMonth(year,month,salonId).filter(e=>e.desig!=='Helper'&&e.desig!=='Housekeeper');
+  const EMPLOYEES=getEmployeesForMonth(year,month,salonId).filter(e=>e.desig!=='Helper'&&e.desig!=='Housekeeper').filter(e=>incShowEmployee(salonId,e,year,month));
   const actuals=loadIncentiveActuals(salonId);
   const rates=loadIncentiveRates(salonId);
   const activeModel=loadActiveIncentiveModel(salonId);

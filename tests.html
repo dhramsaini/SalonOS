@@ -73,6 +73,7 @@
         {id:'t3',date:'2026-09-10',ingId:'g1',type:'issue',qty:25},{id:'t4',date:'2026-09-15',ingId:'g1',type:'waste',qty:2},{id:'t5',date:'2026-09-30',ingId:'g1',type:'count',qty:7}]);
       put('salonos_service_charge_outlet_904',{settings:{housePct:10,method:'equal'},months:{'2026-09':{collected:10000}}});
       put('salonos_master_employees_outlet_904',['K1','K2','S1'].map(id=>({id,name:'Staff '+id,desig:id[0]==='K'?'Commis':'Steward',dept:id[0]==='K'?'Kitchen':'Service',doj:'2024-01-01',dol:'',weeklyOff:'',status:'Active',gross:20000,basic:10000,hra:0,conv:0,special:10000,pf:false,esic:false,pt:false,tds:false})));
+      put('salonos_attendance_outlet_904',Object.fromEntries(['K1','K2','S1'].map(id=>[id+'_2026_8',{days:Array(30).fill('present')}]))); // staff worked in Sep 2026 (no-attendance staff are left out of Salary Working)
       const emp=(id,gross,basic,extra)=>Object.assign({id,name:'Emp '+id,desig:'Unisex Hairdresser',dept:'Hairdresser',doj:'2024-01-01',dol:'',weeklyOff:'',status:'Active',gross,basic,hra:0,conv:0,special:0,pf:true,pfOnActualBasic:false,esic:true,pt:false,tds:false},extra||{});
       put('salonos_master_employees_outlet_901',[emp('E1',20000,12000),emp('E2',30000,20000,{pfOnActualBasic:true}),emp('E3',20000,18000)]);
       put('salonos_master_employees_outlet_902',[emp('E4',20000,12000)]);
@@ -1292,7 +1293,7 @@
         const S=927;const U0=sessionStorage.getItem('salonos_user');const C0=window.confirm;sessionStorage.setItem('salonos_user',JSON.stringify({name:'Asha',role:'Salon Manager',outletIds:[927]}));saveControls({});
         saveVendors([{id:'V1',name:'Acme Traders',status:'Active'},{id:'V2',name:'Kumar Supplies',status:'Active'}],S);
         saveVendorInvoices([{id:'I1',vendorId:'V1',invoiceNo:'A1',invoiceDate:'01/10/2026',amount:3000,payments:[]},{id:'I2',vendorId:'V1',invoiceNo:'A2',invoiceDate:'02/10/2026',amount:4500,payments:[]},
-          {id:'I3',vendorId:'V1',invoiceNo:'A3',invoiceDate:'03/10/2026',amount:9999,payments:[]},{id:'I4',vendorId:'V2',invoiceNo:'K1',invoiceDate:'01/10/2026',amount:10000,payments:[]}],S);
+          {id:'I3',vendorId:'V1',invoiceNo:'A3',invoiceDate:'03/10/2026',amount:9999,payments:[]},{id:'I4',vendorId:'V2',invoiceNo:'K1',invoiceDate:'01/10/2026',amount:10000,payments:[]}],S,{system:true}); // sample bills saved as system data — this test is about bank matching, not booking permission
         saveBankLoans(S,[{id:'LN1',name:'HDFC loan',contains:'emi 4471',emi:10000,rate:12,opening:500000,asOn:'2026-01-01'}]);
         const rows=[{id:'D1',transactionDate:'05/10/2026',description:'NEFT ACME TRADERS',debit:7500,nature:''},
           {id:'D2',transactionDate:'06/10/2026',description:'NEFT KUMAR SUPPLIES',debit:6000,nature:''},{id:'D3',transactionDate:'09/10/2026',description:'NEFT KUMAR SUPPLIES',debit:4000,nature:''},

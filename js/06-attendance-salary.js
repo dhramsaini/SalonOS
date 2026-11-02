@@ -961,7 +961,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
     if(cal){setSelMonth(cal.month);setSelYear(cal.year);}
     // eslint-disable-next-line
   },[period&&period.mi,period&&period.fy]);
-  const EMPLOYEES=getEmployeesForMonth(selYear,selMonth,salon?.id);
+  const EMPLOYEES=getEmployeesForMonth(selYear,selMonth,salon?.id).filter(e=>typeof swShowEmployee!=='function'||swShowEmployee(salon?.id,e,selYear,selMonth)); // no attendance all month → left out (Controls → hideNoAttendance)
   const {success,error:swError}=useToast();
   // Row meta: Status / Payment Status / Mode — persisted per outlet, keyed like attendance
   useState(()=>reconcileAdvanceRecoveries(salon?.id)); // settle installments of months already locked
