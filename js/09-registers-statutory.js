@@ -1023,6 +1023,8 @@ function tdsCellsForMonth(salonId,year,month,recurring,sectionCodes,salaryCol){
     const divisor=recurringDivisorOf(it);
     cells[it.tdsSection]=(cells[it.tdsSection]||0)+tdsAmountOf(it)/divisor;
   });
+  // TDS deducted on vendor bills booked in the month (js/65).
+  if(typeof itdsBillsForMonth==='function')itdsBillsForMonth(salonId,year,month).forEach(p=>{cells[p.section]=(cells[p.section]||0)+p.amt;});
   cells[salaryCol]=statutoryDeductionsFor(salonId,year,month).reduce((s,e)=>s+e.tdsAmt,0);
   return cells;
 }
@@ -1038,7 +1040,8 @@ function tdsPartyDetailForMonth(salonId,year,month,recurring){
   }).filter(r=>r.amt>0);
   const fromSalary=statutoryDeductionsFor(salonId,year,month).filter(e=>e.tdsAmt>0)
     .map(e=>({key:'emp_'+e.id,party:e.name,source:'Salary',section:'Sec. 192',amt:e.tdsAmt}));
-  return[...fromRecurring,...fromSalary];
+  const fromBills=typeof itdsBillsForMonth==='function'?itdsBillsForMonth(salonId,year,month):[];
+  return[...fromRecurring,...fromBills,...fromSalary];
 }
 // ── TDS Summary — Monthly (one FY, 12 rows) or Annual (every FY, one row each) × section-wise.
 // Two sources feed it: every Active recurring expense with TDS Applicable (bucketed by its own
@@ -1052,7 +1055,7 @@ function TdsSummaryReport({salon}={}){
   const [fy,setFy]=useState(()=>calToFYMI(new Date().getFullYear(),new Date().getMonth()).fy);
   const [drill,setDrill]=useState(null); // {label,year,calMonth}
   const recurring=loadRecurringExpenses(salonId).filter(it=>it.status==='Active'&&it.tdsApplicable&&it.tdsSection);
-  const sectionCodes=Array.from(new Set(recurring.map(it=>it.tdsSection))).sort();
+  const sectionCodes=Array.from(new Set([...recurring.map(it=>it.tdsSection),...(typeof itdsBillSections==='function'?itdsBillSections(salonId):[])])).sort();
   const SALARY_COL='Sec. 192';
   const columns=[...sectionCodes,SALARY_COL];
   const monthlyRows=Array.from({length:12},(_,mi)=>{

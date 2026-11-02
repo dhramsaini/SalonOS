@@ -1113,6 +1113,13 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     if(invForm.docNature!=='Performa Invoice'&&editInvoiceId===null&&piPrompt==='unanswered'){alert('This vendor has a pending Performa Invoice — please answer whether this '+invForm.docNature+' is against it before saving.');return;}
     if(invForm.docNature!=='Performa Invoice'&&piPrompt==='yes'&&!invForm.linkedPI){alert('Select which Performa Invoice this '+invForm.docNature+' is booked against, or choose "No — standalone '+invForm.docNature+'" above.');return;}
     const amount=Math.round(computedTotal);
+    // TDS on this bill (js/65 · Controls → invoiceTds): saved fields + the bill's "TDS" payment line.
+    let tdsF=null;
+    if(typeof itdsOn==='function'&&itdsOn(salonId)){
+      tdsF=itdsFieldsFor(invForm,amount);if(typeof tdsF==='string'){alert(tdsF);return;}
+      if(editInvoiceId!==null){const o=invoices.find(i=>i.id===editInvoiceId);const paid=((o&&o.payments)||[]).filter(p=>p.mode!=='TDS').reduce((t,p)=>t+(Number(p.paidAmount)||0),0);
+        if(paid+tdsF.tdsAmt>amount+0.5){alert('Payments already recorded (₹'+Math.round(paid).toLocaleString('en-IN')+') plus TDS (₹'+tdsF.tdsAmt.toLocaleString('en-IN')+') come to more than the bill (₹'+amount.toLocaleString('en-IN')+'). Check the TDS or the payments.');return;}}
+    }
     if(invForm.docNature!=='Performa Invoice'&&editInvoiceId===null&&!billPoOk(salonId,invForm.vendorId,amount,invForm.invoiceNo))return;
     const dmy=(iso)=>{const p=String(iso||'').split('-');return p.length===3&&p[0].length===4?p[2]+'/'+p[1]+'/'+p[0]:iso;};
     // "+ Add New Vendor": create the vendor (or reuse one with the same name) and book against it.
@@ -1130,14 +1137,15 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     }
     const {newVendorName,newVendorGst,newVendorPhone,newVendorTerms,...invFields}=invForm;
     const savedInvoice={...invFields,enteredAt:invFields.enteredAt||new Date().toISOString(),vendorId,amount,invoiceDate:dmy(invForm.invoiceDate),bookingDate:dmy(invForm.bookingDate||invForm.invoiceDate),dueDate:dmy(invForm.dueDate)};
+    if(tdsF)Object.assign(savedInvoice,tdsF);
     setInvoices(prev=>{
       let next,targetIdx;
       if(editInvoiceId!==null){
         // An approval only covers the amount that was approved — changing the amount needs a new one.
-        next=prev.map(inv=>inv.id===editInvoiceId?{...savedInvoice,id:inv.id,payments:inv.payments,approval:(inv.approval&&Math.abs((Number(inv.amount)||0)-amount)<0.5)?inv.approval:undefined}:inv);
+        next=prev.map(inv=>inv.id===editInvoiceId?{...savedInvoice,id:inv.id,payments:tdsF?itdsPays(inv.payments,inv.id,savedInvoice):inv.payments,approval:(inv.approval&&Math.abs((Number(inv.amount)||0)-amount)<0.5)?inv.approval:undefined}:inv);
         targetIdx=next.findIndex(inv=>inv.id===editInvoiceId);
       }else{
-        next=[...prev,{...savedInvoice,id:nextPrefixedId(prev,'VI-',4),payments:[]}];
+        {const nid=nextPrefixedId(prev,'VI-',4);next=[...prev,{...savedInvoice,id:nid,payments:tdsF?itdsPays([],nid,savedInvoice):[]}];}
         targetIdx=next.length-1;
       }
       // If this Tax Invoice/Invoice is booked against a Performa Invoice that already had
@@ -2159,6 +2167,8 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         ),
         invSupply&&React.createElement('div',{style:{fontSize:11.5,color:'var(--accent)',margin:'2px 0 6px'}},'ℹ '+gstSupplyNote(invSupply)),
         React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:-6,marginBottom:14}},'Auto-calculated: Taxable Value + IGST + CGST + SGST + Freight + Round Off'),
+        typeof InvTdsBlock==='function'&&React.createElement(InvTdsBlock,{sid:salonId,form:invForm,setForm:setInvForm,vendors,isEdit:editInvoiceId!==null,
+          total:(Number(invForm.taxable)||0)+(Number(invForm.igst)||0)+(Number(invForm.cgst)||0)+(Number(invForm.sgst)||0)+(Number(invForm.freight)||0)+(Number(invForm.roundOff)||0)}),
         invForm.docNature!=='Performa Invoice'&&(()=>{
           const tot=(Number(invForm.taxable)||0)+(Number(invForm.igst)||0)+(Number(invForm.cgst)||0)+(Number(invForm.sgst)||0)+(Number(invForm.freight)||0)+(Number(invForm.roundOff)||0);
           const sp=billSplitMonths(invForm.periodFrom,invForm.periodTo);
