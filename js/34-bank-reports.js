@@ -160,7 +160,7 @@ function bankOutletRatios(sid,year,month){
   const s=typeof collectionSalesSumFor==='function'?collectionSalesSumFor(sid,year,month):{cash:0,card:0,upi:0};const sales=(s.cash||0)+(s.card||0)+(s.upi||0);
   const cf=bankCashFlow([sid],year,month,1);const out=n=>{const e=cf.rows.find(z=>z.nature===n);return e?e.out[0]:0;};
   const pre=year+'-'+String(month+1).padStart(2,'0');const T=cradleeDayTotals(sid);let sold=0;Object.keys(T).forEach(d=>{if(String(toISO(d)||'').startsWith(pre))sold+=(T[d].card||0)+(T[d].upi||0);});
-  const settled=bankRowsFor(sid).filter(r=>r&&Number(r.credit)>0&&(r.nature==='Card Settlement'||r.nature==='UPI Settlement')&&String(toISO(r.cradleeDate)||'').startsWith(pre)).reduce((t,r)=>t+Number(r.credit),0);
+  const settled=(typeof mbSettleRows==='function'?mbSettleRows(sid,bankRowsFor(sid)):bankRowsFor(sid)).filter(r=>r&&Number(r.credit)>0&&(r.nature==='Card Settlement'||r.nature==='UPI Settlement')&&String(toISO(r.cradleeDate)||'').startsWith(pre)).reduce((t,r)=>t+Number(r.credit),0);
   const vals={rent:out('Rent')+out('DG Rent'),power:out('Electricity Expenses'),bank:out('Bank Charges'),salary:out('Salary')+out('Incentive')+out('Daily Incentive'),fees:settled>0&&sold>settled?sold-settled:0};
   const pct=v=>sales>0?Math.round(v/sales*1000)/10:null;
   return{sales:Math.round(sales),vals,pct:{rent:pct(vals.rent),power:pct(vals.power),bank:pct(vals.bank),salary:pct(vals.salary),fees:pct(vals.fees)}};

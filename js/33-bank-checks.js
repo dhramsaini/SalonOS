@@ -81,7 +81,7 @@ function bankMappingExceptions(sid,year,month,rows){
       const iso=toISO(r.transactionDate);if(iso&&new Date(iso+'T00:00:00').getDay()===0&&!['Bank Charges','TDS','GST','Interest','Tax Payment'].includes(r.nature))add(r,'Sunday payment','Paid on a Sunday ('+r.transactionDate+') — the outlet’s bank work is usually on weekdays.');});}
   // card / UPI charges above the agreed rate
   if(controlOn('mdrCheck',sid)){const lim=controlLimit('mdrCheck',sid)||2;const T=cradleeDayTotals(sid);const grp={};
-    (rows||bankRowsFor(sid)).filter(r=>r&&Number(r.credit)>0&&String(toISO(r.transactionDate)||'').startsWith(pre)&&(r.nature==='Card Settlement'||r.nature==='UPI Settlement')&&r.cradleeDate)
+    (typeof mbSettleRows==='function'?mbSettleRows(sid,rows||bankRowsFor(sid)):(rows||bankRowsFor(sid))).filter(r=>r&&Number(r.credit)>0&&String(toISO(r.transactionDate)||'').startsWith(pre)&&(r.nature==='Card Settlement'||r.nature==='UPI Settlement')&&r.cradleeDate)
       .forEach(r=>{const k=(r.nature==='UPI Settlement'?'upi':'card')+'|'+r.cradleeDate;(grp[k]=grp[k]||[]).push(r);});
     Object.keys(grp).forEach(k=>{const [kind,d]=k.split('|');const tot=(T[d]||{})[kind]||0;if(!(tot>0))return;const got=grp[k].reduce((t,r)=>t+Number(r.credit),0);const fee=(tot-got)/tot*100;
       if(fee>lim&&got<tot)grp[k].forEach(r=>add(r,'High charges',kind.toUpperCase()+' sales of '+d+' were '+R(tot)+'; settled '+R(got)+' — charges '+fee.toFixed(2)+'% (agreed up to '+lim+'%).'));});}

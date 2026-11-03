@@ -43,6 +43,10 @@ function mbSettleRows(sid,rows){
   const p=acc.length?acc[0].id:'primary';const no=new Set(acc.filter(a=>a.settle===false).map(a=>a.id));
   return(rows||[]).filter(r=>!(r&&(r.nature==='Card Settlement'||r.nature==='UPI Settlement')&&no.has(r.acct||p)));
 }
+// Can this line be a card / UPI settlement? No when its account has "Card/UPI settlements land here" unticked.
+function mbSettleAcctOk(sid,r){
+  if(!r||!mbOn(sid))return true;const acc=mbAccounts(sid);const a=acc.find(x=>x.id===((r&&r.acct)||(acc[0]&&acc[0].id)));return !(a&&a.settle===false);
+}
 // Rows grouped by account: [[id, rows]] (one group when the switch is off).
 function mbGroups(sid,rows){if(!mbOn(sid))return[['all',rows||[]]];const p=mbPrimaryId(sid);const g={};(rows||[]).forEach(r=>{const k=(r&&r.acct)||p;(g[k]=g[k]||[]).push(r);});return Object.entries(g);}
 // The statement format (Bank Statement → BANKS) that fits an account's bank name.

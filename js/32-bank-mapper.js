@@ -224,7 +224,9 @@ function bankSuggestionsFor(sid,list,rows){
     Object.values(lpBy).forEach(p=>p.allocations.forEach(a=>{left[a.id]=Math.round((left[a.id]-a.amount)*100)/100;}));
     const ctx={inv,left,vendors};
     debits.filter(x=>!lpBy[x.id]).forEach(x=>{const r=planSmartBillLink(sid,x,ctx);if(r){lpBy[x.id]={x,...r};r.allocations.forEach(a=>{left[a.id]=Math.round((left[a.id]-a.amount-(a.tds||0))*100)/100;});}});}catch(e){}
-  const cTot=cradleeDayTotals(sid);const claimed={};(rows||[]).forEach(r=>{if(r&&r.cradleeDate&&(r.nature==='Card Settlement'||r.nature==='UPI Settlement'))claimed[(r.nature==='UPI Settlement'?'upi':'card')+'|'+r.cradleeDate]=1;});
+  // Settlements only from accounts that receive them (js/64, Master Sheet → Bank accounts).
+  const setOk=x=>typeof mbSettleAcctOk!=='function'||mbSettleAcctOk(sid,(rows||[]).find(r=>r&&r.id===x.id));
+  const cTot=cradleeDayTotals(sid);const claimed={};(typeof mbSettleRows==='function'?mbSettleRows(sid,rows||[]):(rows||[])).forEach(r=>{if(r&&r.cradleeDate&&(r.nature==='Card Settlement'||r.nature==='UPI Settlement'))claimed[(r.nature==='UPI Settlement'?'upi':'card')+'|'+r.cradleeDate]=1;});
   const fb=loadBankFeedback(sid);
   try{planBulkEmployeePay(sid,list.filter(x=>x.side==='Debit'&&!x.nature&&!lpBy[x.id]),null,rows||[]).forEach(p=>{if(p.what)ppBy[p.x.id]=p;});}catch(e){}
   const m=n=>'₹'+Math.round(n).toLocaleString('en-IN');
@@ -250,8 +252,8 @@ function bankSuggestionsFor(sid,list,rows){
     const rule=matchBankRule(sid,{description:d,credit:x.credit,transactionDate:x.date},rules);
     if(rule&&bankRulePaused(sid,rule,rows)){const p={...bankRulePatch(rule,{description:d,transactionDate:x.date}),natureRule:rule.id};const st=bankRuleStats(sid,rule,rows);out[x.id]={conf:'mid',label:rule.nature+(rule.vendorOverride?' · '+rule.vendorOverride:''),why:'Your rule — paused: changed by hand on '+st.changed+' of '+st.total+' lines',apply:{type:'patch',patch:p},ruleId:rule.id};return;}
     if(rule){const p={...bankRulePatch(rule,{description:d,transactionDate:x.date}),natureRule:rule.id};P('high',rule.nature+(rule.vendorOverride?' · '+rule.vendorOverride:'')+(p.cradleeDate?' · '+p.cradleeDate:''),p,'Your rule for lines like “'+(rule.contains||rule.sig)+'”');out[x.id].ruleId=rule.id;return;}
-    if(cr&&setdt){const n=/upi/.test(lo)?'UPI Settlement':'Card Settlement';P('high',n+' · '+setdt,{nature:n,cradleeDate:setdt},'Settlement narration with the sale date (SETDT)');return;}
-    if(cr&&/card|pos|settl|mid[- ]?\d|cms/.test(lo)&&!/upi/.test(lo)){const bd=cradleeDateByAmount(sid,x,'card',{totals:cTot,claimed});if(bd){claimed['card|'+bd.dmy]=1;P('mid','Card Settlement · '+bd.dmy,{nature:'Card Settlement',cradleeDate:bd.dmy},'Card sales of '+bd.dmy+' were '+m(bd.tot)+' — this credit is that less '+(bd.fee*100).toFixed(2)+'% charges');return;}}
+    if(cr&&setdt&&setOk(x)){const n=/upi/.test(lo)?'UPI Settlement':'Card Settlement';P('high',n+' · '+setdt,{nature:n,cradleeDate:setdt},'Settlement narration with the sale date (SETDT)');return;}
+    if(cr&&setOk(x)&&/card|pos|settl|mid[- ]?\d|cms/.test(lo)&&!/upi/.test(lo)){const bd=cradleeDateByAmount(sid,x,'card',{totals:cTot,claimed});if(bd){claimed['card|'+bd.dmy]=1;P('mid','Card Settlement · '+bd.dmy,{nature:'Card Settlement',cradleeDate:bd.dmy},'Card sales of '+bd.dmy+' were '+m(bd.tot)+' — this credit is that less '+(bd.fee*100).toFixed(2)+'% charges');return;}}
     if(!cr&&lpBy[x.id]){const p=lpBy[x.id];const how=p.how||'exact';
       out[x.id]={conf:how==='partial'?'mid':'high',label:'Vendor Payment → '+p.vendor.name+' · '+p.allocations.map(a=>a.invoiceNo+(a.tds?' + TDS '+m(a.tds):'')).join(', ')+(how==='partial'?' (part)':''),
         why:how==='exact'?'Unpaid bill of '+p.vendor.name+' with exactly this amount':how==='billno'?'Bill number '+p.allocations[0].invoiceNo+' is in the narration':how==='billno+tds'?'Bill number in the narration; the difference is the vendor’s TDS':how==='tds'?'Bill balance less the vendor’s TDS rate equals this payment':'Bill number in the narration — part payment',apply:{type:'link',plan:p}};return;}
@@ -259,7 +261,7 @@ function bankSuggestionsFor(sid,list,rows){
     if(!cr&&comboBy[x.id]){const p=comboBy[x.id];out[x.id]={conf:'mid',label:'Vendor Payment → '+p.vendor.name+' · '+p.allocations.map(a=>a.invoiceNo+(p.how==='pair'?' (part '+m(a.amount)+')':'')).join(' + '),
       why:p.how==='combo'?'Together these '+p.allocations.length+' unpaid bills of '+p.vendor.name+' equal this payment':'With the '+m(p.partner.debit)+' payment of '+p.partner.date+', this clears bill '+p.allocations[0].invoiceNo,apply:{type:'link',plan:p}};return;}
     const ln=typeof bankLearnedNatureFor==='function'?bankLearnedNatureFor(learned,{description:d,credit:x.credit}):null;
-    if(ln&&(cr?BANK_CREDIT_NATURES.has(ln):!/Settlement$|^Collection$|^Interest$/.test(ln))){const p={nature:ln};if(ln==='Card Settlement'||ln==='UPI Settlement')p.cradleeDate=setdt||prev;
+    if(ln&&!(/^(Card|UPI) Settlement$/.test(ln)&&!setOk(x))&&(cr?BANK_CREDIT_NATURES.has(ln):!/Settlement$|^Collection$|^Interest$/.test(ln))){const p={nature:ln};if(ln==='Card Settlement'||ln==='UPI Settlement')p.cradleeDate=setdt||prev;
       P('mid',ln+(p.cradleeDate?' · '+p.cradleeDate:''),p,'Lines with this narration were mapped as '+ln+' before');return;}
     if(!cr){const v=findVendorMatch(d,vendors);if(v){P('mid','Vendor Payment → '+v.name,{nature:'Vendor Payment',vendorOverride:v.name},'Vendor named in the narration');return;}
       const tv=payeeByToken('vendor',d,vendors);if(tv){P('mid','Vendor Payment → '+tv.name,{nature:'Vendor Payment',vendorOverride:tv.name},'Same account / UPI ID as earlier payments to '+tv.name);return;}}
