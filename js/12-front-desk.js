@@ -132,17 +132,22 @@ function vendorInvoiceExpenseEntries(salonId){
 }
 // excludeIds: invoices already counted another way (bills of a Variable recurring expense, which
 // are spread over the months they cover instead of landing whole in their invoice month).
-function vendorInvoiceCategorySumFor(salonId,year,month,categoryName,excludeIds){
-  return vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName,excludeIds).reduce((s,r)=>s+r.amount,0);
+// keep(inv): optional extra filter (js/04 plVendorFor — e.g. one-off bills only).
+function vendorInvoiceCategorySumFor(salonId,year,month,categoryName,excludeIds,keep){
+  return vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName,excludeIds,keep).reduce((s,r)=>s+r.amount,0);
 }
+// The date a bill counts on in the P&L: its booking date (as Vendors and the month locks use) when
+// Controls → pnlAllVendorBills is on, else its invoice date (the earlier rule).
+function plBillIso(salonId,inv){return toISO((typeof pnlAllBillsOn==='function'&&pnlAllBillsOn(salonId)&&inv.bookingDate)||inv.invoiceDate);}
 // Same category-matching + same-month filter as vendorInvoiceCategorySumFor above, but returns
 // the individual invoices instead of just their total — Vendor Name, Invoice Date, and Invoice
 // No, for the P&L's "Purchase of Cosmetic" (and any other vendor-invoice-backed) line drill-down.
-function vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName,excludeIds){
+function vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName,excludeIds,keep){
   const vendorsList=loadVendors(salonId);
   const out=[];
   vendorInvoiceExpenseEntries(salonId).forEach(({inv,amount,pi})=>{
     if(excludeIds&&excludeIds.has(inv.id))return;
+    if(keep&&!keep(inv))return;
     const vendor=vendorsList.find(v=>v.id===inv.vendorId);
     const effectiveCat=inv.category||(vendor?vendor.cat:'');
     if(effectiveCat!==categoryName)return;
@@ -154,21 +159,21 @@ function vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName,exclude
       const t=year*12+month,sh=billShares(amount,sp.months,inv.splitFirst),shareOf=c=>Math.round(sh[c-sp.first]*100)/100;
       const closed=[];let lastOpen=null;
       for(let c=sp.first;c<=sp.last;c++){if(monthClosedBeforeBill(salonId,c,inv))closed.push(c);else lastOpen=c;}
-      const bm=monthIndexOfIso(toISO(inv.invoiceDate));
+      const bm=monthIndexOfIso(plBillIso(salonId,inv));
       const u=lastOpen!=null?lastOpen:Math.max(sp.last+1,bm!=null?bm:sp.last+1);
       let amt=0,note='';
       if(t>=sp.first&&t<=sp.last&&!closed.includes(t)){amt+=shareOf(t);note=(t-sp.first+1)+' of '+sp.months+' months';}
       if(t===u&&closed.length){amt+=closed.reduce((a,c)=>a+shareOf(c),0);note=(note?note+' + ':'')+'share of closed '+closed.map(monthLabelOfIndex).join(', ');}
       if(!amt)return;
-      out.push({vendorName:vendor?vendor.name:'(vendor deleted)',invoiceDate:inv.invoiceDate,
+      out.push({id:inv.id,vendorName:vendor?vendor.name:'(vendor deleted)',invoiceDate:inv.invoiceDate,
         invoiceNo:(inv.invoiceNo||'—')+' ('+note+')',docNature:inv.docNature,amount:Math.round(amt*100)/100});
       return;
     }
-    const iso=toISO(inv.invoiceDate);
+    const iso=plBillIso(salonId,inv);
     if(!iso)return;
     const d=new Date(iso+'T00:00:00');
     if(isNaN(d)||d.getFullYear()!==year||d.getMonth()!==month)return;
-    out.push({vendorName:vendor?vendor.name:'(vendor deleted)',invoiceDate:inv.invoiceDate,
+    out.push({id:inv.id,vendorName:vendor?vendor.name:'(vendor deleted)',invoiceDate:inv.invoiceDate,
       invoiceNo:(inv.invoiceNo||'—')+(pi?' (₹'+Math.round(Number(inv.amount)||0).toLocaleString('en-IN')+' − PI '+(pi.invoiceNo||'')+' ₹'+Math.round(Number(pi.amount)||0).toLocaleString('en-IN')+')':''),
       docNature:inv.docNature,amount});
   });

@@ -1766,13 +1766,17 @@ const PL_OPEX_LINES=[
   {name:'DG Rent',group:'DG Rent',noDaily:true,alsoVendorCat:'DG Rent',vendorWinsOverRecurring:true},
   {name:'Diesel Expenses',group:'Diesel Expenses'},
   {name:'Telephone & Internet Expenses',group:'Telephone & Internet Expenses',noDaily:true,alsoVendorCat:'Telephone & Internet Expenses',vendorWinsOverRecurring:true},
-  {name:'Marketing Expenses',group:'Marketing Expenses'},
+  {name:'Marketing Expenses',group:'Marketing Expenses',alsoVendorCat:'Marketing',vendorSplitRecurring:true,newMap:true},
   {name:'Tanker Expenses',group:'Tanker Cleaning'},
   {name:'Drycleaning Expenses',group:'Drycleaning Expenses',noDaily:true,alsoVendorCat:'Drycleaning Expenses',vendorWinsOverRecurring:true},
   {name:'Professional Fee',group:'Professional Fee',noDaily:true,alsoVendorCat:'Professional Fee',vendorWinsOverRecurring:true},
-  {name:'Repair & Maintenance Expenses',group:'Repair & Maintenance Expenses'},
+  {name:'Repair & Maintenance Expenses',group:'Repair & Maintenance Expenses',alsoVendorCat:'Equipment',newMap:true},
   {name:'Uniform Expenses',group:'Uniform Expenses',alsoVendorCat:'Uniform Expenses'},
   {name:'Maintenance Expenses',group:'Maintenance Expenses',noDaily:true,alsoVendorCat:'Maintenance Expenses',vendorWinsOverRecurring:true},
+  // Vendor bills only (Controls → pnlAllVendorBills) — categories that had no P&L line before.
+  {name:'Housekeeping Expenses',group:'__vendor_housekeeping',noDaily:true,alsoVendorCat:'Housekeeping',newMap:true,vendorOnly:true},
+  {name:'Utilities',group:'__vendor_utilities',noDaily:true,alsoVendorCat:'Utilities',newMap:true,vendorOnly:true},
+  {name:'Other Expenses',group:'__vendor_other',noDaily:true,alsoVendorCat:'Other',newMap:true,vendorOnly:true},
   {name:'Bank Charges',group:'Bank Charges',alsoNature:'Bank Charges',alsoNetBankCharges:true},
   {name:'Penalty Recovery',group:'Penalty',credit:true},
   // Restaurant outlets only.
@@ -2157,23 +2161,38 @@ function autoCreateRecurringInvoices(salonId,asOf){
   if(due.create.length)saveVendorInvoices([...loadVendorInvoices(salonId),...due.create],salonId,{system:true});
   return due;
 }
+// ── Every vendor bill category reaches the P&L (Controls → pnlAllVendorBills, default on) ──
+// Marketing → Marketing Expenses, Equipment → Repair & Maintenance, Housekeeping / Utilities / Other →
+// their own lines. A bill made from a Recurring Expense whose estimate is already on a P&L line (e.g.
+// Diesel → Diesel Expenses) isn't added again on these lines. Marketing: one-off bills add to the
+// month; bills from a Marketing recurring expense replace its estimate (same rule as Rent).
+function pnlAllBillsOn(sid){return typeof controlOn!=='function'||controlOn('pnlAllVendorBills',sid);}
+function plRecurringCountedIds(sid){const types=new Set(Object.values(PL_OPEX_RECURRING_MAP));return new Set(loadRecurringExpenses(sid).filter(it=>types.has(recurringExpenseNameOf(it))).map(it=>it.id));}
+// What a line's vendor bills add: {vendorAmt, add (bills + recurring estimate as the line's rule says), vendorWins}.
+function plVendorFor(sid,l,year,month,used,recurringAmt){
+  const cat=l.alsoVendorCat;
+  if(!cat||(l.newMap&&!pnlAllBillsOn(sid)))return{vendorAmt:0,add:recurringAmt,vendorWins:false};
+  if(l.vendorSplitRecurring){
+    const one=vendorInvoiceCategorySumFor(sid,year,month,cat,used,inv=>!inv.recurringId),rec=vendorInvoiceCategorySumFor(sid,year,month,cat,used,inv=>!!inv.recurringId);
+    return{vendorAmt:one+rec,add:one+(rec>0?rec:recurringAmt),vendorWins:rec>0};
+  }
+  let keep;if(l.newMap){const c=plRecurringCountedIds(sid);keep=inv=>!(inv.recurringId&&c.has(inv.recurringId));}
+  const v=vendorInvoiceCategorySumFor(sid,year,month,cat,used,keep);
+  if(l.vendorWinsOverRecurring)return{vendorAmt:v,add:v>0?v:recurringAmt,vendorWins:v>0};
+  return{vendorAmt:v,add:v+recurringAmt,vendorWins:false};
+}
 function operatingExpensesFor(salonId,year,month){
-  const lines=PL_OPEX_LINES.filter(l=>!l.biz||l.biz===bizKeyOf(salonId)).map(l=>{
+  const lines=PL_OPEX_LINES.filter(l=>(!l.biz||l.biz===bizKeyOf(salonId))&&!(l.vendorOnly&&!pnlAllBillsOn(salonId))).map(l=>{
     if(l.fn)return{name:l.name,amt:Math.round(l.fn(salonId,year,month)||0)};
     let amt=l.noDaily?0:(l.row?dailySalesRowSumFor(salonId,year,month,l.row):dailySalesGroupSumFor(salonId,year,month,l.group));
     if(l.alsoNature)amt+=bankStatementNatureDebitSumFor(salonId,year,month,l.alsoNature);
     const recurringType=PL_OPEX_RECURRING_MAP[l.name];
     const recurringAmt=recurringType?recurringExpenseMonthlySumFor(salonId,recurringType,year,month):0;
     const variable=recurringType?variableRecurringSumFor(salonId,recurringType,year,month):{amt:0,used:new Set()};
-    const vendorAmt=l.alsoVendorCat?vendorInvoiceCategorySumFor(salonId,year,month,l.alsoVendorCat,variable.used):0;
     amt+=variable.amt; // variable bills: actual bills spread over their months, estimates for the rest
-    if(l.vendorWinsOverRecurring){
-      // A real invoice this month is more accurate than the estimate — use it instead of adding
-      // to it. Falls back to the Recurring Expenses estimate only when no invoice exists yet.
-      amt+=vendorAmt>0?vendorAmt:recurringAmt;
-    }else{
-      amt+=vendorAmt+recurringAmt;
-    }
+    // Vendor bills + the Recurring Expenses estimate — a real invoice replaces the estimate on
+    // vendorWinsOverRecurring lines, else both add (plVendorFor).
+    amt+=plVendorFor(salonId,l,year,month,variable.used,recurringAmt).add;
     // Net Bank Charges from Collection Sheet's Reco table — added straight through, no sign
     // flip: a positive Net Bank Charges there lands here as a positive expense, a negative one
     // reduces this line.
@@ -2197,16 +2216,16 @@ function operatingExpenseAnnexureFor(salonId,year,month,lineName){
   const dailyAmt=line.row?dailySalesRowSumFor(salonId,year,month,line.row):dailySalesGroupSumFor(salonId,year,month,line.group);
   const bankAmt=line.alsoNature?bankStatementNatureDebitSumFor(salonId,year,month,line.alsoNature):0;
   const variable=recurringType?variableRecurringSumFor(salonId,recurringType,year,month):{amt:0,rows:[],used:new Set()};
-  const vendorAmt=line.alsoVendorCat?vendorInvoiceCategorySumFor(salonId,year,month,line.alsoVendorCat,variable.used):0;
+  const pv=plVendorFor(salonId,line,year,month,variable.used,0);const vendorAmt=pv.vendorAmt;
   const recoAmt=line.alsoNetBankCharges?netBankChargesFor(salonId,year,month):0;
   const recurringTotalRaw=recurring.filter(it=>it.status==='Active'&&!isSpreadRecurring(it)).reduce((s,it)=>s+recurringExpenseMonthlyAmt(it,year,month,salonId),0);
-  const vendorWins=!!line.vendorWinsOverRecurring&&vendorAmt>0;
+  const vendorWins=pv.vendorWins;
   // Group-based lines (no single `row`) can bundle several distinct Daily Sales & Exp rows under
   // one P&L line — e.g. "Daily Expenses" folds in Pentry, Water, Conveyance, Stationary, etc. This
   // breaks that combined total back out per row, same rows/order as Daily Sales & Exp itself, so
   // the annexure shows exactly what's behind the number instead of just the bundled sum.
   const dailyRows=line.row?[]:EXPENSE_ROWS.filter(r=>r.group===line.group).map(r=>({name:r.name,amt:dailySalesRowSumFor(salonId,year,month,r.name)}));
   return{lineName,recurring,dailyAmt,dailyRows,dailyExcluded:!!line.noDaily,bankAmt,vendorAmt,recoAmt,isCredit:!!line.credit,
-    recurringTotal:(vendorWins?0:recurringTotalRaw)+variable.amt,recurringTotalRaw,vendorWinsOverRecurring:!!line.vendorWinsOverRecurring,vendorWins,
+    recurringTotal:(vendorWins?0:recurringTotalRaw)+variable.amt,recurringTotalRaw,vendorWinsOverRecurring:!!(line.vendorWinsOverRecurring||line.vendorSplitRecurring),vendorWins,
     variableAmt:variable.amt,variableRows:variable.rows};
 }
