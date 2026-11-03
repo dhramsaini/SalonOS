@@ -1745,6 +1745,13 @@ const TALLY_NATURE_LEDGERS={
   'Loan Interest':['Interest on Loan','Indirect Expenses'],
   'Bank Charges GST':['GST Input - Bank Charges','Duties & Taxes'],
   'Fixed Deposit':['Fixed Deposits','Investments'],
+  // Loans, capital and fixed assets (js/71) — a line can name its own ledger in that group (r.tallyLedger).
+  'Secured Loan':['Secured Loan','Secured Loans'],
+  'Unsecured Loan':['Unsecured Loan','Unsecured Loans'],
+  'Capital Introduced':['Capital Account','Capital Account'],
+  'Drawings':['Drawings','Capital Account'],
+  'Fixed Asset Purchase':['Fixed Assets','Fixed Assets'],
+  'Fixed Asset Sale':['Fixed Assets','Fixed Assets'],
   'Interest':['Bank Interest','Indirect Incomes'],
   'Salary':['Salary Payable','Current Liabilities'],      // booked monthly by the Salary journal
   'Incentive':['Incentive Payable','Current Liabilities'],// booked monthly by the Incentive journal
@@ -1822,7 +1829,8 @@ function tallyBankCounterparty(r,vendors,vendorLedgerNameFor,map){
   if(v)return{ledger:vName(v.id),parent:'Sundry Creditors',kind:'vendor',vendorId:v.id};
   if(r.nature&&TALLY_NATURE_LEDGERS[r.nature]){
     const parent=TALLY_NATURE_LEDGERS[r.nature][1];
-    return{ledger:tallyNatureLedgerName(map,r.nature),parent,kind:'nature',nature:r.nature,contra:parent==='Cash-in-Hand'||parent==='Bank Accounts'};
+    const own=r.tallyLedger&&(typeof BL_NATURES==='undefined'||BL_NATURES.has(r.nature))&&(typeof blOn!=='function'||blOn(null))?String(r.tallyLedger).trim():'';
+    return{ledger:own||tallyNatureLedgerName(map,r.nature),parent,kind:'nature',nature:r.nature,contra:parent==='Cash-in-Hand'||parent==='Bank Accounts'};
   }
   const m=findVendorMatch(r.description,vendors);
   if(m)return{ledger:vName(m.id),parent:'Sundry Creditors',kind:'vendor',vendorId:m.id};
