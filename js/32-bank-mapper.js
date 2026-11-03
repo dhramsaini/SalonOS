@@ -291,6 +291,9 @@ function bankSuggestionsFor(sid,list,rows){
 
 // ═══ The pop-up ═══
 function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,onMap,onMapped,onInvoicesChanged,month:monthCtx,startView}){
+  // ⛶ Full screen (remembered on this device).
+  const [bmFull,setBmFull]=useState(()=>{try{return localStorage.getItem('salonos_bmap_full')==='1';}catch(e){return false;}});
+  const toggleFull=()=>setBmFull(f=>{const n=!f;try{localStorage.setItem('salonos_bmap_full',n?'1':'0');}catch(e){}return n;});
   const h=React.createElement;const [tickV,setTick]=useState(0);const [side,setSide]=useState('All');
   const [linkFor,setLinkFor]=useState(null);const [alloc,setAlloc]=useState({});const [linkErr,setLinkErr]=useState('');const [nb,setNb]=useState(null);
   const [payFor,setPayFor]=useState(null);const [payErr,setPayErr]=useState('');
@@ -961,14 +964,15 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
       cardEl(swX),
       h('div',{style:{display:'flex',gap:8,justifyContent:'center',marginTop:4}},h('button',{className:'btn btn-ghost',onClick:()=>setSwIdx(i=>Math.max(0,Math.min(i,shown.length-1)-1))},'← Back'),
         sugg[swX.id]&&h('button',{className:'btn btn-primary',onClick:()=>accept(swX,sugg[swX.id])},'✓ Accept'),h('button',{className:'btn btn-ghost',onClick:swNext},'Skip →')));
-  return h('div',{className:'modal-overlay',style:{zIndex:3000},onClick:onClose},
-    h('div',{ref:rootRef,tabIndex:-1,onKeyDown:onKey,className:'modal',style:{width:1240,maxWidth:'98vw',maxHeight:'94vh',display:'flex',flexDirection:'column',padding:0,overflow:'hidden',outline:'none',position:'relative'},onClick:e=>e.stopPropagation()},
+  return h('div',{className:'modal-overlay',style:{zIndex:3000,...(bmFull?{padding:0,alignItems:'stretch',justifyContent:'stretch'}:{})},onClick:onClose},
+    h('div',{ref:rootRef,tabIndex:-1,onKeyDown:onKey,className:'modal',style:{width:1240,maxWidth:'98vw',maxHeight:'94vh',display:'flex',flexDirection:'column',padding:0,overflow:'hidden',outline:'none',position:'relative',...(bmFull?{width:'100vw',maxWidth:'100vw',height:'100vh',maxHeight:'100vh',borderRadius:0,margin:0,transform:'none',animation:'none'}:{})},onClick:e=>e.stopPropagation()},
       // header
       h('div',{style:{padding:'14px 18px 10px',borderBottom:'1px solid var(--border)'}},
         h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,flexWrap:'wrap'}},
           h('div',{style:{minWidth:0}},h('div',{className:'modal-title',style:{margin:0}},title),h('div',{style:{fontSize:12.5,color:'var(--text3)',marginTop:3,lineHeight:1.5,maxWidth:760}},intro)),
           h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',position:'relative'}},
             RO&&h('span',{style:{...C.chip,background:'rgba(47,95,224,0.1)',color:'#2f5fe0'}},'👁 Read-only'),syncBadge,
+            h('button',{className:'btn btn-ghost btn-sm',title:bmFull?'Back to the normal window':'Open this window full screen',onClick:toggleFull},bmFull?'🗗 Exit full screen':'⛶ Full screen'),
             h('button',{className:'btn btn-ghost btn-sm','aria-haspopup':'menu','aria-expanded':moreOpen,onClick:()=>setMoreOpen(o=>!o)},'⋯ More'),
             moreOpen&&h('div',{role:'menu',style:{position:'absolute',right:36,top:34,zIndex:25,background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:10,boxShadow:'0 12px 30px rgba(0,0,0,0.18)',padding:6,minWidth:240}},
               moreItems.map(it=>h('button',{key:it.label,role:'menuitem',disabled:it.disabled,onClick:()=>{setMoreOpen(false);it.run();},style:{display:'block',width:'100%',textAlign:'left',background:'none',border:'none',padding:'7px 10px',borderRadius:6,cursor:'pointer',fontSize:12.5,color:'var(--text)'}},

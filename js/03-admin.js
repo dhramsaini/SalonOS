@@ -2704,7 +2704,7 @@ function DataGapsCard({salon,onNavTab}){
     React.createElement('div',{className:'card-title'},'⚠️ Needs attention'),
     gaps.map((g,i)=>React.createElement('div',{key:i,style:{display:'flex',alignItems:'center',gap:12,padding:'8px 0',borderTop:i?'1px solid var(--border)':'none'}},
       React.createElement('div',{style:{flex:1,fontSize:13,color:'var(--text)'}},g.text),
-      onNavTab&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>onNavTab(g.tab)},g.kind==='sales'?'Enter sales':'Mark attendance')))
+      onNavTab&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>onNavTab(g.tab)},g.kind==='sales'?'Enter sales':g.kind==='bank'?'Open Bank Statement':'Mark attendance')))
   );
 }
 // ── "Get this outlet ready" checklist on the outlet dashboard — each step is detected from the

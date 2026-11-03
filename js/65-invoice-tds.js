@@ -51,12 +51,14 @@ function InvTdsBlock({sid,form,setForm,vendors,isEdit,total}){
   const secs=itdsSections(form.invoiceDate);const cur=form.tdsSection;
   const t=itdsCalc(form);const base=itdsBase(form);const R=n=>'₹'+Math.round(Number(n)||0).toLocaleString('en-IN');
   const v=(vendors||[]).find(x=>x.id===form.vendorId);
+  const limitNote=typeof vpTdsLimitNote==='function'?vpTdsLimitNote(sid,form):null,panNote=typeof vpNoPanNote==='function'?vpNoPanNote(sid,form,vendors):null; // js/69
   return h('div',{style:{background:'var(--bg3)',border:'1px solid '+(form.tdsApplicable?'rgba(240,160,40,0.5)':'var(--border)'),borderRadius:'var(--r)',padding:'10px 12px',marginBottom:14}},
     h('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:12.5,fontWeight:600,cursor:'pointer'}},
       h('input',{type:'checkbox',checked:!!form.tdsApplicable,onChange:e=>{const on=e.target.checked;setForm(f=>({...f,tdsApplicable:on,tdsSection:on?(f.tdsSection||(v&&v.tdsSection)||''):f.tdsSection,tdsRate:on?(f.tdsRate||(v&&v.tdsRate)||''):f.tdsRate}));}}),
       '✂ Deduct TDS on this bill',
       v&&v.tdsApplicable&&v.tdsSection&&h('span',{style:{fontSize:11,fontWeight:400,color:'var(--text3)'}},'(vendor’s setting: '+v.tdsSection+' @ '+(Number(v.tdsRate)||0)+'%)'),
       v&&v.tdsApplicable&&v.tdsSection&&!form.tdsApplicable&&h('button',{type:'button',className:'btn btn-ghost btn-sm',style:{fontSize:11,padding:'2px 8px'},onClick:e=>{e.preventDefault();setForm(f=>({...f,tdsApplicable:true,tdsSection:v.tdsSection,tdsRate:v.tdsRate,tdsManual:false,tdsAmt:''}));}},'Use vendor’s setting')),
+    limitNote,
     form.tdsApplicable&&h(React.Fragment,null,
       !(outletSettings(sid)||{}).tdsApplicable&&h('div',{style:{fontSize:11,color:'var(--orange)',marginTop:6}},'⚠ This outlet is not marked “TDS Applicable” (TAN) in Master Sheet → Statutory Compliance — TDS can still be recorded, but add the TAN there.'),
       h('div',{className:'form-row',style:{marginTop:10,display:'grid',gridTemplateColumns:'minmax(0,2fr) minmax(0,1fr) minmax(0,1fr)',gap:12}},
@@ -74,6 +76,7 @@ function InvTdsBlock({sid,form,setForm,vendors,isEdit,total}){
         h('span',null,'On ',h('b',null,R(base)),' (Taxable Value + Freight, before GST)'),
         h('span',null,'TDS ',h('b',{style:{color:'var(--orange)'}},R(t))),
         h('span',null,'Net payable to vendor ',h('b',null,R((Number(total)||0)-t)))),
+      panNote,
       t>0&&!(form.payments||[]).some(p=>p.mode==='TDS'&&Math.round(Number(p.paidAmount))===t)&&h('div',{style:{fontSize:11.5,color:'var(--accent)',marginTop:4,fontWeight:600}},'ℹ The TDS of '+R(t)+' is added to this bill’s Payments when you click '+(isEdit?'Update':'Save')+' Invoice — until then the bill still shows it as outstanding.'),
       form.invoiceDate&&form.invoiceDate>='2026-04-01'&&cur&&/^19/.test(cur)&&h('div',{style:{fontSize:11,color:'var(--orange)',marginTop:4}},'⚠ This bill is dated on/after 1 Apr 2026 — the Income-tax Act 2025 payment codes apply. Pick the new code for this section.')));
 }

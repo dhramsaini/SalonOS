@@ -438,7 +438,8 @@ function OutletPnLCore({salon,period}){
   const toggleFinal=()=>{
     const label=PL_MONTHS[mi]+' '+(mi<9?fy.slice(0,4):'20'+fy.slice(5));
     if(!plFinal){const cal0=periodToCalendar({fy,mi});const cm=cal0?collectionFinalBlockMessage(sid,cal0.year,cal0.month):'';if(cm){toast(cm,'error');return;}
-      if(cal0&&!monthFinalMappingOk(sid,cal0.year,cal0.month,typeof onNavTab==='function'?onNavTab:null))return;}
+      if(cal0&&!monthFinalMappingOk(sid,cal0.year,cal0.month,typeof onNavTab==='function'?onNavTab:null))return;
+      if(cal0&&typeof pvcFinalOk==='function'&&!pvcFinalOk(sid,cal0.year,cal0.month))return;} // js/70: bills not in the P&L, big moves without a reason
     if(!plFinal){if(!window.confirm('Mark the '+label+' P&L as FINAL? The whole month locks: nobody — Super Admin included — can change Daily Sales, Vendors, Attendance, Salary, Incentive, Advances, Penalties or the P&L for it. Only a Super Admin can un-finalize it, with a reason.'))return;}
     else if(!requestUnlock(sid,'the '+label+' P&L (it goes back to DRAFT and the month unlocks)'))return;
     setPnlFinal(sid,fy,mi,!plFinal);setFinalTick(t=>t+1);
@@ -1328,6 +1329,7 @@ function OutletPnLCore({salon,period}){
               h('span',{style:{color:detail.recoAmt<0?'var(--green)':'var(--text)'}},(detail.recoAmt>=0?'₹':'−₹')+Math.round(Math.abs(detail.recoAmt)).toLocaleString('en-IN')))
           ),
 
+          typeof PnlLineNote==='function'&&h(PnlLineNote,{sid,year:cal.year,month:cal.month,lineName:opexAnnexure}),
           h('div',{style:{display:'flex',justifyContent:'space-between',fontWeight:700,fontSize:14,paddingTop:12,marginTop:6,borderTop:'2px solid var(--border2)'}},
             h('span',null,opexAnnexure+' — Total on P&L'),h('span',{style:{color:grandTotal<0?'var(--green)':'var(--accent2)'}},(grandTotal<0?'−₹':'₹')+Math.round(Math.abs(grandTotal)).toLocaleString('en-IN'))),
           h('div',{style:{display:'flex',justifyContent:'flex-end',marginTop:16}},

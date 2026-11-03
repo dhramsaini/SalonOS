@@ -7,9 +7,18 @@
 // Stored in one shared record (salonos_controls) so every user and device follows the same rules.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 const CONTROL_DEFS=[
+  {id:'pnlFinalNeedsBills',group:'Month close',label:'Ask before marking a P&L Final with vendor bills not in it',hint:'Marking the P&L Final lists vendor bills of the month whose category has no P&L line, and asks first.',def:true},
+  {id:'pnlLineNotes',group:'Month close',label:'Reason for a big change on a P&L expense line',hint:'A P&L expense line that moved more than the set % (default 30%, and ₹1,000 or more) from last month asks for a reason in its breakdown; marking Final asks first if a reason is missing.',def:true,limit:30,limitLabel:'%'},
   {id:'dseBillOnce',group:'Month close',label:'Cash paid on a vendor bill from Daily Sales & Exp counts once in the P&L',hint:'A cash payment entered in Daily Sales & Exp against a vendor bill is the same expense as the bill: the P&L counts the bill and leaves that cash out of the Daily figure on the same line (e.g. Uniform Expenses). Off: lines that count both add them together as before.',def:true},
   {id:'pnlAllVendorBills',group:'Month close',label:'Every vendor bill reaches the P&L, by booking date',hint:'Marketing bills go to Marketing Expenses, Equipment to Repair & Maintenance, Housekeeping / Utilities / Other to their own P&L lines; bills count in the month of their booking date (as Vendors shows them). The P&L shows “Vendor bills vs P&L” for the month. Off: only the earlier categories, by invoice date. Final months keep their saved figures.',def:true},
   {id:'vendorMonthLock',group:'Entry checks',label:'Lock Vendors month by month',hint:'Vendors gets its own “🔒 Months”: a locked month’s bills and payments can’t be added, changed or removed; unlocking needs a Super Admin and a reason. Salary Working, Incentive Working and the Master Sheet month lock no longer lock Vendors; a Final P&L still does. Off: Vendors follow the Master Sheet month lock and a Final P&L.',def:true},
+  {id:'vpCrossDup',group:'Entry checks',label:'Same invoice no. and amount under another vendor',hint:'Saving a bill whose number and amount are already entered under a different vendor asks first — a common slip when picking the vendor.',def:true},
+  {id:'vpTdsLimit',group:'Entry checks',label:'Watch TDS limits on vendor bills',hint:'Vendors lists vendors whose bills this year crossed the TDS limit (contractor ₹30,000 a bill / ₹1,00,000 a year, professional ₹50,000, commission ₹20,000, rent ₹50,000 a month) with bills that have no TDS; the invoice form warns too.',def:true},
+  {id:'vpTdsSheet',group:'Entry checks',label:'Quarterly TDS sheet',hint:'Vendors → “⬇ TDS sheet”: party-wise and section-wise TDS of a quarter in Excel, for the TDS return.',def:true},
+  {id:'vpPan',group:'Entry checks',label:'Vendor PAN, and TDS without a PAN',hint:'Vendors have a PAN (taken from the GSTIN when blank); ticking TDS for a vendor without a PAN warns that the rate is 20%.',def:true},
+  {id:'vpGstInput',group:'Entry checks',label:'Bills with GST whose vendor GSTIN is missing or wrong',hint:'Lists bills with GST in the last 100 days whose vendor GSTIN is missing or invalid — the input credit can’t be claimed until it is corrected. Only for outlets that claim GST input.',def:true},
+  {id:'vpBin',group:'Entry checks',label:'Deleted vendor bills and payments can be restored',hint:'Deleted bills and payments are kept 90 days: Vendors → “🗂 Deleted bills” → Restore.',def:true},
+  {id:'vpHistory',group:'Entry checks',label:'Change history on every vendor bill',hint:'Every change to a bill (amount, dates, TDS, category, vendor…) is recorded with who and when — open the bill → “🕘 History”.',def:true},
   {id:'invoiceTds',group:'Entry checks',label:'TDS on vendor bills',hint:'Add / Edit Invoice gets “Deduct TDS” with the Section (old sections before 1 Apr 2026, new payment codes from then), Rate % and amount — worked out on the value before GST and changeable. The vendor’s balance becomes the net payable; the TDS goes to Tally, the TDS Summary and the TDS due date.',def:true},
   {id:'billNeedsPo',group:'Entry checks',label:'A vendor bill above the limit needs an approved purchase order',hint:'Vendors: saving such a bill asks which approved PO of that vendor it is against (a bill more than 10% above the PO is confirmed).',def:false,limit:25000},
   {id:'dupInvoice',group:'Entry checks',label:'Block a vendor invoice number entered twice',hint:'Same vendor + same invoice no. (Vendors, Daily Sales & Exp, Bank Statement).',def:true},
@@ -58,6 +67,9 @@ const CONTROL_DEFS=[
   {id:'tallyChangeGuard',group:'Bank mapping',label:'Changes after Tally: a bank line already sent to Tally can be changed only by a Super Admin',hint:'Others are stopped; a Super Admin is reminded to send it again (the line shows “Changed since sent”). Covers Nature, vendor, Cradlee date, links and undo.',def:false},
   {id:'bankUnmappedNudge',group:'Bank mapping',label:'WhatsApp nudge to the outlet for old unmapped bank lines',hint:'Dashboard → 🏦 Bank Reco shows 📲 Nudge for outlets with lines unmapped longer than the days below — it opens WhatsApp to the outlet phone with the count, amount and oldest date.',def:false,limit:7,limitLabel:'Older than (days)'},
   {id:'multiBank',group:'Bank mapping',label:'Multiple bank accounts',hint:'Master Sheet → Bank Details takes more than one bank account. Bank Statement asks which account a file is for (append, fresh upload and the duplicate check work per account), filters the table by account, and each account gets its own Tally bank ledger. Off: one bank as before.',def:true},
+  {id:'mbOwnPairs',group:'Bank mapping',label:'Find transfers between the outlet’s own bank accounts',hint:'A debit in one account and the same amount credited in another within 3 days is shown on Bank Statement — “Mark all as Transfer” maps both lines, so they are neither income nor expense.',def:true},
+  {id:'mbBalances',group:'Bank mapping',label:'Balance and last statement date of each bank account',hint:'Bank Statement shows each account’s latest closing balance and the date of its last line.',def:true},
+  {id:'mbStaleStatement',group:'Bank mapping',label:'Remind when an account has no recent statement',hint:'The outlet dashboard lists an account with no statement line for more than the set days (default 7), or none uploaded at all.',def:true,limit:7,limitLabel:'Days'},
   {id:'bankUndo',group:'Bank mapping',label:'Undo deleted bank lines',hint:'Lines removed by Delete Selected, Clear Data or Upload fresh statement are kept for 90 days: “↩ Undo last delete” puts the last ones back, “🗂 Deleted lines” restores any earlier deletion.',def:true},
   {id:'bankBalanceCheck',group:'Bank mapping',label:'Check the running balance of the bank statement',hint:'Opening balance + credits − debits must equal each line’s closing balance; a break means a missing or duplicated line — shown in Bank Statement and the ✅ Close tab.',def:true},
   {id:'statutoryBankCheck',group:'Bank mapping',label:'Check PF, ESIC, PT and TDS bank payments against the amounts due',hint:'✅ Close tab: last month’s dues (from Salary Working and vendor TDS) against bank lines mapped as PF / ESIC / PT Payment / TDS — not paid, short or late.',def:true},
@@ -413,11 +425,11 @@ const CONTROL_AREAS=[
     ['Wrong figures',['extraZeroCheck','modeVsBilling','dseVsBilling','depositVsBank','gstMathCheck','gstLock','idChecks','wageSenseCheck','attendanceSense']],
     ['Final months',['finalFreeze']],
     ['Dates',['backdateLock','futureLock','dateSenseCheck']],
-    ['Vendor bills',['invoiceTds','vendorMonthLock']],
+    ['Vendor bills',['invoiceTds','vendorMonthLock','vpCrossDup','vpTdsLimit','vpTdsSheet','vpPan','vpGstInput','vpBin','vpHistory']],
     ['Rules that stop an entry',['salaryChangeReason','negativeStockBlock','proofAboveLimit','billNeedsPo']],
     ['Overview',['dataQualityBoard']]]},
   {key:'bank',icon:'🏦',title:'Bank mapping',groups:['Bank mapping'],subs:[
-    ['Import & automatic mapping',['multiBank','bankAutoMapImport','bankAutoRules','ruleAutoPause','bankLearnPayees','crossOutletMap','newVendorFromNarration','vendorBankFromPayments','bankConflictWarn','bankMapTour']],
+    ['Import & automatic mapping',['multiBank','mbOwnPairs','mbBalances','mbStaleStatement','bankAutoMapImport','bankAutoRules','ruleAutoPause','bankLearnPayees','crossOutletMap','newVendorFromNarration','vendorBankFromPayments','bankConflictWarn','bankMapTour']],
     ['Matching help',['billReverseMatch','billComboMatch','bankReversalPairs','ownTransferPairs','loanEmiSplit','fdLines','bankChargeGst','aggregatorPayoutCheck']],
     ['Checks & flags',['bankDupWarning','bankExceptions','bankBalanceCheck','mdrCheck','bankGstinCheck','statutoryBankCheck','bankRecurringWatch','newPayeeAlert','roundOddFlags','pettyCashCheck','vagueNatureReason']],
     ['Review, approval & locks',['bankUndo','mapApproval','mapReview','mapRoleLimits','bankLockFinal','tallyNeedsReview','tallyChangeGuard','bankBigChangeAlert','bankAuditorView']],
@@ -438,7 +450,7 @@ const CONTROL_AREAS=[
     ['Full workings Excel',['payWorkbooks','payWbChooser','payWbPools','payWbWhatIf','payWbPayslips','payWbBank','payWbStatutory','payWbCompare','payWbCtc','payWbExceptions','payWbReco','payWbTrail','payWbIntegrity','payWbAllOutlets','payWorkbookEmail','payWbProtected']]]},
   {key:'close',icon:'✅',title:'Approvals & month close',groups:['Approvals','Month close','Alerts','Reminders'],subs:[
     ['Approvals',['poApproval','invoiceApproval','bankFileApproval','deleteApproval','vendorBankApproval','paymentRun']],
-    ['Month close',['pnlAllVendorBills','dseBillOnce','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']],
+    ['Month close',['pnlAllVendorBills','dseBillOnce','pnlFinalNeedsBills','pnlLineNotes','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']],
     ['Reports',['dceReport']],
     ['Alerts & reminders',['payablesDueAlert','bankRecoAlert','budgetAlert','missingSalesBanner']]]},
   {key:'ctl',icon:'🎛',title:'Controls page',groups:['Controls page'],subs:[

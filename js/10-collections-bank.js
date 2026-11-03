@@ -4585,6 +4585,8 @@ function BankStatement({salon,onNavTab}={}){
             React.createElement('div',{className:'search-bar',style:{maxWidth:320}},React.createElement('span',null,React.createElement(IconSearch,{size:13})),React.createElement('input',{value:search,onChange:e=>setSearch(e.target.value),placeholder:'Search transaction…'}))
           )
         ),
+        typeof MbBalances==='function'&&React.createElement(MbBalances,{sid:salonId,rows}),
+        typeof MbOwnTransfers==='function'&&React.createElement(MbOwnTransfers,{sid:salonId,rows,setRows}),
         typeof MbFilterChips==='function'&&React.createElement(MbFilterChips,{sid:salonId,rows,value:acctView,onChange:setAcctView}),
         (()=>{
           return React.createElement('div',{style:{marginBottom:12}},

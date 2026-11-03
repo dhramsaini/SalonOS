@@ -1159,6 +1159,8 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     const {newVendorName,newVendorGst,newVendorPhone,newVendorTerms,...invFields}=invForm;
     const savedInvoice={...invFields,enteredAt:invFields.enteredAt||new Date().toISOString(),vendorId,amount,invoiceDate:dmy(invForm.invoiceDate),bookingDate:dmy(invForm.bookingDate||invForm.invoiceDate),dueDate:dmy(invForm.dueDate)};
     if(tdsF)Object.assign(savedInvoice,tdsF);
+    if(typeof vpCrossDupOk==='function'&&!vpCrossDupOk(salonId,savedInvoice,invoices,vendors,editInvoiceId))return; // js/69
+    if(typeof vpHistNote==='function')vpHistNote(salonId,editInvoiceId!==null?invoices.find(i=>i.id===editInvoiceId):null,savedInvoice,editInvoiceId!==null?editInvoiceId:nextPrefixedId(invoices,'VI-',4));
     setInvoices(prev=>{
       let next,targetIdx;
       if(editInvoiceId!==null){
@@ -1222,6 +1224,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     // Any payment(s) that came from Daily Sales & Exp need clearing back out there too, or the
     // amount is left sitting on that sheet with no invoice or payment behind it anymore.
     (inv.payments||[]).filter(p=>p.note==='Auto-recorded from Daily Sales & Exp').forEach(p=>clearDsePaymentAmountFor(salonId,inv.category,p.paidDate,p.paidAmount));
+    if(typeof vpBinStash==='function')vpBinStash(salonId,'bill',inv); // js/69 — can be restored
     setInvoices(prev=>prev.filter(x=>x.id!==id));
   };
 
@@ -1292,6 +1295,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     removed.forEach(inv=>{
       (inv.payments||[]).filter(p=>p.note==='Auto-recorded from Daily Sales & Exp').forEach(p=>clearDsePaymentAmountFor(salonId,inv.category,p.paidDate,p.paidAmount));
     });
+    if(typeof vpBinStash==='function')removed.forEach(inv=>vpBinStash(salonId,'bill',inv));
     setInvoices(prev=>prev.filter(inv=>!ids.has(inv.id)));
     setBulkSelectedIds(new Set());
     invToast(removed.length+' invoice'+(removed.length===1?'':'s')+' deleted','warning',8000,()=>{
@@ -1391,6 +1395,8 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     if(p&&!deleteApprovalOk(salonId,'pay',p.id,'payment of ₹'+Math.round(Number(p.paidAmount)||0).toLocaleString('en-IN')+' on '+(p.paidDate||'')+' against bill '+(inv.invoiceNo||'')+' of '+getVendorName(inv.vendorId)))return;
     if(!confirm('Delete this payment record? The invoice balance will increase accordingly, and the amount will be cleared from Daily Sales & Exp if it was recorded from there.'))return;
     if(inv&&p&&p.note==='Auto-recorded from Daily Sales & Exp')clearDsePaymentAmountFor(salonId,inv.category,p.paidDate,p.paidAmount);
+    if(p&&p.note!=='Auto-recorded from Daily Sales & Exp'&&typeof vpBinStash==='function')vpBinStash(salonId,'payment',p,{invoiceId,invoiceNo:inv.invoiceNo,vendorId:inv.vendorId});
+    if(typeof vpHistAdd==='function'&&p)vpHistAdd(salonId,invoiceId,'Payment deleted',[['Payment',(p.mode||'')+' '+Math.round(Number(p.paidAmount)||0)+' on '+(p.paidDate||''),'']]);
     setInvoices(prev=>prev.map(inv=>inv.id===invoiceId?{...inv,payments:inv.payments.filter(p=>p.id!==paymentId)}:inv));
     setViewInv(v=>v&&v.id===invoiceId?{...v,inv:{...v.inv,payments:v.inv.payments.filter(p=>p.id!==paymentId)}}:v);
   };
@@ -1501,6 +1507,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         React.createElement('div',{className:'page-sub'},'Master vendor registry, invoices and payment tracking')
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        typeof VendorPlusButtons==='function'&&React.createElement(VendorPlusButtons,{sid:salonId,invoices,setInvoices,vendors}),
         typeof vlOn==='function'&&vlOn(salonId)&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Lock Vendors month by month',onClick:()=>setShowVL(true)},'🔒 Months'+(vlLockedCount(salonId)?' ('+vlLockedCount(salonId)+' locked)':'')),
         showVL&&React.createElement(VendorMonthLocks,{sid:salonId,onClose:()=>setShowVL(false)}),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:downloadInvoiceTemplate},'⬇ Import Template'),
@@ -1525,6 +1532,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         React.createElement('div',{className:'metric-value'},m.val)
       ))
     ),
+    typeof VendorPlusStrips==='function'&&React.createElement(VendorPlusStrips,{sid:salonId,invoices,vendors}),
 
     // ── 📋 Vendors list — every vendor with its details and an Edit button (the edit window opens on
     // top; the list stays open and shows the change after saving). ──
@@ -2026,6 +2034,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'IFSC Code'),React.createElement('input',{className:'form-control',value:vForm.ifsc,onChange:vc('ifsc'),placeholder:'HDFC0001234',style:{textTransform:'uppercase'}}),vForm.ifsc&&!isValidIfscFormat(vForm.ifsc)&&fieldWarning('Doesn\u2019t look like a valid IFSC (e.g. HDFC0001234).'))
         ),
         React.createElement('div',{className:'form-group'},React.createElement('label',null,'Email (optional, some banks require it)'),React.createElement('input',{className:'form-control',value:vForm.email,onChange:vc('email'),placeholder:'vendor@company.com',type:'email'}),vForm.email&&!isValidEmailFormat(vForm.email)&&fieldWarning('Doesn\u2019t look like a valid email address.')),
+        typeof VendorPanField==='function'&&React.createElement(VendorPanField,{form:vForm,setForm:setVForm}),
         salon&&salon.tdsApplicable&&React.createElement('div',{style:{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'var(--r)',padding:'12px 14px',marginBottom:14,marginTop:14}},
           React.createElement('label',{style:{display:'flex',alignItems:'center',gap:8,cursor:'pointer',marginBottom:vForm.tdsApplicable?10:0}},
             React.createElement('input',{type:'checkbox',checked:!!vForm.tdsApplicable,onChange:vcCheck('tdsApplicable')}),
@@ -2357,7 +2366,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     showViewModal&&viewInv&&React.createElement('div',{className:'modal-overlay',onClick:()=>setShowViewModal(false)},
       React.createElement('div',{className:'modal',style:{width:560},onClick:e=>e.stopPropagation()},
         React.createElement('div',{className:'modal-title',style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
-          React.createElement('span',null,(isPI(viewInv.inv)?'Performa Invoice — ':'Invoice — ')+viewInv.inv.invoiceNo),
+          React.createElement('span',null,(isPI(viewInv.inv)?'Performa Invoice — ':'Invoice — ')+viewInv.inv.invoiceNo,' ',typeof BillHistoryButton==='function'&&React.createElement(BillHistoryButton,{sid:salonId,inv:viewInv.inv,vendors})),
           isPI(viewInv.inv)
             ?React.createElement('span',{className:'badge '+(isPIOpen(viewInv.inv)?'badge-red':'badge-green')},isPIOpen(viewInv.inv)?'Pending Tax Invoice':'Settled')
             :React.createElement('span',{className:`badge ${getBalance(viewInv.inv)<=0?'badge-green':isOverdue(viewInv.inv)?'badge-red':'badge-amber'}`},getBalance(viewInv.inv)<=0?'Cleared':isOverdue(viewInv.inv)?'Overdue':'Pending')

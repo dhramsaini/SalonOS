@@ -981,7 +981,7 @@ function loadAuditLog(salonId){
 // per-outlet feature, add it here too, or its data will survive a delete and can leak into a
 // future outlet that happens to reuse the same numeric id.
 const SALON_SCOPED_KEY_BASES=[
-  'salonos_sal_manual','salonos_bank_accounts','salonos_vendor_month_locks','salonos_bank_deleted',
+  'salonos_sal_manual','salonos_bank_accounts','salonos_vendor_month_locks','salonos_bank_deleted','salonos_vendor_bin','salonos_bill_history','salonos_pnl_line_notes',
   'salonos_salary_template','salonos_emp_update_requests',
   'salonos_final_snap',
   'salonos_inc_manual',
