@@ -7,6 +7,7 @@
 // Stored in one shared record (salonos_controls) so every user and device follows the same rules.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 const CONTROL_DEFS=[
+  {id:'dseBillOnce',group:'Month close',label:'Cash paid on a vendor bill from Daily Sales & Exp counts once in the P&L',hint:'A cash payment entered in Daily Sales & Exp against a vendor bill is the same expense as the bill: the P&L counts the bill and leaves that cash out of the Daily figure on the same line (e.g. Uniform Expenses). Off: lines that count both add them together as before.',def:true},
   {id:'pnlAllVendorBills',group:'Month close',label:'Every vendor bill reaches the P&L, by booking date',hint:'Marketing bills go to Marketing Expenses, Equipment to Repair & Maintenance, Housekeeping / Utilities / Other to their own P&L lines; bills count in the month of their booking date (as Vendors shows them). The P&L shows “Vendor bills vs P&L” for the month. Off: only the earlier categories, by invoice date. Final months keep their saved figures.',def:true},
   {id:'vendorMonthLock',group:'Entry checks',label:'Lock Vendors month by month',hint:'Vendors gets its own “🔒 Months”: a locked month’s bills and payments can’t be added, changed or removed; unlocking needs a Super Admin and a reason. Salary Working, Incentive Working and the Master Sheet month lock no longer lock Vendors; a Final P&L still does. Off: Vendors follow the Master Sheet month lock and a Final P&L.',def:true},
   {id:'invoiceTds',group:'Entry checks',label:'TDS on vendor bills',hint:'Add / Edit Invoice gets “Deduct TDS” with the Section (old sections before 1 Apr 2026, new payment codes from then), Rate % and amount — worked out on the value before GST and changeable. The vendor’s balance becomes the net payable; the TDS goes to Tally, the TDS Summary and the TDS due date.',def:true},
@@ -436,7 +437,7 @@ const CONTROL_AREAS=[
     ['Full workings Excel',['payWorkbooks','payWbChooser','payWbPools','payWbWhatIf','payWbPayslips','payWbBank','payWbStatutory','payWbCompare','payWbCtc','payWbExceptions','payWbReco','payWbTrail','payWbIntegrity','payWbAllOutlets','payWorkbookEmail','payWbProtected']]]},
   {key:'close',icon:'✅',title:'Approvals & month close',groups:['Approvals','Month close','Alerts','Reminders'],subs:[
     ['Approvals',['poApproval','invoiceApproval','bankFileApproval','deleteApproval','vendorBankApproval','paymentRun']],
-    ['Month close',['pnlAllVendorBills','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']],
+    ['Month close',['pnlAllVendorBills','dseBillOnce','monthFinalRule','monthFinalNeedsMapping','collRecoNeedsMapping']],
     ['Reports',['dceReport']],
     ['Alerts & reminders',['payablesDueAlert','bankRecoAlert','budgetAlert','missingSalesBanner']]]},
   {key:'ctl',icon:'🎛',title:'Controls page',groups:['Controls page'],subs:[

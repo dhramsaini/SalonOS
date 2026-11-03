@@ -2181,10 +2181,28 @@ function plVendorFor(sid,l,year,month,used,recurringAmt){
   if(l.vendorWinsOverRecurring)return{vendorAmt:v,add:v>0?v:recurringAmt,vendorWins:v>0};
   return{vendorAmt:v,add:v+recurringAmt,vendorWins:false};
 }
+// Cash paid against vendor bills from Daily Sales & Exp (invoice-gated rows — stored as links to the
+// bill in salonos_daily_sales_invoicedata, and also in the day's cell) for the rows of one P&L group in
+// a calendar month. The bill itself is in the P&L, so on a line that counts both, this cash is taken
+// back out of the Daily figure (Controls → dseBillOnce): each bill reaches the P&L once.
+function dseOnceOn(sid){return typeof controlOn!=='function'||controlOn('dseBillOnce',sid);}
+function dseBillPaidSumFor(sid,year,month,group){
+  let d={};try{d=JSON.parse(cachedLocalGet(outletKey('salonos_daily_sales_invoicedata',sid))||'{}')||{};}catch(e){}
+  const idx=new Set();EXPENSE_ROWS.forEach((r,i)=>{if(r.group===group)idx.add(String(i));});if(!idx.size)return 0;
+  let sum=0;
+  Object.keys(d).forEach(iso=>{const dt=new Date(iso+'T00:00:00');if(isNaN(dt)||dt.getFullYear()!==year||dt.getMonth()!==month)return;
+    Object.keys(d[iso]||{}).forEach(ri=>{if(idx.has(String(ri)))(d[iso][ri]||[]).forEach(e=>{sum+=Number(e&&e.amount)||0;});});});
+  return Math.round(sum*100)/100;
+}
+// The Daily Sales & Exp part of a P&L line that also counts vendor bills, without the bills' cash.
+function plDailyLessBills(sid,year,month,l,daily){
+  if(!l.alsoVendorCat||l.noDaily||l.row||!dseOnceOn(sid))return daily;
+  return daily-dseBillPaidSumFor(sid,year,month,l.group);
+}
 function operatingExpensesFor(salonId,year,month){
   const lines=PL_OPEX_LINES.filter(l=>(!l.biz||l.biz===bizKeyOf(salonId))&&!(l.vendorOnly&&!pnlAllBillsOn(salonId))).map(l=>{
     if(l.fn)return{name:l.name,amt:Math.round(l.fn(salonId,year,month)||0)};
-    let amt=l.noDaily?0:(l.row?dailySalesRowSumFor(salonId,year,month,l.row):dailySalesGroupSumFor(salonId,year,month,l.group));
+    let amt=l.noDaily?0:plDailyLessBills(salonId,year,month,l,l.row?dailySalesRowSumFor(salonId,year,month,l.row):dailySalesGroupSumFor(salonId,year,month,l.group));
     if(l.alsoNature)amt+=bankStatementNatureDebitSumFor(salonId,year,month,l.alsoNature);
     const recurringType=PL_OPEX_RECURRING_MAP[l.name];
     const recurringAmt=recurringType?recurringExpenseMonthlySumFor(salonId,recurringType,year,month):0;
@@ -2213,7 +2231,8 @@ function operatingExpenseAnnexureFor(salonId,year,month,lineName){
   if(!line)return null;
   const recurringType=PL_OPEX_RECURRING_MAP[lineName];
   const recurring=recurringType?loadRecurringExpenses(salonId).filter(it=>recurringExpenseNameOf(it)===recurringType):[];
-  const dailyAmt=line.row?dailySalesRowSumFor(salonId,year,month,line.row):dailySalesGroupSumFor(salonId,year,month,line.group);
+  const dailyAmtRaw=line.row?dailySalesRowSumFor(salonId,year,month,line.row):dailySalesGroupSumFor(salonId,year,month,line.group);
+  const dailyAmt=plDailyLessBills(salonId,year,month,line,dailyAmtRaw);const dailyBillCash=Math.round((dailyAmtRaw-dailyAmt)*100)/100; // cash against bills, counted through the bill
   const bankAmt=line.alsoNature?bankStatementNatureDebitSumFor(salonId,year,month,line.alsoNature):0;
   const variable=recurringType?variableRecurringSumFor(salonId,recurringType,year,month):{amt:0,rows:[],used:new Set()};
   const pv=plVendorFor(salonId,line,year,month,variable.used,0);const vendorAmt=pv.vendorAmt;
@@ -2225,7 +2244,7 @@ function operatingExpenseAnnexureFor(salonId,year,month,lineName){
   // breaks that combined total back out per row, same rows/order as Daily Sales & Exp itself, so
   // the annexure shows exactly what's behind the number instead of just the bundled sum.
   const dailyRows=line.row?[]:EXPENSE_ROWS.filter(r=>r.group===line.group).map(r=>({name:r.name,amt:dailySalesRowSumFor(salonId,year,month,r.name)}));
-  return{lineName,recurring,dailyAmt,dailyRows,dailyExcluded:!!line.noDaily,bankAmt,vendorAmt,recoAmt,isCredit:!!line.credit,
+  return{lineName,recurring,dailyAmt,dailyBillCash,dailyRows,dailyExcluded:!!line.noDaily,bankAmt,vendorAmt,recoAmt,isCredit:!!line.credit,
     recurringTotal:(vendorWins?0:recurringTotalRaw)+variable.amt,recurringTotalRaw,vendorWinsOverRecurring:!!(line.vendorWinsOverRecurring||line.vendorSplitRecurring),vendorWins,
     variableAmt:variable.amt,variableRows:variable.rows};
 }

@@ -912,6 +912,7 @@ function OutletPnLCore({salon,period}){
         const parts=[];
         if(d.recurringTotal>0)parts.push('Recurring Expenses (Active): ₹'+Math.round(d.recurringTotal).toLocaleString('en-IN'));
         if(d.dailyAmt>0)parts.push('Daily Sales & Exp: ₹'+Math.round(d.dailyAmt).toLocaleString('en-IN')+(d.dailyExcluded?' (excluded — already in Recurring)':''));
+        if(d.dailyBillCash>0)parts.push('Cash paid on vendor bills from Daily Sales & Exp: ₹'+Math.round(d.dailyBillCash).toLocaleString('en-IN')+' (counted once, through the bill)');
         if(d.bankAmt>0)parts.push('Bank Statement: ₹'+Math.round(d.bankAmt).toLocaleString('en-IN'));
         const lineTotal=d.recurringTotal+(d.dailyExcluded?0:d.dailyAmt)+d.bankAmt;
         out+='<p style="font-size:12px;margin:6px 0 2px"><b>'+d.lineName+'</b> = '+parts.join(' + ')+' = <b>₹'+Math.round(lineTotal).toLocaleString('en-IN')+'</b></p>';

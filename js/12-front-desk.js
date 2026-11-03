@@ -758,7 +758,7 @@ function plBuild(sid,fy,mi){
     // PL_STRUCT's own `lines` for this section is empty, so there's nothing synthetic left here.
     const directDefs=isRestaurantOutlet(sid)?PL_DIRECT_RESTAURANT_LINES.filter(l=>!l.bar||outletSettings(sid).servesLiquor):PL_DIRECT_REAL_LINES;
     const extraLines=(S.sec==='Direct cost of service'&&cal)
-      ?directDefs.map(l=>({name:l.name,amt:l.fn?Math.round(l.fn(sid,cal.year,cal.month)||0):dailySalesGroupSumFor(sid,cal.year,cal.month,l.group)+(l.alsoVendorCat?vendorInvoiceCategorySumFor(sid,cal.year,cal.month,l.alsoVendorCat):0)}))
+      ?directDefs.map(l=>({name:l.name,amt:l.fn?Math.round(l.fn(sid,cal.year,cal.month)||0):(typeof plDailyLessBills==='function'?plDailyLessBills(sid,cal.year,cal.month,l,dailySalesGroupSumFor(sid,cal.year,cal.month,l.group)):dailySalesGroupSumFor(sid,cal.year,cal.month,l.group))+(l.alsoVendorCat?vendorInvoiceCategorySumFor(sid,cal.year,cal.month,l.alsoVendorCat):0)}))
       :[];
     const lines=extraLines;
     const tot=lines.reduce((t,l)=>t+l.amt,0);
