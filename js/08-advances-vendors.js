@@ -1378,6 +1378,16 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     const inv=invoices.find(x=>x.id===invoiceId);
     const p=inv&&inv.payments.find(x=>x.id===paymentId);
     if(vendBlockIfLocked(p&&p.paidDate))return;
+    // A TDS line belongs to the bill's "Deduct TDS" tick (js/65): removing it removes TDS from the bill.
+    if(p&&p.mode==='TDS'){
+      if(!confirm('Remove TDS of ₹'+Math.round(Number(p.paidAmount)||0).toLocaleString('en-IN')+' from bill '+(inv.invoiceNo||'')+'? “Deduct TDS” is unticked and the full amount becomes payable to the vendor again.'))return;
+      const off={tdsApplicable:false,tdsSection:'',tdsRate:'',tdsAmt:0,tdsManual:false};
+      setInvoices(prev=>prev.map(x=>x.id===invoiceId?{...x,...off,payments:(x.payments||[]).filter(q=>q.mode!=='TDS')}:x));
+      setViewInv(v=>v&&v.id===invoiceId?{...v,inv:{...v.inv,...off,payments:(v.inv.payments||[]).filter(q=>q.mode!=='TDS')}}:v);
+      if(editInvoiceId===invoiceId)setInvForm(f=>({...f,...off,payments:(f.payments||[]).filter(q=>q.mode!=='TDS')}));
+      toastSuccess('TDS removed from bill '+(inv.invoiceNo||''));
+      return;
+    }
     if(p&&!deleteApprovalOk(salonId,'pay',p.id,'payment of ₹'+Math.round(Number(p.paidAmount)||0).toLocaleString('en-IN')+' on '+(p.paidDate||'')+' against bill '+(inv.invoiceNo||'')+' of '+getVendorName(inv.vendorId)))return;
     if(!confirm('Delete this payment record? The invoice balance will increase accordingly, and the amount will be cleared from Daily Sales & Exp if it was recorded from there.'))return;
     if(inv&&p&&p.note==='Auto-recorded from Daily Sales & Exp')clearDsePaymentAmountFor(salonId,inv.category,p.paidDate,p.paidAmount);
