@@ -3427,9 +3427,10 @@ function BankStatement({salon,onNavTab}={}){
           +(withFreshIds.filter(r=>r.nature).length?' · '+withFreshIds.filter(r=>r.nature).length+' auto-classified (Nature + Date as per Cradlee).':''));
       }else{
         if(mbA){ // fresh upload replaces this account's lines only; other accounts stay
-          const keep=rows.filter(r=>mbAcctOf(r,salonId)!==mbA);let nid=keep.reduce((m,r)=>Math.max(m,Number(r.id)||0),0)+1;
+          const keep=rows.filter(r=>mbAcctOf(r,salonId)!==mbA);if(typeof bdStash==='function')bdStash(salonId,rows.filter(r=>mbAcctOf(r,salonId)===mbA),'Upload fresh statement ('+file.name+')');let nid=keep.reduce((m,r)=>Math.max(m,Number(r.id)||0),0)+1;
           imported=imported.map(r=>({...r,id:nid++}));autoMatchPendingRef.current=new Set(imported.map(r=>r.id));setRows([...keep,...imported]);
         }else{
+        if(typeof bdStash==='function')bdStash(salonId,rows,'Upload fresh statement ('+file.name+')');
         autoMatchPendingRef.current=new Set(imported.map(r=>r.id));
         setRows(imported);
         }
@@ -3490,11 +3491,12 @@ function BankStatement({salon,onNavTab}={}){
     try{logAuditEvent(salonId,{entity:'Bank Statement',entityId:'SETDT',action:'Dates corrected',summary:setDtMismatch.length+' settlement date(s) set from the bank narration'});}catch(e){}
   };
   const downloadTemplate=()=>{const t=BANKS[bank]||BANKS.Generic;const csv=[t.headers,t.sample].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=bank.replace(/\s+/g,'_')+'_Bank_Statement_Template.csv';a.click();URL.revokeObjectURL(u);};
-  const clearData=()=>{if(confirm('Remove all imported bank statement data?')){setRows([]);setFileName('');setSelected(new Set());setMessage('Bank statement data cleared.');}};
+  const clearData=()=>{if(confirm('Remove all imported bank statement data?'+(typeof bdOn==='function'&&bdOn(salonId)?' (You can undo this with “↩ Undo last delete”.)':''))){if(typeof bdStash==='function')bdStash(salonId,rows,'Clear Data');setRows([]);setFileName('');setSelected(new Set());setMessage('Bank statement data cleared.');}};
   const toggleSelect=(id)=>setSelected(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
   const deleteSelected=()=>{
     if(!selected.size)return;
-    if(confirm('Delete '+selected.size+' selected transaction'+(selected.size===1?'':'s')+'?')){
+    if(confirm('Delete '+selected.size+' selected transaction'+(selected.size===1?'':'s')+'?'+(typeof bdOn==='function'&&bdOn(salonId)?' (You can undo this with “↩ Undo last delete”.)':''))){
+      if(typeof bdStash==='function')bdStash(salonId,rows.filter(r=>selected.has(r.id)),'Delete Selected');
       setRows(prev=>prev.filter(r=>!selected.has(r.id)));
       setSelected(new Set());
     }
@@ -4370,6 +4372,7 @@ function BankStatement({salon,onNavTab}={}){
         rows.length>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Scan every unlinked debit: link it to a Vendor Sheet invoice, or settle an employee’s Salary / Incentive, when the vendor or employee is named in the narration AND the amount matches exactly — anything ambiguous is left for manual review. New imports are auto-linked the same way.',onClick:autoLinkButton},'🔗 Auto-Link Payments'),
         rows.length>0&&React.createElement('button',{className:'btn btn-ghost btn-sm'+(aiBusy?' btn-loading':''),disabled:aiBusy,title:'Ask the AI to suggest a Nature for every row that has none yet (needs the AI key in Master Settings). Only confident suggestions are applied; they show a 🤖 mark.',onClick:aiTagRows},aiBusy?'AI tagging…':'🤖 AI: tag untagged rows'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowRulesModal(true)},'ℹ️ How classification works'),
+        typeof BankUndoBar==='function'&&React.createElement(BankUndoBar,{sid:salonId,rows,setRows,onMessage:setMessage}),
         selected.size>0&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,.15)',border:'1px solid rgba(255,107,107,.4)',color:'var(--red)',fontWeight:600},onClick:deleteSelected},'🗑 Delete Selected ('+selected.size+')'),
         rows.length>0&&React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(255,107,107,.1)',border:'1px solid rgba(255,107,107,.3)',color:'var(--red)'},onClick:clearData},'Clear Data')
       )
