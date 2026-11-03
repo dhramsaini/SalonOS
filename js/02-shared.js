@@ -1830,7 +1830,8 @@ function tallyBankCounterparty(r,vendors,vendorLedgerNameFor,map){
   if(r.nature&&TALLY_NATURE_LEDGERS[r.nature]){
     const parent=TALLY_NATURE_LEDGERS[r.nature][1];
     const own=r.tallyLedger&&(typeof BL_NATURES==='undefined'||BL_NATURES.has(r.nature))&&(typeof blOn!=='function'||blOn(null))?String(r.tallyLedger).trim():'';
-    return{ledger:own||tallyNatureLedgerName(map,r.nature),parent,kind:'nature',nature:r.nature,contra:parent==='Cash-in-Hand'||parent==='Bank Accounts'};
+    const ownG=own&&typeof blOwnFind==='function'?(blOwnFind(map,own)||{}).group:''; // a ledger created under another group keeps it
+    return{ledger:own||tallyNatureLedgerName(map,r.nature),parent:ownG||parent,kind:'nature',nature:r.nature,contra:parent==='Cash-in-Hand'||parent==='Bank Accounts'};
   }
   const m=findVendorMatch(r.description,vendors);
   if(m)return{ledger:vName(m.id),parent:'Sundry Creditors',kind:'vendor',vendorId:m.id};
@@ -2079,6 +2080,8 @@ function tallyExtraLedgers(invoices,bankRows,vendors,vendorLedgerNameFor,map,gst
   if((payItems||[]).some(g=>g.kind==='tds'))add(PL.tds,'Duties & Taxes','System','TDS deducted from supplier bills');
   if((payroll||[]).length){const used=new Set();payroll.forEach(e=>e.lines.forEach(l=>used.add(l[0])));
     Object.keys(TALLY_PAYROLL_LEDGERS).forEach(k=>{const n=tallyPayrollLedger(map,k);if(used.has(n))add(n,TALLY_PAYROLL_LEDGERS[k][1],'System','Salary / Incentive journal');});}
+  // Your own ledgers for loans, capital and assets (js/71 — Tally Export → Ledgers), even before a bank line uses them.
+  ((map&&map.ownLedgers)||[]).forEach(l=>{if(l&&l.name)add(String(l.name).trim(),l.group||'Unsecured Loans','Own ledger','Created in SalonOS');});
   return out;
 }
 

@@ -500,6 +500,7 @@ function TallyExportSheet({salon,onNavTab}={}){
           ledgerCache&&h('button',{className:'btn btn-ghost btn-sm',onClick:autoMatch},'✨ Auto-match names'),
           live&&missingInTally&&missingInTally.length>0&&h('button',{className:'btn btn-primary btn-sm',disabled:!!busy,onClick:()=>askCreate()},busy==='create'?'Creating…':'👁 Preview & create '+missingInTally.length+' missing in Tally'))),
       typeof MbTallyLedgers==='function'&&h(MbTallyLedgers,{sid:salonId,map,updateMap,ledgers:ledgerCache&&ledgerCache.ledgers,inTally}),
+      typeof BlLedgerManager==='function'&&h(BlLedgerManager,{sid:salonId,inTally,onChanged:()=>updateMap({...loadTallyLedgerMap(salonId)})}),
       h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},ledgerCache?'Tally has '+ledgerCache.ledgers.length+' ledgers'+(ledgerCache.company?' ('+ledgerCache.company+')':'')+' · read '+when(ledgerCache.fetchedAt)+'. Names must match Tally exactly; leave a field blank to use the SalonOS name.':'Tally matches ledgers by exact name. Read Tally’s list to see which exist and to get suggestions while typing.')),
     h('datalist',{id:'tally-ledger-names'},((ledgerCache&&ledgerCache.ledgers)||[]).map(l=>h('option',{key:l.name,value:l.name}))),
     h('div',{className:'card'},
