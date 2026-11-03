@@ -973,6 +973,7 @@ function UnmappedLinesPopup({sid,getList,getRows,title,intro,onClose,onNavTab,on
           h('div',{style:{minWidth:0}},h('div',{className:'modal-title',style:{margin:0}},title),h('div',{style:{fontSize:12.5,color:'var(--text3)',marginTop:3,lineHeight:1.5,maxWidth:760}},intro)),
           h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',position:'relative'}},
             RO&&h('span',{style:{...C.chip,background:'rgba(47,95,224,0.1)',color:'#2f5fe0'}},'👁 Read-only'),syncBadge,
+            typeof BlLedgersButton==='function'&&h(BlLedgersButton,{sid}),
             h('button',{className:'btn btn-ghost btn-sm',title:bmFull?'Back to the normal window':'Open this window full screen',onClick:toggleFull},bmFull?'🗗 Exit full screen':'⛶ Full screen'),
             h('button',{className:'btn btn-ghost btn-sm','aria-haspopup':'menu','aria-expanded':moreOpen,onClick:()=>setMoreOpen(o=>!o)},'⋯ More'),
             moreOpen&&h('div',{role:'menu',style:{position:'absolute',right:36,top:34,zIndex:25,background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:10,boxShadow:'0 12px 30px rgba(0,0,0,0.18)',padding:6,minWidth:240}},

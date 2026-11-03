@@ -1833,6 +1833,8 @@ function tallyBankCounterparty(r,vendors,vendorLedgerNameFor,map){
     const ownG=own&&typeof blOwnFind==='function'?(blOwnFind(map,own)||{}).group:''; // a ledger created under another group keeps it
     return{ledger:own||tallyNatureLedgerName(map,r.nature),parent:ownG||parent,kind:'nature',nature:r.nature,contra:parent==='Cash-in-Hand'||parent==='Bank Accounts'};
   }
+  // A line of nature Other posted to a ledger of your own (js/71).
+  if(r.nature==='Other'&&r.tallyLedger&&typeof blOwnFind==='function'&&(typeof blOn!=='function'||blOn(null))){const o=blOwnFind(map,r.tallyLedger);if(o)return{ledger:o.name,parent:o.group,kind:'nature',nature:'Other',contra:o.group==='Cash-in-Hand'||o.group==='Bank Accounts'};}
   const m=findVendorMatch(r.description,vendors);
   if(m)return{ledger:vName(m.id),parent:'Sundry Creditors',kind:'vendor',vendorId:m.id};
   return{ledger:TALLY_SUSPENSE_LEDGER,parent:'Suspense A/c',kind:'suspense'};
