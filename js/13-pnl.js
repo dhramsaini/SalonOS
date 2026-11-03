@@ -1295,7 +1295,7 @@ function OutletPnLCore({salon,period}){
           detail.recurring.length===0&&h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:18,padding:'10px 12px',background:'var(--bg3)',borderRadius:'var(--r)'}},
             'No standing commitment set up for this line in Recurring Expenses yet. Add one there to have it show up here automatically.'),
 
-          (detail.dailyAmt>0||detail.bankAmt>0)&&h('div',{style:{marginBottom:10}},
+          (detail.dailyAmt>0||detail.bankAmt>0||detail.vendorAmt>0||detail.recoAmt!==0||detail.dailyBillCash>0)&&h('div',{style:{marginBottom:10}},
             h('div',{style:{fontSize:11,fontWeight:700,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}},'This month\'s actual entries'),
             detail.dailyAmt>0&&h('div',{style:{marginBottom:4}},
               detail.dailyRows.length>1&&h('div',{className:'table-wrap',style:{marginBottom:8}},
@@ -1315,6 +1315,14 @@ function OutletPnLCore({salon,period}){
             ),
             detail.bankAmt>0&&h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,color:'var(--text2)',marginBottom:4}},h('span',null,'From Bank Statement (Nature = Bank Charges)'),h('span',null,'₹'+Math.round(detail.bankAmt).toLocaleString('en-IN'))),
             detail.vendorAmt>0&&h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,color:'var(--text2)',marginBottom:4}},h('span',null,'From Vendor Sheet (real invoices booked this month)'),h('span',null,'₹'+Math.round(detail.vendorAmt).toLocaleString('en-IN'))),
+            detail.vendorBills&&detail.vendorBills.length>0&&h('div',{className:'table-wrap',style:{marginBottom:10}},
+              h('table',null,
+                h('thead',null,h('tr',null,['Vendor','Invoice No','Invoice Date','Booked','Description','Amount'].map(hh=>h('th',{key:hh,style:hh==='Amount'?{textAlign:'right'}:undefined},hh)))),
+                h('tbody',null,detail.vendorBills.map((b,bi)=>h('tr',{key:bi},
+                  h('td',null,b.vendorName),h('td',null,b.invoiceNo),h('td',null,b.invoiceDate||'—'),h('td',null,b.bookingDate||'—'),
+                  h('td',{style:{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},title:b.desc||''},b.desc||'—'),
+                  h('td',{style:{textAlign:'right'}},'₹'+Math.round(b.amount).toLocaleString('en-IN'))))))),
+            detail.dailyBillCash>0&&h('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:6}},'₹'+Math.round(detail.dailyBillCash).toLocaleString('en-IN')+' paid in cash on these bills through Daily Sales & Exp is left out of the Daily figure above — counted once, through the bill.'),
             detail.recoAmt!==0&&h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,color:'var(--text2)',marginBottom:4}},
               h('span',null,'From Collection Reco (Net Bank Charges)'),
               h('span',{style:{color:detail.recoAmt<0?'var(--green)':'var(--text)'}},(detail.recoAmt>=0?'₹':'−₹')+Math.round(Math.abs(detail.recoAmt)).toLocaleString('en-IN')))
@@ -1335,7 +1343,7 @@ function OutletPnLCore({salon,period}){
         h('div',{className:'modal',style:{width:600,maxHeight:'82vh',overflowY:'auto'},onClick:e=>e.stopPropagation()},
           h('div',{className:'modal-title'},costBreakup+' — Invoice-wise Breakup'),
           h('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:16}},
-            PL_MONTHS[mi]+' '+(mi<9?fy.slice(0,4):'20'+fy.slice(5))+' · '+(salon?salon.name:'Outlet')+' · every Vendor Sheet invoice categorised "'+costBreakup+'" and booked (by Invoice Date) in this month'),
+            PL_MONTHS[mi]+' '+(mi<9?fy.slice(0,4):'20'+fy.slice(5))+' · '+(salon?salon.name:'Outlet')+' · every Vendor Sheet invoice categorised "'+costBreakup+'" and booked in this month'),
           !rows.length
             ?h('div',{style:{fontSize:12,color:'var(--text3)',padding:'16px 12px',background:'var(--bg3)',borderRadius:'var(--r)',marginBottom:16}},'No invoices booked against this category in this month yet.')
             :h('div',{className:'table-wrap',style:{marginBottom:16}},

@@ -165,7 +165,7 @@ function vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName,exclude
       if(t>=sp.first&&t<=sp.last&&!closed.includes(t)){amt+=shareOf(t);note=(t-sp.first+1)+' of '+sp.months+' months';}
       if(t===u&&closed.length){amt+=closed.reduce((a,c)=>a+shareOf(c),0);note=(note?note+' + ':'')+'share of closed '+closed.map(monthLabelOfIndex).join(', ');}
       if(!amt)return;
-      out.push({id:inv.id,vendorName:vendor?vendor.name:'(vendor deleted)',invoiceDate:inv.invoiceDate,
+      out.push({id:inv.id,vendorName:vendor?vendor.name:'(vendor deleted)',invoiceDate:inv.invoiceDate,bookingDate:inv.bookingDate||inv.invoiceDate,desc:inv.desc||'',
         invoiceNo:(inv.invoiceNo||'—')+' ('+note+')',docNature:inv.docNature,amount:Math.round(amt*100)/100});
       return;
     }
@@ -173,7 +173,7 @@ function vendorInvoiceCategoryBreakupFor(salonId,year,month,categoryName,exclude
     if(!iso)return;
     const d=new Date(iso+'T00:00:00');
     if(isNaN(d)||d.getFullYear()!==year||d.getMonth()!==month)return;
-    out.push({id:inv.id,vendorName:vendor?vendor.name:'(vendor deleted)',invoiceDate:inv.invoiceDate,
+    out.push({id:inv.id,vendorName:vendor?vendor.name:'(vendor deleted)',invoiceDate:inv.invoiceDate,bookingDate:inv.bookingDate||inv.invoiceDate,desc:inv.desc||'',
       invoiceNo:(inv.invoiceNo||'—')+(pi?' (₹'+Math.round(Number(inv.amount)||0).toLocaleString('en-IN')+' − PI '+(pi.invoiceNo||'')+' ₹'+Math.round(Number(pi.amount)||0).toLocaleString('en-IN')+')':''),
       docNature:inv.docNature,amount});
   });

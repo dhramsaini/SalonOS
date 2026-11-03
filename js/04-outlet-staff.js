@@ -2168,18 +2168,20 @@ function autoCreateRecurringInvoices(salonId,asOf){
 // month; bills from a Marketing recurring expense replace its estimate (same rule as Rent).
 function pnlAllBillsOn(sid){return typeof controlOn!=='function'||controlOn('pnlAllVendorBills',sid);}
 function plRecurringCountedIds(sid){const types=new Set(Object.values(PL_OPEX_RECURRING_MAP));return new Set(loadRecurringExpenses(sid).filter(it=>types.has(recurringExpenseNameOf(it))).map(it=>it.id));}
-// What a line's vendor bills add: {vendorAmt, add (bills + recurring estimate as the line's rule says), vendorWins}.
+// What a line's vendor bills add: {vendorAmt, add (bills + recurring estimate as the line's rule says),
+// vendorWins, bills (the invoices behind vendorAmt — Vendor, Invoice No, dates, amount)}.
 function plVendorFor(sid,l,year,month,used,recurringAmt){
   const cat=l.alsoVendorCat;
-  if(!cat||(l.newMap&&!pnlAllBillsOn(sid)))return{vendorAmt:0,add:recurringAmt,vendorWins:false};
+  if(!cat||(l.newMap&&!pnlAllBillsOn(sid)))return{vendorAmt:0,add:recurringAmt,vendorWins:false,bills:[]};
+  const rows=keep=>vendorInvoiceCategoryBreakupFor(sid,year,month,cat,used,keep),sum=r=>Math.round(r.reduce((t,x)=>t+x.amount,0)*100)/100;
   if(l.vendorSplitRecurring){
-    const one=vendorInvoiceCategorySumFor(sid,year,month,cat,used,inv=>!inv.recurringId),rec=vendorInvoiceCategorySumFor(sid,year,month,cat,used,inv=>!!inv.recurringId);
-    return{vendorAmt:one+rec,add:one+(rec>0?rec:recurringAmt),vendorWins:rec>0};
+    const oneR=rows(inv=>!inv.recurringId),recR=rows(inv=>!!inv.recurringId),one=sum(oneR),rec=sum(recR);
+    return{vendorAmt:one+rec,add:one+(rec>0?rec:recurringAmt),vendorWins:rec>0,bills:[...oneR,...recR]};
   }
   let keep;if(l.newMap){const c=plRecurringCountedIds(sid);keep=inv=>!(inv.recurringId&&c.has(inv.recurringId));}
-  const v=vendorInvoiceCategorySumFor(sid,year,month,cat,used,keep);
-  if(l.vendorWinsOverRecurring)return{vendorAmt:v,add:v>0?v:recurringAmt,vendorWins:v>0};
-  return{vendorAmt:v,add:v+recurringAmt,vendorWins:false};
+  const r=rows(keep),v=sum(r);
+  if(l.vendorWinsOverRecurring)return{vendorAmt:v,add:v>0?v:recurringAmt,vendorWins:v>0,bills:r};
+  return{vendorAmt:v,add:v+recurringAmt,vendorWins:false,bills:r};
 }
 // Cash paid against vendor bills from Daily Sales & Exp (invoice-gated rows — stored as links to the
 // bill in salonos_daily_sales_invoicedata, and also in the day's cell) for the rows of one P&L group in
@@ -2244,7 +2246,7 @@ function operatingExpenseAnnexureFor(salonId,year,month,lineName){
   // breaks that combined total back out per row, same rows/order as Daily Sales & Exp itself, so
   // the annexure shows exactly what's behind the number instead of just the bundled sum.
   const dailyRows=line.row?[]:EXPENSE_ROWS.filter(r=>r.group===line.group).map(r=>({name:r.name,amt:dailySalesRowSumFor(salonId,year,month,r.name)}));
-  return{lineName,recurring,dailyAmt,dailyBillCash,dailyRows,dailyExcluded:!!line.noDaily,bankAmt,vendorAmt,recoAmt,isCredit:!!line.credit,
+  return{lineName,recurring,dailyAmt,dailyBillCash,vendorBills:pv.bills||[],dailyRows,dailyExcluded:!!line.noDaily,bankAmt,vendorAmt,recoAmt,isCredit:!!line.credit,
     recurringTotal:(vendorWins?0:recurringTotalRaw)+variable.amt,recurringTotalRaw,vendorWinsOverRecurring:!!(line.vendorWinsOverRecurring||line.vendorSplitRecurring),vendorWins,
     variableAmt:variable.amt,variableRows:variable.rows};
 }
