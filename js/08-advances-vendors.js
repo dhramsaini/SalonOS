@@ -14,6 +14,8 @@ function AdvanceSheet({period,salon}={}){
   };
   const advBlockIfLocked=(dateStr)=>{
     if(!advIsLocked(dateStr))return false;
+    // a Final month gets its own message, naming what is final and where to undo it
+    {const ffm=typeof ffBlock==='function'&&ffBlock(salon?.id,dateStr,'advance');if(ffm&&!isBackdateBlocked(salon?.id,dateStr)){advError(ffm);return true;}}
     {const p=String(dateStr||'').split('-');if(p.length===3&&!isMonthLockedFor(salon?.id,Number(p[0]),Number(p[1])-1)){advError(backdateBlockMessage(salon?.id));return true;}}
     advError(monthLockedMessage(salon?.id,dateStr));
     return true;

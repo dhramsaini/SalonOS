@@ -676,7 +676,7 @@ function isBackdateBlocked(salonId,iso){
 }
 function backdateBlockMessage(salonId){
   if(_dateBlockKind==='future')return 'Entries dated after today are blocked (Master Settings → Controls → Future-dated entries). Ask a Super Admin to make this change.';
-  const n=backdateLockDays(salonId);if(n==null)return 'This date is blocked (Master Settings → Controls). Ask a Super Admin to make this change.';
+  const n=backdateLockDays(salonId);if(n==null)return 'This date is blocked (Master Settings → Controls → Back-dated entries / Future-dated entries / Data entry → Final months can’t change). Ask a Super Admin to make this change.';
   return 'Entries dated before '+(n===0?'today':n===1?'yesterday':'the last '+n+' days')+' are blocked (Master Settings → Controls → Back-dated entries). Ask a Super Admin to make this change.';
 }
 // Unlocking (a locked month, a Final month of Daily Sales & Exp, a Final P&L) — Super Admin only,
