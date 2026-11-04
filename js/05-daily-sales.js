@@ -645,8 +645,10 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   const isManagerSide=isManagerSideRole(user);
   const DSE_MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
   const [mgrFinalTick,setMgrFinalTick]=useState(0);
-  const [mgrFinalSelMonth,setMgrFinalSelMonth]=useState(()=>defaultFinalMonthCal().month);
-  const [mgrFinalSelYear,setMgrFinalSelYear]=useState(()=>defaultFinalMonthCal().year);
+  // a direct link (#outlet/<id>/daily-sales/YYYY-MM) opens the Month Final picker on that month
+  const [mgrFinal0]=useState(()=>{const ym=linkTake('ym');return ym?{year:Number(ym.slice(0,4)),month:Number(ym.slice(5,7))-1}:defaultFinalMonthCal();});
+  const [mgrFinalSelMonth,setMgrFinalSelMonth]=useState(mgrFinal0.month);
+  const [mgrFinalSelYear,setMgrFinalSelYear]=useState(mgrFinal0.year);
   const mgrFinalMonthChecked=useMemo(()=>isManagerFinalMonth(salonId,'dse',mgrFinalSelYear,mgrFinalSelMonth),[salonId,mgrFinalSelYear,mgrFinalSelMonth,mgrFinalTick]);
   const isMgrFinalMonthOf=(year,month)=>isManagerFinalMonth(salonId,'dse',year,month);
   // ── Edit Window — Master Sheet → Edit Salon → Daily Sales & Exp Edit Window. Only ever

@@ -898,6 +898,35 @@ function App(){
       if(sp.page==='salon'){const sn=acc.find(s=>String(s.id)===String(sp.salonId))||acc[0];if(!sn)return;handleSelectSalon(sn);if(sp.tab&&defaultPeriods[sn.id])setTimeout(()=>{try{navToSalonTab(sp.tab);}catch(e){}},0);}
       else setActivePage(sp.page);}catch(e){}
   },[loggedIn,syncing,user&&user.id,salons.length]);
+  // Direct links (js/01 linkParse) — opened after the start page and whenever the address changes,
+  // with the same outlet / sheet access as the tab bar. The link comes off the address once opened.
+  useEffect(()=>{
+    if(!loggedIn||syncing||!user)return;
+    const go=()=>{
+      const r=linkParse(location.hash);if(!r)return;
+      try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}
+      const admin=user.role==='Super Admin';
+      if(r.page==='controls'||['master-sheet','users','settings'].includes(r.page)){
+        if(!admin){addToast('Only a Super Admin can open '+(r.page==='controls'?'Master Settings → Controls':'that page')+'.','info',5000);return;}
+        setGateFor(null);
+        if(r.page!=='controls'){setActivePage(r.page);return;}
+        window.__link_ctl=r.ctl;setActivePage('settings');
+        setTimeout(()=>{const el=document.getElementById('controls-card');if(el)el.scrollIntoView({behavior:'smooth'});},400);return;
+      }
+      if(r.page!=='outlet'){setGateFor(null);setActivePage(r.page);return;}
+      const sn=salons.find(s=>String(s.id)===String(r.sid));
+      if(!sn||!userCanSeeOutlet(user,sn.id)){addToast('That outlet is not on your account.','error',5000);return;}
+      const acc=admin?null:((user.sheetAccessByOutlet&&user.sheetAccessByOutlet[sn.id])||user.sheetAccess||null);
+      const approver=isSummaryApproverRole(user)&&(r.tab==='salary-working'||r.tab==='incentive-working');
+      if(!salonTabsFor(sn).some(t=>t.id===r.tab)||(acc&&(acc[r.tab]||'View Only')==='No Access'&&!approver)||(REPORTS_ONLY_ROLES.includes(user.role)&&!REPORTS_ONLY_TAB_IDS.includes(r.tab))){
+        addToast('That screen is not available on your account.','error',5000);return;}
+      const pd=r.ym?calToFYMI(Number(r.ym.slice(0,4)),Number(r.ym.slice(5,7))-1):(defaultPeriods[sn.id]||pgCurrent());
+      window.__link_ym=r.tab==='daily-sales'?r.ym:null; // only Daily Sales & Exp keeps its own month (Month Final)
+      setGateFor(null);setPeriod(pd);setSelFY(pd.fy);setSelectedSalon(sn);setActivePage('salon');setSalonTab(r.tab);
+    };
+    const t=setTimeout(go,50);window.addEventListener('hashchange',go);
+    return()=>{clearTimeout(t);window.removeEventListener('hashchange',go);};
+  },[loggedIn,syncing,user&&user.id,salons.length]);
   const [quickOpen,setQuickOpen]=useState(false);
   if(CLOUD_SYNC_ENABLED&&isPasswordRecoveryLink())return React.createElement(ResetPasswordPage,null);
   if(!loggedIn)return React.createElement(LoginPage,{onLogin:handleLogin});

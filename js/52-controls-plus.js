@@ -182,8 +182,10 @@ function ControlsCenterCard({salons}){
   const h=React.createElement;const {toast}=useToast();
   const u=currentSessionUser();const canEdit=isSuperAdminUser(u);
   const [c,setC]=useState(()=>loadControls());const [open,setOpen]=useState(null);const [panel,setPanel]=useState(null);const [tab,setTab]=useState('rules');const [,tick]=useState(0);
-  const [cq,setCq]=useState('');const [flt,setFlt]=useState('all');const [viewSid,setViewSid]=useState('');
-  const [area,setAreaRaw]=useState(()=>{try{return localStorage.getItem('salonos_ctl_area')||'checks';}catch(e){return'checks';}});const setArea=k=>{setAreaRaw(k);try{localStorage.setItem('salonos_ctl_area',k);}catch(e){}};
+  // a direct link (#controls/<id>) opens on that switch: its area, searched by its name
+  const [focus]=useState(()=>{const d=controlDef(linkTake('ctl'));if(!d)return null;const a=controlLayout().find(a=>a.list.some(x=>x.defs.some(z=>z.id===d.id)));return{d,area:a&&a.key};});
+  const [cq,setCq]=useState(()=>focus?focus.d.label:'');const [flt,setFlt]=useState('all');const [viewSid,setViewSid]=useState('');
+  const [area,setAreaRaw]=useState(()=>{if(focus&&focus.area)return focus.area;try{return localStorage.getItem('salonos_ctl_area')||'checks';}catch(e){return'checks';}});const setArea=k=>{setAreaRaw(k);try{localStorage.setItem('salonos_ctl_area',k);}catch(e){}};
   const [wide,setWide]=useState(()=>window.innerWidth>=860);useEffect(()=>{const f=()=>setWide(window.innerWidth>=860);window.addEventListener('resize',f);return()=>window.removeEventListener('resize',f);},[]);
   const outlets=(salons||[]).filter(s=>s&&s.id!=null&&s.status!=='Inactive');const oname=s=>String(s.name).split('—')[0].trim();
   const F=id=>controlRawOn(id);const refresh=()=>{setC(loadControls());tick(x=>x+1);};

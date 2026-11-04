@@ -413,6 +413,23 @@ function HelpPanel({onClose}){
   );
 }
 
+// ── Direct links — #controls/<control id>, #page/<page id>, #outlet/<outlet id>/<screen id>[/YYYY-MM].
+// App (js/14) opens them after sign-in, with the usual outlet / sheet access. A block message
+// remembers its links (msgLink) so its toast shows "Open …" buttons that go straight there. ──
+const MSG_LINKS=new Map();
+function msgLink(msg,links){if(msg&&links&&links.length){MSG_LINKS.set(msg,links);if(MSG_LINKS.size>50)MSG_LINKS.delete(MSG_LINKS.keys().next().value);}return msg;}
+function linkParse(hash){
+  let s=String(hash||'').replace(/^#\/?/,'');try{s=decodeURIComponent(s);}catch(e){}const p=s.split('/');
+  if(p[0]==='controls')return{page:'controls',ctl:p[1]||null};
+  if(p[0]==='page'&&p[1])return{page:p[1]};
+  if(p[0]==='outlet'&&p[1]&&p[2])return{page:'outlet',sid:p[1],tab:p[2],ym:/^\d{4}-\d{2}$/.test(p[3]||'')?p[3]:null};
+  return null;
+}
+function linkOutlet(sid,tab,y,m){return'#outlet/'+sid+'/'+tab+(y!=null?'/'+y+'-'+String(m+1).padStart(2,'0'):'');}
+function openLink(href){if(location.hash===href)window.dispatchEvent(new HashChangeEvent('hashchange'));else location.hash=href;}
+// One-time hand-offs from a link to the screen it opens (consumed on first read).
+function linkTake(name){const v=window['__link_'+name];window['__link_'+name]=null;return v||null;}
+
 function ToastContainer({toasts,remove}){
   if(!toasts.length)return null;
   const icons={success:'✓',error:'✕',warning:'⚠',info:'ℹ'};
@@ -424,6 +441,7 @@ function ToastContainer({toasts,remove}){
       // 4th argument). Clicking it runs the restore callback then dismisses the toast right
       // away, rather than waiting for its normal auto-dismiss timer.
       t.onUndo&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{padding:'3px 10px',fontSize:11,flexShrink:0},onClick:()=>{t.onUndo();remove(t.id);}},'Undo'),
+      (MSG_LINKS.get(t.msg)||[]).map((l,i)=>React.createElement('button',{key:'lk'+i,className:'btn btn-ghost btn-sm',style:{padding:'3px 10px',fontSize:11,flexShrink:0,whiteSpace:'nowrap'},onClick:()=>{openLink(l.href);remove(t.id);}},l.label)),
       React.createElement('button',{'aria-label':'Close',className:'toast-close',onClick:()=>remove(t.id)},'✕')
     ))
   );
@@ -435,7 +453,7 @@ function useToast(){
   // 4th arg (onUndo) is optional — only the base `toast()` function threads it through, since
   // that's the one call sites use for "X was deleted" style messages. success/error/warn/info
   // stay simple messages, no undo affordance.
-  const add=(msg,type='success',dur=3000,onUndo)=>{if(_addToast)_addToast(msg,type,dur,onUndo);};
+  const add=(msg,type='success',dur=3000,onUndo)=>{if(_addToast)_addToast(msg,type,MSG_LINKS.has(msg)?Math.max(dur,10000):dur,onUndo);};
   return{toast:add,success:(m)=>add(m,'success'),error:(m)=>add(m,'error'),warn:(m)=>add(m,'warning'),info:(m)=>add(m,'info')};
 }
 
@@ -614,7 +632,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.10.11.244';
+const APP_VERSION='2026.10.11.245';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);

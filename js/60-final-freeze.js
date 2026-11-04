@@ -24,21 +24,22 @@ function ffPnlFinal(sid,y,m){try{const p=calToFYMI(y,m);return typeof isPnlFinal
 function ffManualLock(sid,y,m){const r=typeof monthLockRecordFor==='function'?monthLockRecordFor(sid,y,m):null;return !!(r&&r.locked&&(r.source==='manual'||r.source==='pnl-final'));}
 // letters: S salary approved/locked · M month locked by hand or by P&L Final · I incentive · D Daily Sales & Exp · P P&L
 const FF_AREAS={billing:'MDP',advance:'SIDP',dsePost:'MDP',pay:'SIP'};
-// Returns [why, where to undo it] — or '' when nothing in those parts is final.
+// Returns [why, where to undo it, screen name, direct link] — or '' when nothing in those parts is final.
 function ffWhy(sid,y,m,letters){
-  const L=String(letters||'SIDP');const nm=FF_MON[m]+' '+y;
-  if(L.includes('P')&&ffPnlFinal(sid,y,m))return['the P&L for '+nm+' is marked Final','P&L (Monthly) → '+nm+' → ↩ Un-finalize'];
-  if(L.includes('D')&&ffDseFinal(sid,y,m))return['Daily Sales & Exp for '+nm+' is marked Final','Daily Sales & Exp → '+nm+' → untick 🔒 Month Final'];
-  if(L.includes('S')&&ffSalaryFinal(sid,y,m))return['Salary for '+nm+' is approved and locked','Salary Working → '+nm+' → 🔓 Unlock month (or Master Sheet → 🔒 Months)'];
-  if(L.includes('M')&&ffManualLock(sid,y,m))return[nm+' is locked','Master Sheet → 🔒 Months → '+nm];
-  if(L.includes('I')&&ffIncFinal(sid,y,m))return['Incentive for '+nm+' is approved and locked','Incentive Working → '+nm+' → 🔓 Unlock Incentive Working'];
+  const L=String(letters||'SIDP');const nm=FF_MON[m]+' '+y;const at=tab=>linkOutlet(sid,tab,y,m);
+  if(L.includes('P')&&ffPnlFinal(sid,y,m))return['the P&L for '+nm+' is marked Final','P&L (Monthly) → '+nm+' → ↩ Un-finalize','P&L',at('outlet-pnl')];
+  if(L.includes('D')&&ffDseFinal(sid,y,m))return['Daily Sales & Exp for '+nm+' is marked Final','Daily Sales & Exp → '+nm+' → untick 🔒 Month Final','Daily Sales & Exp',at('daily-sales')];
+  if(L.includes('S')&&ffSalaryFinal(sid,y,m))return['Salary for '+nm+' is approved and locked','Salary Working → '+nm+' → 🔓 Unlock month (or Master Sheet → 🔒 Months)','Salary Working',at('salary-working')];
+  if(L.includes('M')&&ffManualLock(sid,y,m))return[nm+' is locked','Master Sheet → 🔒 Months → '+nm,'Master Sheet','#page/master-sheet'];
+  if(L.includes('I')&&ffIncFinal(sid,y,m))return['Incentive for '+nm+' is approved and locked','Incentive Working → '+nm+' → 🔓 Unlock Incentive Working','Incentive Working',at('incentive-working')];
   return'';
 }
 // The message to show, or '' when allowed. dateOrYm: 'YYYY-MM-DD' or 'YYYY-MM'.
 function ffBlock(sid,dateOrYm,area){
   if(!ffOn(sid))return'';const p=ffParts(dateOrYm);if(!p)return'';const why=ffWhy(sid,p.y,p.m,FF_AREAS[area]||'SIDP');if(!why)return'';
   if(typeof controlHit==='function')controlHit('finalFreeze',sid,'b');
-  return'Not allowed — '+why[0]+', so nothing that changes it can be entered or edited. To make a change, a Super Admin has to un-finalize / unlock '+FF_MON[p.m]+' first (with a reason): '+why[1]+'. Setting: Master Settings → Controls → Data entry → Final months can’t change.';
+  return msgLink('Not allowed — '+why[0]+', so nothing that changes it can be entered or edited. To make a change, a Super Admin has to un-finalize / unlock '+FF_MON[p.m]+' first (with a reason): '+why[1]+'. Setting: Master Settings → Controls → Data entry → Final months can’t change.',
+    [{label:'Open '+why[2],href:why[3]},{label:'Open setting',href:'#controls/finalFreeze'}]);
 }
 
 // ── frozen results ──
