@@ -13,7 +13,7 @@ function itdsOn(sid){return typeof controlOn==='function'&&controlOn('invoiceTds
 const itdsIso=d=>{const s=String(d||'');const m=s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);return m?m[3]+'-'+m[2]+'-'+m[1]:s.slice(0,10);};
 function itdsBase(f){return Math.round(((Number(f&&f.taxable)||0)+(Number(f&&f.freight)||0))*100)/100;}
 function itdsCalc(f){
-  if(!f||!f.tdsApplicable||f.docNature==='Performa Invoice')return 0;
+  if(!f||!f.tdsApplicable||f.docNature==='Performa Invoice'||f.docNature==='Credit Note')return 0;
   if(f.tdsManual&&f.tdsAmt!==''&&f.tdsAmt!=null)return Math.max(0,Math.round(Number(f.tdsAmt)||0));
   return Math.round(itdsBase(f)*(Number(f.tdsRate)||0)/100);
 }
@@ -27,7 +27,7 @@ function itdsPays(pays,id,inv){
 }
 // Fields to save on the bill, or a problem (string) that stops the save.
 function itdsFieldsFor(f,amount){
-  if(!f.tdsApplicable||f.docNature==='Performa Invoice')return{tdsApplicable:false,tdsSection:'',tdsRate:'',tdsAmt:0,tdsManual:false};
+  if(!f.tdsApplicable||f.docNature==='Performa Invoice'||f.docNature==='Credit Note')return{tdsApplicable:false,tdsSection:'',tdsRate:'',tdsAmt:0,tdsManual:false};
   if(!f.tdsSection)return'Select the TDS Section, or untick "Deduct TDS".';
   const t=itdsCalc(f);
   if(!(t>0))return'TDS works out to ₹0 — enter the Rate % (or the TDS amount), or untick "Deduct TDS".';

@@ -14,7 +14,7 @@ async function buildGstReturnsWorkbook(sid,salon,year,month){
   const gstin=String(o.gst||'').toUpperCase(),pos=gstin?gstin.slice(0,2)+'-'+(gstStateNameFor(gstin)||''):'—';
   const rest=isRestaurantOutlet(sid),sac=rest?'996331':'999721',sacName=rest?'Restaurant services':'Hairdressing and beauty services';
   const ym=year+'-'+String(month+1).padStart(2,'0');
-  const inv=(loadVendorInvoices(sid)||[]).filter(i=>i&&invoiceBookMonthOf(i)===ym&&(i.docNature||'Tax Invoice')==='Tax Invoice');
+  const inv=(loadVendorInvoices(sid)||[]).filter(i=>i&&invoiceBookMonthOf(i)===ym&&isGstPurchaseDoc(i)); // Debit / Credit Notes adjust the input
   const vendors=loadVendors(sid)||[];const vOf=id=>vendors.find(v=>String(v.id)===String(id))||{};
   const wsS=K.sheet('Summary'),w1=K.sheet('GSTR-1','FF2E7D32'),w2=K.sheet('ITC register','FF6A1B9A'),w3=K.sheet('GSTR-3B','FFEF6C00');
   // ── GSTR-1 ──

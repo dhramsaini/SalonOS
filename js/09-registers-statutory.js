@@ -117,7 +117,7 @@ function TallyExportSheet({salon,onNavTab}={}){
     const list=[];
     filteredInvoices.forEach(inv=>{
       const p=pushed.inv[inv.id];
-      list.push({key:'i'+inv.id,kind:'inv',id:inv.id,date:inv.bookingDate||inv.invoiceDate||'',iso:dmyToIso(inv.bookingDate||inv.invoiceDate),type:'Purchase',
+      list.push({key:'i'+inv.id,kind:'inv',id:inv.id,date:inv.bookingDate||inv.invoiceDate||'',iso:dmyToIso(inv.bookingDate||inv.invoiceDate),type:tallyPurchaseVchType(inv),
         party:vendorLedgerNameFor(inv.vendorId),other:categoryLedgerNameFor(inv.category)||'Purchase Accounts',ref:inv.invoiceNo||'',narr:inv.desc||inv.category||'',
         amount:Number(inv.amount)||0,status:p?(p.sig===tallyInvSig(inv)?'sent':'changed'):'new',sentAt:p&&p.at,suspense:false});
     });
@@ -360,7 +360,7 @@ function TallyExportSheet({salon,onNavTab}={}){
     fix||null);
   const overview=h(React.Fragment,null,
     h('div',{className:'grid4',style:{marginBottom:14}},
-      [['Purchase',byType('Purchase'),'blue'],['Payments',byType('Payment'),'amber'],['Receipts',byType('Receipt'),'green'],['Contra',byType('Contra'),'purple'],['Journal (TDS)',byType('Journal'),'red']].map(([label,l,color])=>
+      [['Purchase / Debit Note',[...byType('Purchase'),...byType('Debit Note')],'blue'],['Payments',byType('Payment'),'amber'],['Receipts',byType('Receipt'),'green'],['Contra',byType('Contra'),'purple'],['Journal (TDS)',byType('Journal'),'red']].map(([label,l,color])=>
         h('div',{key:label,className:'metric-card '+color},h('div',{className:'metric-label'},label+' vouchers'),h('div',{className:'metric-value'},String(l.length)),h('div',{className:'metric-sub'},inr(sum(l))+' · '+l.filter(v=>v.status==='new').length+' not yet sent')))),
     h('div',{className:'grid2',style:{marginBottom:14,alignItems:'start'}},
       h('div',{className:'card'},
@@ -411,7 +411,7 @@ function TallyExportSheet({salon,onNavTab}={}){
   const chip=(val,cur,set,label)=>h('button',{key:val,className:'btn btn-sm '+(cur===val?'btn-primary':'btn-ghost'),style:{fontSize:11,padding:'3px 10px'},onClick:()=>set(val)},label);
   const vouchersTab=h('div',{className:'card'},
     h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:10}},
-      ['all','Purchase','Payment','Receipt','Contra','Journal'].map(t=>chip(t,vType,setVType,t==='all'?'All types':t)),
+      ['all','Purchase','Debit Note','Payment','Receipt','Contra','Journal'].map(t=>chip(t,vType,setVType,t==='all'?'All types':t)),
       h('span',{style:{width:10}}),
       [['all','Any status'],['new','New'],['sent','Sent'],['changed','Changed'],['suspense','Suspense']].map(([k,l])=>chip(k,vStatus,setVStatus,l)),
       h('input',{className:'form-control',style:{width:200,marginLeft:'auto'},placeholder:'Search party / narration',value:vSearch,onChange:e=>setVSearch(e.target.value)})),
@@ -624,7 +624,7 @@ function TallyExportSheet({salon,onNavTab}={}){
   const confirmPreview=()=>{const p=preview;setPreview(null);if(p.kind==='sync')syncNow(p.only);else createMissingInTally();};
   const previewModal=preview&&(()=>{
     const pv=preview.vouchers,lg=preview.ledgers;
-    const byT=['Purchase','Payment','Receipt','Contra','Journal'].map(t=>[t,pv.filter(v=>v.type===t)]).filter(x=>x[1].length);
+    const byT=['Purchase','Debit Note','Payment','Receipt','Contra','Journal'].map(t=>[t,pv.filter(v=>v.type===t)]).filter(x=>x[1].length);
     const th=t=>h('th',{key:t,style:{position:'sticky',top:0}},t);
     return h('div',{className:'modal-overlay',onClick:()=>setPreview(null)},
       h('div',{className:'modal',style:{width:'min(980px,96vw)',maxHeight:'90vh',display:'flex',flexDirection:'column'},onClick:e=>e.stopPropagation()},

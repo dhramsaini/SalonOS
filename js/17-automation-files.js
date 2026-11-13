@@ -115,7 +115,7 @@ function gstSummaryFor(sid,year,month){
   const ym=year+'-'+String(month+1).padStart(2,'0');
   const s=outletSettings(sid);
   const blocked=!!s.gstInputBlocked&&(!s.gstInputWef||s.gstInputWef<=ym+'-31');
-  const inv=(loadVendorInvoices(sid)||[]).filter(i=>i&&invoiceBookMonthOf(i)===ym&&(i.docNature||'Tax Invoice')==='Tax Invoice');
+  const inv=(loadVendorInvoices(sid)||[]).filter(i=>i&&invoiceBookMonthOf(i)===ym&&isGstPurchaseDoc(i)); // Debit / Credit Notes adjust the input
   const n=v=>Number(v)||0;
   const itc={taxable:inv.reduce((t,i)=>t+n(i.taxable),0),igst:inv.reduce((t,i)=>t+n(i.igst),0),cgst:inv.reduce((t,i)=>t+n(i.cgst),0),sgst:inv.reduce((t,i)=>t+n(i.sgst),0),count:inv.length};
   const itcTotal=blocked?0:itc.igst+itc.cgst+itc.sgst;

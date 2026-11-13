@@ -224,7 +224,7 @@ function gstr2bMatchFor(sid,y,m){
   const ym=y+'-'+String(m+1).padStart(2,'0');const b2=(loadGstr2b(sid)[ym]||{}).rows||null;
   if(!b2)return null;
   const vendors=loadVendors(sid)||[];
-  const bills=(loadVendorInvoices(sid)||[]).filter(i=>i&&invoiceBookMonthOf(i)===ym&&(i.docNature||'Tax Invoice')==='Tax Invoice'&&((Number(i.cgst)||0)+(Number(i.sgst)||0)+(Number(i.igst)||0))>0)
+  const bills=(loadVendorInvoices(sid)||[]).filter(i=>i&&invoiceBookMonthOf(i)===ym&&isGstPurchaseDoc(i)&&((Number(i.cgst)||0)+(Number(i.sgst)||0)+(Number(i.igst)||0))>0)
     .map(i=>{const v=vendors.find(x=>x.id===i.vendorId)||{};return{i,vendor:v.name||'',gstin:String(v.gst||'').toUpperCase().trim(),key:normInvNo(i.invoiceNo),tax:(Number(i.cgst)||0)+(Number(i.sgst)||0)+(Number(i.igst)||0)};});
   const used=new Set();const matched=[],missing2b=[],taxDiff=[];
   bills.forEach(b=>{const k=b2.findIndex((r,ix)=>!used.has(ix)&&normInvNo(r.invNo)===b.key&&(!b.gstin||String(r.gstin).toUpperCase()===b.gstin));

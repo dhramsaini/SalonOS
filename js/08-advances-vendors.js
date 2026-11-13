@@ -965,7 +965,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
   const [piPrompt,setPiPrompt]=useState('no'); // 'unanswered' | 'yes' | 'no'
   useEffect(()=>{
     if(!showInvModal)return;
-    if(invForm.docNature==='Performa Invoice'){setPiPrompt('no');return;}
+    if(invForm.docNature==='Performa Invoice'||invForm.docNature==='Credit Note'||invForm.docNature==='Debit Note'){setPiPrompt('no');return;}
     if(editInvoiceId!==null){setPiPrompt(invForm.linkedPI?'yes':'no');return;}
     const openPIsForVendor=invoices.filter(inv=>inv.docNature==='Performa Invoice'&&inv.vendorId===invForm.vendorId&&isPIOpen(inv));
     setPiPrompt(invForm.vendorId&&openPIsForVendor.length>0?'unanswered':'no');
@@ -1082,18 +1082,20 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         if(amount<=0){failed.push('Row '+rowNum+' ('+vendorNameRaw+'): Invoice Total is missing or zero');return;}
         const category=String(row['Category']||'').trim();
         if(!CATEGORY_OPTIONS.includes(category)){failed.push('Row '+rowNum+' ('+vendorNameRaw+'): Category must be one of '+CATEGORY_OPTIONS.join(', '));return;}
-        const docNature=['Tax Invoice','Invoice','Performa Invoice'].includes(row['Doc Nature'])?row['Doc Nature']:'Tax Invoice';
+        const docNature=VENDOR_DOC_NATURES.includes(row['Doc Nature'])?row['Doc Nature']:'Tax Invoice';
+        if(docNature==='Credit Note'&&category==='Fixed Assets'){failed.push('Row '+rowNum+' ('+vendorNameRaw+'): a Credit Note can’t be booked under Fixed Assets');return;}
         const invoiceDate=parseTemplateDate(row['Invoice Date (DD/MM/YYYY)']||row['Invoice Date']);
         const dupInv=controlOn('dupInvoice',salonId)&&duplicateVendorInvoice([...invoices,...toAdd],vendor.id,invoiceNo,docNature,null);
         if(dupInv){failed.push('Row '+rowNum+' ('+vendorNameRaw+'): Invoice No. '+invoiceNo+' is already entered for this vendor — skipped');return;}
         if(controlOn('invoiceApproval',salonId)&&!isSuperAdminUser(currentSessionUser())&&amount>controlLimit('invoiceApproval',salonId)){failed.push('Row '+rowNum+' ('+vendorNameRaw+'): ₹'+amount.toLocaleString('en-IN')+' is above the approval limit — enter this bill on its own so it can be sent for approval');return;}
-        toAdd.push({
+        const row1={
           vendorId:vendor.id,docNature,invoiceNo,invoiceDate,
           dueDate:parseTemplateDate(row['Due Date (DD/MM/YYYY)']||row['Due Date']),
           bookingDate:parseTemplateDate(row['Booking Date (DD/MM/YYYY)']||row['Booking Date'])||invoiceDate,
           taxable:row['Taxable Value']||'',igst:row['IGST']||'',cgst:row['CGST']||'',sgst:row['SGST']||'',roundOff:row['Round Off']||'',
           amount,category,desc:String(row['Description']||''),attachment:null,linkedPI:'',payments:[]
-        });
+        };
+        toAdd.push(docNature==='Credit Note'?cnFlip(row1):row1); // the sheet carries the note's printed figures
       });
       {const blocked=toAdd.filter(r=>!canBookInvoiceInMonth(invoiceBookMonthOf(r)));
        blocked.forEach(r=>failed.push((r.invoiceNo||'Invoice')+': '+invoiceMonthBlockMessage()));
@@ -1126,6 +1128,8 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
      if(!invoiceApprovalOk(salonId,invForm.vendorId==='__new__'?'new:'+(invForm.newVendorName||''):invForm.vendorId,invForm.vendorId==='__new__'?invForm.newVendorName:getVendorName(invForm.vendorId),invForm.invoiceNo,computedTotal,orig?orig.amount:null))return;}
     if(outletSettings(salonId).attachmentRequired&&!invForm.attachment){alert('This outlet requires the document to be attached for every '+invForm.docNature+' — please attach it (📎 below) before saving.');return;}
     if(!invForm.category){alert('Please select a Category before saving.');return;}
+    const isCN=isCreditNote(invForm);
+    if(isCN&&invForm.category==='Fixed Assets'){alert('A Credit Note can’t be booked under Fixed Assets — reduce or remove the asset in the Fixed Assets register instead.');return;}
     if(invForm.category==='Fixed Assets'){
       const lines=(invForm.assetLines||[]).filter(l=>(l.name||'').trim()||Number(l.amount)>0);
       if(!lines.length){alert('Please add at least one asset (name + amount) for this Fixed Assets invoice.');return;}
@@ -1137,13 +1141,14 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     if(invForm.docNature!=='Performa Invoice'&&piPrompt==='yes'&&!invForm.linkedPI){alert('Select which Performa Invoice this '+invForm.docNature+' is booked against, or choose "No — standalone '+invForm.docNature+'" above.');return;}
     const amount=Math.round(computedTotal);
     // TDS on this bill (js/65 · Controls → invoiceTds): saved fields + the bill's "TDS" payment line.
+    // Not on a Credit Note — it has nothing to pay.
     let tdsF=null;
-    if(typeof itdsOn==='function'&&itdsOn(salonId)){
+    if(!isCN&&typeof itdsOn==='function'&&itdsOn(salonId)){
       tdsF=itdsFieldsFor(invForm,amount);if(typeof tdsF==='string'){alert(tdsF);return;}
       if(editInvoiceId!==null){const o=invoices.find(i=>i.id===editInvoiceId);const paid=((o&&o.payments)||[]).filter(p=>p.mode!=='TDS').reduce((t,p)=>t+(Number(p.paidAmount)||0),0);
         if(paid+tdsF.tdsAmt>amount+0.5){alert('Payments already recorded (₹'+Math.round(paid).toLocaleString('en-IN')+') plus TDS (₹'+tdsF.tdsAmt.toLocaleString('en-IN')+') come to more than the bill (₹'+amount.toLocaleString('en-IN')+'). Check the TDS or the payments.');return;}}
     }
-    if(invForm.docNature!=='Performa Invoice'&&editInvoiceId===null&&!billPoOk(salonId,invForm.vendorId,amount,invForm.invoiceNo))return;
+    if(invForm.docNature!=='Performa Invoice'&&!isCN&&editInvoiceId===null&&!billPoOk(salonId,invForm.vendorId,amount,invForm.invoiceNo))return;
     const dmy=(iso)=>{const p=String(iso||'').split('-');return p.length===3&&p[0].length===4?p[2]+'/'+p[1]+'/'+p[0]:iso;};
     // "+ Add New Vendor": create the vendor (or reuse one with the same name) and book against it.
     let vendorId=invForm.vendorId;
@@ -1159,7 +1164,8 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
       }
     }
     const {newVendorName,newVendorGst,newVendorPhone,newVendorTerms,...invFields}=invForm;
-    const savedInvoice={...invFields,enteredAt:invFields.enteredAt||new Date().toISOString(),vendorId,amount,invoiceDate:dmy(invForm.invoiceDate),bookingDate:dmy(invForm.bookingDate||invForm.invoiceDate),dueDate:dmy(invForm.dueDate)};
+    let savedInvoice={...invFields,enteredAt:invFields.enteredAt||new Date().toISOString(),vendorId,amount,invoiceDate:dmy(invForm.invoiceDate),bookingDate:dmy(invForm.bookingDate||invForm.invoiceDate),dueDate:dmy(invForm.dueDate)};
+    if(isCN)savedInvoice={...cnFlip(savedInvoice),linkedPI:'',tdsApplicable:false,tdsSection:'',tdsRate:'',tdsAmt:0,tdsManual:false}; // a Credit Note is kept as minus figures (js/02)
     if(tdsF)Object.assign(savedInvoice,tdsF);
     if(typeof vpCrossDupOk==='function'&&!vpCrossDupOk(salonId,savedInvoice,invoices,vendors,editInvoiceId))return; // js/69
     if(typeof vpHistNote==='function')vpHistNote(salonId,editInvoiceId!==null?invoices.find(i=>i.id===editInvoiceId):null,savedInvoice,editInvoiceId!==null?editInvoiceId:nextPrefixedId(invoices,'VI-',4));
@@ -1213,7 +1219,8 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     // "create invoice" popup store DD/MM/YYYY instead, which the date input can't display and
     // would silently show blank. Normalize whichever format is on file before populating the form.
     const toISO=(d)=>{const p=String(d||'').split('/');return p.length===3?p[2]+'-'+p[1]+'-'+p[0]:d;};
-    setInvForm({...BLANK_INV,...inv,amount:String(inv.amount),invoiceDate:toISO(inv.invoiceDate),bookingDate:toISO(inv.bookingDate||inv.invoiceDate),dueDate:toISO(inv.dueDate),
+    const src=isCreditNote(inv)?cnFlip(inv):inv; // a Credit Note opens with the figures as printed on it
+    setInvForm({...BLANK_INV,...src,amount:String(src.amount),invoiceDate:toISO(inv.invoiceDate),bookingDate:toISO(inv.bookingDate||inv.invoiceDate),dueDate:toISO(inv.dueDate),
       assetLines:(inv.assetLines&&inv.assetLines.length)?inv.assetLines:(inv.assetName?[{id:'AL1',name:inv.assetName,amount:String(inv.amount||'')}]:[])});
     setShowInvModal(true);
   };
@@ -1756,6 +1763,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
                   React.createElement('td',null,
                     pi
                       ?React.createElement('span',{className:'badge '+(openPI?'badge-red':'badge-green')},openPI?'Pending Tax Invoice':'Settled')
+                      :isCreditNote(inv)?React.createElement('span',{className:'badge badge-purple',title:'Reduces what is owed to this vendor'},'Credit Note')
                       :React.createElement('span',{className:`badge ${cleared?'badge-green':overdue?'badge-red':'badge-amber'}`},
                         cleared?'Cleared':overdue?'Overdue':'Pending'
                       )
@@ -2113,8 +2121,9 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
           React.createElement('div',{className:'form-group'},
             React.createElement('label',null,'Doc Nature *'),
             React.createElement('select',{className:'form-control',value:invForm.docNature||'Tax Invoice',onChange:ic('docNature')},
-              ['Tax Invoice','Invoice','Performa Invoice'].map(o=>React.createElement('option',{key:o,value:o},o))
-            )
+              VENDOR_DOC_NATURES.map(o=>React.createElement('option',{key:o,value:o},o))
+            ),
+            isCreditNote(invForm)&&React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:4}},'Enter the figures as printed on the note — it is saved as a minus and reduces this vendor’s balance, the expense and the GST input.')
           ),
           React.createElement('div',{className:'form-group'},React.createElement('label',null,(invForm.docNature==='Performa Invoice'?'PI No. *':'Invoice / Voucher No. *')),React.createElement('input',{className:'form-control',value:invForm.invoiceNo,onChange:ic('invoiceNo'),placeholder:invForm.docNature==='Performa Invoice'?'e.g. PI-2024-001':'e.g. INV-2024-001'}))
         ),

@@ -1295,16 +1295,32 @@ function invoiceMonthBlockMessage(){
 // when its booking month isn't allowed for this user, and nothing about an invoice booked in a
 // locked month may change (except recording payments against it) — the earlier version is kept.
 // opts.system — the app's own automatic writes (recurring bills it creates on schedule): no month-by-role check.
+// ── Credit / Debit Notes from a vendor (Doc Nature). A Credit Note lowers what is owed, so it is
+// saved with every figure negative (amount, taxable, GST, freight, round off) and takes away from
+// the P&L, GST input and the vendor's balance wherever bills are added up. A Debit Note adds to
+// the bill like an invoice. The form always shows the figures as printed on the note. ──
+const VENDOR_DOC_NATURES=['Tax Invoice','Invoice','Performa Invoice','Debit Note','Credit Note'];
+const CN_SIGNED_FIELDS=['amount','taxable','igst','cgst','sgst','freight','roundOff'];
+function isCreditNote(inv){return !!inv&&inv.docNature==='Credit Note';}
+// GST documents — their tax counts as input (a Credit Note's, negative, reduces it)
+function isGstPurchaseDoc(inv){return['Tax Invoice','Debit Note','Credit Note'].includes((inv&&inv.docNature)||'Tax Invoice');}
+// flips the sign of every money field (saving a Credit Note, or opening one in the form)
+function cnFlip(inv){const o={...inv};CN_SIGNED_FIELDS.forEach(k=>{if(o[k]!==''&&o[k]!=null&&isFinite(Number(o[k])))o[k]=-Number(o[k]);});return o;}
+// Tally: a supplier's Credit Note is a Debit Note voucher (purchase return); everything else a Purchase
+function tallyPurchaseVchType(inv){return isCreditNote(inv)?'Debit Note':'Purchase';}
+
 // Same vendor + same invoice number = the same bill entered twice. Numbers are compared ignoring
 // case, spaces, '-', '/' and '.' ("INV-001" = "inv 001"). excludeId: the invoice being edited.
 // Returns the existing invoice, or null. A Tax Invoice booked against a Performa Invoice may carry
-// the PI's number, so a PI and a non-PI never count as duplicates of each other.
+// the PI's number, so a PI and a non-PI never count as duplicates of each other; Credit and Debit
+// Notes run their own number series, so they are only compared with notes of the same kind.
 const normInvoiceNo=n=>String(n==null?'':n).toLowerCase().replace(/[\s\-\/.]/g,'');
+function docSeriesOf(docNature){return docNature==='Performa Invoice'?'pi':docNature==='Credit Note'?'cn':docNature==='Debit Note'?'dn':'inv';}
 function duplicateVendorInvoice(list,vendorId,invoiceNo,docNature,excludeId){
   const k=normInvoiceNo(invoiceNo);if(!k||!vendorId)return null;
-  const isPI=docNature==='Performa Invoice';
+  const series=docSeriesOf(docNature);
   return(list||[]).find(inv=>inv&&inv.id!==excludeId&&String(inv.vendorId)===String(vendorId)
-    &&normInvoiceNo(inv.invoiceNo)===k&&(inv.docNature==='Performa Invoice')===isPI)||null;
+    &&normInvoiceNo(inv.invoiceNo)===k&&docSeriesOf(inv.docNature)===series)||null;
 }
 function duplicateInvoiceMessage(inv,vendorName){
   if(typeof controlHit==='function')controlHit('dupInvoice',null,'b');
@@ -1693,21 +1709,24 @@ function buildTallyPurchaseVouchersXml(invoices,vendorLedgerNameFor,categoryLedg
     const taxable=Number(inv.taxable)||0;
     const total=Number(inv.amount)||0;
     const entries=[];
+    // debit = positive amount (a Credit Note's figures are negative, so its lines come out the other way)
+    const L=(name,a)=>'<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(name)+'</LEDGERNAME><ISDEEMEDPOSITIVE>'+(a>0?'Yes':'No')+'</ISDEEMEDPOSITIVE><AMOUNT>'+(a>0?'':'-')+Math.abs(a).toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>';
     if(gstInputBlocked){
-      entries.push('<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(catLedger)+'</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+total.toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>');
+      entries.push(L(catLedger,total));
     }else{
-      entries.push('<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(catLedger)+'</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+taxable.toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>');
-      if(Number(inv.igst))entries.push('<ALLLEDGERENTRIES.LIST><LEDGERNAME>IGST Input</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+Number(inv.igst).toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>');
-      if(Number(inv.cgst))entries.push('<ALLLEDGERENTRIES.LIST><LEDGERNAME>CGST Input</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+Number(inv.cgst).toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>');
-      if(Number(inv.sgst))entries.push('<ALLLEDGERENTRIES.LIST><LEDGERNAME>SGST Input</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+Number(inv.sgst).toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>');
+      entries.push(L(catLedger,taxable));
+      if(Number(inv.igst))entries.push(L('IGST Input',Number(inv.igst)));
+      if(Number(inv.cgst))entries.push(L('CGST Input',Number(inv.cgst)));
+      if(Number(inv.sgst))entries.push(L('SGST Input',Number(inv.sgst)));
       // Freight is part of the bill total — without it the voucher didn't balance.
-      if(Number(inv.freight))entries.push('<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(catLedger)+'</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+Number(inv.freight).toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>');
-      if(Number(inv.roundOff))entries.push('<ALLLEDGERENTRIES.LIST><LEDGERNAME>Round Off</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>'+Number(inv.roundOff).toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>');
+      if(Number(inv.freight))entries.push(L(catLedger,Number(inv.freight)));
+      if(Number(inv.roundOff))entries.push(L('Round Off',Number(inv.roundOff)));
     }
-    entries.push('<ALLLEDGERENTRIES.LIST><LEDGERNAME>'+escapeTallyXml(vendorLedger)+'</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>-'+total.toFixed(2)+'</AMOUNT></ALLLEDGERENTRIES.LIST>');
-    return '<VOUCHER VCHTYPE="Purchase" ACTION="Create">'
+    entries.push(L(vendorLedger,-total));
+    const vtype=tallyPurchaseVchType(inv);
+    return '<VOUCHER VCHTYPE="'+vtype+'" ACTION="Create">'
       +'<DATE>'+toTallyDate(inv.bookingDate||inv.invoiceDate)+'</DATE>'
-      +'<VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>'
+      +'<VOUCHERTYPENAME>'+vtype+'</VOUCHERTYPENAME>'
       +'<REFERENCE>'+escapeTallyXml(inv.invoiceNo)+'</REFERENCE>'
       +'<NARRATION>'+escapeTallyXml(tallyPurchaseNarration(inv,vendorLedger))+'</NARRATION>'
       +'<PARTYLEDGERNAME>'+escapeTallyXml(vendorLedger)+'</PARTYLEDGERNAME>'
@@ -1951,7 +1970,8 @@ function buildTallyEntryVouchersXml(entries){
 // narration repeated on each of its rows, so Tally's Excel import groups them by Voucher No. The
 // ledger lines are the same as in the XML files (Purchase, Bank, Vendor payments).
 function tallyPurchaseNarration(inv,vendorLedger){
-  return (inv.desc||inv.category||'Purchase')+' — Invoice '+(inv.invoiceNo||'')+(inv.invoiceDate?' dated '+inv.invoiceDate:'')+' from '+vendorLedger;
+  const doc=inv.docNature==='Credit Note'||inv.docNature==='Debit Note'?inv.docNature:'Invoice';
+  return (inv.desc||inv.category||'Purchase')+' — '+doc+' '+(inv.invoiceNo||'')+(inv.invoiceDate?' dated '+inv.invoiceDate:'')+' from '+vendorLedger;
 }
 function tallyBankNarration(r){return String(r.description||'')+(r.refNo?' (Ref: '+r.refNo+')':'');}
 function tallyVoucherEntries(o){
@@ -1970,7 +1990,7 @@ function tallyVoucherEntries(o){
       if(Number(inv.roundOff))lines.push(['Round Off',Number(inv.roundOff)]);
     }
     lines.push([vendor,-total]);
-    out.push({iso:tallyIsoOf(inv.bookingDate||inv.invoiceDate),date:dmy(inv.bookingDate||inv.invoiceDate),type:'Purchase',ref:inv.invoiceNo||'',refDate:dmy(inv.invoiceDate),narr:tallyPurchaseNarration(inv,vendor),lines});
+    out.push({iso:tallyIsoOf(inv.bookingDate||inv.invoiceDate),date:dmy(inv.bookingDate||inv.invoiceDate),type:tallyPurchaseVchType(inv),ref:inv.invoiceNo||'',refDate:dmy(inv.invoiceDate),narr:tallyPurchaseNarration(inv,vendor),lines});
   });
   (o.bankRows||[]).filter(r=>r.debit||r.credit).forEach(r=>{
     const cp=tallyBankCounterparty(r,o.vendors,o.vName,o.map),isDr=Number(r.debit)>0,amt=isDr?Number(r.debit):Number(r.credit);
