@@ -2217,10 +2217,9 @@ function operatingExpensesFor(salonId,year,month){
     // Vendor bills + the Recurring Expenses estimate — a real invoice replaces the estimate on
     // vendorWinsOverRecurring lines, else both add (plVendorFor).
     amt+=plVendorFor(salonId,l,year,month,variable.used,recurringAmt).add;
-    // Net Bank Charges from Collection Sheet's Reco table — added straight through, no sign
-    // flip: a positive Net Bank Charges there lands here as a positive expense, a negative one
-    // reduces this line.
-    if(l.alsoNetBankCharges)amt+=netBankChargesFor(salonId,year,month);
+    // Net Bank Charges from Collection Sheet's Reco table, sign flipped: a negative Net Bank
+    // Charges there (less money landed than sold) is a charge here, a positive one reduces this line.
+    if(l.alsoNetBankCharges)amt-=netBankChargesFor(salonId,year,month);
     if(l.credit)amt=-amt; // money recovered, not spent — reduces the section total instead of adding to it
     return{name:l.name,amt};
   });
@@ -2242,7 +2241,7 @@ function operatingExpenseAnnexureFor(salonId,year,month,lineName){
   const bankAmt=line.alsoNature?bankStatementNatureDebitSumFor(salonId,year,month,line.alsoNature):0;
   const variable=recurringType?variableRecurringSumFor(salonId,recurringType,year,month):{amt:0,rows:[],used:new Set()};
   const pv=plVendorFor(salonId,line,year,month,variable.used,0);const vendorAmt=pv.vendorAmt;
-  const recoAmt=line.alsoNetBankCharges?netBankChargesFor(salonId,year,month):0;
+  const recoAmt=line.alsoNetBankCharges?-netBankChargesFor(salonId,year,month):0; // as it lands on the P&L (sign flipped)
   const recurringTotalRaw=recurring.filter(it=>it.status==='Active'&&!isSpreadRecurring(it)).reduce((s,it)=>s+recurringExpenseMonthlyAmt(it,year,month,salonId),0);
   const vendorWins=pv.vendorWins;
   // Group-based lines (no single `row`) can bundle several distinct Daily Sales & Exp rows under
