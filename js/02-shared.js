@@ -1254,7 +1254,9 @@ function saveBankStatementRows(rows,salonId){
   safeLocalSet(outletKey('salonos_bank_statement_rows',salonId),JSON.stringify(rows));
 }
 function loadVendorInvoices(salonId){
-  try{const raw=JSON.parse(cachedLocalGet(outletKey('salonos_vendor_invoices',salonId))||'[]');if(Array.isArray(raw))return ensureVendorInvoiceIds(raw);}catch(e){}
+  try{const raw=JSON.parse(cachedLocalGet(outletKey('salonos_vendor_invoices',salonId))||'[]');
+    // Debit Notes saved while they still added to the bill (positive) are read as the minus they now are
+    if(Array.isArray(raw))return ensureVendorInvoiceIds(raw.map(i=>i&&i.docNature==='Debit Note'&&Number(i.amount)>0?cnFlip(i):i));}catch(e){}
   return [];
 }
 // Booking month of an invoice ('YYYY-MM') — booking date, else invoice date.
@@ -1295,19 +1297,20 @@ function invoiceMonthBlockMessage(){
 // when its booking month isn't allowed for this user, and nothing about an invoice booked in a
 // locked month may change (except recording payments against it) — the earlier version is kept.
 // opts.system — the app's own automatic writes (recurring bills it creates on schedule): no month-by-role check.
-// ── Credit / Debit Notes from a vendor (Doc Nature). A Credit Note lowers what is owed, so it is
-// saved with every figure negative (amount, taxable, GST, freight, round off) and takes away from
-// the P&L, GST input and the vendor's balance wherever bills are added up. A Debit Note adds to
-// the bill like an invoice. The form always shows the figures as printed on the note. ──
+// ── Credit / Debit Notes (Doc Nature) — a supplier's Credit Note, or the Debit Note the outlet
+// raises on the supplier (purchase return / rate difference). Both lower what is owed, so they are
+// saved with every figure negative (amount, taxable, GST, freight, round off) and take away from
+// the P&L, GST input and the vendor's balance wherever bills are added up. The form always shows
+// the figures as printed on the note. ──
 const VENDOR_DOC_NATURES=['Tax Invoice','Invoice','Performa Invoice','Debit Note','Credit Note'];
 const CN_SIGNED_FIELDS=['amount','taxable','igst','cgst','sgst','freight','roundOff'];
-function isCreditNote(inv){return !!inv&&inv.docNature==='Credit Note';}
+function isReducingNote(inv){return !!inv&&(inv.docNature==='Credit Note'||inv.docNature==='Debit Note');}
 // GST documents — their tax counts as input (a Credit Note's, negative, reduces it)
 function isGstPurchaseDoc(inv){return['Tax Invoice','Debit Note','Credit Note'].includes((inv&&inv.docNature)||'Tax Invoice');}
 // flips the sign of every money field (saving a Credit Note, or opening one in the form)
 function cnFlip(inv){const o={...inv};CN_SIGNED_FIELDS.forEach(k=>{if(o[k]!==''&&o[k]!=null&&isFinite(Number(o[k])))o[k]=-Number(o[k]);});return o;}
-// Tally: a supplier's Credit Note is a Debit Note voucher (purchase return); everything else a Purchase
-function tallyPurchaseVchType(inv){return isCreditNote(inv)?'Debit Note':'Purchase';}
+// Tally: either note is a Debit Note voucher (purchase return); everything else a Purchase
+function tallyPurchaseVchType(inv){return isReducingNote(inv)?'Debit Note':'Purchase';}
 
 // Same vendor + same invoice number = the same bill entered twice. Numbers are compared ignoring
 // case, spaces, '-', '/' and '.' ("INV-001" = "inv 001"). excludeId: the invoice being edited.

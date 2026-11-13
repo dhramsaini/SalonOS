@@ -1974,8 +1974,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
             )),
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Doc Nature *'),
             React.createElement('select',{className:'form-control',value:invForm.docNature,onChange:ic2('docNature')},
-              // no Credit Note here — this form always records a cash payment (book those in Vendors)
-              VENDOR_DOC_NATURES.filter(d=>d!=='Credit Note'||invForm.docNature===d).map(d=>React.createElement('option',{key:d},d)))),
+              // no Credit / Debit Note here — this form always records a cash payment (book notes in Vendors)
+              VENDOR_DOC_NATURES.filter(d=>!isReducingNote({docNature:d})||invForm.docNature===d).map(d=>React.createElement('option',{key:d},d)))),
           React.createElement('div',{className:'form-group'},React.createElement('label',null,'Invoice / Voucher No. *'),
             React.createElement('input',{className:'form-control',value:invForm.invoiceNo,onChange:ic2('invoiceNo'),placeholder:'e.g. INV-2024-001'}))
         ),
