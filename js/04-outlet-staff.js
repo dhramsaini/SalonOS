@@ -1700,11 +1700,15 @@ function bankStatementNatureDebitSumFor(salonId,year,month,natureValue){
 function netBankChargesFor(salonId,year,month){
   const cradleeRows=collectionRowsForMonth(salonId,year,month);
   if(!cradleeRows.length)return 0;
+  // Wallet / District / Luzo / Online count as card exactly as Collection Reco's card-column
+  // setting says (all on unless changed there) — without it the two disagreed by those sales.
+  let inc={wallet:true,district:true,luzo:true,online:true};
+  try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_cs_card_include_cols',salonId)));if(v&&typeof v==='object')inc=v;}catch(e){}
   const byDate={};
   cradleeRows.forEach(r=>{
     if(!byDate[r.invoiceDate])byDate[r.invoiceDate]={cashCradlee:0,cardCradlee:0,upiCradlee:0};
     byDate[r.invoiceDate].cashCradlee+=Number(r.cash)||0;
-    byDate[r.invoiceDate].cardCradlee+=Number(r.card)||0;
+    byDate[r.invoiceDate].cardCradlee+=(Number(r.card)||0)+['wallet','district','luzo','online'].reduce((t,k)=>t+(inc[k]?(Number(r[k])||0):0),0);
     byDate[r.invoiceDate].upiCradlee+=Number(r.upi)||0;
   });
   const bankSettlements=loadBankSettlementsByDate(salonId);
