@@ -141,7 +141,7 @@ function InvoiceIntake({vendors,salonId,onUse,onManual,onClose,initial}){
           h('div',{className:'form-group',key:'docNature'},
             h('label',null,'Doc Nature'),
             h('select',{className:'form-control',value:data.docNature||'Tax Invoice',onChange:e=>set('docNature',e.target.value)},
-              ['Tax Invoice','Invoice','Performa Invoice'].map(o=>h('option',{key:o,value:o},o)))
+              VENDOR_DOC_NATURES.map(o=>h('option',{key:o,value:o},o)))
           ),
           field(isPI?'PI no.':'Invoice no.','invoiceNo'),
           field(isPI?'PI date':'Invoice date','invoiceDate','date')
