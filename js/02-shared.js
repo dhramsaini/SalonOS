@@ -2627,12 +2627,14 @@ function payGrossFor(e,sid){
 }
 function salPayView(e,sid){if(!e||e.ctc!=null)return e;return{...e,ctc:Number(e.gross)||0,gross:payGrossFor(e,sid)};}
 // ── Employees with no attendance in the month (Controls → hideNoAttendance) are left out of Salary
-// Working and Incentive Working — nobody present, on a half day or on paid leave all month. Someone
-// is still shown if they have arrears this month or a figure typed by hand (salary), or sales /
-// overtime / penalty / a typed figure (incentive), so no amount is ever dropped silently.
+// Working and Incentive Working — nobody present, on a half day or on paid leave all month, and no
+// days added through the Adjustment (a negative Adjustment adds payable days — some outlets give the
+// month's days that way instead of marking each day). Someone is still shown if they have arrears
+// this month or a figure typed by hand (salary), or sales / overtime / penalty / a typed figure
+// (incentive), so no amount is ever dropped silently.
 function hasMonthAttendance(sid,e,y,m){
   try{const rec=loadAttendance(sid)[attMonthKey(e.id,y,m)];if(!rec)return false;const s=attSummaryFor(e,y,m,rec);
-    return((Number(s.present)||0)+(Number(s.half)||0)+(Number(s.paidLeave)||0))>0;}catch(x){return true;}
+    return((Number(s.present)||0)+(Number(s.half)||0)+(Number(s.paidLeave)||0))>0||(Number(s.adjustment)||0)<0;}catch(x){return true;}
 }
 function hideNoAttOn(sid){return typeof controlOn==='function'&&controlOn('hideNoAttendance',sid);}
 function swShowEmployee(sid,e,y,m){
