@@ -1726,6 +1726,7 @@ function ReportsSheet({salon,period}={}){
 
 function FixedAssetsCore({salon,onNavTab}={}){
   const salonId=salon?.id;
+  const {error:faError}=useToast();
   const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
   const [refreshTick,setRefreshTick]=useState(0);
   const doRefresh=()=>setRefreshTick(t=>t+1);

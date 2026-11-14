@@ -1940,7 +1940,7 @@ function StaffReportSheet({period,salon}={}){
           React.createElement('div',{className:'modal-title',style:{marginBottom:0,paddingBottom:0,border:'none'}},editIdx!=null?'Edit Staff Record':'Add Staff Record Manually'),
           React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowManualModal(false)},'\u2715 Close')
         ),
-        React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:14,paddingBottom:12,borderBottom:'1px solid var(--border)'}},'Fills the same '+MONTHS[manualMonthCal.month]+' '+manualMonthCal.year+' Staff Work Report used by the CSV/Excel upload above — this row will show up in Incentive Working exactly the same way.'),
+        React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:14,paddingBottom:12,borderBottom:'1px solid var(--border)'}},'Fills the same '+PP_MONTHS[manualMonthCal.month]+' '+manualMonthCal.year+' Staff Work Report used by the CSV/Excel upload above — this row will show up in Incentive Working exactly the same way.'),
         React.createElement('div',{className:'form-group',style:{marginBottom:14}},
           React.createElement('label',null,'Pick a Master Salary employee (optional — autofills Emp Id / Name / Designation / Salary)'),
           React.createElement('select',{className:'form-control',value:'',onChange:e=>{if(e.target.value)applyManualEmployee(e.target.value);}},

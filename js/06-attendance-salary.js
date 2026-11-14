@@ -171,7 +171,7 @@ function DailyIncentiveCore({period,salon}={}){
     if(!groups.length){diError('Nothing to add — the selected entries have no incentive amount.');return;}
     const salonIdLocal=salon?.id;
     const freshRows=loadBankStatementRows(salonIdLocal);
-    const todayDmy=fmtDate(localTodayIso());
+    const todayDmy=isoToDmyText(localTodayIso());
     const nowYear=new Date().getFullYear(),nowMonth=new Date().getMonth();
     const nextRows=[...freshRows];
     groups.forEach((group,gi)=>{

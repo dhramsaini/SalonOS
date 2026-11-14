@@ -1315,6 +1315,7 @@ React.createElement.apply(React,['tr',null].concat([
 // much, and where it goes. Pulls the same per-employee data (incWorkingsFor) Incentive Working
 // itself uses, so Total Incentive here always matches the main sheet — nothing recomputed. ──
 function IncentivePaymentSheet({period,salon}={}){
+  const {error:advError}=useToast();
   const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
   const today=new Date();
   const initCal=periodToCalendar(period);
