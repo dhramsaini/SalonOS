@@ -3,9 +3,11 @@
 //  2. no top-level name is declared in two files (a runtime "already been declared" error)
 //  3. nothing runs at load time using a name declared in a LATER file (the files are separate
 //     classic scripts sharing one global scope, loaded in index.html order)
-//  4. APP_VERSION (js/01-foundation.js) == version.json == every ?v= in index.html
+//  4. APP_VERSION (js/01-foundation.js) == version.json, and every ?v= in index.html is that
+//     file's content fingerprint (first 10 hex of SHA-1), so only changed files re-download
 // Usage: node tools/check.mjs   (exit code 1 on any problem)
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import * as acorn from 'acorn';
 
 const errors = [];
@@ -19,7 +21,11 @@ for (const f of onDisk) if (!scripts.some(s => s.file === f)) errors.push(`${f} 
 const version = JSON.parse(fs.readFileSync('version.json', 'utf8')).version;
 const appVersion = (fs.readFileSync('js/01-foundation.js', 'utf8').match(/const APP_VERSION='([^']*)'/) || [])[1];
 if (appVersion !== version) errors.push(`APP_VERSION (${appVersion}) != version.json (${version})`);
-for (const s of scripts) if (s.v !== version) errors.push(`${s.file}?v=${s.v} != version.json (${version})`);
+for (const s of scripts) {
+  if (!fs.existsSync(s.file)) continue;
+  const want = crypto.createHash('sha1').update(fs.readFileSync(s.file)).digest('hex').slice(0, 10);
+  if (s.v !== want) errors.push(`${s.file}?v=${s.v} is not the file's fingerprint (${want}); run tools/bump-version.ps1`);
+}
 
 // Parse + collect top-level declarations and load-time references
 const declared = new Map(); // name -> file index
