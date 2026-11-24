@@ -356,6 +356,7 @@ function MasterDashboard({selFY,setSelFY,FYS,accessibleSalons,dashTab,setDashTab
           h(ComplianceRegister,{accessibleSalons,onOpenOutletTab}))
       :h(MasterDashboardOverview,{selFY,setSelFY,FYS,accessibleSalons}));
 }
+const _mdAggCache={key:null,aggs:null};
 function MasterDashboardOverview({selFY,setSelFY,FYS,accessibleSalons}){
   const [selOutlet,setSelOutlet]=useState('all');
   // Scoped to accessibleSalons (the same outlet-permission list the sidebar/outlet switcher
@@ -391,8 +392,10 @@ function MasterDashboardOverview({selFY,setSelFY,FYS,accessibleSalons}){
 
   // A full year of P&L for every outlet (~1.5 s): rebuilt only when the year, the outlets shown or
   // any stored data changes, not on every redraw (cloud checks, timers) of the screen around it.
-  const aggs=useMemo(()=>targetSalons.map(s=>({salon:s,...fyAgg(Number(s.id))})),
-    [selFY,targetSalons.map(s=>s.id).join(','),storeVersion(),localIsoOf(today)]);
+  // Kept outside the component so it also survives switching tabs and coming back.
+  const aggKey=[selFY,targetSalons.map(s=>s.id).join(','),storeVersion(),localIsoOf(today)].join('|');
+  if(_mdAggCache.key!==aggKey){_mdAggCache.key=aggKey;_mdAggCache.aggs=targetSalons.map(s=>({salon:s,...fyAgg(Number(s.id))}));}
+  const aggs=_mdAggCache.aggs;
   const totals=aggs.reduce((t,a)=>({
     revenue:t.revenue+a.revenue,expenses:t.expenses+a.expenses,netProfit:t.netProfit+a.netProfit,
     salaries:t.salaries+a.salaries,pfEr:t.pfEr+a.pfEr,esicEr:t.esicEr+a.esicEr,
