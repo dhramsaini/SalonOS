@@ -536,6 +536,7 @@ function MasterSalarySheet({salon}={}){
   const [deleteTarget,setDeleteTarget]=useState(null);
   const [showBulkDeleteConfirm,setShowBulkDeleteConfirm]=useState(false);
   const [viewEmp,setViewEmp]=useState(null);
+  const [showSalHist,setShowSalHist]=useState(false);
   const [editMode,setEditMode]=useState(false);
   const [form,setForm]=useState(BLANK);
   const [importRows,setImportRows]=useState([]);
@@ -612,15 +613,22 @@ function MasterSalarySheet({salon}={}){
       pt:!!(salon&&salon.ptApplicable)};
     if(typeof ecEmployeeOk==='function'&&!ecEmployeeOk(salon&&salon.id,emp,editMode?employees.find(e=>e.id===emp.id):null,employees))return;
     if(typeof msSaveOk==='function'&&!msSaveOk(salon&&salon.id,emp))return;
+    // Advances, penalties and Daily Sales & Exp lines find the employee by name, so two people can't share one.
+    {const prevRec=editMode?employees.find(e=>e.id===emp.id):null;const nk=s=>String(s||'').trim().toLowerCase();
+     if((!prevRec||nk(prevRec.name)!==nk(emp.name))&&employees.some(e=>e.id!==emp.id&&nk(e.name)===nk(emp.name))){alert('Another employee here is already named "'+String(emp.name).trim()+'". Add something to tell them apart (e.g. an initial), since advances and salary entries are matched by name.');return;}}
+    // A corrected name or Billing ID is carried into advances, penalties, Daily Sales & Exp lines,
+    // daily incentives, bank statement links and staff work reports (js/53 msCascadeEmployeeChange).
+    const cascade=(before,after)=>{if(typeof msCascadeEmployeeChange!=='function')return;const n=msCascadeEmployeeChange(salon&&salon.id,before,after);if(n)empToast('Updated '+n+' linked record'+(n===1?'':'s')+' (advances, salary entries, incentives, bank links) to the new details','success');};
     if(editMode&&typeof salRevNeeded==='function'&&salRevNeeded(salon&&salon.id,employees.find(e=>e.id===emp.id),emp)){
       const before=employees.find(e=>e.id===emp.id);
       salRevAsk(salon&&salon.id,before,emp).then(r=>{if(!r)return;const rec=r.rec;
+        cascade(before,emp);
         setEmployees(prev=>prev.map(e=>e.id===rec.id?rec:e));
         logAuditEvent(salon&&salon.id,{entity:'Employee',entityId:rec.id,action:'Master Salary change',summary:rec.name+': '+salChangedFields(before,emp).map(k=>(SAL_FIELD_LABEL[k]||k)+' '+salShowV(k,before[k])+' → '+salShowV(k,emp[k])).join('; ')+' — with effect from '+salYmLabel(r.plan.start)+(r.plan.arrears.length?' · arrears ₹'+r.plan.arrears.reduce((t,a)=>t+a.amount,0).toLocaleString('en-IN')+' in '+salYmLabel(r.plan.start):'')});
         setShowAddModal(false);setForm(BLANK);setEditMode(false);});
       return;
     }
-    if(editMode){setEmployees(prev=>prev.map(e=>e.id===emp.id?emp:e));}
+    if(editMode){cascade(employees.find(e=>e.id===emp.id),emp);setEmployees(prev=>prev.map(e=>e.id===emp.id?emp:e));}
     else{setEmployees(prev=>[...prev,emp]);}
     logAuditEvent(salon&&salon.id,{entity:'Employee',entityId:emp.id,action:editMode?'Edited':'Added',summary:emp.name+' — '+emp.desig+' — Gross CTC ₹'+Math.round(emp.gross).toLocaleString('en-IN')});
     setShowAddModal(false);setForm(BLANK);setEditMode(false);
@@ -833,7 +841,9 @@ function MasterSalarySheet({salon}={}){
   // TAB sections in Add/Edit modal
   const personalFields=()=>React.createElement('div',null,
     React.createElement('div',{className:'form-row cols4'},
-      React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-14'},'Employee Id'),React.createElement('input',{id:'f-14',className:'form-control',value:form.id,onChange:fc('id'),placeholder:'Auto if blank'})),
+      React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-14'},'Employee Id'),React.createElement('input',{id:'f-14',className:'form-control',value:form.id,onChange:fc('id'),placeholder:'Auto if blank',
+        // Attendance, salary, advances and incentives are all filed under this Id, so it is fixed once the employee is saved.
+        disabled:editMode,title:editMode?'Fixed once saved: attendance, salary and advances are filed under this Id':''})),
       React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-15'},'Employee Id as per Billing Software'),React.createElement('input',{id:'f-15',className:'form-control',value:form.billingId,onChange:fc('billingId'),placeholder:'Billing software ID'})),
       React.createElement('div',{className:'form-group'},React.createElement('label',{htmlFor:'f-16'},'Full Name *'),React.createElement('input',{id:'f-16',className:'form-control',value:form.name,onChange:fc('name'),placeholder:'Full name'})),
       React.createElement('div',{className:'form-group'},React.createElement('label',null,"Father's Name"),React.createElement('input',{className:'form-control',value:form.fatherName,onChange:fc('fatherName'),placeholder:"Father's name"}))
@@ -985,9 +995,12 @@ function MasterSalarySheet({salon}={}){
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setImportRows([]);setImportError('');setShowImportModal(true);}},'⬆ Import'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},onClick:()=>exportToExcel(filtered)},'⬇ Export Excel'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)',borderColor:'rgba(255,107,107,0.4)'},onClick:()=>exportToPDF(filtered)},'⬇ Export PDF'),
+        typeof SalHistoryAll==='function'&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowSalHist(true)},'📜 Salary History'),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{setForm(BLANK);setEditMode(false);setActiveTab('personal');setShowAddModal(true);}},'+ Add Employee')
       )
     ),
+    showSalHist&&typeof SalHistoryAll==='function'&&React.createElement(SalHistoryAll,{sid:salon&&salon.id,employees,onClose:()=>setShowSalHist(false),
+      onChangeEmp:ne=>{setEmployees(prev=>prev.map(e=>e.id===ne.id?ne:e));setViewEmp(v=>v&&v.id===ne.id?ne:v);empToast('Salary history saved','success');}}),
     exportMsg&&React.createElement('div',{style:{background:'rgba(76,175,125,0.12)',border:'1px solid rgba(76,175,125,0.3)',borderRadius:'var(--r)',padding:'8px 14px',marginBottom:12,fontSize:12,color:'var(--green)',display:'flex',alignItems:'center',gap:8}},exportMsg),
 
     // ── Sub tabs: Employees | Inactive Employees ──

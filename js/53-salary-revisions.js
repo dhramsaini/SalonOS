@@ -151,3 +151,128 @@ function PfCoverageStrip({sid,y,m}){
     h('b',null,'⚠ PF must be on for '+L.length+' employee'+(L.length===1?'':'s')+': '),L.map(e=>e.name+' (Basic ₹'+Math.round(Number(e.basic)||0).toLocaleString('en-IN')+')').join(', '),
     h('div',{style:{fontSize:11.5,color:'var(--text2)',marginTop:3}},'From 17 Sep 2026 the PF wage ceiling is ₹25,000, so employees with EPF wages (Basic) up to ₹25,000 must be enrolled in EPF, EPS and EDLI. Tick PF for them in Master Salary (Employment & Salary → Statutory Applicability).'));
 }
+
+// ── Salary History (Master Salary → 📜 Salary History): every employee's pay changes in one list,
+// each one editable (the month it takes effect, the pay parts and the reason) or removable. ──
+// The pay history of an employee, starting with the pay before the first recorded change.
+function salHistOf(e){
+  if(Array.isArray(e&&e.payHistory)&&e.payHistory.length)return e.payHistory.slice().sort((a,b)=>String(a.from||'').localeCompare(String(b.from||'')));
+  return[{from:null,...salPayOf(e||{}),vals:salSnap(e||{}),at:(e&&e.createdAt)||null,by:'',reason:'Pay as in Master Salary'}];
+}
+// Month an entry starts paying (the first entry covers everything from joining).
+function salEntryStart(e,r){return r.from||(e&&e.doj?String(e.doj).slice(0,7):null);}
+// An entry can be changed only while the month it starts in is still open (not locked / final).
+function salEntryEditable(sid,e,r){const s=salEntryStart(e,r);return !s||!salLocked(sid,s);}
+// Gross CTC for given pay parts, worked out the same way Master Salary does on save.
+function salGrossFor(sid,e,parts){
+  const x={...e,...parts};const rec=typeof outletSettings==='function'?outletSettings(sid):null;
+  if(typeof ctcFor==='function')return ctcFor(x,rec);
+  return['basic','hra','conv','special'].reduce((t,k)=>t+(Number(x[k])||0),0);
+}
+// The employee record with this history; its own pay = the entry that applies this month.
+function salWithHistory(e,hist){
+  const H=hist.slice().sort((a,b)=>String(a.from||'').localeCompare(String(b.from||'')));
+  const rec={...e,payHistory:H};const cur=salPickEntry(H,salNowYm());
+  if(cur){if(cur.vals)Object.keys(cur.vals).forEach(k=>{if(!SAL_HIST_SKIP.has(k)&&!SAL_PAY_FIELDS.includes(k))rec[k]=cur.vals[k];});SAL_PAY_FIELDS.forEach(k=>{rec[k]=Number(cur[k])||0;});}
+  return rec;
+}
+function SalHistoryEditModal({sid,emp,entry,onClose,onSave}){
+  const h=React.createElement;const isNew=!entry;const base=entry||salPickEntry(salHistOf(emp),salNowYm())||salPayOf(emp);
+  const [f,setF]=useState({from:isNew?salYmAdd(salNowYm(),1):(entry.from||''),basic:String(Number(base.basic)||0),hra:String(Number(base.hra)||0),conv:String(Number(base.conv)||0),special:String(Number(base.special)||0),reason:isNew?'':(entry.reason||'')});
+  const set=k=>ev=>{const v=ev.target.value;setF(p=>({...p,[k]:v}));};
+  const parts={basic:Number(f.basic)||0,hra:Number(f.hra)||0,conv:Number(f.conv)||0,special:Number(f.special)||0};
+  const gross=salGrossFor(sid,{...emp,...((entry&&entry.vals)||{})},parts);
+  const isFirst=!isNew&&entry.from==null;
+  const save=()=>{
+    const from=isFirst?null:f.from;
+    if(!isFirst&&!/^\d{4}-\d{2}$/.test(from||'')){window.alert('Pick the month this pay takes effect from.');return;}
+    if(!isFirst&&salLocked(sid,from)){window.alert(salYmLabel(from)+' is locked (month closed / final), so pay for it can’t change here. Pick a later month. Arrears for locked months are added when you change pay through Edit employee.');return;}
+    const hist=salHistOf(emp);
+    if(!isFirst&&hist.some(r=>r!==entry&&r.from===from)){window.alert('There is already a pay change from '+salYmLabel(from)+'. Edit that one instead.');return;}
+    if(!(parts.basic>0)){window.alert('Basic must be more than 0.');return;}
+    const who=(typeof currentSessionUser==='function'&&(currentSessionUser()||{}).name)||'';
+    const vals=(entry&&entry.vals)||salSnap(emp);
+    const next={...(entry||{}),from,...parts,gross,vals:{...vals,...parts,gross},reason:f.reason.trim(),at:(entry&&entry.at)||new Date().toISOString(),by:(entry&&entry.by)||who,
+      changed:(entry&&entry.changed)||SAL_PAY_FIELDS.filter(k=>Math.round(Number(base[k])||0)!==Math.round(Number(k==='gross'?gross:parts[k])||0)),editedAt:isNew?undefined:new Date().toISOString(),editedBy:isNew?undefined:who};
+    const H=isNew?[...hist,next]:hist.map(r=>r===entry?next:r);
+    onSave(salWithHistory(emp,H),(isNew?'Pay change added':'Pay change edited')+': '+emp.name+' — '+salM(gross)+(from?' from '+salYmLabel(from):' (pay from joining)'));
+  };
+  const num=(k,l)=>h('div',{className:'form-group'},h('label',null,l),h('input',{type:'number',className:'form-control',value:f[k],onChange:set(k)}));
+  return h('div',{className:'modal-overlay',style:{zIndex:1100},onClick:onClose},h('div',{className:'modal',style:{width:520,maxWidth:'96vw'},onClick:ev=>ev.stopPropagation()},
+    h('div',{className:'modal-title'},(isNew?'Add pay change — ':'Edit pay change — ')+(emp.name||'')),
+    isFirst?h('div',{style:{fontSize:12.5,color:'var(--text2)',marginBottom:10}},'Pay before the first recorded change (from joining).')
+      :h('div',{className:'form-group'},h('label',null,'With effect from'),h('input',{type:'month',className:'form-control',value:f.from,onChange:set('from')})),
+    h('div',{className:'form-row cols2'},num('basic','Basic (₹)'),num('hra','HRA (₹)')),
+    h('div',{className:'form-row cols2'},num('conv','Conveyance (₹)'),num('special','Special allowance (₹)')),
+    h('div',{style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'8px 12px',fontSize:12.5,marginBottom:10}},'Gross CTC (incl. employer PF / ESIC): ',h('b',null,salM(gross))),
+    h('div',{className:'form-group'},h('label',null,'Reason'),h('input',{className:'form-control',value:f.reason,onChange:set('reason'),placeholder:'e.g. Annual increment'})),
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:10}},'Salary Working, payslips, P&L and every other screen use this pay for the months it covers. Arrears already worked out for locked months are not changed here; see the employee’s view window.'),
+    h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:onClose},'Cancel'),h('button',{className:'btn btn-primary',onClick:save},isNew?'Add':'Save'))));
+}
+function SalHistoryAll({sid,employees,onChangeEmp,onClose}){
+  const h=React.createElement;const [q,setQ]=useState('');const [edit,setEdit]=useState(null);const [showAll,setShowAll]=useState(false);
+  const now=salNowYm();
+  const rows=[];(employees||[]).filter(e=>showAll||e.status!=='Inactive').forEach(e=>{const H=salHistOf(e);const cur=salPickEntry(H,now);
+    H.forEach((r,i)=>rows.push({e,r,prev:i?H[i-1]:null,cur:r===cur,sched:!!(r.from&&r.from>now),first:i===0}));});
+  const qq=q.trim().toLowerCase();
+  const shown=rows.filter(x=>!qq||String(x.e.name||'').toLowerCase().includes(qq)||String(x.e.id||'').toLowerCase().includes(qq)||String(x.e.desig||'').toLowerCase().includes(qq));
+  shown.sort((a,b)=>String(a.e.name||'').localeCompare(String(b.e.name||''))||String(b.r.from||'').localeCompare(String(a.r.from||'')));
+  const save=(rec,summary)=>{onChangeEmp(rec);setEdit(null);try{logAuditEvent(sid,{entity:'Employee',entityId:rec.id,action:'Salary history',summary});}catch(x){}};
+  const remove=x=>{if(!window.confirm('Remove the pay change from '+salYmLabel(x.r.from)+' ('+salM(x.r.gross)+') for '+x.e.name+'?\n\nThe months it covered go back to the pay before it.'))return;
+    save(salWithHistory(x.e,salHistOf(x.e).filter(r=>r!==x.r)),'Pay change removed: '+x.e.name+' — '+salM(x.r.gross)+' from '+salYmLabel(x.r.from));};
+  const td={padding:'6px 8px',fontSize:12.5,borderBottom:'1px solid var(--border)',verticalAlign:'top'};const th={...td,fontSize:11,fontWeight:700,color:'var(--text3)',textAlign:'left',position:'sticky',top:0,background:'var(--bg2)'};
+  const diff=(x,k)=>{const v=Math.round(Number(x.r[k])||0);const p=x.prev?Math.round(Number(x.prev[k])||0):null;
+    return h('td',{style:{...td,textAlign:'right',whiteSpace:'nowrap'}},salM(v),p!=null&&p!==v&&h('div',{style:{fontSize:10.5,color:v>p?'var(--green)':'var(--red)'}},(v>p?'+ ':'− ')+salM(Math.abs(v-p))));};
+  return h('div',{className:'modal-overlay',onClick:onClose},h('div',{className:'modal',style:{width:1100,maxWidth:'97vw',maxHeight:'92vh',display:'flex',flexDirection:'column'},onClick:ev=>ev.stopPropagation()},
+    h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:10}},
+      h('div',{className:'modal-title',style:{margin:0,padding:0,border:'none',flex:1}},'📜 Salary History'),
+      h('input',{className:'form-control',style:{width:220},placeholder:'Search name, ID, designation',value:q,onChange:ev=>setQ(ev.target.value)}),
+      h('label',{style:{fontSize:12,display:'flex',gap:6,alignItems:'center'}},h('input',{type:'checkbox',checked:showAll,onChange:ev=>setShowAll(ev.target.checked)}),'Include inactive'),
+      h('button',{className:'btn btn-ghost btn-sm',onClick:onClose},'✕ Close')),
+    !salRevOn(sid)&&h('div',{className:'help-note',style:{marginBottom:8}},'Month-wise pay changes are switched off for this outlet (Master Settings → Controls → Master Salary changes ask “with effect from”), so only the current pay is used for every month.'),
+    h('div',{style:{overflow:'auto',flex:1}},h('table',{style:{width:'100%',borderCollapse:'collapse'}},
+      h('thead',null,h('tr',null,['Employee','Effective from','Basic','HRA','Conv.','Special','Gross CTC','What changed · reason','Recorded',''].map((t,i)=>h('th',{key:i,style:{...th,textAlign:i>=2&&i<=6?'right':'left'}},t)))),
+      h('tbody',null,shown.length?shown.map((x,i)=>{const ok=salEntryEditable(sid,x.e,x.r);
+        return h('tr',{key:x.e.id+'|'+(x.r.from||'')+'|'+i,style:{background:x.cur?'rgba(76,175,125,0.07)':x.sched?'rgba(47,95,224,0.06)':undefined}},
+          h('td',{style:td},h('b',null,x.e.name),h('div',{style:{fontSize:11,color:'var(--text3)'}},[x.e.id,x.e.desig,x.e.status&&x.e.status!=='Active'?x.e.status:''].filter(Boolean).join(' · '))),
+          h('td',{style:{...td,whiteSpace:'nowrap'}},x.r.from?salYmLabel(x.r.from):'From joining',h('div',{style:{fontSize:10.5,color:x.cur?'var(--green)':x.sched?'var(--accent)':'var(--text3)'}},x.cur?'current':x.sched?'scheduled':'earlier')),
+          diff(x,'basic'),diff(x,'hra'),diff(x,'conv'),diff(x,'special'),diff(x,'gross'),
+          h('td',{style:{...td,fontSize:11.5,color:'var(--text2)',maxWidth:260}},[Array.isArray(x.r.changed)&&x.r.changed.length?x.r.changed.map(k=>SAL_FIELD_LABEL[k]||k).join(', '):'',x.r.reason].filter(Boolean).join(' · ')||'—'),
+          h('td',{style:{...td,fontSize:11,color:'var(--text3)',whiteSpace:'nowrap'}},x.r.at?new Date(x.r.at).toLocaleDateString('en-GB'):'—',x.r.by?h('div',null,x.r.by):null,x.r.editedAt?h('div',null,'edited '+new Date(x.r.editedAt).toLocaleDateString('en-GB')):null),
+          h('td',{style:{...td,whiteSpace:'nowrap',textAlign:'right'}},ok
+            ?h(React.Fragment,null,h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setEdit({e:x.e,r:x.r})},'✎ Edit'),!x.first&&h('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>remove(x)},'Remove'))
+            :h('span',{title:'The month this pay starts in is locked / final',style:{fontSize:11.5,color:'var(--text3)'}},'🔒 locked'),
+            x.first&&h('div',null,h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setEdit({e:x.e,r:null})},'+ New change'))));})
+        :h('tr',null,h('td',{colSpan:10,style:{...td,textAlign:'center',color:'var(--text3)',padding:24}},'No employees match.'))))),
+    edit&&h(SalHistoryEditModal,{sid,emp:edit.e,entry:edit.r,onClose:()=>setEdit(null),onSave:save})));
+}
+
+// ── Master Salary edits reach records that were saved with the employee's name or Billing ID ──
+// Advances, penalties, Daily Sales & Exp salary/advance lines, daily incentives, bank statement
+// links and imported staff work reports keep the employee's name (and the reports the Billing ID)
+// as typed then, so a corrected name or Billing ID is carried into them here. Month-final
+// snapshots and approvals keep the name they were signed off with.
+const MS_NAME_FIELDS=['emp','empName','employeeName','Emp_Name'];
+const MS_NAME_KEYS=['salonos_advances','salonos_penalties','salonos_daily_sales_empdata','salonos_daily_incentive_entries','salonos_bank_statement_rows','salonos_staff_work_reports'];
+function msCascadeEmployeeChange(sid,before,after){
+  if(!before||!after||sid==null)return 0;
+  const oldName=before.name,newName=after.name;const nameCh=!!oldName&&oldName!==newName&&String(newName||'').trim()!=='';
+  const oldBid=String(before.billingId||'').trim(),newBid=String(after.billingId||'').trim();const bidCh=!!oldBid&&oldBid!==newBid&&newBid!=='';
+  if(!nameCh&&!bidCh)return 0;
+  let total=0;
+  MS_NAME_KEYS.forEach(base=>{
+    const key=outletKey(base,sid);const raw=cachedLocalGet(key);if(!raw)return;let data;try{data=JSON.parse(raw);}catch(e){return;}
+    let n=0;
+    const walk=o=>{if(Array.isArray(o)){o.forEach(walk);return;}if(!o||typeof o!=='object')return;
+      const otherEmp=o.empId!=null&&String(o.empId)!==String(before.id); // a record of someone else with the same name
+      if(!otherEmp){
+        if(nameCh)MS_NAME_FIELDS.forEach(k=>{if(o[k]===oldName){o[k]=newName;n++;}});
+        if(bidCh&&base==='salonos_staff_work_reports'&&String(o.EmpId==null?'':o.EmpId).trim()===oldBid){o.EmpId=newBid;n++;}
+      }
+      Object.keys(o).forEach(k=>{const v=o[k];if(v&&typeof v==='object')walk(v);});};
+    walk(data);
+    if(n){safeLocalSet(key,JSON.stringify(data));total+=n;}
+  });
+  if(total){try{logAuditEvent(sid,{entity:'Employee',entityId:after.id,action:'Linked records updated',summary:after.name+': '+[nameCh?'name '+oldName+' → '+newName:'',bidCh?'Billing ID '+oldBid+' → '+newBid:''].filter(Boolean).join(', ')+' in '+total+' record(s)'});}catch(e){}}
+  return total;
+}
