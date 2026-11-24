@@ -161,8 +161,15 @@ function salHistOf(e){
 }
 // Month an entry starts paying (the first entry covers everything from joining).
 function salEntryStart(e,r){return r.from||(e&&e.doj?String(e.doj).slice(0,7):null);}
-// An entry can be changed only while the month it starts in is still open (not locked / final).
-function salEntryEditable(sid,e,r){const s=salEntryStart(e,r);return !s||!salLocked(sid,s);}
+// An entry can be changed only while every month it pays (from its start up to the next change, or
+// this month) is still open; once one of them is locked / final, add a new change from an open month.
+function salEntryEditable(sid,e,r){
+  const H=salHistOf(e);const i=H.indexOf(r);const now=salNowYm();
+  let ym=salEntryStart(e,r)||salYmAdd(now,-36);if(ym<salYmAdd(now,-36))ym=salYmAdd(now,-36);
+  const next=i>=0&&H[i+1]?H[i+1].from:null;const end=next&&next<=now?salYmAdd(next,-1):now;
+  for(;ym<=end;ym=salYmAdd(ym,1))if(salLocked(sid,ym))return false;
+  return true;
+}
 // Gross CTC for given pay parts, worked out the same way Master Salary does on save.
 function salGrossFor(sid,e,parts){
   const x={...e,...parts};const rec=typeof outletSettings==='function'?outletSettings(sid):null;
