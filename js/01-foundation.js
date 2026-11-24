@@ -525,13 +525,17 @@ function initBigStore(){
             Object.keys(all).forEach(k=>{if(BIG_KEY_RE.test(k)&&typeof all[k]==='string')_bigVals[k]=all[k];});
             _bigDb=db;_bigOn=true;
             move.forEach(k=>{let v2=null;try{v2=localStorage.getItem(k);}catch(e){}if(v2!=null&&v2!==all[k]){_bigVals[k]=v2;_bigQueue(k);}try{localStorage.removeItem(k);}catch(e){}});
-            Object.keys(_bigVals).forEach(k=>{_lsReadCache[k]=_bigVals[k];});
-            try{_bigChan=new BroadcastChannel('salonos-store');_bigChan.onmessage=e=>{const d=e.data||{};if(!d.k||!BIG_KEY_RE.test(d.k))return;if(d.v==null)delete _bigVals[d.k];else _bigVals[d.k]=d.v;_lsReadCache[d.k]=d.v;};}catch(e){}
+            Object.keys(_bigVals).forEach(k=>{_lsReadCache[k]=_bigVals[k];});_dataVer++;
+            try{_bigChan=new BroadcastChannel('salonos-store');_bigChan.onmessage=e=>{const d=e.data||{};if(!d.k||!BIG_KEY_RE.test(d.k))return;if(d.v==null)delete _bigVals[d.k];else _bigVals[d.k]=d.v;_lsReadCache[d.k]=d.v;_dataVer++;};}catch(e){}
             finish();};};};
     }catch(e){finish();}
   });
 }
 const _lsReadCache={};
+// Goes up whenever any stored value really changes (this tab's saves, other tabs, cloud pulls).
+// Heavy screens key their cached figures on it (useMemo) so they recalculate only after a change.
+var _dataVer=0;
+function storeVersion(){return _dataVer;}
 // Read overlay — lets a calculation run against a saved snapshot of some settings instead of the
 // live ones (an approved Monthly Incentive Plan, js/18-approvals.js). Reads only; null when unset.
 let _lsOverlay=null;
@@ -549,6 +553,7 @@ function cachedLocalGet(key){
 function cachedLocalRemove(key){
   lsRemove(key);
   _lsReadCache[key]=null;
+  _dataVer++;
 }
 // Sticky (frozen) columns/cells need a fully OPAQUE background, or whatever scrolls underneath
 // them shows through and visually collides with the frozen text (e.g. a row name overlapping a
@@ -572,6 +577,7 @@ function safeLocalSet(key,value){
     const unchanged=cachedLocalGet(key)===value;
     lsSet(key,value);
     _lsReadCache[key]=value; // keep the read cache in sync — safeLocalSet is the only write path
+    if(!unchanged)_dataVer++;
     _lastSavedAt=Date.now();
     try{window.dispatchEvent(new Event('salonos-saved'));}catch(e3){}
     if(!unchanged)queueCloudPush(key,value); // no-op unless cloud sync is configured — see CLOUD_SYNC_ENABLED below
@@ -599,8 +605,8 @@ function safeLocalSet(key,value){
 try{
   window.addEventListener('storage',(e)=>{
     if(e.key==null)return; // localStorage.clear() — nothing safe to reconcile key-by-key
-    if(isBigKey(e.key)){if(e.newValue!=null){_bigVals[e.key]=e.newValue;_bigQueue(e.key);_lsReadCache[e.key]=e.newValue;try{localStorage.removeItem(e.key);}catch(e2){}}return;} // an older tab wrote a large key
-    _lsReadCache[e.key]=e.newValue;
+    if(isBigKey(e.key)){if(e.newValue!=null){_bigVals[e.key]=e.newValue;_bigQueue(e.key);_lsReadCache[e.key]=e.newValue;_dataVer++;try{localStorage.removeItem(e.key);}catch(e2){}}return;} // an older tab wrote a large key
+    _lsReadCache[e.key]=e.newValue;_dataVer++;
   });
 }catch(e){}
 
@@ -632,7 +638,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.11.24.255';
+const APP_VERSION='2026.11.24.256';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
@@ -740,6 +746,7 @@ const DEVICE_ONLY_KEYS=new Set(['salonos_autobackup_snapshot','salonos_autobacku
 function applyCloudValue(key,value){
   if(DEVICE_ONLY_KEYS.has(key))return;
   try{lsSet(key,value);}catch(e){}
+  if(_lsReadCache[key]!==value)_dataVer++;
   _lsReadCache[key]=value;
 }
 

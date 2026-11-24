@@ -389,7 +389,10 @@ function MasterDashboardOverview({selFY,setSelFY,FYS,accessibleSalons}){
     return{revenue,expenses,netProfit,salaries,pfEr,esicEr,netDisbursed,lopDays,attSum,attCount,monthly};
   };
 
-  const aggs=targetSalons.map(s=>({salon:s,...fyAgg(Number(s.id))}));
+  // A full year of P&L for every outlet (~1.5 s): rebuilt only when the year, the outlets shown or
+  // any stored data changes, not on every redraw (cloud checks, timers) of the screen around it.
+  const aggs=useMemo(()=>targetSalons.map(s=>({salon:s,...fyAgg(Number(s.id))})),
+    [selFY,targetSalons.map(s=>s.id).join(','),storeVersion(),localIsoOf(today)]);
   const totals=aggs.reduce((t,a)=>({
     revenue:t.revenue+a.revenue,expenses:t.expenses+a.expenses,netProfit:t.netProfit+a.netProfit,
     salaries:t.salaries+a.salaries,pfEr:t.pfEr+a.pfEr,esicEr:t.esicEr+a.esicEr,
