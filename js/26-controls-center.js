@@ -340,7 +340,15 @@ const CONTROL_DEFS=[
   {id:'empStatement',group:'Employees',label:'Employee monthly statement on WhatsApp',hint:'Salary Working → Send Payslips adds days present, leave, advance balance and incentive to each message.',def:false},
 ];
 const CONTROLS_KEY='salonos_controls';
-function loadControls(){try{return JSON.parse(cachedLocalGet(CONTROLS_KEY)||'{}')||{};}catch(e){return{};}}
+// Parsed once per saved version: controlOn() is called tens of thousands of times while screens
+// draw, and re-parsing the JSON each time cost seconds. Callers copy before changing (see
+// ctlSetChanges / saveControls), so sharing the parsed object is safe.
+let _controlsRaw,_controlsParsed;
+function loadControls(){
+  const raw=cachedLocalGet(CONTROLS_KEY)||'{}';
+  if(raw!==_controlsRaw){try{_controlsParsed=JSON.parse(raw)||{};}catch(e){_controlsParsed={};}_controlsRaw=raw;}
+  return _controlsParsed;
+}
 function saveControls(c){safeLocalSet(CONTROLS_KEY,JSON.stringify(c||{}));}
 function controlDef(id){return CONTROL_DEFS.find(d=>d.id===id);}
 // Outlet override wins; then the all-outlets switch; then the rule's default.

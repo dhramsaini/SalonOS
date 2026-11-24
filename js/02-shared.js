@@ -3955,6 +3955,7 @@ async function resolveAlert(id){
   const{error}=await supa.rpc('salonos_resolve_alert',{alert_id:id});
   if(error)throw error;
 }
+const _alertDueCache={};
 function alertFixedLocally(a){
   try{
     const p=String(a.akey||'').split(':');const sid=Number(p[1]);
@@ -3970,7 +3971,9 @@ function alertFixedLocally(a){
       return emps.length>0&&emps.every(e=>{const r=att[e.id+'_'+y+'_'+(m-1)];return !!(r&&r.days&&r.days[d-1]);});
     }
     if(a.kind==='compliance'&&typeof allDueItemsFor==='function'){
-      const id=p.slice(2).join(':');const it=allDueItemsFor(sid).find(x=>String(x.id)===id);
+      // One outlet's due list is shared by all its alerts in the same pass (it takes ~100 ms to build).
+      const c=_alertDueCache[sid];const items=c&&Date.now()-c.at<3000?c.items:(_alertDueCache[sid]={at:Date.now(),items:allDueItemsFor(sid)}).items;
+      const id=p.slice(2).join(':');const it=items.find(x=>String(x.id)===id);
       return !it||!!it.paid||it.status==='done';
     }
     if(a.kind==='collection'&&typeof collectionDiffStatusFor==='function'){

@@ -287,7 +287,7 @@ function AlertsBell({user,salons,onOpen}){
   const {success,error:toastError}=useToast();
   const [alerts,setAlerts]=useState(null); // null = not loaded / not available
   const [open,setOpen]=useState(false);
-  const [,setTick]=useState(0);
+  const [tick,setTick]=useState(0);
   const load=useCallback(async()=>{
     try{setAlerts(await loadOpenAlerts());}catch(e){setAlerts(prev=>prev||null);}
   },[]);
@@ -300,8 +300,13 @@ function AlertsBell({user,salons,onOpen}){
     return()=>{clearInterval(t);clearInterval(tick);window.removeEventListener('focus',onFocus);window.removeEventListener('salonos-alerts-refresh',onFocus);};
   },[load,user&&user.id]);
   useEffect(()=>{if(open)load();},[open]);
+  // Checking whether each alert is already fixed works out every outlet's dues (salary, PF/ESI,
+  // TDS …) — about 2 s. Do it when the alerts load, once a minute, and when the bell is opened,
+  // not on every redraw of the screen around it.
+  const visibleAll=useMemo(()=>alerts===null?null:alerts.filter(a=>(a.outlet_id==null?user&&user.role==='Super Admin':userCanSeeOutlet(user,a.outlet_id))&&!alertFixedLocally(a)),
+    [alerts,tick,open,user&&user.id,user&&user.role]);
   if(alerts===null)return null;
-  const visible=alerts.filter(a=>(a.outlet_id==null?user&&user.role==='Super Admin':userCanSeeOutlet(user,a.outlet_id))&&!alertFixedLocally(a));
+  const visible=visibleAll.slice();
   const rank={urgent:0,warn:1,info:2};
   visible.sort((a,b)=>(a.severity in rank?rank[a.severity]:1)-(b.severity in rank?rank[b.severity]:1)||String(b.created_at).localeCompare(String(a.created_at)));
   const urgent=visible.filter(a=>a.severity==='urgent').length;
