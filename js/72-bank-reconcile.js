@@ -242,7 +242,9 @@ function BankReconcileSheet({salon,period,onNavTab}){
   const count=b=>data.items.filter(i=>i.bucket===b).length;
   const total=data.all.length,doneN=data.done.length,pct=total?Math.round(doneN/total*100):100;
   const qq=q.trim().toLowerCase();
-  const shown=data.items.filter(i=>(filter==='todo'||i.bucket===filter)&&(!qq||(i.x.description+' '+(i.s?i.s.label:'')+' '+(i.x.debit||i.x.credit)).toLowerCase().includes(qq)));
+  const RANK={sure:0,check:1,new:2,unknown:3};
+  const shown=data.items.filter(i=>(filter==='todo'||i.bucket===filter)&&(!qq||(i.x.description+' '+(i.s?i.s.label:'')+' '+(i.x.debit||i.x.credit)).toLowerCase().includes(qq)))
+    .sort((a,b)=>RANK[a.bucket]-RANK[b.bucket]||String(toISO(a.x.date)||'').localeCompare(String(toISO(b.x.date)||''))); // Sure first, then by date
   const cur=shown[Math.min(sel,shown.length-1)];
   const bal=rcBalanceCheck(data.all);const acc=rcAccuracy(sid);
   const refresh=()=>setTick(t=>t+1);
