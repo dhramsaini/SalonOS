@@ -61,6 +61,14 @@ function rcPayeeScore(rec,desc,isEmp,ifscCount){
   else if(P.name&&!acHit){s*=0.6;if(s>0)reasons.push('name differs ('+P.name+')');}
   return{score:Math.min(1,s),reasons};
 }
+// ── Payee aliases: "Raza" (narration) is Md. Khurshid Ansari, "Salman Salary" is Shahran … kept per
+// outlet once someone confirms a match, so the next payment to that name / IFSC is Sure. ──
+function rcAliasKey(desc){const P=rcParse(desc);const n=vendorMatchNorm(P.name||'').replace(/\s+/g,' ').trim();return n?n+'|'+(P.ifsc||''):'';}
+function rcLoadAliases(sid){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_bank_payee_aliases',sid))||'{}');return v&&typeof v==='object'?v:{};}catch(e){return{};}}
+function rcSaveAlias(sid,desc,kind,id){const k=rcAliasKey(desc);if(!k||id==null)return;const A=rcLoadAliases(sid);if(A[k]&&A[k].kind===kind&&String(A[k].id)===String(id))return;
+  A[k]={kind,id:String(id),by:typeof bmapUser==='function'?bmapUser():'',at:new Date().toISOString()};safeLocalSet(outletKey('salonos_bank_payee_aliases',sid),JSON.stringify(A));}
+function rcAliasHit(sid,desc,kind,list){const k=rcAliasKey(desc);if(!k)return null;const A=rcLoadAliases(sid);const a=A[k]||A[k.split('|')[0]+'|'];
+  if(!a||a.kind!==kind)return null;const rec=(list||[]).find(r=>String(r.id)===String(a.id));return rec?{rec,score:0.97,reasons:['remembered payee ('+rcParse(desc).name+')']}:null;}
 function rcIfscCount(list){const c={};(list||[]).forEach(r=>{const f=String(r&&r.ifsc||'').toUpperCase().trim();if(f)c[f]=(c[f]||0)+1;});return c;}
 function rcBestPayee(list,desc,isEmp){const cnt=rcIfscCount(list);let best=null;(list||[]).forEach(r=>{if(!r||!r.name)return;const p=rcPayeeScore(r,desc,isEmp,cnt);if(p.score>=(isEmp?0.28:0.4)&&(!best||p.score>best.score))best={rec:r,...p};});return best;}
 
@@ -127,6 +135,8 @@ function rcBuild(sid,ym){
   const empCache={};const empsFor=(y,m)=>empCache[y+'-'+m]||(empCache[y+'-'+m]=(getEmployeesForMonth(y,m,sid)||[]).filter(e=>e&&e.status!=='Inactive'));
   const allEmps=(loadEmployees(sid)||[]).filter(e=>e&&e.status!=='Inactive');
   const M=n=>rupee0(n);
+  let dueOpen=[];try{dueOpen=(allDueItemsFor(sid)||[]).filter(d=>RC_DUE_KW[d.type]&&!d.paid&&Number(d.amount)>0);}catch(e){}
+  const others=(typeof SALONS!=='undefined'?SALONS:[]).filter(s=>s&&String(s.id)!==String(sid)).map(s=>({sid:s.id,name:String(s.name||'').split('—')[0].trim(),rows:bankRowsFor(s.id)}));
   // day sales from Cradlee (card / UPI) and the sale days already claimed by mapped settlements
   const ctxCr={totals:typeof cradleeDayTotals==='function'?cradleeDayTotals(sid):{},claimed:{}};
   rows.forEach(r=>{if(r&&r.cradleeDate&&(r.nature==='Card Settlement'||r.nature==='UPI Settlement'))ctxCr.claimed[(r.nature==='UPI Settlement'?'upi':'card')+'|'+r.cradleeDate]=1;});
@@ -155,7 +165,7 @@ function rcBuild(sid,ym){
         for(const k of ['sal','inc']){const tot=du.reduce((t,q)=>t+q[k],0);if(du.every(q=>q[k]>0)&&Math.abs(tot-amt)<=1){
           alts.push({score:0.84,conf:'mid',label:'Split: '+(k==='sal'?'salary':'incentive')+' '+RPT_MONTHS[pm.month].slice(0,3)+' of '+named.length+' people',why:du.map(q=>q.e.name+' '+M(q[k])).join(' · '),reasons:['names in narration','= '+(k==='sal'?'net pay':'incentive')+' total'],
             apply:{type:'pay',plan:{year:pm.year,month:pm.month,lines:du.map(q=>({employeeId:q.e.id,employeeName:q.e.name,salaryAmt:k==='sal'?q[k]:0,incentiveAmt:k==='inc'?q[k]:0}))}}});break;}}}
-      const ep=rcBestPayee(emps,d,true)||(()=>{const t=typeof payeeByToken==='function'?payeeByToken('emp',d,emps):null;return t?{rec:t,score:0.6,reasons:['paid to this account before']}:null;})();
+      const ep=rcAliasHit(sid,d,'emp',emps)||rcBestPayee(emps,d,true)||(()=>{const t=typeof payeeByToken==='function'?payeeByToken('emp',d,emps):null;return t?{rec:t,score:0.6,reasons:['paid to this account before']}:null;})();
       if(ep){const e=ep.rec;const tries=[pm,{year:pm.month===0?pm.year-1:pm.year,month:(pm.month+11)%12},{year:pm.month===11?pm.year+1:pm.year,month:(pm.month+1)%12}];
         const purpose=(rcParse(d).purpose+' '+x.nature).toLowerCase();const incFirst=/incent/.test(purpose)&&!/salary/.test(purpose);
         for(const t of tries){const du=rcDues(sid,e,t.year,t.month,rows);const near=v=>v>0&&Math.abs(v-amt)<=1;let what=null,la=null,marked=false;
@@ -172,15 +182,32 @@ function rcBuild(sid,ym){
     // 3 · vendor bills (vendor from the line, else IFSC / account / name)
     if(it.task==='bill'||it.task==='map'){
       const ov=x.vendorOverride&&x.vendorOverride!=='__none__'&&!String(x.vendorOverride).startsWith('EMP:')?vendors.find(v=>v.name===x.vendorOverride):null;
-      const vp=ov?{rec:ov,score:0.9,reasons:['vendor chosen']}:rcBestPayee(vendors,d,false)||(()=>{const f=findVendorMatch(d,vendors)||(typeof payeeByToken==='function'?payeeByToken('vendor',d,vendors):null);return f?{rec:f,score:0.55,reasons:['name']}:null;})();
-      if(vp){const plan=rcBillPlan(vp.rec,amt,inv,left);const v=vp.rec;
-        if(plan&&plan.allocations){const sure=plan.how==='exact'||plan.how==='combo';const sc=sure?Math.min(0.98,0.6+vp.score*0.4):0.66;
+      const vp=ov?{rec:ov,score:0.9,reasons:['vendor chosen']}:rcAliasHit(sid,d,'vendor',vendors)||rcBestPayee(vendors,d,false)||(()=>{const f=findVendorMatch(d,vendors)||(typeof payeeByToken==='function'?payeeByToken('vendor',d,vendors):null);return f?{rec:f,score:0.55,reasons:['name']}:null;})();
+      if(vp){let plan=rcBillPlan(vp.rec,amt,inv,left);const v=vp.rec;
+        // TDS: the bill less the vendor's TDS rate (else 1 / 2 / 10%) equals the payment → link with the TDS part
+        if(!plan||plan.how==='oldest'||plan.how==='short'){const rates=[...new Set([Number(v.tdsRate)||0,1,2,10].filter(r=>r>0))];
+          const open=inv.filter(i=>String(i.vendorId)===String(v.id)&&left[i.id]>0.5);let hit=null;
+          for(const r of rates){const c=open.filter(i=>Math.abs(Math.round(left[i.id]*(1-r/100))-amt)<=1);if(c.length===1){hit={i:c[0],r};break;}}
+          if(hit)plan={how:'tds',rate:hit.r,allocations:[{id:hit.i.id,invoiceNo:hit.i.invoiceNo||hit.i.id,amount:amt,tds:Math.round((left[hit.i.id]-amt)*100)/100}]};}
+        if(plan&&plan.allocations){const sure=plan.how==='exact'||plan.how==='combo'||plan.how==='tds';const sc=sure?Math.min(0.98,0.6+vp.score*0.4)-(plan.how==='tds'?0.03:0):0.66;
           alts.push({score:sc,conf:sc>=0.9?'high':'mid',label:(plan.allocations.length>1?'Pays '+plan.allocations.length+' bills of ':'Pays bill '+plan.allocations[0].invoiceNo+' · ')+v.name,
-            why:plan.allocations.map(a=>a.invoiceNo+' '+M(a.amount)).join(' + '),reasons:[...vp.reasons,plan.how==='exact'?'= open bill':plan.how==='combo'?'= '+plan.allocations.length+' open bills':'oldest bills first (part)'],
+            why:plan.allocations.map(a=>a.invoiceNo+' '+M(a.amount)+(a.tds?' + TDS '+M(a.tds):'')).join(' + '),reasons:[...vp.reasons,plan.how==='exact'?'= open bill':plan.how==='combo'?'= '+plan.allocations.length+' open bills':plan.how==='tds'?'= bill less '+plan.rate+'% TDS':'oldest bills first (part)'],
             apply:{type:'link',plan:{vendor:v,allocations:plan.allocations}}});}
         else alts.push({score:Math.min(0.8,0.4+vp.score*0.4),conf:'mid',label:'Vendor Payment · '+v.name+(plan&&plan.how==='short'?' (bills only '+M(plan.total)+')':' (no open bill)'),why:plan&&plan.how==='short'?'Add the missing bill on Vendor Sheet, then link':'No unpaid bill of '+v.name+' — mapped as a payment to them',
           reasons:vp.reasons,apply:{type:'patch',patch:{nature:'Vendor Payment',vendorOverride:v.name}}});}
     }
+    // 3b · statutory challans in the Due Date register (PF / ESIC / PT / TDS) of the same amount
+    if(it.task==='map'){const lo=d.toLowerCase();
+      dueOpen.forEach(du=>{if(Math.abs((Number(du.amount)||0)-amt)>2)return;const kw=RC_DUE_KW[du.type];const named=kw&&kw.test(lo);
+        alts.push({score:named?0.94:0.8,conf:named?'high':'mid',label:du.type+' · '+(RPT_MONTHS[du.month]||'')+' '+(du.year||''),why:du.desc||'',reasons:[named?'challan narration':'same amount','Due Date register'],apply:{type:'due',due:du}});});}
+    // 3c · money moved to one of your other outlets (the same amount came in there within a day)
+    if(it.task==='map'){const o=rcOtherOutletPair(sid,x,others);if(o)alts.push({score:0.9,conf:'high',label:'Transfer to '+o.name,why:'The same '+M(amt)+' came into '+o.name+' on '+o.r.transactionDate,reasons:['inter-outlet transfer'],apply:{type:'transfer',other:{sid:o.sid,id:o.r.id,name:o.name}}});}
+    // 3d · advance: an employee is named but the amount is less than (or not) what is due
+    if(pm&&it.task!=='bill'&&!alts.some(a=>a.apply&&a.apply.type==='pay'&&a.score>=0.8)){const emps=empsFor(pm.year,pm.month);const ep2=rcAliasHit(sid,d,'emp',emps)||rcBestPayee(emps,d,true);
+      if(ep2&&ep2.score>=0.45){const nx=new Date((toISO(x.date)||localIsoOf(new Date()))+'T00:00:00');nx.setMonth(nx.getMonth()+1,1);
+        alts.push({score:0.55,conf:'low',label:'Advance to '+ep2.rec.name,why:'Recorded on the Advances sheet, recovered from salary from '+RPT_MONTHS[nx.getMonth()].slice(0,3)+' '+nx.getFullYear(),reasons:[...ep2.reasons,'advance'],
+          apply:{type:'advance',line:{employeeId:ep2.rec.id,employeeName:ep2.rec.name,amount:String(amt),deductFrom:'Salary',deductionStart:localIsoOf(nx).slice(0,7),reason:'Advance — Bank Reconcile'}}});
+        it.payee={e:ep2.rec,pm};}}
     // 4 · the existing engine's suggestion
     if(bs)alts.push({...bs,score:bs.conf==='high'?0.93:bs.conf==='mid'?0.72:0.45,reasons:[bs.why]});
     // 4b · common bank lines the narration rules don't know: card MDR recovery, ATM withdrawals
@@ -208,6 +235,21 @@ function rcBuild(sid,ym){
   return{items,done,settlements:rcSettlementCheck(sid,done),all:inMonth};
 }
 
+const RC_DUE_KW={'PF Challan':/epfo|\bpf\b|provident/,'ESIC Challan':/esic/,'PT Payment':/\bpt\b|prof(essional)? ?tax|ptax/,'TDS Payment':/\btds\b|cbdt|oltas|itns|income tax/};
+const RC_DUE_NATURE={'PF Challan':'PF Payment','ESIC Challan':'ESIC Payment','PT Payment':'PT Payment','TDS Payment':'TDS'};
+// The other side of an inter-outlet transfer: same amount, opposite side, within a day, not mapped yet.
+function rcOtherOutletPair(sid,x,others){
+  const iso=toISO(x.date);if(!iso)return null;const t=new Date(iso+'T00:00:00').getTime();const amt=x.debit||x.credit;
+  for(const o of others||[]){const r=o.rows.find(r=>r&&!r.transferOf&&(!r.nature||r.nature==='Transfer')&&Math.abs((x.side==='Debit'?Number(r.credit):Number(r.debit))-amt)<=0.5&&(()=>{const i=toISO(r.transactionDate);return i&&Math.abs(new Date(i+'T00:00:00').getTime()-t)<=864e5;})());
+    if(r)return{...o,r};}
+  return null;
+}
+// Contributors of a statutory due item, as the Due Date register ticks them when it is paid.
+function rcDueParties(sid,d){try{const W=swWorkingsFinalFor(sid,d.year,d.month)||[];
+  if(d.type==='PF Challan')return W.filter(e=>e.pf&&((e.pfEmp||0)+(e.pfEr||0))>0).map(e=>e.id);
+  if(d.type==='ESIC Challan')return W.filter(e=>e.esic&&e.gross<=21000&&((e.esicEmp||0)+(e.esicEr||0))>0).map(e=>e.id);
+  if(d.type==='PT Payment')return W.filter(e=>(e.ptAmt||0)>0).map(e=>e.id);
+  if(d.type==='TDS Payment'){const rec=loadRecurringExpenses(sid).filter(it=>it.status==='Active'&&it.tdsApplicable&&it.tdsSection);return tdsPartyDetailForMonth(sid,d.year,d.month,rec).map(p=>p.key);}}catch(e){}return[];}
 // Links a bank debit to employees' salary / incentive of a LOCKED month. Only the bank line gets the
 // settlement (who, which month, how much) — Salary / Incentive Working of the locked month are not
 // touched, so nothing that was locked changes. Same checks as settleBankLineToEmployees otherwise.
@@ -219,7 +261,9 @@ function rcLinkPayLocked(sid,row,year,month,lines){
   const sw=loadSWMeta(sid),iw=loadIWMeta(sid);
   const settlements=act.map(l=>{const k=attMonthKey(l.employeeId,year,month);const sa=Number(l.salaryAmt)||0,ia=Number(l.incentiveAmt)||0;
     return{employeeId:l.employeeId,employeeName:l.employeeName,year,month,salary:sa,incentive:ia,dailyIncentive:0,dailyIncentiveByCat:{},
-      salarySettled:sa>0&&(sw[k]||{}).paymentStatus==='Paid',incentiveSettled:ia>0&&(iw[k]||{}).paymentStatus==='Paid',dailyIncentiveSettled:{},lockedMonth:true};});
+      // never "settled by this line": Undo reverses settled pay, and a locked month must not change
+      salarySettled:false,incentiveSettled:false,dailyIncentiveSettled:{},lockedMonth:true,
+      alreadyPaid:(sa>0&&(sw[k]||{}).paymentStatus==='Paid')||(ia>0&&(iw[k]||{}).paymentStatus==='Paid')};});
   const has=k=>settlements.some(x=>x[k]>0);
   const patch={nature:has('salary')?'Salary':'Incentive',linkedEmployeePay:settlements};
   if(settlements.length===1)patch.vendorOverride='EMP:'+settlements[0].employeeId;
@@ -265,7 +309,17 @@ function rcApply(sid,it,s){
       if(locked)journalBankMapping(sid,row,'Reconcile: '+p.lines.map(l=>l.employeeName).join(', ')+' '+RPT_MONTHS[p.month]+' (locked month — bank line only)');
       err=locked?rcLinkPayLocked(sid,row,p.year,p.month,p.lines):settleBankLineToEmployees(sid,row,p.year,p.month,p.lines);
       if(!err&&!locked)journalBankMapping(sid,row,'Reconcile: '+p.lines.map(l=>l.employeeName).join(', ')+' '+RPT_MONTHS[p.month]);}
+    else if(s.apply.type==='due'){const du=s.apply.due;journalBankMapping(sid,row,'Reconcile: '+du.type+' '+(RPT_MONTHS[du.month]||''));
+      saveDueAutoOverride(sid,du.id,{paidKeys:Object.fromEntries(rcDueParties(sid,du).map(k=>[k,true])),paidAmount:String(row.debit),paidDate:toISO(row.transactionDate),ref:row.refNo||'',bankRowId:row.id});
+      saveBankLineMapping(sid,row.id,{nature:RC_DUE_NATURE[du.type]||'Other',linkedInvoice:'due|'+du.id,aiTagged:false});}
+    else if(s.apply.type==='transfer'){const o=s.apply.other;const orow=bankRowsFor(o.sid).find(r=>r.id===o.id);if(!orow)err='The other outlet’s line is gone.';
+      else{journalBankMapping(sid,row,'Reconcile: transfer to '+o.name);journalBankMapping(o.sid,orow,'Reconcile: transfer from another outlet');
+        saveBankLineMapping(sid,row.id,{nature:'Transfer',transferOf:o.sid+'|'+o.id,aiTagged:false});saveBankLineMapping(o.sid,o.id,{nature:'Transfer',transferOf:sid+'|'+row.id,aiTagged:false});}}
+    else if(s.apply.type==='advance'){journalBankMapping(sid,row,'Reconcile: advance '+s.apply.line.employeeName,{advBefore:loadAdvances(sid)||[]});err=recordBankLineAdvances(sid,row,[s.apply.line]);}
     else err=applyBankSuggestion(sid,it.x,s,null,rows,'Reconcile: ');
+    // remember who this payee is, so the next payment to the same name / IFSC is Sure
+    if(!err&&s.apply.type==='pay'&&s.apply.plan.lines&&s.apply.plan.lines.length===1)rcSaveAlias(sid,row.description,'emp',s.apply.plan.lines[0].employeeId);
+    if(!err&&s.apply.type==='link'&&s.apply.plan.vendor)rcSaveAlias(sid,row.description,'vendor',s.apply.plan.vendor.id);
   }catch(e){err=(e&&e.message)||String(e);}
   if(!err){if(s.payout)rcMarkPayout(sid,s.payout,row.id);try{noteBankFeedback(sid,it.x,typeof suggestionNature==='function'?(suggestionNature(s)||s.label):s.label,true);}catch(e){}}
   return err;
