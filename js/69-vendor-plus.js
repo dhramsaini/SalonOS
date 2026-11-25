@@ -187,7 +187,7 @@ function VendorPlusStrips({sid,invoices,vendors}){
   let gst=[];
   if(vpOn('vpGstInput',sid)){
     const o=outletSettings(sid)||{};const allowed=typeof gstInputAllowedAsOf==='function'?gstInputAllowedAsOf(o,localTodayIso()):false;
-    if(allowed){const cut=new Date(Date.now()-100*864e5).toISOString().slice(0,10);const ok=g=>typeof isValidGSTINFormat==='function'?isValidGSTINFormat(g):/^[0-9]{2}[A-Z0-9]{13}$/.test(String(g||''));
+    if(allowed){const cut=localIsoOf(new Date(Date.now()-100*864e5));const ok=g=>typeof isValidGSTINFormat==='function'?isValidGSTINFormat(g):/^[0-9]{2}[A-Z0-9]{13}$/.test(String(g||''));
       gst=(invoices||[]).filter(i=>i&&i.docNature!=='Performa Invoice'&&vpBookIso(i)>=cut&&((Number(i.cgst)||0)+(Number(i.sgst)||0)+(Number(i.igst)||0))>0).filter(i=>{const v=(vendors||[]).find(x=>x.id===i.vendorId);return !v||!ok(String(v.gst||'').toUpperCase());});}
   }
   if(!watch.length&&!gst.length)return null;

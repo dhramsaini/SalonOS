@@ -178,9 +178,9 @@ function bankStatutoryCheck(sid,year,month,rows){
   const pm=month===0?{y:year-1,m:11}:{y:year,m:month-1};const now=new Date();
   const back=Math.min(24,Math.max(1,(now.getFullYear()-pm.y)*12+now.getMonth()-pm.m+1));
   let items=[];try{items=autoStatutoryDueItemsFor(sid,back).filter(i=>i.year===pm.y&&i.month===pm.m&&BANK_STAT_NATURE[i.type]);}catch(e){return[];}
-  const R=(rows||bankRowsFor(sid)).filter(r=>r&&Number(r.debit)>0);const today=new Date().toISOString().slice(0,10);
+  const R=(rows||bankRowsFor(sid)).filter(r=>r&&Number(r.debit)>0);const today=localIsoOf(new Date());
   const byType={};items.forEach(i=>{const k=i.type;const e=byType[k]=byType[k]||{type:k,due:i.due,amount:0};e.amount+=Number(i.amount)||0;if(i.due&&i.due<e.due)e.due=i.due;});
-  return Object.values(byType).map(e=>{const nat=BANK_STAT_NATURE[e.type];const from=year+'-'+String(month+1).padStart(2,'0')+'-01';const lim=new Date(new Date(e.due+'T00:00:00').getTime()+45*864e5).toISOString().slice(0,10);
+  return Object.values(byType).map(e=>{const nat=BANK_STAT_NATURE[e.type];const from=year+'-'+String(month+1).padStart(2,'0')+'-01';const lim=localIsoOf(new Date(new Date(e.due+'T00:00:00').getTime()+45*864e5));
     const lines=R.filter(r=>{const i=toISO(r.transactionDate)||'';return r.nature===nat&&i>=from&&i<=lim;});const paid=lines.reduce((t,r)=>t+Number(r.debit),0);
     const first=lines.map(r=>toISO(r.transactionDate)).sort()[0]||'';const amt=Math.round(e.amount);
     let status,bad=false;

@@ -34,7 +34,7 @@ function bankMappingProductivity(sid,fromMs,toMs){
     if((e.labels||[]).some(l=>/^Auto: /.test(l)))o.auto++;else if((e.labels||[]).some(l=>/^✨ /.test(l)))o.fromSugg++;
     if(e.undone)o.undone++;else{o.mapped++;o.amount+=Number(e.amount)||0;}});
   const rv=loadBankReview(sid);Object.values(rv).forEach(v=>{if(v&&v.at>=fromMs&&v.at<=to)u(v.by||'—').checked++;});
-  try{const U=JSON.parse(cachedLocalGet(outletKey('salonos_bank_sugg_users',sid))||'{}')||{};const m0=new Date(fromMs).toISOString().slice(0,7),m1=new Date(to).toISOString().slice(0,7);
+  try{const U=JSON.parse(cachedLocalGet(outletKey('salonos_bank_sugg_users',sid))||'{}')||{};const m0=localIsoOf(new Date(fromMs)).slice(0,7),m1=localIsoOf(new Date(to)).slice(0,7);
     Object.keys(U).forEach(k=>{const i=k.lastIndexOf('|');const mo=k.slice(i+1);if(mo>=m0&&mo<=m1)u(k.slice(0,i)).changed+=U[k].rej||0;});}catch(err){}
   return Object.values(by).filter(o=>o.user!=='—'||o.mapped||o.checked).sort((a,b)=>b.mapped-a.mapped);
 }
@@ -92,7 +92,7 @@ function bankCashFlow(sids,year,month,n){
 
 // ── Vendor payment pattern: days from bill date to payment, early / late against the due date ──
 function vendorPaymentPattern(sid,monthsBack){
-  const cut=new Date();cut.setMonth(cut.getMonth()-(monthsBack||12));const cutIso=cut.toISOString().slice(0,10);const vendors=loadVendors(sid)||[];const by={};
+  const cut=new Date();cut.setMonth(cut.getMonth()-(monthsBack||12));const cutIso=localIsoOf(cut);const vendors=loadVendors(sid)||[];const by={};
   (loadVendorInvoices(sid)||[]).forEach(i=>{if(!i||i.docNature==='Performa Invoice')return;const bi=toISO(i.invoiceDate);if(!bi)return;const di=toISO(i.dueDate);
     (i.payments||[]).forEach(q=>{const pi=toISO(q.paidDate);const a=Number(q.paidAmount)||0;if(!pi||pi<cutIso||!(a>0)||q.mode==='TDS')return;
       const v=vendors.find(z=>String(z.id)===String(i.vendorId));const k=v?v.name:'(unknown vendor)';const e=by[k]=by[k]||{name:k,payments:0,amount:0,wDays:0,late:0,early:0,onTime:0,noDue:0};
@@ -134,7 +134,7 @@ function bankCashForecast(sid,days){
   const withBal=rows.filter(o=>o.r.closingBalance!=null&&o.r.closingBalance!==''&&!isNaN(Number(o.r.closingBalance))&&Number(o.r.closingBalance)!==0).sort((a,b)=>a.iso.localeCompare(b.iso)||a.i-b.i);if(!withBal.length)return null;
   const last=withBal[withBal.length-1];const start=Number(last.r.closingBalance);const d0=new Date(last.iso+'T00:00:00');const vendors=loadVendors(sid)||[];
   const IN=new Set(['Card Settlement','UPI Settlement','Collection','Cash Deposit','Swiggy Settlement','Zomato Settlement','EazyDiner Settlement','Ownly Settlement','Eatby Minutes Settlement']);
-  const fromIso=new Date(d0.getTime()-29*864e5).toISOString().slice(0,10);
+  const fromIso=localIsoOf(new Date(d0.getTime()-29*864e5));
   const inflowDay=rows.filter(o=>o.iso>=fromIso&&o.iso<=last.iso&&Number(o.r.credit)>0&&IN.has(o.r.nature)).reduce((t,o)=>t+Number(o.r.credit),0)/30;
   // regular payments of the last 4 months
   const mk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');const prevs=[1,2,3,4].map(k=>mk(new Date(d0.getFullYear(),d0.getMonth()-k,1)));

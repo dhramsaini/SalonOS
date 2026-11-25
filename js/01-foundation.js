@@ -57,6 +57,17 @@ window.flashButton=(el,type)=>{
 // for the checklist popover (call once per table, anywhere in the returned tree). Behaviour
 // mirrors Excel's AutoFilter: per-column checklist of distinct values with counts, search box,
 // Select All / Clear All, and "no filter" = everything shown. ──
+// Order of the values in a column filter's list: dates (DD/MM/YYYY or YYYY-MM-DD) by date, amounts
+// (₹1,234 / -500) by value, everything else alphabetically. Plain text order put 02/10 before 15/09
+// and ₹10,000 before ₹9,000.
+function filterValueCompare(a,b){
+  const dk=s=>{let m=/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/.exec(s);if(m)return m[3]+m[2].padStart(2,'0')+m[1].padStart(2,'0');m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s);return m?m[1]+m[2]+m[3]:null;};
+  const nk=s=>{const t=String(s).replace(/[₹,\s]/g,'');return /^-?\d+(\.\d+)?$/.test(t)?Number(t):null;};
+  const da=dk(a),db=dk(b);if(da&&db)return da<db?-1:da>db?1:0;
+  const na=nk(a),nb=nk(b);if(na!=null&&nb!=null)return na-nb;
+  if((da||na!=null)&&!(db||nb!=null))return -1;if((db||nb!=null)&&!(da||na!=null))return 1; // '(blank)' and text after dates / amounts
+  return String(a).localeCompare(String(b));
+}
 function useExcelColumnFilter(rows,cols){
   const [columnFilters,setColumnFilters]=useState({});
   const [openFilterCol,setOpenFilterCol]=useState(null);
@@ -94,7 +105,7 @@ function useExcelColumnFilter(rows,cols){
   const uniqueValuesFor=(col)=>{
     const counts=new Map();
     rows.forEach(r=>{const v=String(col.get(r));counts.set(v,(counts.get(v)||0)+1);});
-    return Array.from(counts.entries()).map(([value,count])=>({value,count})).sort((a,b)=>a.value.localeCompare(b.value));
+    return Array.from(counts.entries()).map(([value,count])=>({value,count})).sort((a,b)=>filterValueCompare(a.value,b.value));
   };
   const toggleFilterValue=(colKey,val,allVals)=>{
     setColumnFilters(prev=>{
@@ -638,7 +649,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.11.24.259';
+const APP_VERSION='2026.11.25.260';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
@@ -1210,7 +1221,9 @@ function startCloudSyncLoop(){
   // delivers once kv_store is in the supabase_realtime publication (one SQL line in Supabase);
   // until then — or if the socket drops — the fast poll below keeps other IDs' edits appearing
   // within ~5s. Once Realtime has proven it's delivering, the poll backs off to a 30s safety net.
-  let lastRealtimeAt=0,rtTimer=null;
+  // rtUp: the Realtime channel is connected (kv_store is in the publication). A quiet spell with no
+  // saves used to count as "Realtime not working" and switched to checking all records every 5 s.
+  let lastRealtimeAt=0,rtTimer=null,rtUp=false;
   getSupabaseClient().then(supa=>{
     if(!supa)return;
     supa.channel('salonos-kv-live')
@@ -1221,12 +1234,12 @@ function startCloudSyncLoop(){
         clearTimeout(rtTimer);
         rtTimer=setTimeout(cloudCheckForUpdates,250); // coalesce a burst of saves into one check
       })
-      .subscribe();
+      .subscribe(status=>{const was=rtUp;rtUp=status==='SUBSCRIBED';if(was&&!rtUp)lastRealtimeAt=0;if(!was&&rtUp)cloudCheckForUpdates();}); // catch up on anything missed while it was down
   }).catch(()=>{});
   let lastPoll=0;
   setInterval(()=>{
     if(document.visibilityState!=='visible')return;
-    const realtimeLive=Date.now()-lastRealtimeAt<10*60*1000;
+    const realtimeLive=rtUp||Date.now()-lastRealtimeAt<10*60*1000;
     if(Date.now()-lastPoll<(realtimeLive?30000:5000))return;
     lastPoll=Date.now();
     retryDirtyCloudKeys();cloudCheckForUpdates();

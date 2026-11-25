@@ -4059,7 +4059,7 @@ function BankStatement({salon,onNavTab}={}){
   // batch advance payment), same multi-line pattern as Settle Pay above.
   const [advanceRow,setAdvanceRow]=useState(null); // {row} or null
   const [advanceLines,setAdvanceLines]=useState([]); // [{employeeId,employeeName,amount,reason,deductFrom,repayment,deductionStart,linkExistingId}]
-  const nextMonthYM=()=>{const d=new Date();d.setMonth(d.getMonth()+1,1);return d.toISOString().slice(0,7);};
+  const nextMonthYM=()=>{const d=new Date();d.setMonth(d.getMonth()+1,1);return localIsoOf(d).slice(0,7);};
   // Existing Advances-sheet records for this employee that aren't tied to a bank transaction yet
   // (no bankRowId) and are still awaiting disbursement (Active or Pending Approval) — e.g. an
   // advance that was requested and approved on the Advances sheet before the actual bank

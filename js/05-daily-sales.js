@@ -1058,7 +1058,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   // same Recover Against / Reason / Approved By / month-wise Deduction Plan that a Bank Transfer
   // advance gets on the Advances sheet, so a Cash advance entered here is just as fully specified
   // (Payment Mode is fixed to Cash, since that's the whole point of entering it here). ──
-  const nextMonthFirstYM=()=>{const d=new Date();d.setMonth(d.getMonth()+1,1);return d.toISOString().slice(0,7);};
+  const nextMonthFirstYM=()=>{const d=new Date();d.setMonth(d.getMonth()+1,1);return localIsoOf(d).slice(0,7);};
   const genSchedule=(amount,monthly,startYM)=>{
     const amt=Number(amount)||0,mo=Math.max(1,Number(monthly)||0);
     if(amt<=0||mo<=0||!startYM)return[];

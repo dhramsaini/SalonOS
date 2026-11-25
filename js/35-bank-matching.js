@@ -59,7 +59,7 @@ function billBankMatches(sid){
   const free=bankRowsFor(sid).filter(r=>r&&Number(r.debit)>0&&!r.linkedInvoice&&!(Array.isArray(r.linkedEmployeePay)&&r.linkedEmployeePay.length)&&!(Array.isArray(r.linkedAdvance)&&r.linkedAdvance.length)&&(!r.nature||r.nature==='Vendor Payment')&&!bankLineLocked(sid,r));
   const used=new Set();const out=[];
   inv.slice().sort((a,b)=>String(toISO(a.invoiceDate)||'').localeCompare(String(toISO(b.invoiceDate)||''))).forEach(i=>{const b=bal(i);if(!(b>0.5))return;const v=vendors.find(z=>String(z.id)===String(i.vendorId));if(!v)return;
-    const bi=toISO(i.invoiceDate);const from=bi?new Date(new Date(bi+'T00:00:00').getTime()-7*864e5).toISOString().slice(0,10):'';
+    const bi=toISO(i.invoiceDate);const from=bi?localIsoOf(new Date(new Date(bi+'T00:00:00').getTime()-7*864e5)):'';
     const no=String(i.invoiceNo||'').trim().toLowerCase();
     const c=free.filter(r=>!used.has(r.id)&&Math.abs(Number(r.debit)-b)<=0.5&&(!from||String(toISO(r.transactionDate)||'')>=from)
       &&(bankLineVendorName(r,vendors)===v.name||(no.length>=3&&String(r.description||'').toLowerCase().includes(no))));

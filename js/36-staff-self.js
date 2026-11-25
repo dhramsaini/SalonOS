@@ -65,7 +65,7 @@ function StaffSelfService({salon}){
   const h=React.createElement;const {toast}=useToast();const sid=salon&&salon.id;
   const lrOn=controlOn('leaveRequests',sid),siOn=controlOn('staffIncentiveView',sid);
   const today=new Date();const emps=(getEmployeesForMonth(today.getFullYear(),today.getMonth(),sid)||[]).filter(e=>e.status!=='Inactive');
-  const iso=today.toISOString().slice(0,10);
+  const iso=localIsoOf(today);
   const [who,setWho]=useState('');const [mode,setMode]=useState('');const [lr,setLr]=useState({from:iso,to:iso,kind:'Paid leave',reason:''});const [pin,setPin]=useState('');const [shown,setShown]=useState(null);const [,setT]=useState(0);
   const arOn=controlOn('advPhoneRequest',sid);
   const suOn=typeof controlOn==='function'&&controlOn('msSelfUpdate',sid);

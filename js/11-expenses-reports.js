@@ -1428,7 +1428,7 @@ function StaffReportSheet({period,salon}={}){
     setAttachments(prev=>[...prev,...items]);
   };
   const TEMPLATE_COLS=['EmpId','Emp_Name','Employee Designation','Salary','Target','ServiceSale','MemberShipSale','ProductSale','PackageSale','ComplementarySale','TotalSale','Invoice Count','Service Count','ComplementaryService Count','Total Customer','Membership Customer','Walk-in Customer','API (by invoice)','APC (by customer)','Target achieved','Target achieved in (%)','Existing Customer','New Customer'];
-  const periodMonthKey=(p)=>{const cal=periodToCalendar(p);return cal?(cal.year+'-'+String(cal.month+1).padStart(2,'0')):new Date().toISOString().slice(0,7);};
+  const periodMonthKey=(p)=>{const cal=periodToCalendar(p);return cal?(cal.year+'-'+String(cal.month+1).padStart(2,'0')):localIsoOf(new Date()).slice(0,7);};
   const staffReportMonthKey=()=>outletKey('salonos_staff_report_selected_month',salonId);
   const loadSavedSelMonth=()=>{try{return cachedLocalGet(staffReportMonthKey())||'';}catch(e){return'';}};
   const saveSelMonth=(m)=>{safeLocalSet(staffReportMonthKey(),m);};

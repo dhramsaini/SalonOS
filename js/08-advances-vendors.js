@@ -23,7 +23,7 @@ function AdvanceSheet({period,salon}={}){
   const EMPLOYEES=getEmployeesForMonth(attYear,attMonth,salon?.id);
   const syncEmployees=()=>{setSyncTick(t=>t+1);success('Synced '+getEmployeesForMonth(attYear,attMonth,salon?.id).length+' employees from Attendance');};
   const ASM_LIST=EMPLOYEES.filter(e=>e.desig==='Assist Manager');
-  const nextMonthFirstYM=()=>{const d=new Date();d.setMonth(d.getMonth()+1,1);return d.toISOString().slice(0,7);};
+  const nextMonthFirstYM=()=>{const d=new Date();d.setMonth(d.getMonth()+1,1);return localIsoOf(d).slice(0,7);};
   const BLANK={id:'',emp:'',date:localTodayIso(),amount:'',reason:'',approvedBy:'',repayment:'',mode:'Bank Transfer',bankRef:'',note:'',deductFrom:'Salary',deductionStart:nextMonthFirstYM(),schedule:[]};
   const nextMonthFirst=()=>{const d=new Date();d.setMonth(d.getMonth()+1,1);return localIsoOf(d);};
   const REQUEST_BLANK={emp:'',date:localTodayIso(),amount:'',repayment:'',reason:'',deductionStart:nextMonthFirst(),deductFrom:'Salary'};
@@ -1429,7 +1429,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
 
   const totalOutstanding=invoices.filter(inv=>!isPI(inv)).reduce((s,inv)=>s+getBalance(inv),0);
   const totalOverdue=invoices.filter(inv=>!isPI(inv)&&isOverdue(inv)).reduce((s,inv)=>s+getBalance(inv),0);
-  const totalPaidMonth=invoices.reduce((s,inv)=>s+inv.payments.filter(p=>p.paidDate&&p.paidDate.slice(0,7)===new Date().toISOString().slice(0,7)).reduce((a,p)=>a+Number(p.paidAmount),0),0);
+  const totalPaidMonth=invoices.reduce((s,inv)=>s+inv.payments.filter(p=>p.paidDate&&p.paidDate.slice(0,7)===localIsoOf(new Date()).slice(0,7)).reduce((a,p)=>a+Number(p.paidAmount),0),0);
 
   // Quick views on Invoices & Payments. "This month" = the outlet's selected period month (by the
   // invoice's booking date, as everywhere else); "pending" = a bill (not a PI) with a balance left.

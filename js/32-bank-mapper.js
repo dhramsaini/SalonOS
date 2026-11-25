@@ -135,7 +135,7 @@ function loadBankFeedback(sid){try{return JSON.parse(cachedLocalGet(bankFeedback
 
 function noteBankFeedback(sid,x,nature,accepted){
   if(!x||!nature)return;const k=x.side+'|'+bmapSig(x.description)+'|'+nature;const f=loadBankFeedback(sid);const e=f[k]||{rej:0,acc:0};
-  try{const uk=outletKey('salonos_bank_sugg_users',sid);const U=JSON.parse(cachedLocalGet(uk)||'{}')||{};const me=bmapUser();const mo=new Date().toISOString().slice(0,7);const z=U[me+'|'+mo]||{acc:0,rej:0};if(accepted)z.acc++;else z.rej++;U[me+'|'+mo]=z;safeLocalSet(uk,JSON.stringify(U));}catch(err){}
+  try{const uk=outletKey('salonos_bank_sugg_users',sid);const U=JSON.parse(cachedLocalGet(uk)||'{}')||{};const me=bmapUser();const mo=localIsoOf(new Date()).slice(0,7);const z=U[me+'|'+mo]||{acc:0,rej:0};if(accepted)z.acc++;else z.rej++;U[me+'|'+mo]=z;safeLocalSet(uk,JSON.stringify(U));}catch(err){}
   if(accepted)e.acc++;else e.rej++;f[k]=e;const keys=Object.keys(f);if(keys.length>600)keys.slice(0,keys.length-600).forEach(z=>delete f[z]);
   safeLocalSet(bankFeedbackKey(sid),JSON.stringify(f));
 }

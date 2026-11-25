@@ -64,7 +64,7 @@ function ClientFollowUps({salon}){
 // ── Membership / package at billing ──
 function BillingClientStrip({sid,phone,total,usePackage,onUsePackage}){
   const h=React.createElement;if(sid==null||!controlOn('membershipAtBilling',sid))return null;const c=foClientByPhone(sid,phone);if(!c)return null;
-  const bal=typeof fdPackageLeft==='function'?fdPackageLeft(sid,phone):(Number(c.packageBalance)||0);const tier=c.tier&&c.tier!=='None'?c.tier:'';const exp=c.tierValidTill||'';const expired=exp&&exp<new Date().toISOString().slice(0,10);
+  const bal=typeof fdPackageLeft==='function'?fdPackageLeft(sid,phone):(Number(c.packageBalance)||0);const tier=c.tier&&c.tier!=='None'?c.tier:'';const exp=c.tierValidTill||'';const expired=exp&&exp<localIsoOf(new Date());
   const ns=noShowCount(sid,phone);
   return h('div',{style:{background:'rgba(47,95,224,0.07)',border:'1px solid rgba(47,95,224,0.3)',borderRadius:8,padding:'8px 10px',margin:'4px 0 10px',fontSize:12.5}},
     h('b',null,'👤 '+c.name),' · '+(c.visits||0)+' visit(s)',tier&&h('span',{style:{marginLeft:8,color:expired?'var(--red)':'var(--green)',fontWeight:600}},tier+(exp?(expired?' — ended ':' till ')+exp.split('-').reverse().join('/'):'')),
@@ -94,7 +94,7 @@ function NoShowNote({sid,phone}){
 // ── Smarter reorder ──
 function smartReorderList(sid,items){
   const on=controlOn('smartReorder',sid);const lead=controlLimit('smartReorder',sid)||7;const log=typeof loadInvLog==='function'?loadInvLog(sid):[];
-  const from=new Date(Date.now()-60*864e5).toISOString().slice(0,10);const used={};log.filter(x=>(x.type==='issue'||x.type==='sale')&&String(x.date)>=from).forEach(x=>{used[x.itemId]=(used[x.itemId]||0)+(Number(x.qty)||0);});
+  const from=localIsoOf(new Date(Date.now()-60*864e5));const used={};log.filter(x=>(x.type==='issue'||x.type==='sale')&&String(x.date)>=from).forEach(x=>{used[x.itemId]=(used[x.itemId]||0)+(Number(x.qty)||0);});
   return(items||[]).map(i=>{const qty=Number(i.qty)||0,min=Number(i.min)||0;const perDay=(used[i.id]||0)/60;const cover=perDay>0?Math.floor(qty/perDay):null;
     const need=qty<=min||(on&&cover!=null&&cover<=(Number(i.leadDays)||lead));const order=Math.max(Math.ceil(min*2-qty),on&&perDay>0?Math.ceil(perDay*30-qty):0,need?1:0);
     return{i,qty,min,perDay:Math.round(perDay*100)/100,cover,need,order};}).filter(x=>x.need);
@@ -107,7 +107,7 @@ function savePOs(sid,list){safeLocalSet(poKey(sid),JSON.stringify((list||[]).sli
 function createPO(sid,vendorId,lines,note){
   const list=loadPOs(sid);const n=Math.max(0,...list.map(p=>Number(String(p.no||'').replace(/\D/g,''))||0))+1;
   const L=(lines||[]).filter(l=>l&&l.name&&Number(l.qty)>0).map(l=>({itemId:l.itemId||'',name:l.name,qty:Number(l.qty),unit:l.unit||'',rate:Number(l.rate)||0}));
-  const po={id:'PO'+Date.now(),no:'PO-'+String(n).padStart(4,'0'),vendorId,date:new Date().toISOString().slice(0,10),lines:L,total:Math.round(L.reduce((t,l)=>t+l.qty*l.rate,0)),note:note||'',status:'Draft',by:(currentSessionUser()||{}).name||'',at:new Date().toISOString()};
+  const po={id:'PO'+Date.now(),no:'PO-'+String(n).padStart(4,'0'),vendorId,date:localIsoOf(new Date()),lines:L,total:Math.round(L.reduce((t,l)=>t+l.qty*l.rate,0)),note:note||'',status:'Draft',by:(currentSessionUser()||{}).name||'',at:new Date().toISOString()};
   savePOs(sid,[...list,po]);try{logAuditEvent(sid,{entity:'Purchase order',entityId:po.no,action:'Created',summary:FO_M(po.total)+' · '+L.length+' line(s)'});}catch(e){}return po;
 }
 function approvePO(sid,po){
@@ -157,9 +157,9 @@ function PurchaseOrdersPanel({sid,items}){
 
 // ── Payment run (Bank Payment → Vendor) ──
 function PaymentRunBar({sid,rows,onSelect}){
-  const h=React.createElement;const d0=new Date();d0.setDate(d0.getDate()+((7-d0.getDay())%7));const [by,setBy]=useState(d0.toISOString().slice(0,10));
+  const h=React.createElement;const d0=new Date();d0.setDate(d0.getDate()+((7-d0.getDay())%7));const [by,setBy]=useState(localIsoOf(d0));
   if(sid==null||!controlOn('paymentRun',sid))return null;
-  const due=(rows||[]).filter(r=>r.due&&r.due<=by);const tot=due.reduce((t,r)=>t+(Number(r.balance)||0),0);const over=(rows||[]).filter(r=>r.due&&r.due<new Date().toISOString().slice(0,10)).length;
+  const due=(rows||[]).filter(r=>r.due&&r.due<=by);const tot=due.reduce((t,r)=>t+(Number(r.balance)||0),0);const over=(rows||[]).filter(r=>r.due&&r.due<localIsoOf(new Date())).length;
   return h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',background:'var(--bg3)',borderRadius:8,padding:'8px 10px',marginBottom:10,fontSize:12.5}},
     h('b',null,'📅 Payment run'),'Bills due by',h('input',{type:'date',className:'form-control',style:{width:150,padding:'3px 6px'},value:by,onChange:e=>setBy(e.target.value)}),
     h('span',null,due.length+' bill(s) · '+FO_M(tot)),over>0&&h('span',{style:{color:'var(--red)',fontWeight:600}},over+' overdue'),
