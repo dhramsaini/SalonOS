@@ -446,9 +446,18 @@ tbody tr:nth-child(n+11){animation-delay:0.16s}
 .page-title[data-sub]{cursor:pointer}
 .page-title[data-sub]::after{content:'ⓘ';font-size:13px;font-weight:400;color:var(--text3);margin-left:7px;vertical-align:2px}
 .topbar-title .tt-short{display:none}
-/* Bank Reconcile rows (js/72): bank line · ⇄ · match · action */
-.rc-row{display:grid;grid-template-columns:minmax(0,1fr) 28px minmax(0,1.25fr) 92px;gap:12px;align-items:center;padding:11px 14px;cursor:default}
-@media(max-width:640px){.rc-row{grid-template-columns:minmax(0,1fr) 72px}.rc-row>:nth-child(2){display:none}.rc-row>:nth-child(3){grid-column:1/-1;grid-row:2}}
+/* Bank Reconcile (js/72): statement columns first, then the mapping columns */
+.rc-table{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
+.rc-table th,.rc-table td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top;text-align:left}
+.rc-table thead th{font-size:11px;font-weight:700;color:var(--text3);background:var(--bg2);position:sticky;top:0;z-index:2}
+.rc-table .rc-band th{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);background:var(--bg3);padding:6px 10px}
+.rc-table .rc-band th.rc-map{color:var(--green)}
+.rc-table .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.rc-table .rc-map{border-left:2px solid var(--border2);min-width:260px}
+.rc-table .rc-narr{min-width:220px;max-width:360px}
+.rc-table .rc-desc{font-size:11px;color:var(--text3);word-break:break-word;margin-top:1px}
+.rc-table tbody tr.rc-sel td{background:rgba(47,95,224,0.06)}
+.rc-table tbody tr:hover td{background:rgba(47,95,224,0.035)}
 /* MenuButton (js/01) */
 .menu-pop{position:absolute;top:calc(100% + 4px);z-index:950;min-width:190px;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.18);padding:4px;display:flex;flex-direction:column}
 .menu-item{text-align:left;background:none;border:none;border-radius:7px;padding:8px 10px;font-size:12.5px;color:var(--text);cursor:pointer;font-family:inherit;white-space:nowrap}
@@ -917,7 +926,7 @@ body.light kbd{background:#fff}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous" type="text/x-lazy" data-lazy="xlsx"></script>
 <!-- App code, split by area (js/). Load order matters; ?v= is each file's content fingerprint (set by tools/bump-version.ps1), so a release only re-downloads the files that changed. -->
-<script src="js/01-foundation.js?v=791accf83f"></script>
+<script src="js/01-foundation.js?v=026246d6a4"></script>
 <script src="js/02-shared.js?v=fa9a744c49"></script>
 <script src="js/03-admin.js?v=e1b5647f33"></script>
 <script src="js/04-outlet-staff.js?v=41a0217c97"></script>
@@ -989,7 +998,7 @@ body.light kbd{background:#fff}
 <script src="js/69-vendor-plus.js?v=593db26496"></script>
 <script src="js/70-bank-pnl-plus.js?v=c323d372c1"></script>
 <script src="js/71-bank-ledger.js?v=5292c8a924"></script>
-<script src="js/72-bank-reconcile.js?v=eb9b9e362d"></script>
+<script src="js/72-bank-reconcile.js?v=9c9e1f1ada"></script>
 <script src="js/60-final-freeze.js?v=6543efc890"></script>
 <script src="js/14-import-and-app.js?v=a1f88bbbe3"></script>
 <script>

@@ -196,9 +196,9 @@ function rcBuild(sid,ym){
     // a bill proposed for this line isn't offered to the next one
     if(it.s&&it.s.apply&&it.s.apply.type==='link')it.s.apply.plan.allocations.forEach(a=>{left[a.id]=Math.round(((left[a.id]||0)-a.amount)*100)/100;});
     if(!it.s&&x.side==='Debit'&&rcPayeeName(d))it.newPayee=rcPayeeName(d);
-    // pay for a locked month can't be recorded (settleBankLineToEmployees refuses) — never "Sure"
+    // pay of a locked month: the bank line is linked, nothing in the locked month changes (rcLinkPayLocked)
     if(it.s&&it.s.apply&&it.s.apply.type==='pay'&&it.s.apply.plan&&it.s.apply.plan.lines){const p=it.s.apply.plan;
-      if((monthLockRecordFor(sid,p.year,p.month)||{}).locked)it.s={...it.s,score:Math.min(it.s.score,0.7),conf:'mid',why:RPT_MONTHS[p.month]+' '+p.year+' is locked — unlock it (Salary Working) to link this line',reasons:[...(it.s.reasons||[]),'month locked']};}
+      if((monthLockRecordFor(sid,p.year,p.month)||{}).locked)it.s={...it.s,why:RPT_MONTHS[p.month]+' '+p.year+' is locked — OK links the bank line only (Salary / Incentive Working stay as they are)',reasons:[...(it.s.reasons||[]),'month locked']};}
   });
   items.forEach(it=>{const s=it.s;it.bucket=s?(s.score>=0.9?'sure':'check'):(it.newPayee?'new':'unknown');});
   // card / UPI settlements of the month, grouped by sale day
@@ -206,12 +206,35 @@ function rcBuild(sid,ym){
   return{items,done,settlements:Object.values(st).sort((a,b)=>String(toISO(b.day)).localeCompare(String(toISO(a.day)))),all:inMonth};
 }
 
+// Links a bank debit to employees' salary / incentive of a LOCKED month. Only the bank line gets the
+// settlement (who, which month, how much) — Salary / Incentive Working of the locked month are not
+// touched, so nothing that was locked changes. Same checks as settleBankLineToEmployees otherwise.
+function rcLinkPayLocked(sid,row,year,month,lines){
+  const act=(lines||[]).filter(l=>(Number(l.salaryAmt)||0)+(Number(l.incentiveAmt)||0)>0);
+  if(!act.length)return'Nothing to link.';
+  const tot=act.reduce((t,l)=>t+(Number(l.salaryAmt)||0)+(Number(l.incentiveAmt)||0),0),deb=Number(row.debit)||0;
+  if(tot>deb+1)return rupee0(tot)+' is more than this bank debit ('+rupee0(deb)+').';
+  const sw=loadSWMeta(sid),iw=loadIWMeta(sid);
+  const settlements=act.map(l=>{const k=attMonthKey(l.employeeId,year,month);const sa=Number(l.salaryAmt)||0,ia=Number(l.incentiveAmt)||0;
+    return{employeeId:l.employeeId,employeeName:l.employeeName,year,month,salary:sa,incentive:ia,dailyIncentive:0,dailyIncentiveByCat:{},
+      salarySettled:sa>0&&(sw[k]||{}).paymentStatus==='Paid',incentiveSettled:ia>0&&(iw[k]||{}).paymentStatus==='Paid',dailyIncentiveSettled:{},lockedMonth:true};});
+  const has=k=>settlements.some(x=>x[k]>0);
+  const patch={nature:has('salary')?'Salary':'Incentive',linkedEmployeePay:settlements};
+  if(settlements.length===1)patch.vendorOverride='EMP:'+settlements[0].employeeId;
+  saveBankLineMapping(sid,row.id,patch);
+  try{logAuditEvent(sid,{entity:'Bank Statement',entityId:String(row.id),action:'Salary linked (locked month)',summary:rupee0(tot)+' of '+(row.transactionDate||'')+' — '+settlements.map(x=>x.employeeName).join(', ')+' ('+RPT_MONTHS[month]+' '+year+', month locked: bank line only)'});}catch(e){}
+  try{if(settlements.length===1&&typeof learnPayeeTokens==='function')learnPayeeTokens(sid,'emp',settlements[0].employeeId,row.description);}catch(e){}
+  return'';
+}
 // Applies one suggestion; '' when done, else the reason. Remembers what was accepted.
 function rcApply(sid,it,s){
   const rows=bankRowsFor(sid);const row=rows.find(r=>r.id===it.x.id)||it.row;let err='';
   try{
     if(s.apply.type==='link'){err=linkBankLineToBills(sid,row,s.apply.plan.vendor,s.apply.plan.allocations.map(a=>({id:a.id,amount:a.amount,tds:a.tds})));if(!err)journalBankMapping(sid,row,'Reconcile: linked to '+s.apply.plan.allocations.map(a=>a.invoiceNo).join(', '));}
-    else if(s.apply.type==='pay'&&s.apply.plan.lines){const p=s.apply.plan;err=settleBankLineToEmployees(sid,row,p.year,p.month,p.lines);if(!err)journalBankMapping(sid,row,'Reconcile: '+p.lines.map(l=>l.employeeName).join(', ')+' '+RPT_MONTHS[p.month]);}
+    else if(s.apply.type==='pay'&&s.apply.plan.lines){const p=s.apply.plan;const locked=!!(monthLockRecordFor(sid,p.year,p.month)||{}).locked;
+      if(locked)journalBankMapping(sid,row,'Reconcile: '+p.lines.map(l=>l.employeeName).join(', ')+' '+RPT_MONTHS[p.month]+' (locked month — bank line only)');
+      err=locked?rcLinkPayLocked(sid,row,p.year,p.month,p.lines):settleBankLineToEmployees(sid,row,p.year,p.month,p.lines);
+      if(!err&&!locked)journalBankMapping(sid,row,'Reconcile: '+p.lines.map(l=>l.employeeName).join(', ')+' '+RPT_MONTHS[p.month]);}
     else err=applyBankSuggestion(sid,it.x,s,null,rows,'Reconcile: ');
   }catch(e){err=(e&&e.message)||String(e);}
   if(!err){if(s.payout)rcMarkPayout(sid,s.payout,row.id);try{noteBankFeedback(sid,it.x,typeof suggestionNature==='function'?(suggestionNature(s)||s.label):s.label,true);}catch(e){}}
@@ -295,23 +318,32 @@ function BankReconcileSheet({salon,period,onNavTab}){
         h('td',{style:{padding:'3px 6px',fontSize:12.5,color:'var(--text3)'}},g.n+' line'+(g.n===1?'':'s')),h('td',{style:{padding:'3px 6px',fontSize:12.5,textAlign:'right',fontWeight:600}},M(g.total)))))):h('div',{style:{fontSize:12.5,color:'var(--text3)'}},'None this month.'),
       h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'These are matched to the day’s card / UPI sales in Collection Reco.')),
     // the lines
-    h('div',{className:'card',ref:listRef,style:{padding:0,overflow:'hidden'}},
+    // Statement first (date, narration, ref, debit, credit, balance), then the mapping columns.
+    h('div',{className:'card',ref:listRef,style:{padding:0}},
       !shown.length&&h('div',{style:{padding:'28px 16px',textAlign:'center',color:'var(--text3)',fontSize:13}},data.items.length?'Nothing in this filter.':'✓ Every bank line of this month is reconciled.'),
-      shown.map((it,i)=>{const x=it.x;const s=it.s;const p=pill(it.bucket);const isSel=cur===it;const isOpen=open===x.id;const cr=x.side==='Credit';
-        return h('div',{key:x.id,'data-rc-sel':isSel?'1':'0',onClick:()=>setSel(i),style:{borderTop:i?'1px solid var(--border)':'none',background:isSel?'rgba(47,95,224,0.05)':undefined}},
-          h('div',{className:'rc-row'},
-            h('div',{style:{minWidth:0}},h('div',{style:{fontSize:11.5,color:'var(--text3)'}},x.date+(it.task==='bill'?' · Vendor Payment, no bill linked':it.task==='pay'?' · '+x.nature+', no employee linked':x.problem?' · '+x.problem:'')),
-              h('div',{style:{fontWeight:600,fontSize:14,color:cr?'var(--green)':'var(--red)'}},(cr?'+ ':'− ')+M(x.credit||x.debit)),
-              h('div',{style:{fontSize:12,color:'var(--text2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},title:x.description},rcPayeeName(x.description)||x.description)),
-            h('div',{style:{fontSize:18,color:'var(--text3)',textAlign:'center'}},s&&s.apply&&s.apply.plan&&s.apply.plan.lines&&s.apply.plan.lines.length>1?'⑂':s?'⇄':'?'),
-            h('div',{style:{minWidth:0}},
-              h('span',{style:{fontSize:11,padding:'1px 8px',borderRadius:999,background:p[2],color:p[1],fontWeight:600}},p[0]+(s?' '+Math.round(s.score*100)+'%':'')),
-              s?h(React.Fragment,null,h('div',{style:{fontSize:13,marginTop:3,fontWeight:500}},s.label),s.why&&h('div',{style:{fontSize:11.5,color:'var(--text3)'}},s.why),h('div',null,(s.reasons||[]).slice(0,3).map(chip)))
-               :h('div',{style:{fontSize:12.5,color:'var(--text2)',marginTop:3}},it.newPayee?it.newPayee+' isn’t a vendor or employee yet':'No match found')),
-            h('div',{style:{textAlign:'right'}},
-              s&&it.bucket==='sure'?h('button',{className:'btn btn-primary btn-sm',onClick:e=>{e.stopPropagation();ok(it,s);}},'OK')
-                :h('button',{className:'btn btn-ghost btn-sm',onClick:e=>{e.stopPropagation();setSel(i);setOpen(isOpen?null:x.id);}},isOpen?'Close':s?'Review':'Choose'))),
-          isOpen&&h('div',{style:{padding:'4px 14px 12px 14px',background:'var(--bg3)'}},
+      shown.length>0&&h('div',{className:'table-wrap',style:{margin:0}},h('table',{className:'rc-table'},
+        h('thead',null,
+          h('tr',{className:'rc-band'},h('th',{colSpan:6},'Bank statement'),h('th',{colSpan:3,className:'rc-map'},'Mapping')),
+          h('tr',null,h('th',null,'Date'),h('th',null,'Narration'),h('th',null,'Ref no.'),h('th',{className:'num'},'Debit'),h('th',{className:'num'},'Credit'),h('th',{className:'num'},'Balance'),
+            h('th',{className:'rc-map'},'Mapped to'),h('th',null,'Match'),h('th',null,''))),
+        h('tbody',null,shown.map((it,i)=>{const x=it.x;const s=it.s;const p=pill(it.bucket);const isSel=cur===it;const isOpen=open===x.id;const cr=x.side==='Credit';const row=it.row||{};
+          const status=it.task==='bill'?'Vendor Payment · no bill linked':it.task==='pay'?x.nature+' · no employee linked':x.problem||'';
+          return h(React.Fragment,{key:x.id},
+            h('tr',{'data-rc-sel':isSel?'1':'0',onClick:()=>setSel(i),className:isSel?'rc-sel':''},
+              h('td',{style:{whiteSpace:'nowrap'}},x.date),
+              h('td',{className:'rc-narr'},h('div',{style:{fontWeight:600,color:'var(--text)'}},rcPayeeName(x.description)||'—'),h('div',{className:'rc-desc',title:x.description},x.description),status&&h('div',{style:{fontSize:11,color:'#b26a00',marginTop:2}},status)),
+              h('td',{style:{fontSize:11.5,color:'var(--text3)',whiteSpace:'nowrap'}},row.refNo||'—'),
+              h('td',{className:'num',style:{color:'var(--red)',fontWeight:600}},cr?'':M(x.debit)),
+              h('td',{className:'num',style:{color:'var(--green)',fontWeight:600}},cr?M(x.credit):''),
+              h('td',{className:'num',style:{color:'var(--text3)'}},row.closingBalance!==''&&row.closingBalance!=null&&isFinite(Number(row.closingBalance))?M(row.closingBalance):'—'),
+              h('td',{className:'rc-map'},s?h(React.Fragment,null,h('div',{style:{fontWeight:600,color:'var(--text)'}},(s.apply&&s.apply.plan&&s.apply.plan.lines&&s.apply.plan.lines.length>1?'⑂ ':'')+s.label),
+                  s.why&&h('div',{style:{fontSize:11.5,color:'var(--text3)'}},s.why),h('div',null,(s.reasons||[]).slice(0,3).map(chip)))
+                :h('div',{style:{fontSize:12.5,color:'var(--text2)'}},it.newPayee?it.newPayee+' isn’t a vendor or employee yet':'No match found')),
+              h('td',{style:{whiteSpace:'nowrap'}},h('span',{style:{fontSize:11,padding:'2px 8px',borderRadius:999,background:p[2],color:p[1],fontWeight:600}},p[0]+(s?' '+Math.round(s.score*100)+'%':''))),
+              h('td',{style:{textAlign:'right',whiteSpace:'nowrap'}},
+                s&&it.bucket==='sure'?h('button',{className:'btn btn-primary btn-sm',onClick:e=>{e.stopPropagation();ok(it,s);}},'OK')
+                  :h('button',{className:'btn btn-ghost btn-sm',onClick:e=>{e.stopPropagation();setSel(i);setOpen(isOpen?null:x.id);}},isOpen?'Close':s?'Review':'Choose'))),
+          isOpen&&h('tr',null,h('td',{colSpan:9,style:{padding:'4px 14px 12px 14px',background:'var(--bg3)'}},
             (it.alts||[]).length>0&&h('div',{style:{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.04em',margin:'6px 0 4px'}},'Matches'),
             (it.alts&&it.alts.length?it.alts:(s?[s]:[])).slice(0,4).map((a,k)=>h('div',{key:k,style:{display:'flex',gap:8,alignItems:'center',padding:'4px 0',borderBottom:'1px dashed var(--border)'}},
               h('span',{style:{fontSize:11,minWidth:38,color:a.score>=0.9?'var(--green)':'#b26a00',fontWeight:600}},Math.round(a.score*100)+'%'),
@@ -322,6 +354,6 @@ function BankReconcileSheet({salon,period,onNavTab}){
               !cr&&RC_DEBIT_CHOICES.map(([n,l])=>h('button',{key:n,className:'btn btn-ghost btn-sm',onClick:()=>mapAs(it,n)},l)),
               h('select',{className:'form-control',style:{width:'auto',padding:'3px 8px',fontSize:12},value:'',onChange:e=>{if(e.target.value)mapAs(it,e.target.value);}},
                 h('option',{value:''},'Other nature…'),(typeof BANK_MAP_NATURES!=='undefined'?BANK_MAP_NATURES:[]).filter(n=>cr?BANK_CREDIT_NATURES.has(n):!BANK_CREDIT_NATURES.has(n)||n==='Transfer'||n==='Other'||n==='Refund').map(n=>h('option',{key:n,value:n},n))),
-              h('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},onClick:()=>onNavTab&&onNavTab('bank-statement')},'Split / link by hand in Bank Statement →'))));})),
+              h('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},onClick:()=>onNavTab&&onNavTab('bank-statement')},'Split / link by hand in Bank Statement →')))));}))))),
     h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'Keys: ↑ ↓ move · Enter OK (Sure) or open · / search · Esc close. Every change shows in Bank Statement → Undo.'));
 }
