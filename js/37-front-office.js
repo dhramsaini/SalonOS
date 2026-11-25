@@ -7,7 +7,7 @@
 //   • Purchase orders saved, approved above a limit, linked to the vendor bill.   → poApproval / billNeedsPo
 //   • Payment run: tick every bill due by a date in Bank Payment → Vendor.        → paymentRun
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-const FO_M=n=>'₹'+Math.round(Number(n)||0).toLocaleString('en-IN');
+const FO_M=n=>rupee0(n);
 const foPhone=p=>String(p||'').replace(/\D/g,'').slice(-10);
 function foClients(sid){try{const v=JSON.parse(cachedLocalGet(outletKey('salonos_clients',sid))||'[]');return Array.isArray(v)?v:[];}catch(e){return[];}}
 function foSaveClients(sid,list){safeLocalSet(outletKey('salonos_clients',sid),JSON.stringify(list));}

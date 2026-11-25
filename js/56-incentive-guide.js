@@ -7,7 +7,7 @@
 //   • “Try it” — enter a salary and sales, see what the rules give.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 const IG_MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
-function igM(n){return '₹'+Math.round(Number(n)||0).toLocaleString('en-IN');}
+function igM(n){return rupee0(n);}
 function igX(n){const v=Number(n)||0;return (Math.round(v*100)/100)+'×';}
 function igSlabs(sid){const s=(typeof loadServiceSlabs==='function'?loadServiceSlabs(sid):[])||[];const base=Number(s[0]&&s[0].rate)||0;
   const tiers=s.slice(1).map(t=>({th:Number(t.threshold),rate:Number(t.rate)||0})).filter(t=>!isNaN(t.th)&&t.th>0).sort((a,b)=>a.th-b.th);return{base,tiers};}

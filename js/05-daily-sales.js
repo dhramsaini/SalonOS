@@ -48,6 +48,26 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   },[period&&period.mi,period&&period.fy]);
   const [showCols,setShowCols]=useState(5);
   const [pettyOpen,setPettyOpen]=useState(false); // ⚙ Cash limits (js/22-controls.js)
+  // Keyboard: Enter → same column, next row · Ctrl+S → confirm save · Alt+← / Alt+→ → previous / next day.
+  const dseKeysRef=useRef({});const dseRootRef=useRef(null);
+  useEffect(()=>{
+    const onKey=e=>{
+      const root=dseRootRef.current;if(!root||!document.body.contains(root))return;
+      if(document.querySelector('.modal-overlay'))return; // pop-ups handle their own keys
+      const k=dseKeysRef.current;
+      if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&(e.key==='s'||e.key==='S')){e.preventDefault();if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();setTimeout(()=>k.saveDay&&k.saveDay(),0);return;}
+      if(e.altKey&&!e.ctrlKey&&(e.key==='ArrowLeft'||e.key==='ArrowRight')&&k.viewDate&&k.setViewDate){
+        e.preventDefault();const d=new Date(k.viewDate+'T00:00:00');d.setDate(d.getDate()+(e.key==='ArrowLeft'?-1:1));let v=localIsoOf(d);
+        if(k.periodCal){const lo=localIsoOf(new Date(k.periodCal.year,k.periodCal.month,1)),hi=localIsoOf(new Date(k.periodCal.year,k.periodCal.month+1,0));if(v<lo||v>hi)return;}
+        k.setViewDate(v);return;}
+      if(e.key==='Enter'&&!e.shiftKey&&!e.ctrlKey&&!e.altKey){
+        const t=e.target;if(!t||t.tagName!=='INPUT'||t.type==='checkbox'||!root.contains(t))return;const td=t.closest('td'),tr=td&&td.parentElement;if(!tr)return;
+        const col=Array.prototype.indexOf.call(tr.children,td);let r=tr.nextElementSibling;
+        while(r){const c=r.children[col];const inp=c&&c.querySelector('input:not([type=checkbox]):not([disabled])');if(inp){e.preventDefault();inp.focus();if(inp.select)inp.select();return;}r=r.nextElementSibling;}
+      }
+    };
+    document.addEventListener('keydown',onKey);return()=>document.removeEventListener('keydown',onKey);
+  },[]);
 
   // Data store: {iso: {rowIdx: value}}. Previously this was pure in-memory state seeded with
   // fake sample numbers — every real entry was lost on reload. Now it's persisted per outlet,
@@ -1493,7 +1513,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     if(!days.length)return null;const lbl=days.map(d=>Number(d.slice(8))).join(', ');
     return React.createElement('div',{style:{background:'rgba(224,82,82,0.08)',border:'1px solid rgba(224,82,82,0.35)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5,color:'var(--text2)'}},
       '⚠ No Daily Sales entered this month for ',React.createElement('b',null,days.length+' day'+(days.length===1?'':'s')),': ',t.toLocaleString('en-IN',{month:'short'})+' '+lbl);})();
-  return React.createElement('div',{className:'fade-in'},
+  dseKeysRef.current={saveDay,viewDate,setViewDate,periodCal};
+  return React.createElement('div',{className:'fade-in',ref:dseRootRef},
     missingStrip,
     typeof EcDseChecks==='function'&&React.createElement(EcDseChecks,{sid:salonId,days,salesData}),
     // Header
@@ -1511,17 +1532,19 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
           onChange:e=>{let v=e.target.value;if(!v)return;
             if(periodCal){const lo=localDateToISO(new Date(periodCal.year,periodCal.month,1)),hi=localDateToISO(new Date(periodCal.year,periodCal.month+1,0));if(v<lo)v=lo;if(v>hi)v=hi;}
             setViewDate(v);}}),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Today’s summary for the owner — opens WhatsApp with it ready',onClick:()=>{const t=ownerSummaryText(salonId,viewDate);const ph=outletSettings(salonId).ownerPhone;window.open(waPhoneOk(ph)?waLink(ph,t):'https://wa.me/?text='+encodeURIComponent(t),'_blank');}},'📤 Owner summary'),
-        user&&PETTY_APPROVER_ROLES.includes(user.role)&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Daily cash limit per expense head',onClick:()=>setPettyOpen(true)},'⚙ Cash limits'),
         pettyOpen&&React.createElement(PettyLimitsModal,{sid:salonId,onClose:()=>setPettyOpen(false)}),
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:showCols,onChange:e=>setShowCols(e.target.value==='full'?'full':Number(e.target.value))},
           [5,10,15,20,25].map(n=>React.createElement('option',{key:n,value:n},n+' days')).concat([React.createElement('option',{key:'full',value:'full'},'Full Month')])
         ),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},onClick:exportCSV},'⬇ Export Excel'),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)',borderColor:'rgba(255,107,107,0.4)'},onClick:exportPDF},'⬇ Export PDF'),
+        // Exports, summaries and settings in one menu; Save stays the only main button.
+        React.createElement(MenuButton,{label:'⇅ Export & reports',items:[
+          {label:'⬇ Export Excel',onClick:exportCSV},
+          {label:'⬇ Export PDF',onClick:exportPDF},
+          {label:'📊 Monthly & Comparative Summary',onClick:()=>setShowSummaryModal(true)},
+          {label:'📤 Owner summary on WhatsApp',title:'Today’s summary for the owner — opens WhatsApp with it ready',onClick:()=>{const t=ownerSummaryText(salonId,viewDate);const ph=outletSettings(salonId).ownerPhone;window.open(waPhoneOk(ph)?waLink(ph,t):'https://wa.me/?text='+encodeURIComponent(t),'_blank');}},
+          user&&PETTY_APPROVER_ROLES.includes(user.role)&&{label:'⚙ Daily cash limits',title:'Daily cash limit per expense head',onClick:()=>setPettyOpen(true)}]}),
         React.createElement(ShareReportButton,{title:dseReportTitle,subtitle:'Daily Expenses & Sales',getBodyHtml:dseReportBodyHtml,getSheetRows:dseReportSheetRows,landscape:true}),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowSummaryModal(true)},'📊 Monthly & Comparative Summary'),
-        React.createElement('button',{className:'btn btn-primary btn-sm',onClick:saveDay},'💾 Save Today')
+        React.createElement('button',{className:'btn btn-primary btn-sm',title:'Ctrl+S',onClick:saveDay},'💾 Save Today')
       )
     ),
     // Phone: the one-day form comes first, right under the title.

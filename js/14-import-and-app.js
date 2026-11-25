@@ -288,6 +288,7 @@ function AlertsBell({user,salons,onOpen}){
   const [alerts,setAlerts]=useState(null); // null = not loaded / not available
   const [open,setOpen]=useState(false);
   const [tick,setTick]=useState(0);
+  const [sev,setSev]=useState(null); // panel filter: urgent / warn / info / all (null = urgent if any, else all)
   const load=useCallback(async()=>{
     try{setAlerts(await loadOpenAlerts());}catch(e){setAlerts(prev=>prev||null);}
   },[]);
@@ -310,19 +311,25 @@ function AlertsBell({user,salons,onOpen}){
   const rank={urgent:0,warn:1,info:2};
   visible.sort((a,b)=>(a.severity in rank?rank[a.severity]:1)-(b.severity in rank?rank[b.severity]:1)||String(b.created_at).localeCompare(String(a.created_at)));
   const urgent=visible.filter(a=>a.severity==='urgent').length;
+  const sevOf=a=>a.severity==='urgent'?'urgent':a.severity==='info'?'info':'warn';
+  const counts={urgent,warn:visible.filter(a=>sevOf(a)==='warn').length,info:visible.filter(a=>sevOf(a)==='info').length};
+  const sevNow=sev||(urgent?'urgent':'all');
+  const shown=sevNow==='all'?visible:visible.filter(a=>sevOf(a)===sevNow);
   const salonOf=id=>(salons||[]).find(s=>Number(s.id)===Number(id));
   const groups=[];
-  visible.forEach(a=>{const k=a.outlet_id==null?'all':String(a.outlet_id);let g=groups.find(x=>x.k===k);if(!g){g={k,name:a.outlet_id==null?'All outlets':((salonOf(a.outlet_id)||{}).name||('Outlet '+a.outlet_id)).split('—')[0].trim(),items:[]};groups.push(g);}g.items.push(a);});
+  shown.forEach(a=>{const k=a.outlet_id==null?'all':String(a.outlet_id);let g=groups.find(x=>x.k===k);if(!g){g={k,name:a.outlet_id==null?'All outlets':((salonOf(a.outlet_id)||{}).name||('Outlet '+a.outlet_id)).split('—')[0].trim(),items:[]};groups.push(g);}g.items.push(a);});
   const done=async(a)=>{
     try{await resolveAlert(a.id);setAlerts(list=>(list||[]).filter(x=>x.id!==a.id));success('Marked done');}
     catch(e){toastError((e&&e.message)||'Could not close this alert');}
   };
   const dot=sev=>h('span',{style:{width:8,height:8,borderRadius:'50%',flexShrink:0,marginTop:6,background:sev==='urgent'?'var(--red)':sev==='info'?'var(--accent)':'var(--orange)'}});
   return h(React.Fragment,null,
-    h('button',{className:'topbar-icon-btn',title:visible.length?visible.length+' alert'+(visible.length===1?'':'s')+' need attention':'No alerts',
-      'aria-label':'Alerts','aria-expanded':open,onClick:()=>setOpen(o=>!o),style:{position:'relative'}},
+    // Badge: the number of URGENT alerts (red); only a small dot when there are just non-urgent ones.
+    h('button',{className:'topbar-icon-btn',title:visible.length?(urgent+' urgent · '+counts.warn+' need attention · '+counts.info+' for information'):'No alerts',
+      'aria-label':'Alerts','aria-expanded':open,onClick:()=>{setOpen(o=>!o);setSev(null);},style:{position:'relative'}},
       h('span',{style:{fontSize:15,lineHeight:1}},'🔔'),
-      visible.length>0&&h('span',{style:{position:'absolute',top:-6,right:-6,minWidth:18,height:18,borderRadius:9,padding:'0 5px',fontSize:10.5,fontWeight:700,lineHeight:'18px',textAlign:'center',color:'#fff',background:urgent?'var(--red)':'var(--orange)'}},visible.length>99?'99+':visible.length)),
+      urgent>0?h('span',{style:{position:'absolute',top:-6,right:-6,minWidth:18,height:18,borderRadius:9,padding:'0 5px',fontSize:10.5,fontWeight:700,lineHeight:'18px',textAlign:'center',color:'#fff',background:'var(--red)'}},urgent>99?'99+':urgent)
+        :visible.length>0&&h('span',{style:{position:'absolute',top:-2,right:-2,width:9,height:9,borderRadius:'50%',background:'var(--orange)',border:'2px solid var(--bg2)'}})),
     open&&h(React.Fragment,null,
       h('div',{style:{position:'fixed',inset:0,zIndex:998},onClick:()=>setOpen(false)}),
       h('div',{role:'dialog','aria-label':'Alerts',style:{position:'fixed',top:56,right:12,width:'min(430px, calc(100vw - 24px))',maxHeight:'calc(100vh - 80px)',overflowY:'auto',zIndex:999,
@@ -330,6 +337,10 @@ function AlertsBell({user,salons,onOpen}){
         h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 14px',borderBottom:'1px solid var(--border)',position:'sticky',top:0,background:'var(--bg2)'}},
           h('div',{style:{fontWeight:700,fontSize:14}},'Alerts',visible.length?' ('+visible.length+')':''),
           h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setOpen(false),'aria-label':'Close'},'✕')),
+        visible.length>0&&h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',padding:'8px 14px',borderBottom:'1px solid var(--border)'}},
+          [['urgent','Urgent',counts.urgent,'var(--red)'],['warn','Needs attention',counts.warn,'var(--orange)'],['info','FYI',counts.info,'var(--accent)'],['all','All',visible.length,'var(--text2)']].map(([k,l,n,c])=>
+            h('button',{key:k,type:'button',className:'tab-group-chip'+(sevNow===k?' on':''),style:{'--tabc':c},onClick:()=>setSev(k)},l+' '+n))),
+        visible.length>0&&!shown.length&&h('div',{style:{padding:'20px 16px',textAlign:'center',color:'var(--text3)',fontSize:12.5}},'Nothing here. Pick another filter above.'),
         !visible.length&&h('div',{style:{padding:'28px 16px',textAlign:'center',color:'var(--text3)',fontSize:13}},'✓ All clear — nothing needs attention right now.',
           h('div',{style:{fontSize:11.5,marginTop:6}},'The server checks every night at 9 PM.')),
         groups.map(g=>h('div',{key:g.k},
@@ -426,6 +437,7 @@ function App(){
   const [activePage,setActivePage]=useState('dashboard');
   const [selectedSalon,setSelectedSalon]=useState(null);
   const [salonTab,setSalonTab]=useState('master-salary');
+  const [tabGroup,setTabGroup]=useState(()=>{try{return localStorage.getItem('sos_tab_group')||'All';}catch(e){return'All';}});
   const [dashTab,setDashTab]=useState('overview'); // Master Dashboard: 'overview' | 'compliance'
   // If the sheet currently open stops being accessible to this user (an admin just changed
   // their permissions, or they logged in with an account that never had access to it), move
@@ -1039,19 +1051,16 @@ function App(){
     if(activePage==='salon'){
       const Comp=SALON_TAB_COMPONENTS[salonTab]||MasterSalarySheet;
       return React.createElement('div',{className:'fade-in'},
-        // Phone: the outlet name is already in the topbar, so this bar is hidden there.
-        React.createElement('div',{className:'hide-phone',style:{background:'var(--bg3)',borderRadius:'var(--r)',padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
-          React.createElement('span',{style:{fontSize:12,color:'var(--text3)'}},'Outlet:'),
-          React.createElement('span',{style:{fontSize:13,color:'var(--accent)',fontWeight:500}},selectedSalon?.name),
-          React.createElement('span',{style:{marginLeft:'auto',fontSize:11,color:'var(--text3)',cursor:'pointer'},onClick:()=>setActivePage('master-sheet')},'← Back to Master Sheet')
-        ),
-        React.createElement('div',{className:'period-bar'},
-          React.createElement('span',{style:{fontSize:11,color:'var(--text3)'}},'Period'),
+        // One slim bar: outlet · period · period buttons (the outlet name is in the phone topbar already).
+        React.createElement('div',{className:'period-bar outlet-head'},
+          React.createElement('span',{className:'hide-phone',style:{fontSize:13,color:'var(--accent)',fontWeight:600,whiteSpace:'nowrap'}},selectedSalon?.name),
+          React.createElement('span',{className:'hide-phone',style:{color:'var(--text3)'}},'·'),
           React.createElement('span',{className:'pv'},pgLabel(period)),
           selectedSalon&&defaultPeriods[selectedSalon.id]?React.createElement('span',{className:'badge badge-green'},'Default'):null,
           React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},onClick:()=>setGateFor(selectedSalon)},'Change period'),
           selectedSalon&&defaultPeriods[selectedSalon.id]?React.createElement('button',{className:'btn btn-ghost btn-sm',
-            onClick:()=>{pgSave(null,selectedSalon.id);setDefaultPeriods(prev=>{const n={...prev};delete n[selectedSalon.id];return n;});addToast('Default cleared for this outlet — it will ask for a period again','info')}},'Clear default'):null
+            onClick:()=>{pgSave(null,selectedSalon.id);setDefaultPeriods(prev=>{const n={...prev};delete n[selectedSalon.id];return n;});addToast('Default cleared for this outlet — it will ask for a period again','info')}},'Clear default'):null,
+          React.createElement('button',{className:'btn btn-ghost btn-sm hide-phone',onClick:()=>setActivePage('master-sheet')},'← Master Sheet')
         ),
         // Phone: one big "current sheet" button opening the full-screen sheet picker, instead of a
         // 27-tab strip that shows two tabs at a time.
@@ -1060,10 +1069,15 @@ function App(){
             React.createElement('span',{className:'ms-icon'},cur?cur.icon:'📋'),
             React.createElement('span',null,cur?cur.label:'Choose a sheet'),
             React.createElement('span',{className:'ms-more'},'All sheets ▾'));})(),
-        React.createElement('div',{className:'hide-phone',style:{display:'flex',alignItems:'center',gap:6,marginBottom:20}},
+        // Sheet groups: show one group's tabs at a time (the open sheet always stays visible).
+        (()=>{const groups=[...new Set(visibleSalonTabs.map(t=>t.group).filter(Boolean))];if(groups.length<3)return null;
+          return React.createElement('div',{className:'hide-phone tab-groups'},
+            ['All',...groups].map(g=>React.createElement('button',{key:g,type:'button',className:'tab-group-chip'+(tabGroup===g?' on':''),
+              style:{'--tabc':SALON_TAB_GROUP_COLORS[g]||'var(--accent)'},onClick:()=>{setTabGroup(g);try{localStorage.setItem('sos_tab_group',g);}catch(e){}}},g)));})(),
+        React.createElement('div',{className:'hide-phone',style:{display:'flex',alignItems:'center',gap:6,marginBottom:16}},
           React.createElement('button',{type:'button','aria-label':'Scroll sheets left',className:'btn btn-ghost btn-sm',style:{flexShrink:0,padding:'6px 9px'},onClick:()=>salonTabBarScrollTo(-1)},'‹'),
           React.createElement('div',{className:'tab-bar',id:'salon-tab-bar',style:{marginBottom:0,flex:1}},
-            visibleSalonTabs.map(t=>React.createElement('button',{key:t.id,className:`tab-btn ${salonTab===t.id?'active':''}`,onClick:()=>setSalonTab(t.id),
+            visibleSalonTabs.filter(t=>tabGroup==='All'||t.group===tabGroup||t.group==='Overview'||t.id===salonTab).map(t=>React.createElement('button',{key:t.id,className:`tab-btn ${salonTab===t.id?'active':''}`,onClick:()=>setSalonTab(t.id),
               style:{'--tabc':SALON_TAB_GROUP_COLORS[t.group]||'var(--accent)','--tabc-rgb':SALON_TAB_GROUP_COLORS_RGB[t.group]||'47,95,224'}},
               React.createElement('span',{style:{display:'inline-block',width:7,height:7,borderRadius:'50%',background:SALON_TAB_GROUP_COLORS[t.group]||'var(--text3)',boxShadow:'0 0 5px rgba('+(SALON_TAB_GROUP_COLORS_RGB[t.group]||'47,95,224')+',0.7)',flexShrink:0}}),
               React.createElement('span',{className:'tab-btn-icon'},t.icon),t.label))
@@ -1157,7 +1171,11 @@ function App(){
           canGoBack&&React.createElement('button',{className:'topbar-icon-btn',title:'Go back to the previous screen (Alt+←)',onClick:goBack,style:{padding:'4px 8px'}},
             React.createElement('span',null,'←'),React.createElement('span',{className:'lbl-full'},'Back')
           ),
-          React.createElement('span',{className:'topbar-title'},activePage==='salon'&&selectedSalon?selectedSalon.name:'SalonOS')
+          // Phones get the outlet's own part of the name ("Vijayabank", not "Cut & Style Vijayabank"), on up to two lines.
+          React.createElement('span',{className:'topbar-title',title:activePage==='salon'&&selectedSalon?selectedSalon.name:''},
+            activePage==='salon'&&selectedSalon?(()=>{const full=String(selectedSalon.name||'');const b=String(selectedSalon.brandName||'').trim();
+              const short=b&&full.toLowerCase().startsWith(b.toLowerCase()+' ')?full.slice(b.length+1):full;
+              return React.createElement(React.Fragment,null,React.createElement('span',{className:'tt-full'},full),React.createElement('span',{className:'tt-short'},short));})():'SalonOS')
         ),
         React.createElement('div',{className:'topbar-right'},
           CLOUD_SYNC_ENABLED&&user&&accessibleSalons.length>0&&React.createElement(AskSalonOS,{user,salons:accessibleSalons,currentSalonId:activePage==='salon'&&selectedSalon?selectedSalon.id:null}),

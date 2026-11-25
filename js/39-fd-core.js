@@ -8,7 +8,7 @@
 //   • The bill form (BillEditor) used by Billing, Appointments ("Bill now") and Clients.
 // Same storage keys as before, so existing bills, bookings, clients and stock carry over.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-const FD_M=n=>'₹'+Math.round(Number(n)||0).toLocaleString('en-IN');
+const FD_M=n=>rupee0(n);
 const fdP10=p=>String(p||'').replace(/\D/g,'').slice(-10);
 const fdTodayIso=()=>localIsoOf(new Date());
 const fdJ=(k,d)=>{try{const v=JSON.parse(cachedLocalGet(k)||'null');return v==null?d:v;}catch(e){return d;}};

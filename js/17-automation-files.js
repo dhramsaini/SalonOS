@@ -9,7 +9,7 @@
 //   • P&L Final → offer to email the final P&L to the Automatic-reports recipients.
 
 const AF_MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
-const afMoney=n=>'₹'+Math.round(Number(n)||0).toLocaleString('en-IN');
+const afMoney=n=>rupee0(n);
 // WhatsApp click-to-chat link; 10-digit Indian numbers get +91.
 function waLink(phone,text){
   let d=String(phone||'').replace(/\D/g,'');

@@ -9,7 +9,7 @@
 //  vpHistory    every change to a bill (who, when, what) — 🕘 History on the bill
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 function vpOn(id,sid){return typeof controlOn!=='function'||controlOn(id,sid);}
-const vpR=n=>'₹'+Math.round(Number(n)||0).toLocaleString('en-IN');
+const vpR=n=>rupee0(n);
 const vpUser=()=>(typeof currentSessionUser==='function'&&(currentSessionUser()||{}).name)||'';
 const vpNorm=n=>String(n==null?'':n).toLowerCase().replace(/[\s\-\/.]/g,'');
 function vpFyStartOf(iso){const d=String(iso||'');const y=Number(d.slice(0,4)),m=Number(d.slice(5,7));return m>=4?y:y-1;}

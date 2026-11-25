@@ -20,7 +20,7 @@ function salYmAdd(ym,n){const p=salYmParts(ym);const d=new Date(p.y,p.m+n,1);ret
 function salNowYm(){const d=new Date();return salYm(d.getFullYear(),d.getMonth());}
 function salRevOn(sid){return typeof controlOn!=='function'||controlOn('salaryRevisions',sid);}
 function salArrOn(sid){return typeof controlOn!=='function'||controlOn('salaryArrears',sid);}
-function salM(n){return '₹'+Math.round(Number(n)||0).toLocaleString('en-IN');}
+function salM(n){return rupee0(n);}
 // Every Master Salary detail is kept month-wise, except identity details, documents, contact details and
 // the joining / leaving dates and status — those are corrections that apply to every month.
 const SAL_HIST_SKIP=new Set(['id','name','fatherName','mobile','email','address','pan','aadhar','panFile','aadharFile','bankProofFile','photo','doj','dol','status','pt','payHistory','arrears','payFrom','createdAt','updatedAt']);

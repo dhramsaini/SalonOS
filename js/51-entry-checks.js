@@ -14,7 +14,7 @@ function ecLim(id,d,sid){const v=typeof controlLimit==='function'?Number(control
 // warns.push / blocks.push that remembers which switch raised it (Controls → ctlHitStats)
 function ecTag(id,arr){arr.ids=arr.map(()=>id);return arr;}
 function ecPush(arr,id,msg){arr.push(msg);(arr.ids=arr.ids||[]).push(id);}
-function ecM(n){return '₹'+Math.round(Number(n)||0).toLocaleString('en-IN');}
+function ecM(n){return rupee0(n);}
 function ecToday(){return localIsoOf(new Date());}
 function ecIso(v){const s=String(v==null?'':v).trim();let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);if(m)return m[1]+'-'+m[2]+'-'+m[3];
   m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);if(m)return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');return'';}

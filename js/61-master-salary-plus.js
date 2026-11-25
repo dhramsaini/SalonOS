@@ -14,7 +14,7 @@
 const MS_MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
 function msOn(id,sid){return typeof controlOn==='function'&&controlOn(id,sid);}
 function msLim(id,d,sid){const v=typeof controlLimit==='function'?Number(controlLimit(id,sid)):0;return v>0?v:d;}
-function msM(n){return '₹'+Math.round(Number(n)||0).toLocaleString('en-IN');}
+function msM(n){return rupee0(n);}
 function msDmy(iso){return iso?String(iso).slice(0,10).split('-').reverse().join('/'):'—';}
 function msParts(e){return['basic','hra','conv','special'].reduce((t,k)=>t+(Number(e&&e[k])||0),0);}
 function msToday(){return typeof localIsoOf==='function'?localIsoOf(new Date()):new Date().toISOString().slice(0,10);}

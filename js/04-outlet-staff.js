@@ -537,6 +537,10 @@ function MasterSalarySheet({salon}={}){
   const [showBulkDeleteConfirm,setShowBulkDeleteConfirm]=useState(false);
   const [viewEmp,setViewEmp]=useState(null);
   const [showSalHist,setShowSalHist]=useState(false);
+  const [showMsTools,setShowMsTools]=useState(false);
+  // Columns hidden in the employee table (this browser's choice, Columns ▾).
+  const MS_COL_DEFAULT_HIDDEN=['dol','weeklyOff','bankName','pan','aadhar','pf','esic'];
+  const [msHidden,setMsHidden]=useState(()=>{try{const v=JSON.parse(localStorage.getItem('sos_ms_cols')||'null');return Array.isArray(v)?v:MS_COL_DEFAULT_HIDDEN;}catch(e){return MS_COL_DEFAULT_HIDDEN;}});
   const [editMode,setEditMode]=useState(false);
   const [form,setForm]=useState(BLANK);
   const [importRows,setImportRows]=useState([]);
@@ -982,23 +986,27 @@ function MasterSalarySheet({salon}={}){
   const MODAL_TABS=[{id:'personal',label:'👤 Personal'},{id:'employment',label:'💼 Employment & Salary'},{id:'bank',label:'🏦 Bank Details'}];
 
   return React.createElement('div',{className:'fade-in'},
-    React.createElement(ExitChecklistCard,{sid:salon?.id}),
-    React.createElement(StaffCertsCard,{sid:salon?.id}),
     typeof PfCoverageStrip==='function'&&React.createElement(PfCoverageStrip,{sid:salon?.id}),
     React.createElement(CtcUpdateStrip,{salon,employees,onUpdate:list=>setEmployees(list)}),
-    typeof MsTools==='function'&&React.createElement(MsTools,{salon,employees,setEmployees}),
     // ── Header ──
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,React.createElement('div',{className:'page-title'},'Master Salary Sheet'),React.createElement('div',{className:'page-sub'},'Employee roster with CTC, bank & document details'+(salon?.name?' · '+salon.name:''))),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
-        React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:downloadTemplate},'⬇ Template'),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setImportRows([]);setImportError('');setShowImportModal(true);}},'⬆ Import'),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},onClick:()=>exportToExcel(filtered)},'⬇ Export Excel'),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--red)',borderColor:'rgba(255,107,107,0.4)'},onClick:()=>exportToPDF(filtered)},'⬇ Export PDF'),
         typeof SalHistoryAll==='function'&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowSalHist(true)},'📜 Salary History'),
+        React.createElement(MenuButton,{label:'⇅ Import / Export',items:[
+          {label:'⬇ Export Excel',onClick:()=>exportToExcel(filtered)},
+          {label:'⬇ Export PDF',onClick:()=>exportToPDF(filtered)},
+          {label:'⬆ Import employees',onClick:()=>{setImportRows([]);setImportError('');setShowImportModal(true);}},
+          {label:'⬇ Import template',onClick:downloadTemplate}]}),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowMsTools(v=>!v),'aria-expanded':showMsTools},showMsTools?'✕ Close tools':'⋯ More tools'),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{setForm(BLANK);setEditMode(false);setActiveTab('personal');setShowAddModal(true);}},'+ Add Employee')
       )
     ),
+    // Exit checklist, training & certificates and the Master Salary tools — on "⋯ More tools".
+    showMsTools&&React.createElement('div',{style:{marginBottom:12}},
+      React.createElement(ExitChecklistCard,{sid:salon?.id}),
+      React.createElement(StaffCertsCard,{sid:salon?.id}),
+      typeof MsTools==='function'&&React.createElement(MsTools,{salon,employees,setEmployees})),
     showSalHist&&typeof SalHistoryAll==='function'&&React.createElement(SalHistoryAll,{sid:salon&&salon.id,employees,initialQ:typeof showSalHist==='string'?showSalHist:'',onClose:()=>setShowSalHist(false),
       onChangeEmp:ne=>{setEmployees(prev=>prev.map(e=>e.id===ne.id?ne:e));setViewEmp(v=>v&&v.id===ne.id?ne:v);empToast('Salary history saved','success');}}),
     exportMsg&&React.createElement('div',{style:{background:'rgba(76,175,125,0.12)',border:'1px solid rgba(76,175,125,0.3)',borderRadius:'var(--r)',padding:'8px 14px',marginBottom:12,fontSize:12,color:'var(--green)',display:'flex',alignItems:'center',gap:8}},exportMsg),
@@ -1080,9 +1088,17 @@ function MasterSalarySheet({salon}={}){
 
     // ── Table ──
     empView==='active'&&React.createElement('div',{className:'card'},
-      React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:8}},'Click a cell — or drag across several — then Ctrl/Cmd+C to copy, just like Excel.'),
+      React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:8,flexWrap:'wrap'}},
+        React.createElement('div',{style:{fontSize:11,color:'var(--text3)',flex:1}},'Click a cell — or drag across several — then Ctrl/Cmd+C to copy, just like Excel.'),
+        React.createElement(MenuButton,{label:'▦ Columns',items:[
+          ...EMP_FILTER_COLS.filter(c=>c.key!=='name').map(c=>({label:c.label,checked:!msHidden.includes(c.key),keepOpen:true,
+            onClick:()=>setMsHidden(prev=>{const n=prev.includes(c.key)?prev.filter(k=>k!==c.key):[...prev,c.key];try{localStorage.setItem('sos_ms_cols',JSON.stringify(n));}catch(e){}return n;})})),
+          {label:'↺ Default columns',onClick:()=>{setMsHidden(MS_COL_DEFAULT_HIDDEN);try{localStorage.removeItem('sos_ms_cols');}catch(e){}}}]})),
+      // Hidden columns (this browser's choice) and the Name column frozen while scrolling sideways.
+      React.createElement('style',null,EMP_FILTER_COLS.map((c,i)=>msHidden.includes(c.key)?'.ms-table tr>:nth-child('+(i+2)+'){display:none}':'').join('')+
+        '.ms-table tr>:nth-child(3){position:sticky;left:0;z-index:1;background-color:var(--bg2)}.ms-table thead tr>:nth-child(3){z-index:3}'),
       React.createElement('div',{className:'table-wrap',ref:empWrapRef},
-        React.createElement('table',null,
+        React.createElement('table',{className:'ms-table'},
           React.createElement('thead',null,React.createElement('tr',null,
             React.createElement('th',{key:'bulk-check',style:{width:32}},
               empFilters.filteredRows.length>0&&React.createElement('input',{type:'checkbox',

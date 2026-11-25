@@ -16,7 +16,7 @@
 const ADV_MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
 function advOn(id,sid){return typeof controlOn==='function'&&controlOn(id,sid);}
 function advLim(id,d,sid){const v=typeof controlLimit==='function'?Number(controlLimit(id,sid)):0;return v>0?v:d;}
-function advM(n){return '₹'+Math.round(Number(n)||0).toLocaleString('en-IN');}
+function advM(n){return rupee0(n);}
 function advYm(y,m){return y+'-'+String(m+1).padStart(2,'0');}
 function advYmNow(){const d=new Date();return advYm(d.getFullYear(),d.getMonth());}
 function advYmAdd(ym,n){const p=String(ym).split('-');const d=new Date(+p[0],+p[1]-1+n,1);return advYm(d.getFullYear(),d.getMonth());}

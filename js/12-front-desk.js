@@ -44,7 +44,7 @@ const FD_OPEN=9, FD_CLOSE=21;                      // 9am to 9pm
 const FD_SLOTS=(()=>{const a=[];for(let m=FD_OPEN*60;m<FD_CLOSE*60;m+=30)a.push(m);return a})();
 const fdT=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 const fdT12=m=>{const hh=Math.floor(m/60),mm=m%60;const ap=hh>=12?'PM':'AM';const H=hh%12===0?12:hh%12;return H+':'+String(mm).padStart(2,'0')+' '+ap};
-const inr=n=>'₹'+Math.round(n||0).toLocaleString('en-IN');
+const inr=n=>rupee0(n);
 const FD_DUR={'Haircut & Styling':45,'Hair Spa':60,'Hair Colour (Global)':120,'Keratin Treatment':180,'Facial — Gold':60,'Cleanup':45,'Manicure':45,'Pedicure':45,'Threading (Eyebrow)':15,'Full Arms Waxing':30,'Bridal Makeup':180,'Head Massage':30};
 const fdDur=s=>FD_DUR[s]||45;
 const fdRate=s=>{const x=BILL_SERVICES.find(v=>v.name===s);return x?x.rate:600};

@@ -2008,7 +2008,7 @@ const readBuf=(f)=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=
 // ── Shared formatting helpers — one source of truth for how numbers, currency, and dates
 // display, used by every export path (PDF/Word/Excel) instead of each report re-implementing
 // its own formatting. Kept as small, single-purpose functions rather than one large utility. ──
-function formatCurrency(n){return '₹'+Math.round(Number(n)||0).toLocaleString('en-IN');}
+function formatCurrency(n){return rupee0(n);}
 function formatNumber(n,decimals){decimals=decimals||0;return Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:decimals,maximumFractionDigits:decimals});}
 function formatDateDMY(d){
   if(!d)return '';

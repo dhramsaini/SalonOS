@@ -17,7 +17,7 @@
 const PT_MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
 function ptOn(id,sid){return typeof controlOn==='function'&&controlOn(id,sid);}
 function ptLim(id,d,sid){const v=typeof controlLimit==='function'?Number(controlLimit(id,sid)):0;return v>0?v:d;}
-function ptM(n){return '₹'+Math.round(Number(n)||0).toLocaleString('en-IN');}
+function ptM(n){return rupee0(n);}
 function ptYm(y,m){return y+'-'+String(m+1).padStart(2,'0');}
 function ptWho(){const u=typeof currentSessionUser==='function'?currentSessionUser():null;return u?(u.name||u.email||''):'';}
 function ptKey(sid){return outletKey('salonos_pay_extras',sid);}

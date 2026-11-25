@@ -439,8 +439,21 @@ tbody tr:nth-child(n+11){animation-delay:0.16s}
 .stat-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
 .stat-row:last-child{border-bottom:none}
 .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px}
-.page-title{font-family:var(--font2);font-size:25px;font-weight:600;letter-spacing:-0.01em;color:var(--text);margin-bottom:5px;line-height:1.25}
-.page-sub{font-size:13px;color:var(--text3);margin-bottom:20px;line-height:1.5}
+.page-title{font-family:var(--font2);font-size:20px;font-weight:600;letter-spacing:-0.01em;color:var(--text);margin-bottom:3px;line-height:1.25}
+.page-sub{font-size:12.5px;color:var(--text3);margin-bottom:14px;line-height:1.5}
+/* The one-line description under a page title is tucked behind an ⓘ (js/01 tuckPageSubs); click the title to show it */
+.page-sub[data-tucked]{display:none}
+.page-title[data-sub]{cursor:pointer}
+.page-title[data-sub]::after{content:'ⓘ';font-size:13px;font-weight:400;color:var(--text3);margin-left:7px;vertical-align:2px}
+.topbar-title .tt-short{display:none}
+/* MenuButton (js/01) */
+.menu-pop{position:absolute;top:calc(100% + 4px);z-index:950;min-width:190px;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.18);padding:4px;display:flex;flex-direction:column}
+.menu-item{text-align:left;background:none;border:none;border-radius:7px;padding:8px 10px;font-size:12.5px;color:var(--text);cursor:pointer;font-family:inherit;white-space:nowrap}
+.menu-item:hover,.menu-item:focus{background:var(--bg3);outline:none}
+/* Sheet groups above an outlet's tab strip */
+.tab-groups{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}
+.tab-group-chip{border:1px solid var(--border);background:var(--bg2);color:var(--text2);border-radius:999px;padding:3px 11px;font-size:12px;cursor:pointer;font-family:inherit}
+.tab-group-chip.on{border-color:var(--tabc);color:var(--tabc);background:var(--bg3);font-weight:600}
 .divider{height:1px;background:var(--border);margin:16px 0}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 
@@ -678,7 +691,9 @@ kbd{background:var(--bg4);border:1px solid var(--border2);border-radius:4px;padd
   .show-phone{display:flex!important}
   .topbar{flex-wrap:nowrap;gap:8px;padding-left:10px;padding-right:10px;padding-bottom:8px;min-height:52px}
   .topbar-breadcrumb{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--text)}
-  .topbar-title{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
+  .topbar-title{overflow:hidden;min-width:0;font-size:14px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;word-break:break-word}
+  .topbar-title .tt-full{display:none}
+  .topbar-title .tt-short{display:inline}
   .topbar-right{flex-wrap:nowrap;padding:0;gap:6px;flex-shrink:0}
   .lbl-full{display:none}
   .lbl-short{display:inline!important}
@@ -856,7 +871,7 @@ body.light kbd{background:#fff}
 .gate-remember .t{font-size:12.5px;color:var(--text)}
 .gate-remember .s{font-size:11px;color:var(--text3);margin-top:3px;line-height:1.5}
 .period-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--bg3);border:1px solid var(--border);
-  border-radius:var(--r);padding:10px 14px;margin-bottom:16px}
+  border-radius:var(--r);padding:6px 10px 6px 14px;margin-bottom:10px}
 .period-bar .pv{font-size:13px;color:var(--accent);font-weight:600}
 @media(max-width:640px){.mon-grid{grid-template-columns:repeat(3,1fr)}.gate-card{padding:20px}}
 
@@ -896,25 +911,25 @@ body.light kbd{background:#fff}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous" type="text/x-lazy" data-lazy="xlsx"></script>
 <!-- App code, split by area (js/). Load order matters; ?v= is each file's content fingerprint (set by tools/bump-version.ps1), so a release only re-downloads the files that changed. -->
-<script src="js/01-foundation.js?v=011df79d76"></script>
+<script src="js/01-foundation.js?v=22ae03cc6c"></script>
 <script src="js/02-shared.js?v=fa9a744c49"></script>
 <script src="js/03-admin.js?v=e1b5647f33"></script>
-<script src="js/04-outlet-staff.js?v=e4f94d3f9e"></script>
-<script src="js/05-daily-sales.js?v=492848196b"></script>
+<script src="js/04-outlet-staff.js?v=41a0217c97"></script>
+<script src="js/05-daily-sales.js?v=5daec68e98"></script>
 <script src="js/06-attendance-salary.js?v=6e97d5074a"></script>
 <script src="js/07-incentives.js?v=bc79a50f45"></script>
 <script src="js/08-advances-vendors.js?v=16d48dba31"></script>
 <script src="js/09-registers-statutory.js?v=3965654911"></script>
 <script src="js/10-collections-bank.js?v=7d5669e3d6"></script>
 <script src="js/11-expenses-reports.js?v=b6405e203e"></script>
-<script src="js/12-front-desk.js?v=feb8b1461d"></script>
-<script src="js/13-pnl.js?v=6b83eca63f"></script>
+<script src="js/12-front-desk.js?v=7a2bea8f8a"></script>
+<script src="js/13-pnl.js?v=a4eed6a41f"></script>
 <script src="js/13a-insights.js?v=264a925fa7"></script>
 <script src="js/13b-whatsapp.js?v=fa00edfbfd"></script>
 <script src="js/13c-email.js?v=65b1b6607e"></script>
 <script src="js/15-restaurant.js?v=e6f09a6792"></script>
 <script src="js/16-automation.js?v=246ade2b9f"></script>
-<script src="js/17-automation-files.js?v=d81cd9d99d"></script>
+<script src="js/17-automation-files.js?v=e7bfb83ca4"></script>
 <script src="js/18-approvals.js?v=4ddd3b54c4"></script>
 <script src="js/19-mtd.js?v=9fc8018fd5"></script>
 <script src="js/20-ops.js?v=0702277605"></script>
@@ -934,9 +949,9 @@ body.light kbd{background:#fff}
 <script src="js/34-bank-reports.js?v=8ab8830133"></script>
 <script src="js/35-bank-matching.js?v=d6cff13576"></script>
 <script src="js/36-staff-self.js?v=52aaad90dd"></script>
-<script src="js/37-front-office.js?v=fdb18b9d0b"></script>
+<script src="js/37-front-office.js?v=8b879e439a"></script>
 <script src="js/38-owner-platform.js?v=5afd26a960"></script>
-<script src="js/39-fd-core.js?v=64d5956778"></script>
+<script src="js/39-fd-core.js?v=9eb5eed41e"></script>
 <script src="js/40-fd-billing.js?v=84902aa902"></script>
 <script src="js/41-fd-appointments.js?v=e798ea34a2"></script>
 <script src="js/42-fd-clients.js?v=9fc93532ed"></script>
@@ -948,16 +963,16 @@ body.light kbd{background:#fff}
 <script src="js/48-fd-ops.js?v=393ff276cf"></script>
 <script src="js/49-fd-speed-ui.js?v=3c5ce37ea7"></script>
 <script src="js/50-pay-workbooks.js?v=b9e0288307"></script>
-<script src="js/51-entry-checks.js?v=b653f14c52"></script>
+<script src="js/51-entry-checks.js?v=0ed088e402"></script>
 <script src="js/52-controls-plus.js?v=ab4ad85519"></script>
-<script src="js/53-salary-revisions.js?v=26c3e0c005"></script>
-<script src="js/54-advances-plus.js?v=2c31055e1c"></script>
-<script src="js/55-pay-tools.js?v=32208ba1e7"></script>
-<script src="js/56-incentive-guide.js?v=bac61679d1"></script>
+<script src="js/53-salary-revisions.js?v=9cb7e98c9e"></script>
+<script src="js/54-advances-plus.js?v=0b449d1d80"></script>
+<script src="js/55-pay-tools.js?v=caa9a87a56"></script>
+<script src="js/56-incentive-guide.js?v=9ab73f0d68"></script>
 <script src="js/57-incentive-view.js?v=2b2581562e"></script>
-<script src="js/58-incentive-plan-plus.js?v=6260a6b18c"></script>
+<script src="js/58-incentive-plan-plus.js?v=adf062796e"></script>
 <script src="js/59-incentive-manual.js?v=c410e242dd"></script>
-<script src="js/61-master-salary-plus.js?v=67678082d7"></script>
+<script src="js/61-master-salary-plus.js?v=9fb03327eb"></script>
 <script src="js/62-salary-manual.js?v=4c5bdc7eaf"></script>
 <script src="js/63-daily-coll-exp.js?v=05cccee9ce"></script>
 <script src="js/64-multi-bank.js?v=d2d08ea199"></script>
@@ -965,11 +980,11 @@ body.light kbd{background:#fff}
 <script src="js/66-vendor-lock.js?v=6cf9749d5c"></script>
 <script src="js/67-pnl-vendor-check.js?v=fd37d8d73a"></script>
 <script src="js/68-bank-undo.js?v=a882c38643"></script>
-<script src="js/69-vendor-plus.js?v=bb03744f31"></script>
-<script src="js/70-bank-pnl-plus.js?v=7ce238f90f"></script>
+<script src="js/69-vendor-plus.js?v=593db26496"></script>
+<script src="js/70-bank-pnl-plus.js?v=c323d372c1"></script>
 <script src="js/71-bank-ledger.js?v=5292c8a924"></script>
 <script src="js/60-final-freeze.js?v=6543efc890"></script>
-<script src="js/14-import-and-app.js?v=10f39eed1c"></script>
+<script src="js/14-import-and-app.js?v=b0dc4fdd47"></script>
 <script>
 // ── Phone card view for list tables — marks read-only list tables (one record per row) so the
 // CSS above can show each row as a labelled card on phones. Editable grids (text/number inputs or

@@ -12,7 +12,7 @@
 const IP_MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
 function ipOn(id,sid){return typeof controlOn==='function'&&controlOn(id,sid);}
 function ipLim(id,d,sid){const v=typeof controlLimit==='function'?Number(controlLimit(id,sid)):0;return v>0?v:d;}
-function ipM(n){return '₹'+Math.round(Number(n)||0).toLocaleString('en-IN');}
+function ipM(n){return rupee0(n);}
 function ipP(v){return(Math.round((Number(v)||0)*100)/100)+'%';}
 function ipX(v){return(Math.round((Number(v)||0)*100)/100)+'×';}
 function ipYm(y,m){return y+'-'+String(m+1).padStart(2,'0');}
@@ -313,17 +313,25 @@ function IncPlanForMe({sid,emp,y,m}){
     L.map(([a,b])=>h('div',{key:a,style:{fontSize:12,marginBottom:2}},h('b',null,a+': '),b)));
 }
 // 14 · reminder when next month's plan isn't approved
+// One line. Inside an outlet it only speaks of that outlet; elsewhere it gives the number of outlets
+// (names on "show"). "Hide" keeps it away on this device for 7 days (or until the plans are approved).
 function IncPlanReminderStrip(){
-  const h=React.createElement;const u=typeof currentSessionUser==='function'?currentSessionUser():null;
+  const h=React.createElement;const [open,setOpen]=useState(false);const [,bump]=useState(0);
+  const u=typeof currentSessionUser==='function'?currentSessionUser():null;
   if(!u||!(u.role==='Super Admin'||(typeof isSuperAdminUser==='function'&&isSuperAdminUser(u))||(typeof INC_PLAN_MAKERS!=='undefined'&&INC_PLAN_MAKERS.includes(u.role))))return null;
   const now=new Date();const nx=new Date(now.getFullYear(),now.getMonth()+1,1);const ny=nx.getFullYear(),nm=nx.getMonth();
   let list=[];try{list=(typeof salonsForCurrentUser==='function'?salonsForCurrentUser(SALONS):SALONS)||[];}catch(e){}
-  const dayKey='salonos_ip_rem_hide_'+ipYm(ny,nm);try{if(sessionStorage.getItem(dayKey))return null;}catch(e){}
+  const nav=window.__salonosNav||{};const here=nav.activePage==='salon'&&nav.selectedSalon?nav.selectedSalon:null;
+  if(here)list=list.filter(s=>String(s.id)===String(here.id));
+  const hideKey='sos_ip_rem_hide_'+ipYm(ny,nm)+(here?'_'+here.id:'');try{const t=Number(localStorage.getItem(hideKey)||0);if(t&&Date.now()-t<7*864e5)return null;}catch(e){}
   const due=list.filter(s=>s&&ipOn('ipReminder',s.id)&&now.getDate()>=ipLim('ipReminder',25,s.id)&&!approvedIncPlanFor(s.id,ny,nm));if(!due.length)return null;
   const pend=due.filter(s=>{const p=incPlanFor(s.id,ny,nm);return p&&p.status==='Pending';});
-  return h('div',{style:{background:'rgba(47,95,224,0.08)',border:'1px solid rgba(47,95,224,0.3)',borderRadius:'var(--r)',padding:'8px 12px',marginBottom:12,fontSize:12.5,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}},
-    h('span',null,'📋 The ',h('b',null,ipLabel(ny,nm)),' incentive plan is not approved yet for: '+due.map(s=>String(s.name||s.id).split('—')[0].trim()+(pend.includes(s)?' (waiting for approval)':'')).join(', ')+'. Incentive Working → Monthly Plan.'),
-    h('button',{className:'btn btn-ghost btn-sm',onClick:e=>{try{sessionStorage.setItem(dayKey,'1');}catch(x){}const el=e.target.closest('div');if(el)el.hidden=true;}},'Hide'));
+  const nm1=s=>String(s.name||s.id).split('—')[0].trim()+(pend.includes(s)?' (waiting for approval)':'');
+  return h('div',{className:'notice-line',style:{background:'rgba(47,95,224,0.08)',border:'1px solid rgba(47,95,224,0.3)',borderRadius:'var(--r)',padding:'5px 10px',marginBottom:10,fontSize:12.5,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}},
+    h('span',{style:{flex:1,minWidth:0}},'📋 ',h('b',null,ipLabel(ny,nm)),' incentive plan not approved',here?(pend.length?' (waiting for approval)':''):h(React.Fragment,null,' · '+due.length+' outlet'+(due.length===1?'':'s')+' ',
+      h('button',{className:'btn btn-ghost btn-sm',style:{padding:'0 6px',minHeight:0},onClick:()=>setOpen(o=>!o)},open?'hide list':'show'),open&&h('div',{style:{fontSize:12,color:'var(--text2)',marginTop:3}},due.map(nm1).join(', ')))),
+    here&&typeof nav.setSalonTab==='function'&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>nav.setSalonTab('incentive-working')},'Open plan →'),
+    h('button',{className:'btn btn-ghost btn-sm',title:'Hide on this device for 7 days',onClick:()=>{try{localStorage.setItem(hideKey,String(Date.now()));}catch(x){}bump(x=>x+1);}},'Hide'));
 }
 if(typeof PendingApprovalsStrip==='function'){const _ipStrip=PendingApprovalsStrip;
   PendingApprovalsStrip=function(props){const h=React.createElement;const a=_ipStrip(props);const r=h(IncPlanReminderStrip,null);return a?h('div',null,r,a):r;};}

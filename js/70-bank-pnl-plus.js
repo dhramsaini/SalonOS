@@ -8,7 +8,7 @@
 //  pnlLineNotes    a line that moved more than the limit % from last month asks for a reason
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 function bpOn(id,sid){return typeof controlOn!=='function'||controlOn(id,sid);}
-const bpR=n=>'₹'+Math.round(Number(n)||0).toLocaleString('en-IN');
+const bpR=n=>rupee0(n);
 const bpT=d=>{const i=toISO(d);return i?new Date(i+'T00:00:00').getTime():0;};
 
 // ── #9 Own-account transfers ──

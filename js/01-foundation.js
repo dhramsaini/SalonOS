@@ -13,6 +13,8 @@ function excelCellDate(v){return new Date(v.getTime()+60000);}
 // dashZero: show '—' instead of '₹0' when the amount is zero (default false)
 // "-₹1,32,837" (sign before the ₹, Indian digit grouping) — '₹'+n.toLocaleString() gave "₹-132,837".
 function rupee(n){const v=Number(n)||0;return(v<0?'-':'')+'₹'+Math.abs(v).toLocaleString('en-IN',{maximumFractionDigits:2});}
+// Whole rupees, minus sign first ("-₹500", never "₹-500") — shared by the screens' own money helpers.
+function rupee0(n){const v=Math.round(Number(n)||0);return(v<0?'-':'')+'₹'+Math.abs(v).toLocaleString('en-IN');}
 function formatMoney(n,{decimals=0,dashZero=false}={}){
   const num=Number(n||0);
   if(dashZero&&num===0)return '—';
@@ -573,6 +575,33 @@ function cachedLocalRemove(key){
 // — fine for a normal cell, but see-through is exactly the wrong behaviour for a frozen one. This
 // stacks that same translucent tint over a solid base colour within one `background` value (CSS
 // multi-background), which paints as one flat opaque colour no matter what scrolls behind it.
+// A button that opens a short menu (e.g. "Export ▾"), so related actions take one button's room.
+// items: [{label, onClick, title?, style?}] — falsy entries are skipped.
+function MenuButton({label,items,className,style,align}){
+  const h=React.createElement;const [open,setOpen]=useState(false);const ref=useRef(null);
+  useEffect(()=>{if(!open)return;const off=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};const esc=e=>{if(e.key==='Escape')setOpen(false);};
+    document.addEventListener('mousedown',off);document.addEventListener('keydown',esc);return()=>{document.removeEventListener('mousedown',off);document.removeEventListener('keydown',esc);};},[open]);
+  const list=(items||[]).filter(Boolean);
+  return h('span',{ref,style:{position:'relative',display:'inline-block'}},
+    h('button',{type:'button',className:className||'btn btn-ghost btn-sm',style,'aria-haspopup':'menu','aria-expanded':open,onClick:()=>setOpen(o=>!o)},label,' ▾'),
+    open&&h('div',{role:'menu',className:'menu-pop',style:{[align==='left'?'left':'right']:0}},
+      list.map((it,i)=>h('button',{key:i,type:'button',role:it.checked!=null?'menuitemcheckbox':'menuitem','aria-checked':it.checked!=null?!!it.checked:undefined,className:'menu-item',title:it.title||'',style:it.style,
+        onClick:()=>{if(!it.keepOpen)setOpen(false);it.onClick&&it.onClick();}},it.checked!=null?(it.checked?'☑ ':'☐ '):null,it.label))));
+}
+// Page descriptions (.page-sub right under a .page-title) are tucked behind an ⓘ on the title:
+// hover shows the text, a click on the title shows / hides it. Only data- attributes are set, so
+// React's own rendering of these elements is untouched.
+(function tuckPageSubs(){
+  if(typeof document==='undefined'||typeof MutationObserver==='undefined')return;
+  let queued=false;
+  const run=()=>{queued=false;document.querySelectorAll('.page-sub:not([data-tuck-seen])').forEach(s=>{s.setAttribute('data-tuck-seen','');
+    const t=s.previousElementSibling;if(!t||!t.classList.contains('page-title'))return;const txt=(s.textContent||'').trim();if(!txt)return;
+    t.setAttribute('data-sub','');t.setAttribute('title',txt+'\n(click the title to show / hide)');s.setAttribute('data-tucked','');});};
+  const start=()=>{run();new MutationObserver(()=>{if(!queued){queued=true;requestAnimationFrame(run);}}).observe(document.body,{childList:true,subtree:true});
+    document.addEventListener('click',e=>{const t=e.target&&e.target.closest&&e.target.closest('.page-title[data-sub]');if(!t)return;const s=t.nextElementSibling;
+      if(s&&s.classList.contains('page-sub')){if(s.hasAttribute('data-tucked'))s.removeAttribute('data-tucked');else s.setAttribute('data-tucked','');}});};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
+})();
 function opaqueStickyBg(rgba,base){
   base=base||'var(--bg2)';
   return(!rgba||rgba==='transparent')?base:'linear-gradient('+rgba+','+rgba+'), '+base;
@@ -649,7 +678,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.11.25.262';
+const APP_VERSION='2026.11.25.263';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
