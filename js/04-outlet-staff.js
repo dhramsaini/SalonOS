@@ -999,7 +999,7 @@ function MasterSalarySheet({salon}={}){
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:()=>{setForm(BLANK);setEditMode(false);setActiveTab('personal');setShowAddModal(true);}},'+ Add Employee')
       )
     ),
-    showSalHist&&typeof SalHistoryAll==='function'&&React.createElement(SalHistoryAll,{sid:salon&&salon.id,employees,onClose:()=>setShowSalHist(false),
+    showSalHist&&typeof SalHistoryAll==='function'&&React.createElement(SalHistoryAll,{sid:salon&&salon.id,employees,initialQ:typeof showSalHist==='string'?showSalHist:'',onClose:()=>setShowSalHist(false),
       onChangeEmp:ne=>{setEmployees(prev=>prev.map(e=>e.id===ne.id?ne:e));setViewEmp(v=>v&&v.id===ne.id?ne:v);empToast('Salary history saved','success');}}),
     exportMsg&&React.createElement('div',{style:{background:'rgba(76,175,125,0.12)',border:'1px solid rgba(76,175,125,0.3)',borderRadius:'var(--r)',padding:'8px 14px',marginBottom:12,fontSize:12,color:'var(--green)',display:'flex',alignItems:'center',gap:8}},exportMsg),
 
@@ -1101,7 +1101,8 @@ function MasterSalarySheet({salon}={}){
                 React.createElement('td',{'data-xr':ri,'data-xc':1,style:{background:sel(1)}},
                   React.createElement('div',{style:{fontWeight:500,color:'var(--text)',whiteSpace:'nowrap'}},e.name),
                   React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},e.dept||'—'),
-                  e.mobile&&React.createElement('div',{style:{fontSize:10,color:'var(--text3)'}},e.mobile)
+                  e.mobile&&React.createElement('div',{style:{fontSize:10,color:'var(--text3)'}},e.mobile),
+                  typeof SalHistInline==='function'&&React.createElement(SalHistInline,{sid:salon&&salon.id,emp:e,onEdit:x=>setShowSalHist(String(x.id||x.name||''))})
                 ),
                 React.createElement('td',{'data-xr':ri,'data-xc':2,style:{background:sel(2)}},React.createElement('span',{style:{whiteSpace:'nowrap'}},e.desig)),
                 React.createElement('td',{'data-xr':ri,'data-xc':3,style:{background:sel(3)}},React.createElement('span',{style:{whiteSpace:'nowrap',fontSize:12}},fmtDMY(e.doj))),

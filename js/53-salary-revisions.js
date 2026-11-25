@@ -216,8 +216,26 @@ function SalHistoryEditModal({sid,emp,entry,onClose,onSave}){
     h('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:10}},'Salary Working, payslips, P&L and every other screen use this pay for the months it covers. Arrears already worked out for locked months are not changed here; see the employee’s view window.'),
     h('div',{className:'modal-actions'},h('button',{className:'btn btn-ghost',onClick:onClose},'Cancel'),h('button',{className:'btn btn-primary',onClick:save},isNew?'Add':'Save'))));
 }
-function SalHistoryAll({sid,employees,onChangeEmp,onClose}){
-  const h=React.createElement;const [q,setQ]=useState('');const [edit,setEdit]=useState(null);const [showAll,setShowAll]=useState(false);
+// Under each employee's name in Master Salary: their pay changes, newest first (3 shown, the rest
+// on "more"), each with the month, Gross CTC, the rise / cut and the reason; ✎ opens the editor.
+function SalHistInline({sid,emp,onEdit}){
+  const h=React.createElement;const [all,setAll]=useState(false);
+  const H=salHistOf(emp);const now=salNowYm();const cur=salPickEntry(H,now);
+  const stop=fn=>ev=>{ev.stopPropagation();fn();};
+  const editBtn=h('button',{className:'btn btn-ghost btn-sm',style:{padding:'0 5px',fontSize:10.5,lineHeight:'16px',minHeight:0},title:'View / edit salary history',onClick:stop(()=>onEdit(emp))},'✎');
+  if(H.length<2)return h('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:3,display:'flex',gap:4,alignItems:'center',whiteSpace:'nowrap'}},'📜 No pay change yet',editBtn);
+  const rows=H.map((r,i)=>({r,prev:i?H[i-1]:null})).reverse();const shown=all?rows:rows.slice(0,3);
+  return h('div',{style:{marginTop:4,borderLeft:'2px solid var(--border2)',paddingLeft:6}},
+    h('div',{style:{fontSize:10,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.06em',display:'flex',gap:4,alignItems:'center'}},'📜 Salary history',editBtn),
+    shown.map(({r,prev},i)=>{const g=Math.round(Number(r.gross)||0),pg=prev?Math.round(Number(prev.gross)||0):null;const d=pg==null?0:g-pg;
+      return h('div',{key:i,style:{fontSize:10.5,whiteSpace:'nowrap',color:r===cur?'var(--text)':'var(--text2)',fontWeight:r===cur?600:400},title:[r.reason,r.by].filter(Boolean).join(' · ')},
+        (r.from?salYmLabel(r.from):'Joining')+' · '+salM(g),
+        d?h('span',{style:{color:d>0?'var(--green)':'var(--red)',marginLeft:4}},(d>0?'▲ ':'▼ ')+salM(Math.abs(d))):null,
+        r===cur?h('span',{style:{color:'var(--green)',marginLeft:4,fontWeight:400}},'current'):r.from&&r.from>now?h('span',{style:{color:'var(--accent)',marginLeft:4}},'scheduled'):null);}),
+    rows.length>3&&h('button',{className:'btn btn-ghost btn-sm',style:{padding:'0 4px',fontSize:10.5,minHeight:0},onClick:stop(()=>setAll(a=>!a))},all?'less':'+'+(rows.length-3)+' more'));
+}
+function SalHistoryAll({sid,employees,onChangeEmp,onClose,initialQ}){
+  const h=React.createElement;const [q,setQ]=useState(initialQ||'');const [edit,setEdit]=useState(null);const [showAll,setShowAll]=useState(false);
   const now=salNowYm();
   const rows=[];(employees||[]).filter(e=>showAll||e.status!=='Inactive').forEach(e=>{const H=salHistOf(e);const cur=salPickEntry(H,now);
     H.forEach((r,i)=>rows.push({e,r,prev:i?H[i-1]:null,cur:r===cur,sched:!!(r.from&&r.from>now),first:i===0}));});
