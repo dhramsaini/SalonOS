@@ -127,10 +127,13 @@ function rcBuild(sid,ym){
   const empCache={};const empsFor=(y,m)=>empCache[y+'-'+m]||(empCache[y+'-'+m]=(getEmployeesForMonth(y,m,sid)||[]).filter(e=>e&&e.status!=='Inactive'));
   const allEmps=(loadEmployees(sid)||[]).filter(e=>e&&e.status!=='Inactive');
   const M=n=>rupee0(n);
+  // day sales from Cradlee (card / UPI) and the sale days already claimed by mapped settlements
+  const ctxCr={totals:typeof cradleeDayTotals==='function'?cradleeDayTotals(sid):{},claimed:{}};
+  rows.forEach(r=>{if(r&&r.cradleeDate&&(r.nature==='Card Settlement'||r.nature==='UPI Settlement'))ctxCr.claimed[(r.nature==='UPI Settlement'?'upi':'card')+'|'+r.cradleeDate]=1;});
   items.forEach(it=>{
     const x=it.x;const d=x.description;const alts=[];it.alts=alts;
     const bs=base[x.id];
-    if(x.side==='Credit'){it.s=bs?{...bs,score:bs.conf==='high'?0.95:bs.conf==='mid'?0.75:0.5,reasons:[bs.why]}:null;return;}
+    if(x.side==='Credit'){rcCreditAlts(sid,it,bs,rows,ctxCr);return;}
     const amt=x.debit;
     // 1 · a payout from a Bank Payment file (same amount, payee and within a week)
     const iso=toISO(x.date);const tt=iso?new Date(iso+'T00:00:00').getTime():0;
@@ -202,8 +205,7 @@ function rcBuild(sid,ym){
   });
   items.forEach(it=>{const s=it.s;it.bucket=s?(s.score>=0.9?'sure':'check'):(it.newPayee?'new':'unknown');});
   // card / UPI settlements of the month, grouped by sale day
-  const st={};done.forEach(r=>{if(Number(r.credit)>0&&/Settlement$/.test(String(r.nature||''))){const k=(r.cradleeDate||r.transactionDate)+'|'+r.nature;const g=st[k]||(st[k]={day:r.cradleeDate||r.transactionDate,nature:r.nature,total:0,n:0});g.total+=Number(r.credit)||0;g.n++;}});
-  return{items,done,settlements:Object.values(st).sort((a,b)=>String(toISO(b.day)).localeCompare(String(toISO(a.day)))),all:inMonth};
+  return{items,done,settlements:rcSettlementCheck(sid,done),all:inMonth};
 }
 
 // Links a bank debit to employees' salary / incentive of a LOCKED month. Only the bank line gets the
@@ -225,6 +227,33 @@ function rcLinkPayLocked(sid,row,year,month,lines){
   try{logAuditEvent(sid,{entity:'Bank Statement',entityId:String(row.id),action:'Salary linked (locked month)',summary:rupee0(tot)+' of '+(row.transactionDate||'')+' — '+settlements.map(x=>x.employeeName).join(', ')+' ('+RPT_MONTHS[month]+' '+year+', month locked: bank line only)'});}catch(e){}
   try{if(settlements.length===1&&typeof learnPayeeTokens==='function')learnPayeeTokens(sid,'emp',settlements[0].employeeId,row.description);}catch(e){}
   return'';
+}
+// ── Credits ──
+// Card / UPI payout from a card network or aggregator (Amex, Pine Labs, Razorpay …), not named "settlement".
+const RC_PAYOUT_RE=/american express|\bamex\b|pine ?labs|mswipe|razorpay|\bpayu\b|cashfree|ezetap|worldline|innoviti|mosambee|getepay|bharatpe|phonepe|paytm|hdfc merchant|merchant settl|\bmid\b ?\d|\bcms\b/i;
+function rcCreditAlts(sid,it,bs,rows,ctx){
+  const x=it.x,d=x.description,lo=d.toLowerCase(),alts=it.alts;const M=n=>rupee0(n);
+  if(bs)alts.push({...bs,score:bs.conf==='high'?0.95:bs.conf==='mid'?0.75:0.5,reasons:[bs.why]});
+  if(!x.nature&&RC_PAYOUT_RE.test(d)){const upi=/upi|phonepe|paytm|bharatpe/i.test(lo)&&!/american express|amex/i.test(lo);const kind=upi?'upi':'card';const n=upi?'UPI Settlement':'Card Settlement';
+    const bd=typeof cradleeDateByAmount==='function'?cradleeDateByAmount(sid,x,kind,ctx):null;
+    if(bd){ctx.claimed[kind+'|'+bd.dmy]=1;alts.push({score:0.92,conf:'high',label:n+' · sales of '+bd.dmy,why:M(bd.tot)+' '+kind.toUpperCase()+' sales that day, less '+(bd.fee*100).toFixed(2)+'% charges',reasons:['payout from '+(rcParse(d).name||'card network'),'= day sales less charges'],apply:{type:'patch',patch:{nature:n,cradleeDate:bd.dmy}}});}
+    else{const pd=bmapPrevDay(x.date);alts.push({score:0.74,conf:'mid',label:n+(pd?' · '+pd:''),why:'Payout from '+(rcParse(d).name||'a card network')+' — no day’s sales match the amount; sale date taken as the day before',reasons:['card network payout'],apply:{type:'patch',patch:{nature:n,cradleeDate:pd}}});}}
+  if(!x.nature&&/chq dep|cheque dep|\bclg\b|clearing|chq\/|\/chq/.test(lo))alts.push({score:0.75,conf:'mid',label:'Collection (cheque)',why:'Cheque deposited'+(rcParse(d).name?' from '+rcParse(d).name:''),reasons:['cheque deposit'],apply:{type:'patch',patch:{nature:'Collection'}}});
+  // the same payer mapped the same way in other months (loans from a director, rent deposits …)
+  if(!x.nature){const pn=rcPayeeName(d);if(pn){const by={};rows.forEach(r=>{if(r&&r.id!==x.id&&Number(r.credit)>0&&r.nature&&rcPayeeName(r.description)===pn)(by[r.nature]=by[r.nature]||new Set()).add(rcMonthKey(r.transactionDate));});
+    const top=Object.entries(by).sort((a,b)=>b[1].size-a[1].size)[0];
+    if(top)alts.push({score:top[1].size>=2?0.88:0.72,conf:'mid',label:top[0],why:'Money from '+pn+' was mapped as '+top[0]+' before ('+top[1].size+' month'+(top[1].size===1?'':'s')+')',reasons:['same payer before'],apply:{type:'patch',patch:{nature:top[0]}},recurringCr:true});
+    else if(x.credit>=50000&&!RC_PAYOUT_RE.test(d))it.newPayee=pn;}}
+  alts.sort((a,b)=>b.score-a.score);it.s=alts[0]||null;
+}
+// Card / UPI settlements of the month by sale day, against that day's Cradlee sales.
+function rcSettlementCheck(sid,lines){
+  const tot=typeof cradleeDayTotals==='function'?cradleeDayTotals(sid):{};const g={};
+  (lines||[]).forEach(r=>{if(!(Number(r.credit)>0)||!/^(Card|UPI) Settlement$/.test(String(r.nature||'')))return;const kind=r.nature==='UPI Settlement'?'upi':'card';const day=r.cradleeDate||'';
+    const k=kind+'|'+day;const e=g[k]||(g[k]={day,kind,nature:r.nature,bank:0,n:0});e.bank+=Number(r.credit)||0;e.n++;});
+  return Object.values(g).map(e=>{const sales=e.day?((tot[e.day]||{})[e.kind]||0):0;const diff=sales-e.bank;const pct=sales>0?diff/sales*100:null;
+    const status=!e.day?'no sale date':!(sales>0)?'no sales that day':diff<-1?'bank more than sales':pct>4.5?'short '+pct.toFixed(1)+'%':'ok';return{...e,sales,diff,pct,status};})
+    .sort((a,b)=>String(toISO(b.day)||'').localeCompare(String(toISO(a.day)||''))||a.kind.localeCompare(b.kind));
 }
 // Applies one suggestion; '' when done, else the reason. Remembers what was accepted.
 function rcApply(sid,it,s){
@@ -253,12 +282,14 @@ function rcAccuracy(sid){try{const U=JSON.parse(cachedLocalGet(outletKey('salono
   Object.entries(U).forEach(([k,v])=>{if(k.endsWith('|'+mo)){a+=Number(v.acc)||0;r+=Number(v.rej)||0;}});return a+r?{pct:Math.round(a/(a+r)*100),n:a+r}:null;}catch(e){return null;}}
 
 // ── The screen ──
+const RC_CREDIT_CHOICES=[['Unsecured Loan','Loan received'],['Capital Introduced','Capital introduced'],['Collection','Customer payment'],['Card Settlement','Card settlement'],['UPI Settlement','UPI settlement'],['Cash Deposit','Cash deposit'],['Refund','Refund'],['Transfer','Transfer']];
 const RC_DEBIT_CHOICES=[['Loan Principal','Loan repaid'],['Drawings','Owner drawing'],['Rent','Rent'],['Transfer','Transfer'],['Other','Other']];
 function BankReconcileSheet({salon,period,onNavTab}){
   const h=React.createElement;const sid=salon&&salon.id;const {toast,error:toastErr}=useToast();
   const cal=typeof periodToCalendar==='function'?periodToCalendar(period):null;
   const [ym,setYm]=useState(()=>cal?cal.year+'-'+String(cal.month+1).padStart(2,'0'):localIsoOf(new Date()).slice(0,7));
   const [tick,setTick]=useState(0);const [filter,setFilter]=useState('todo');const [q,setQ]=useState('');const [sel,setSel]=useState(0);const [open,setOpen]=useState(null);
+  const [side,setSide]=useState('all'); // all / Debit / Credit
   const [rule,setRule]=useState(null);const [busy,setBusy]=useState(false);const [showSet,setShowSet]=useState(false);const searchRef=useRef(null);const listRef=useRef(null);
   const data=useMemo(()=>sid==null?null:rcBuild(sid,ym),[sid,ym,tick,storeVersion()]);
   const months=useMemo(()=>{const s=new Set();bankRowsFor(sid).forEach(r=>{const k=rcMonthKey(r&&r.transactionDate);if(k)s.add(k);});s.add(ym);return[...s].sort().reverse();},[sid,tick]);
@@ -269,7 +300,7 @@ function BankReconcileSheet({salon,period,onNavTab}){
   const total=data.all.length,doneN=data.done.length,pct=total?Math.round(doneN/total*100):100;
   const qq=q.trim().toLowerCase();
   const RANK={sure:0,check:1,new:2,unknown:3};
-  const shown=data.items.filter(i=>(filter==='todo'||i.bucket===filter)&&(!qq||(i.x.description+' '+(i.s?i.s.label:'')+' '+(i.x.debit||i.x.credit)).toLowerCase().includes(qq)))
+  const shown=data.items.filter(i=>(filter==='todo'||i.bucket===filter)&&(side==='all'||i.x.side===side)&&(!qq||(i.x.description+' '+(i.s?i.s.label:'')+' '+(i.x.debit||i.x.credit)).toLowerCase().includes(qq)))
     .sort((a,b)=>RANK[a.bucket]-RANK[b.bucket]||String(toISO(a.x.date)||'').localeCompare(String(toISO(b.x.date)||''))); // Sure first, then by date
   const cur=shown[Math.min(sel,shown.length-1)];
   const bal=rcBalanceCheck(data.all);const acc=rcAccuracy(sid);
@@ -306,7 +337,9 @@ function BankReconcileSheet({salon,period,onNavTab}){
         bal&&h('span',{title:'Each line’s closing balance should equal the one before plus credit / minus debit',style:{fontSize:12,color:bal.gaps?'var(--red)':'var(--green)'}},bal.gaps?'⚠ Balance breaks in '+bal.gaps+' place'+(bal.gaps===1?'':'s')+' — lines may be missing from the statement':'✓ Statement balance runs through'),
         acc&&h('span',{style:{fontSize:12,color:'var(--text3)'},title:'Suggestions accepted vs changed this month'},'Suggestions right '+acc.pct+'% ('+acc.n+')')),
       h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}},F.map(([k,l,n])=>h('button',{key:k,type:'button',className:'tab-group-chip'+(filter===k?' on':''),onClick:()=>{setFilter(k);setSel(0);}},l+' '+n)),
-        h('button',{type:'button',className:'tab-group-chip'+(showSet?' on':''),onClick:()=>setShowSet(v=>!v)},'Card / UPI settled '+data.settlements.reduce((t,g)=>t+g.n,0)),
+        h('span',{style:{width:1,background:'var(--border)',margin:'0 2px'}}),
+        [['all','All'],['Debit','Debits'],['Credit','Credits']].map(([k,l])=>h('button',{key:k,type:'button',className:'tab-group-chip'+(side===k?' on':''),onClick:()=>{setSide(k);setSel(0);}},l+(k==='all'?'':' '+data.items.filter(i=>i.x.side===k).length))),
+        h('button',{type:'button',className:'tab-group-chip'+(showSet?' on':''),onClick:()=>setShowSet(v=>!v),title:'Card / UPI credits checked against the day’s sales'},'Card / UPI settled '+data.settlements.reduce((t,g)=>t+g.n,0)+(data.settlements.some(g=>g.status!=='ok')?' · ⚠ '+data.settlements.filter(g=>g.status!=='ok').length:'')),
         h('input',{ref:searchRef,className:'form-control',style:{width:200,marginLeft:'auto',padding:'4px 10px'},placeholder:'Search ( / )',value:q,onChange:e=>{setQ(e.target.value);setSel(0);}}))),
     rule&&h('div',{className:'notice-line',style:{background:'rgba(47,95,224,0.08)',border:'1px solid rgba(47,95,224,0.3)',borderRadius:'var(--r)',padding:'6px 10px',marginBottom:10,fontSize:12.5,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
       h('span',{style:{flex:1}},'🔁 Always map payments to ',h('b',null,rule.payee),' as ',h('b',null,rule.nature+(rule.vendorOverride?' · '+rule.vendorOverride:'')),'?'),
@@ -314,9 +347,14 @@ function BankReconcileSheet({salon,period,onNavTab}){
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRule(null)},'Not now')),
     showSet&&h('div',{className:'card',style:{padding:'10px 14px',marginBottom:12}},
       h('div',{style:{fontWeight:600,fontSize:13,marginBottom:6}},'Card / UPI settlements by sale day'),
-      data.settlements.length?h('table',{style:{width:'100%'}},h('tbody',null,data.settlements.map(g=>h('tr',{key:g.day+g.nature},h('td',{style:{padding:'3px 6px',fontSize:12.5}},g.day),h('td',{style:{padding:'3px 6px',fontSize:12.5}},g.nature),
-        h('td',{style:{padding:'3px 6px',fontSize:12.5,color:'var(--text3)'}},g.n+' line'+(g.n===1?'':'s')),h('td',{style:{padding:'3px 6px',fontSize:12.5,textAlign:'right',fontWeight:600}},M(g.total)))))):h('div',{style:{fontSize:12.5,color:'var(--text3)'}},'None this month.'),
-      h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'These are matched to the day’s card / UPI sales in Collection Reco.')),
+      data.settlements.length?h('div',{className:'table-wrap',style:{margin:0}},h('table',{className:'rc-table'},
+        h('thead',null,h('tr',null,['Sale day','Type','Lines','Sales (Cradlee)','Bank credits','Charges / short','Check'].map((t,k)=>h('th',{key:k,className:k>=3&&k<=5?'num':''},t)))),
+        h('tbody',null,data.settlements.map(g=>{const okk=g.status==='ok';return h('tr',{key:g.kind+g.day},h('td',null,g.day||'—'),h('td',null,g.nature),h('td',{style:{color:'var(--text3)'}},g.n),
+          h('td',{className:'num'},g.sales>0?M(g.sales):'—'),h('td',{className:'num',style:{fontWeight:600}},M(g.bank)),
+          h('td',{className:'num',style:{color:g.diff<-1?'var(--red)':'var(--text2)'}},g.sales>0?M(g.diff)+(g.pct!=null?' ('+g.pct.toFixed(2)+'%)':''):'—'),
+          h('td',{style:{color:okk?'var(--green)':'#b26a00',whiteSpace:'nowrap'}},okk?'✓ matches':'⚠ '+g.status));}))))
+        :h('div',{style:{fontSize:12.5,color:'var(--text3)'}},'None this month.'),
+      h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Each day’s card / UPI credits against that day’s sales in Cradlee: a difference of up to 4.5% is the bank / gateway charges. Bank more than sales, or a bigger shortfall, needs a look in Collection Reco.')),
     // the lines
     // Statement first (date, narration, ref, debit, credit, balance), then the mapping columns.
     h('div',{className:'card',ref:listRef,style:{padding:0}},
@@ -352,6 +390,7 @@ function BankReconcileSheet({salon,period,onNavTab}){
             h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginTop:8,alignItems:'center'}},
               !cr&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>newVendor(it)},'＋ New vendor'),
               !cr&&RC_DEBIT_CHOICES.map(([n,l])=>h('button',{key:n,className:'btn btn-ghost btn-sm',onClick:()=>mapAs(it,n)},l)),
+              cr&&RC_CREDIT_CHOICES.map(([n,l])=>h('button',{key:n,className:'btn btn-ghost btn-sm',onClick:()=>mapAs(it,n,/Settlement$/.test(n)?{cradleeDate:bmapPrevDay(x.date)}:undefined)},l)),
               h('select',{className:'form-control',style:{width:'auto',padding:'3px 8px',fontSize:12},value:'',onChange:e=>{if(e.target.value)mapAs(it,e.target.value);}},
                 h('option',{value:''},'Other nature…'),(typeof BANK_MAP_NATURES!=='undefined'?BANK_MAP_NATURES:[]).filter(n=>cr?BANK_CREDIT_NATURES.has(n):!BANK_CREDIT_NATURES.has(n)||n==='Transfer'||n==='Other'||n==='Refund').map(n=>h('option',{key:n,value:n},n))),
               h('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},onClick:()=>onNavTab&&onNavTab('bank-statement')},'Split / link by hand in Bank Statement →')))));}))))),
