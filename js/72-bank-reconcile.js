@@ -252,7 +252,8 @@ function rcSettlementCheck(sid,lines){
   (lines||[]).forEach(r=>{if(!(Number(r.credit)>0)||!/^(Card|UPI) Settlement$/.test(String(r.nature||'')))return;const kind=r.nature==='UPI Settlement'?'upi':'card';const day=r.cradleeDate||'';
     const k=kind+'|'+day;const e=g[k]||(g[k]={day,kind,nature:r.nature,bank:0,n:0});e.bank+=Number(r.credit)||0;e.n++;});
   return Object.values(g).map(e=>{const sales=e.day?((tot[e.day]||{})[e.kind]||0):0;const diff=sales-e.bank;const pct=sales>0?diff/sales*100:null;
-    const status=!e.day?'no sale date':!(sales>0)?'no sales that day':diff<-1?'bank more than sales':pct>4.5?'short '+pct.toFixed(1)+'%':'ok';return{...e,sales,diff,pct,status};})
+    // Up to 4.5% below sales is charges; up to 3% above is late / early transactions of the next day; ±₹300 is rounding.
+    const status=!e.day?'no sale date':!(sales>0)?'no sales imported for that day':(Math.abs(diff)<=300||(pct>=-3&&pct<=4.5))?'ok':diff<0?'bank '+Math.abs(pct).toFixed(1)+'% more than sales':'short '+pct.toFixed(1)+'%';return{...e,sales,diff,pct,status};})
     .sort((a,b)=>String(toISO(b.day)||'').localeCompare(String(toISO(a.day)||''))||a.kind.localeCompare(b.kind));
 }
 // Applies one suggestion; '' when done, else the reason. Remembers what was accepted.
@@ -347,6 +348,10 @@ function BankReconcileSheet({salon,period,onNavTab}){
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRule(null)},'Not now')),
     showSet&&h('div',{className:'card',style:{padding:'10px 14px',marginBottom:12}},
       h('div',{style:{fontWeight:600,fontSize:13,marginBottom:6}},'Card / UPI settlements by sale day'),
+      (()=>{const S=data.settlements.reduce((t,g)=>t+g.sales,0),B=data.settlements.reduce((t,g)=>t+g.bank,0);if(!B)return null;const p=S>0?(S-B)/S*100:null;const okm=p!=null&&p>=-3&&p<=4.5;
+        return h('div',{style:{fontSize:12.5,marginBottom:8,padding:'6px 10px',borderRadius:'var(--r)',background:okm?'rgba(46,160,90,0.08)':'rgba(224,165,48,0.12)'}},
+          'Month: Cradlee card + UPI sales ',h('b',null,M(S)),' · bank credits ',h('b',null,M(B)),p!=null?' · difference '+M(S-B)+' ('+p.toFixed(1)+'%)':'',
+          okm?' ✓':' — '+(S<B*0.9?'sales look incomplete: import the missing days’ Cradlee collection (Collection → Import Collection Data)':'check Collection Reco'));})(),
       data.settlements.length?h('div',{className:'table-wrap',style:{margin:0}},h('table',{className:'rc-table'},
         h('thead',null,h('tr',null,['Sale day','Type','Lines','Sales (Cradlee)','Bank credits','Charges / short','Check'].map((t,k)=>h('th',{key:k,className:k>=3&&k<=5?'num':''},t)))),
         h('tbody',null,data.settlements.map(g=>{const okk=g.status==='ok';return h('tr',{key:g.kind+g.day},h('td',null,g.day||'—'),h('td',null,g.nature),h('td',{style:{color:'var(--text3)'}},g.n),
