@@ -36,8 +36,15 @@ const RC_IFSC_RE=/^[A-Z]{4}0[A-Z0-9]{6}$/;
 function rcParse(desc){
   const D=String(desc||'');const parts=D.split(/\/|-(?=\S)/).map(t=>t.trim()).filter(Boolean);
   const i=parts.findIndex(t=>RC_IFSC_RE.test(t.toUpperCase()));
-  if(i>0){let n=parts[i-1];if(/\d{5,}/.test(n)&&i>1)n=parts[i-2];if(n&&!/\d{5,}/.test(n)&&/[a-z]{2,}/i.test(n))
-    return{name:n.replace(/\s+/g,' ').split(' ').map(w=>w.length<=2||/^(PVT|LTD|LLP|OPC|HUF)$/i.test(w)?w.toUpperCase():w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' '),ifsc:parts[i].toUpperCase(),purpose:parts.slice(i+1).join(' ')};}
+  // HDFC writes the IFSC first ("NEFT DR-SBIN0012407-REYMOND RAI-NETBANK…"); UPI puts the UPI ID
+  // between name and IFSC ("UPI-B M SATISH BABU-98454…@IBL-ICIC0001008-…").
+  const isKind=t=>/^(neft|rtgs|imps|upi|ift|ft)( (dr|cr))?$/i.test(t);
+  const good=t=>t&&!/\d{5,}/.test(t)&&!t.includes('@')&&!isKind(t)&&!/^(netbank|mum|self)\b/i.test(t)&&/[a-z]{2,}/i.test(t);
+  if(i>0){let n=parts[i-1];let after=false;
+    if(n&&n.includes('@')&&i>1)n=parts[i-2];else if(/\d{5,}/.test(n)&&i>1)n=parts[i-2];
+    if(!good(n)&&good(parts[i+1])){n=parts[i+1];after=true;}
+    if(good(n))return{name:n.replace(/\s+/g,' ').split(' ').map(w=>w.length<=2||/^(PVT|LTD|LLP|OPC|HUF)$/i.test(w)?w.toUpperCase():w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' '),
+      ifsc:parts[i].toUpperCase(),purpose:parts.slice(i+(after?2:1)).filter(t=>!/\d{5,}/.test(t)&&!/^(netbank|mum|upi)\b/i.test(t)).join(' ')};}
   const n=typeof bankPayeeName==='function'?bankPayeeName(D):'';return{name:n,ifsc:bankIfscOf(D),purpose:''};
 }
 function rcPayeeName(desc){return rcParse(desc).name;}
@@ -173,6 +180,10 @@ function rcBuild(sid,ym){
     }
     // 4 · the existing engine's suggestion
     if(bs)alts.push({...bs,score:bs.conf==='high'?0.93:bs.conf==='mid'?0.72:0.45,reasons:[bs.why]});
+    // 4b · common bank lines the narration rules don't know: card MDR recovery, ATM withdrawals
+    if(!alts.length){const lo=d.toLowerCase();
+      if(/\bmdr\b|merchant discount/.test(lo))alts.push({score:0.88,conf:'mid',label:'Bank Charges',why:'MDR — the bank’s commission on card sales',reasons:['MDR in narration'],apply:{type:'patch',patch:{nature:'Bank Charges'}}});
+      else if(/^atw[- ]|\batm\b|\bnwd\b|cash wdl|cash withdrawal/.test(lo))alts.push({score:0.9,conf:'high',label:'Cash Withdrawal',why:'ATM / cash withdrawal',reasons:['ATM in narration'],apply:{type:'patch',patch:{nature:'Cash Withdrawal'}}});}
     // 5 · recurring payee: lines to the same payee in other months mapped the same way
     if(!alts.length){const pn=rcPayeeName(d);const ifsc=bankIfscOf(d);
       if(pn||ifsc){const same=rows.filter(r=>r&&r.id!==x.id&&Number(r.debit)>0&&r.nature&&((pn&&rcPayeeName(r.description)===pn)||(ifsc&&bankIfscOf(r.description)===ifsc&&rcNameScore(pn||'',r.description)>=0.5)));
