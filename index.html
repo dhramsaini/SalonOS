@@ -442,7 +442,7 @@ tbody tr:nth-child(n+11){animation-delay:0.16s}
 .page-title{font-family:var(--font2);font-size:20px;font-weight:600;letter-spacing:-0.01em;color:var(--text);margin-bottom:3px;line-height:1.25}
 .page-sub{font-size:12.5px;color:var(--text3);margin-bottom:14px;line-height:1.5}
 /* The one-line description under a page title is tucked behind an ⓘ (js/01 tuckPageSubs); click the title to show it */
-.page-sub[data-tucked]{display:none}
+.page-title + .page-sub:not([data-shown]){display:none}
 .page-title[data-sub]{cursor:pointer}
 .page-title[data-sub]::after{content:'ⓘ';font-size:13px;font-weight:400;color:var(--text3);margin-left:7px;vertical-align:2px}
 .topbar-title .tt-short{display:none}
@@ -911,7 +911,7 @@ body.light kbd{background:#fff}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous" type="text/x-lazy" data-lazy="xlsx"></script>
 <!-- App code, split by area (js/). Load order matters; ?v= is each file's content fingerprint (set by tools/bump-version.ps1), so a release only re-downloads the files that changed. -->
-<script src="js/01-foundation.js?v=22ae03cc6c"></script>
+<script src="js/01-foundation.js?v=370a01615a"></script>
 <script src="js/02-shared.js?v=fa9a744c49"></script>
 <script src="js/03-admin.js?v=e1b5647f33"></script>
 <script src="js/04-outlet-staff.js?v=41a0217c97"></script>
@@ -984,7 +984,7 @@ body.light kbd{background:#fff}
 <script src="js/70-bank-pnl-plus.js?v=c323d372c1"></script>
 <script src="js/71-bank-ledger.js?v=5292c8a924"></script>
 <script src="js/60-final-freeze.js?v=6543efc890"></script>
-<script src="js/14-import-and-app.js?v=b0dc4fdd47"></script>
+<script src="js/14-import-and-app.js?v=fc2d2a259a"></script>
 <script>
 // ── Phone card view for list tables — marks read-only list tables (one record per row) so the
 // CSS above can show each row as a labelled card on phones. Editable grids (text/number inputs or

@@ -596,10 +596,10 @@ function MenuButton({label,items,className,style,align}){
   let queued=false;
   const run=()=>{queued=false;document.querySelectorAll('.page-sub:not([data-tuck-seen])').forEach(s=>{s.setAttribute('data-tuck-seen','');
     const t=s.previousElementSibling;if(!t||!t.classList.contains('page-title'))return;const txt=(s.textContent||'').trim();if(!txt)return;
-    t.setAttribute('data-sub','');t.setAttribute('title',txt+'\n(click the title to show / hide)');s.setAttribute('data-tucked','');});};
+    t.setAttribute('data-sub','');t.setAttribute('title',txt+'\n(click the title to show / hide)');});}; // hidden by CSS from the first frame (.page-title + .page-sub)
   const start=()=>{run();new MutationObserver(()=>{if(!queued){queued=true;requestAnimationFrame(run);}}).observe(document.body,{childList:true,subtree:true});
     document.addEventListener('click',e=>{const t=e.target&&e.target.closest&&e.target.closest('.page-title[data-sub]');if(!t)return;const s=t.nextElementSibling;
-      if(s&&s.classList.contains('page-sub')){if(s.hasAttribute('data-tucked'))s.removeAttribute('data-tucked');else s.setAttribute('data-tucked','');}});};
+      if(s&&s.classList.contains('page-sub')){if(s.hasAttribute('data-shown'))s.removeAttribute('data-shown');else s.setAttribute('data-shown','');}});};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
 function opaqueStickyBg(rgba,base){
@@ -678,7 +678,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.11.25.263';
+const APP_VERSION='2026.11.25.264';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);

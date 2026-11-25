@@ -289,6 +289,7 @@ function AlertsBell({user,salons,onOpen}){
   const [open,setOpen]=useState(false);
   const [tick,setTick]=useState(0);
   const [sev,setSev]=useState(null); // panel filter: urgent / warn / info / all (null = urgent if any, else all)
+  const [allOutlets,setAllOutlets]=useState(false);
   const load=useCallback(async()=>{
     try{setAlerts(await loadOpenAlerts());}catch(e){setAlerts(prev=>prev||null);}
   },[]);
@@ -310,11 +311,14 @@ function AlertsBell({user,salons,onOpen}){
   const visible=visibleAll.slice();
   const rank={urgent:0,warn:1,info:2};
   visible.sort((a,b)=>(a.severity in rank?rank[a.severity]:1)-(b.severity in rank?rank[b.severity]:1)||String(b.created_at).localeCompare(String(a.created_at)));
-  const urgent=visible.filter(a=>a.severity==='urgent').length;
+  // Inside an outlet the bell speaks of that outlet (plus alerts for all outlets); "All outlets" widens it.
+  const navNow=window.__salonosNav||{};const hereId=navNow.activePage==='salon'&&navNow.selectedSalon?String(navNow.selectedSalon.id):null;
+  const scoped=hereId&&!allOutlets?visible.filter(a=>a.outlet_id==null||String(a.outlet_id)===hereId):visible;
+  const urgent=scoped.filter(a=>a.severity==='urgent').length;
   const sevOf=a=>a.severity==='urgent'?'urgent':a.severity==='info'?'info':'warn';
-  const counts={urgent,warn:visible.filter(a=>sevOf(a)==='warn').length,info:visible.filter(a=>sevOf(a)==='info').length};
+  const counts={urgent,warn:scoped.filter(a=>sevOf(a)==='warn').length,info:scoped.filter(a=>sevOf(a)==='info').length};
   const sevNow=sev||(urgent?'urgent':'all');
-  const shown=sevNow==='all'?visible:visible.filter(a=>sevOf(a)===sevNow);
+  const shown=sevNow==='all'?scoped:scoped.filter(a=>sevOf(a)===sevNow);
   const salonOf=id=>(salons||[]).find(s=>Number(s.id)===Number(id));
   const groups=[];
   shown.forEach(a=>{const k=a.outlet_id==null?'all':String(a.outlet_id);let g=groups.find(x=>x.k===k);if(!g){g={k,name:a.outlet_id==null?'All outlets':((salonOf(a.outlet_id)||{}).name||('Outlet '+a.outlet_id)).split('—')[0].trim(),items:[]};groups.push(g);}g.items.push(a);});
@@ -325,11 +329,11 @@ function AlertsBell({user,salons,onOpen}){
   const dot=sev=>h('span',{style:{width:8,height:8,borderRadius:'50%',flexShrink:0,marginTop:6,background:sev==='urgent'?'var(--red)':sev==='info'?'var(--accent)':'var(--orange)'}});
   return h(React.Fragment,null,
     // Badge: the number of URGENT alerts (red); only a small dot when there are just non-urgent ones.
-    h('button',{className:'topbar-icon-btn',title:visible.length?(urgent+' urgent · '+counts.warn+' need attention · '+counts.info+' for information'):'No alerts',
-      'aria-label':'Alerts','aria-expanded':open,onClick:()=>{setOpen(o=>!o);setSev(null);},style:{position:'relative'}},
+    h('button',{className:'topbar-icon-btn',title:scoped.length?((hereId&&!allOutlets?'This outlet: ':'')+urgent+' urgent · '+counts.warn+' need attention · '+counts.info+' for information'):'No alerts',
+      'aria-label':'Alerts','aria-expanded':open,onClick:()=>{setOpen(o=>!o);setSev(null);setAllOutlets(false);},style:{position:'relative'}},
       h('span',{style:{fontSize:15,lineHeight:1}},'🔔'),
       urgent>0?h('span',{style:{position:'absolute',top:-6,right:-6,minWidth:18,height:18,borderRadius:9,padding:'0 5px',fontSize:10.5,fontWeight:700,lineHeight:'18px',textAlign:'center',color:'#fff',background:'var(--red)'}},urgent>99?'99+':urgent)
-        :visible.length>0&&h('span',{style:{position:'absolute',top:-2,right:-2,width:9,height:9,borderRadius:'50%',background:'var(--orange)',border:'2px solid var(--bg2)'}})),
+        :scoped.length>0&&h('span',{style:{position:'absolute',top:-2,right:-2,width:9,height:9,borderRadius:'50%',background:'var(--orange)',border:'2px solid var(--bg2)'}})),
     open&&h(React.Fragment,null,
       h('div',{style:{position:'fixed',inset:0,zIndex:998},onClick:()=>setOpen(false)}),
       h('div',{role:'dialog','aria-label':'Alerts',style:{position:'fixed',top:56,right:12,width:'min(430px, calc(100vw - 24px))',maxHeight:'calc(100vh - 80px)',overflowY:'auto',zIndex:999,
@@ -337,9 +341,11 @@ function AlertsBell({user,salons,onOpen}){
         h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 14px',borderBottom:'1px solid var(--border)',position:'sticky',top:0,background:'var(--bg2)'}},
           h('div',{style:{fontWeight:700,fontSize:14}},'Alerts',visible.length?' ('+visible.length+')':''),
           h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setOpen(false),'aria-label':'Close'},'✕')),
-        visible.length>0&&h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',padding:'8px 14px',borderBottom:'1px solid var(--border)'}},
-          [['urgent','Urgent',counts.urgent,'var(--red)'],['warn','Needs attention',counts.warn,'var(--orange)'],['info','FYI',counts.info,'var(--accent)'],['all','All',visible.length,'var(--text2)']].map(([k,l,n,c])=>
-            h('button',{key:k,type:'button',className:'tab-group-chip'+(sevNow===k?' on':''),style:{'--tabc':c},onClick:()=>setSev(k)},l+' '+n))),
+        visible.length>0&&h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',padding:'8px 14px',borderBottom:'1px solid var(--border)'}},
+          [['urgent','Urgent',counts.urgent,'var(--red)'],['warn','Needs attention',counts.warn,'var(--orange)'],['info','FYI',counts.info,'var(--accent)'],['all','All',scoped.length,'var(--text2)']].map(([k,l,n,c])=>
+            h('button',{key:k,type:'button',className:'tab-group-chip'+(sevNow===k?' on':''),style:{'--tabc':c},onClick:()=>setSev(k)},l+' '+n)),
+          hereId&&h('label',{style:{marginLeft:'auto',fontSize:12,display:'flex',gap:5,alignItems:'center',color:'var(--text2)'}},
+            h('input',{type:'checkbox',checked:allOutlets,onChange:e=>setAllOutlets(e.target.checked)}),'All outlets')),
         visible.length>0&&!shown.length&&h('div',{style:{padding:'20px 16px',textAlign:'center',color:'var(--text3)',fontSize:12.5}},'Nothing here. Pick another filter above.'),
         !visible.length&&h('div',{style:{padding:'28px 16px',textAlign:'center',color:'var(--text3)',fontSize:13}},'✓ All clear — nothing needs attention right now.',
           h('div',{style:{fontSize:11.5,marginTop:6}},'The server checks every night at 9 PM.')),
@@ -1059,8 +1065,7 @@ function App(){
           selectedSalon&&defaultPeriods[selectedSalon.id]?React.createElement('span',{className:'badge badge-green'},'Default'):null,
           React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},onClick:()=>setGateFor(selectedSalon)},'Change period'),
           selectedSalon&&defaultPeriods[selectedSalon.id]?React.createElement('button',{className:'btn btn-ghost btn-sm',
-            onClick:()=>{pgSave(null,selectedSalon.id);setDefaultPeriods(prev=>{const n={...prev};delete n[selectedSalon.id];return n;});addToast('Default cleared for this outlet — it will ask for a period again','info')}},'Clear default'):null,
-          React.createElement('button',{className:'btn btn-ghost btn-sm hide-phone',onClick:()=>setActivePage('master-sheet')},'← Master Sheet')
+            onClick:()=>{pgSave(null,selectedSalon.id);setDefaultPeriods(prev=>{const n={...prev};delete n[selectedSalon.id];return n;});addToast('Default cleared for this outlet — it will ask for a period again','info')}},'Clear default'):null
         ),
         // Phone: one big "current sheet" button opening the full-screen sheet picker, instead of a
         // 27-tab strip that shows two tabs at a time.
@@ -1405,11 +1410,15 @@ if('serviceWorker' in navigator){
       const r=activeWrap.getBoundingClientRect();
       // Middle of the part of the table that is actually on screen (a long table's arrows used to sit
       // beside its first rows, far from where the person is reading).
+      // Kept at the middle of the SCREEN while the table covers it, so it doesn't slide around as the
+      // page scrolls or content above the table grows; only near a table's top / bottom edge does it move.
       const top=Math.max(r.top,64),bottom=Math.min(r.bottom,window.innerHeight-8);
-      const midY=bottom>top?(top+bottom)/2:Math.max(24,Math.min(window.innerHeight-24,r.top+r.height/2));
+      const screenMid=Math.round(window.innerHeight/2);
+      const midY=bottom>top?Math.round(Math.min(Math.max(screenMid,top+20),bottom-20)):Math.max(24,Math.min(window.innerHeight-24,Math.round(r.top+r.height/2)));
       const sw=stickyWidth(activeWrap);
-      leftBtn.style.top=midY+'px';leftBtn.style.left=(r.left+sw+6)+'px';
-      rightBtn.style.top=midY+'px';rightBtn.style.left=(r.right-40)+'px';
+      const put=(b,y,x)=>{const oy=parseFloat(b.style.top)||0,ox=parseFloat(b.style.left)||0;if(Math.abs(oy-y)>3||Math.abs(ox-x)>3){b.style.top=y+'px';b.style.left=x+'px';}};
+      put(leftBtn,midY,Math.round(r.left+sw+6));
+      put(rightBtn,midY,Math.round(r.right-40));
       const cur=(pendingWrap===activeWrap&&pendingLeft!=null)?pendingLeft:activeWrap.scrollLeft;
       const atStart=cur<=2;
       const atEnd=cur>=activeWrap.scrollWidth-activeWrap.clientWidth-2;
