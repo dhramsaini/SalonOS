@@ -30,16 +30,32 @@ function rcTokens(s,min){return vendorMatchNorm(s).split(/\s+/).filter(t=>t.leng
 function rcNameScore(recName,desc,min){const A=rcTokens(recName,min);if(!A.length)return 0;const B=new Set(rcTokens(desc,3));const hay=' '+vendorMatchNorm(desc)+' ';
   const hit=A.filter(t=>B.has(t)||(t.length>=5&&hay.includes(t))).length;return hit/A.length;}
 function rcDigits(s){return String(s||'').replace(/[^0-9]/g,'');}
-// How sure we are that a narration is a payment to this vendor / employee, and why.
-function rcPayeeScore(rec,desc,isEmp){
-  const reasons=[];let s=0;const D=String(desc||'').toUpperCase();const ifsc=bankIfscOf(desc);
-  if(ifsc&&rec.ifsc&&String(rec.ifsc).toUpperCase().trim()===ifsc){s+=0.5;reasons.push('IFSC '+ifsc);}
-  const ac=rcDigits(rec.accountNo);if(ac.length>=6&&rcDigits(D).includes(ac.slice(-6))){s+=0.5;reasons.push('account no.');}
-  const n=Math.max(rcNameScore(rec.name,desc,isEmp?4:3),rec.accountHolder?rcNameScore(rec.accountHolder,desc,isEmp?4:3):0);
+const RC_IFSC_RE=/^[A-Z]{4}0[A-Z0-9]{6}$/;
+// Payee and purpose from a NEFT / RTGS / IMPS narration: the part just before the IFSC
+// ("NEFT/IDFB…/Moksha Wellness Pvt Ltd/YESB0000757/Cosmetics", "YIB-NEFT-YESME…-S BHOOMA-HDFC0000354-Sep Rent").
+function rcParse(desc){
+  const D=String(desc||'');const parts=D.split(/\/|-(?=\S)/).map(t=>t.trim()).filter(Boolean);
+  const i=parts.findIndex(t=>RC_IFSC_RE.test(t.toUpperCase()));
+  if(i>0){let n=parts[i-1];if(/\d{5,}/.test(n)&&i>1)n=parts[i-2];if(n&&!/\d{5,}/.test(n)&&/[a-z]{2,}/i.test(n))
+    return{name:n.replace(/\s+/g,' ').split(' ').map(w=>w.length<=2||/^(PVT|LTD|LLP|OPC|HUF)$/i.test(w)?w.toUpperCase():w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' '),ifsc:parts[i].toUpperCase(),purpose:parts.slice(i+1).join(' ')};}
+  const n=typeof bankPayeeName==='function'?bankPayeeName(D):'';return{name:n,ifsc:bankIfscOf(D),purpose:''};
+}
+function rcPayeeName(desc){return rcParse(desc).name;}
+// How sure we are that a narration is a payment to this vendor / employee, and why. An IFSC is a
+// bank branch, not a person: it counts fully only when no one else on the list banks there.
+function rcPayeeScore(rec,desc,isEmp,ifscCount){
+  const reasons=[];let s=0;const D=String(desc||'').toUpperCase();const P=rcParse(desc);const ifsc=P.ifsc;
+  const ac=rcDigits(rec.accountNo);const acHit=ac.length>=6&&rcDigits(D).includes(ac.slice(-6));
+  if(acHit){s+=0.6;reasons.push('account no.');}
+  if(ifsc&&rec.ifsc&&String(rec.ifsc).toUpperCase().trim()===ifsc){const uniq=!ifscCount||(ifscCount[ifsc]||0)<=1;s+=uniq?0.5:0.15;reasons.push('IFSC '+ifsc+(uniq?'':' (shared)'));}
+  const against=P.name||desc;
+  const n=Math.max(rcNameScore(rec.name,against,isEmp?4:3),rec.accountHolder?rcNameScore(rec.accountHolder,against,isEmp?4:3):0);
   if(n>=0.5){s+=0.45*n;reasons.push(n>=0.99?'name':'name '+Math.round(n*100)+'%');}
+  else if(P.name&&!acHit){s*=0.6;if(s>0)reasons.push('name differs ('+P.name+')');}
   return{score:Math.min(1,s),reasons};
 }
-function rcBestPayee(list,desc,isEmp){let best=null;(list||[]).forEach(r=>{if(!r||!r.name)return;const p=rcPayeeScore(r,desc,isEmp);if(p.score>=0.4&&(!best||p.score>best.score))best={rec:r,...p};});return best;}
+function rcIfscCount(list){const c={};(list||[]).forEach(r=>{const f=String(r&&r.ifsc||'').toUpperCase().trim();if(f)c[f]=(c[f]||0)+1;});return c;}
+function rcBestPayee(list,desc,isEmp){const cnt=rcIfscCount(list);let best=null;(list||[]).forEach(r=>{if(!r||!r.name)return;const p=rcPayeeScore(r,desc,isEmp,cnt);if(p.score>=(isEmp?0.28:0.4)&&(!best||p.score>best.score))best={rec:r,...p};});return best;}
 
 // ── Bills ──
 function rcBal(i){return Math.round(((Number(i.amount)||0)-(i.payments||[]).reduce((t,q)=>t+(Number(q.paidAmount)||0),0))*100)/100;}
@@ -63,7 +79,22 @@ function rcBillPlan(v,amt,inv,left){
 // ── Pay ──
 // Month a salary / incentive payment is for: paid by the 15th → the month before, else that month.
 function rcPayMonth(dmy){const iso=toISO(dmy);if(!iso)return null;const d=new Date(iso+'T00:00:00');const p=d.getDate()<=15?new Date(d.getFullYear(),d.getMonth()-1,1):new Date(d.getFullYear(),d.getMonth(),1);return{year:p.getFullYear(),month:p.getMonth()};}
-function rcDues(sid,e,y,m){const R=n=>Math.round((Number(n)||0)*100)/100;return{sal:R(employeeSalaryOutstandingFor(sid,e.id,y,m)),inc:R(employeeIncentiveOutstandingFor(sid,e.id,y,m))};}
+// What a bank line can still be linked to: the month's net pay / incentive in Salary / Incentive
+// Working less what bank lines already settle — also when the month was marked Paid by hand
+// (then linking only records the bank line; nothing is paid twice). Worked out once per month.
+let _rcPayCache={},_rcPayVer=-1;
+function rcPayInfo(sid,y,m,rows){
+  if(_rcPayVer!==storeVersion()){_rcPayCache={};_rcPayVer=storeVersion();}
+  const k=sid+'|'+y+'|'+m;if(_rcPayCache[k])return _rcPayCache[k];
+  const sal={},inc={},ls={},li={};
+  try{(swWorkingsFor(sid,y,m)||[]).forEach(w=>{sal[w.id]=Math.max(0,Number(w.net)||0);});}catch(e){}
+  try{(incWorkingsFor(sid,y,m)||[]).forEach(w=>{inc[w.id]=Math.max(0,Number(w.totalInc)||0);});}catch(e){}
+  (rows||[]).forEach(r=>(r&&Array.isArray(r.linkedEmployeePay)?r.linkedEmployeePay:[]).forEach(l=>{if(Number(l.year)!==y||Number(l.month)!==m)return;ls[l.employeeId]=(ls[l.employeeId]||0)+(Number(l.salary)||0);li[l.employeeId]=(li[l.employeeId]||0)+(Number(l.incentive)||0);}));
+  const v={sal,inc,ls,li};_rcPayCache[k]=v;return v;
+}
+function rcDues(sid,e,y,m,rows){const R=n=>Math.round((Number(n)||0)*100)/100;const P=rcPayInfo(sid,y,m,rows||bankRowsFor(sid));
+  const sal=R(Math.max(0,(P.sal[e.id]||0)-(P.ls[e.id]||0))),inc=R(Math.max(0,(P.inc[e.id]||0)-(P.li[e.id]||0)));
+  return{sal,inc,salMarked:employeeSalaryOutstandingFor(sid,e.id,y,m)===0&&sal>0,incMarked:employeeIncentiveOutstandingFor(sid,e.id,y,m)===0&&inc>0};}
 // Employees named in a narration (for one transfer paying several people).
 function rcEmpsNamed(desc,emps){const B=new Set(rcTokens(desc,4));return(emps||[]).filter(e=>{const A=rcTokens(e.name,4);return A.length&&B.has(A[0]);});}
 
@@ -102,7 +133,7 @@ function rcBuild(sid,ym){
       if(po.kind==='vendor'){const v=vendors.find(z=>String(z.id)===String(po.vendorId));const ids=(po.invIds||[]).filter(id=>left[id]>0.5);
         if(v&&ids.length){const al=[];let rem=amt;ids.forEach(id=>{const a=Math.round(Math.min(left[id],rem)*100)/100;if(a>0){al.push({id,invoiceNo:(inv.find(i=>i.id===id)||{}).invoiceNo||id,amount:a});rem-=a;left[id]-=a;}});
           if(al.length){it.s={score:0.99,conf:'high',label:'Pays '+al.map(a=>a.invoiceNo).join(' + ')+' · '+v.name,why:'In the Bank Payment file of '+(po.valueDate||'').split('-').reverse().join('/'),reasons:['Bank Payment file','same amount and payee'],apply:{type:'link',plan:{vendor:v,allocations:al}},payout:po.id};return;}}}
-      else{const e=allEmps.find(z=>String(z.id)===String(po.empId));if(e&&po.year!=null){const du=rcDues(sid,e,po.year,po.month);const isInc=po.kind==='incentive';
+      else{const e=allEmps.find(z=>String(z.id)===String(po.empId));if(e&&po.year!=null){const du=rcDues(sid,e,po.year,po.month,rows);const isInc=po.kind==='incentive';
         const la={employeeId:e.id,employeeName:e.name,salaryAmt:isInc?0:Math.min(amt,du.sal||amt),incentiveAmt:isInc?Math.min(amt,du.inc||amt):0};
         it.s={score:0.99,conf:'high',label:(isInc?'Incentive':'Salary')+' '+RPT_MONTHS[po.month].slice(0,3)+' · '+e.name,why:'In the Bank Payment file of '+(po.valueDate||'').split('-').reverse().join('/'),reasons:['Bank Payment file','same amount and payee'],
           apply:{type:'pay',plan:{year:po.year,month:po.month,lines:[la]}},payout:po.id};return;}}}
@@ -110,19 +141,21 @@ function rcBuild(sid,ym){
     const pm=rcPayMonth(x.date);
     if(pm&&(it.task==='pay'||it.task==='map')){
       const emps=empsFor(pm.year,pm.month);const named=rcEmpsNamed(d,emps);
-      if(named.length>=2){const du=named.map(e=>({e,...rcDues(sid,e,pm.year,pm.month)}));
+      if(named.length>=2){const du=named.map(e=>({e,...rcDues(sid,e,pm.year,pm.month,rows)}));
         for(const k of ['sal','inc']){const tot=du.reduce((t,q)=>t+q[k],0);if(du.every(q=>q[k]>0)&&Math.abs(tot-amt)<=1){
           alts.push({score:0.84,conf:'mid',label:'Split: '+(k==='sal'?'salary':'incentive')+' '+RPT_MONTHS[pm.month].slice(0,3)+' of '+named.length+' people',why:du.map(q=>q.e.name+' '+M(q[k])).join(' · '),reasons:['names in narration','= '+(k==='sal'?'net pay':'incentive')+' total'],
             apply:{type:'pay',plan:{year:pm.year,month:pm.month,lines:du.map(q=>({employeeId:q.e.id,employeeName:q.e.name,salaryAmt:k==='sal'?q[k]:0,incentiveAmt:k==='inc'?q[k]:0}))}}});break;}}}
       const ep=rcBestPayee(emps,d,true)||(()=>{const t=typeof payeeByToken==='function'?payeeByToken('emp',d,emps):null;return t?{rec:t,score:0.6,reasons:['paid to this account before']}:null;})();
-      if(ep){const e=ep.rec;const tries=[pm,{year:pm.month===0?pm.year-1:pm.year,month:(pm.month+11)%12}];
-        for(const t of tries){const du=rcDues(sid,e,t.year,t.month);const near=v=>v>0&&Math.abs(v-amt)<=1;let what=null,la=null;
-          if(near(du.sal)){what='Salary';la={salaryAmt:du.sal,incentiveAmt:0};}else if(near(du.inc)){what='Incentive';la={salaryAmt:0,incentiveAmt:du.inc};}
-          else if(du.sal>0&&du.inc>0&&near(du.sal+du.inc)){what='Salary + incentive';la={salaryAmt:du.sal,incentiveAmt:du.inc};}
+      if(ep){const e=ep.rec;const tries=[pm,{year:pm.month===0?pm.year-1:pm.year,month:(pm.month+11)%12},{year:pm.month===11?pm.year+1:pm.year,month:(pm.month+1)%12}];
+        const purpose=(rcParse(d).purpose+' '+x.nature).toLowerCase();const incFirst=/incent/.test(purpose)&&!/salary/.test(purpose);
+        for(const t of tries){const du=rcDues(sid,e,t.year,t.month,rows);const near=v=>v>0&&Math.abs(v-amt)<=1;let what=null,la=null,marked=false;
+          const trySal=()=>{if(near(du.sal)){what='Salary';la={salaryAmt:du.sal,incentiveAmt:0};marked=du.salMarked;return true;}return false;};
+          const tryInc=()=>{if(near(du.inc)){what='Incentive';la={salaryAmt:0,incentiveAmt:du.inc};marked=du.incMarked;return true;}return false;};
+          if(!(incFirst?tryInc()||trySal():trySal()||tryInc())&&du.sal>0&&du.inc>0&&near(du.sal+du.inc)){what='Salary + incentive';la={salaryAmt:du.sal,incentiveAmt:du.inc};marked=du.salMarked&&du.incMarked;}
           if(what){const sc=Math.min(0.98,0.55+ep.score*0.45)-(t===pm?0:0.08);
-            alts.push({score:sc,conf:sc>=0.9?'high':'mid',label:what+' '+RPT_MONTHS[t.month].slice(0,3)+' '+t.year+' · '+e.name,why:'Amount equals what is due',reasons:[...ep.reasons,'= '+what.toLowerCase()+' due'],
+            alts.push({score:sc,conf:sc>=0.9?'high':'mid',label:what+' '+RPT_MONTHS[t.month].slice(0,3)+' '+t.year+' · '+e.name,why:marked?'Already marked Paid in '+(what==='Incentive'?'Incentive':'Salary')+' Working — this links the bank line to it':'Amount equals what is due',reasons:[...ep.reasons,'= '+what.toLowerCase()+' net'],
               apply:{type:'pay',plan:{year:t.year,month:t.month,lines:[{employeeId:e.id,employeeName:e.name,...la}]}}});break;}}
-        if(!alts.length&&it.task==='pay'){const du=rcDues(sid,e,pm.year,pm.month);const k=x.nature==='Incentive'?'inc':'sal';
+        if(!alts.length&&it.task==='pay'){const du=rcDues(sid,e,pm.year,pm.month,rows);const k=incFirst||x.nature==='Incentive'?'inc':'sal';
           if(du[k]>0)alts.push({score:0.62,conf:'mid',label:(k==='sal'?'Salary':'Incentive')+' '+RPT_MONTHS[pm.month].slice(0,3)+' · '+e.name+' (part)',why:M(amt)+' of '+M(du[k])+' due',reasons:[...ep.reasons,'part payment'],
             apply:{type:'pay',plan:{year:pm.year,month:pm.month,lines:[{employeeId:e.id,employeeName:e.name,salaryAmt:k==='sal'?Math.min(amt,du.sal):0,incentiveAmt:k==='inc'?Math.min(amt,du.inc):0}]}}});}}
     }
@@ -141,8 +174,8 @@ function rcBuild(sid,ym){
     // 4 · the existing engine's suggestion
     if(bs)alts.push({...bs,score:bs.conf==='high'?0.93:bs.conf==='mid'?0.72:0.45,reasons:[bs.why]});
     // 5 · recurring payee: lines to the same payee in other months mapped the same way
-    if(!alts.length){const pn=bankPayeeName(d);const ifsc=bankIfscOf(d);
-      if(pn||ifsc){const same=rows.filter(r=>r&&r.id!==x.id&&Number(r.debit)>0&&r.nature&&((pn&&bankPayeeName(r.description)===pn)||(ifsc&&bankIfscOf(r.description)===ifsc&&rcNameScore(pn||'',r.description)>=0.5)));
+    if(!alts.length){const pn=rcPayeeName(d);const ifsc=bankIfscOf(d);
+      if(pn||ifsc){const same=rows.filter(r=>r&&r.id!==x.id&&Number(r.debit)>0&&r.nature&&((pn&&rcPayeeName(r.description)===pn)||(ifsc&&bankIfscOf(r.description)===ifsc&&rcNameScore(pn||'',r.description)>=0.5)));
         const by={};same.forEach(r=>{const k=r.nature+'|'+(r.vendorOverride||'');(by[k]=by[k]||new Set()).add(rcMonthKey(r.transactionDate));});
         const top=Object.entries(by).sort((a,b)=>b[1].size-a[1].size)[0];
         if(top&&top[1].size>=2){const [nat,vo]=top[0].split('|');alts.push({score:top[1].size>=3?0.9:0.78,conf:top[1].size>=3?'high':'mid',label:nat+(vo&&!vo.startsWith('EMP:')?' · '+vo:''),why:'Paid to '+(pn||ifsc)+' the same way in '+top[1].size+' other months',
@@ -151,7 +184,7 @@ function rcBuild(sid,ym){
     it.s=alts[0]||null;
     // a bill proposed for this line isn't offered to the next one
     if(it.s&&it.s.apply&&it.s.apply.type==='link')it.s.apply.plan.allocations.forEach(a=>{left[a.id]=Math.round(((left[a.id]||0)-a.amount)*100)/100;});
-    if(!it.s&&x.side==='Debit'&&bankPayeeName(d))it.newPayee=bankPayeeName(d);
+    if(!it.s&&x.side==='Debit'&&rcPayeeName(d))it.newPayee=rcPayeeName(d);
   });
   items.forEach(it=>{const s=it.s;it.bucket=s?(s.score>=0.9?'sure':'check'):(it.newPayee?'new':'unknown');});
   // card / UPI settlements of the month, grouped by sale day
@@ -208,7 +241,7 @@ function BankReconcileSheet({salon,period,onNavTab}){
     toast(n+' line'+(n===1?'':'s')+' reconciled'+(errs.length?' · '+errs.length+' skipped':''),errs.length?'warning':'success');if(errs.length)window.alert('Not applied:\n\n'+errs.slice(0,12).join('\n'));};
   const mapAs=(it,nature,extra)=>{const row=bankRowsFor(sid).find(r=>r.id===it.x.id);if(!row)return;journalBankMapping(sid,row,'Reconcile: '+nature);saveBankLineMapping(sid,row.id,{nature,aiTagged:false,...(extra||{})});
     if(it.s)try{noteBankFeedback(sid,it.x,typeof suggestionNature==='function'?(suggestionNature(it.s)||it.s.label):it.s.label,false);}catch(e){}toast('Mapped as '+nature,'success');setOpen(null);refresh();};
-  const newVendor=it=>{const name=window.prompt('New vendor name',it.newPayee||bankPayeeName(it.x.description)||'');if(!name||!name.trim())return;const v=addVendorFromNarration(sid,name.trim(),it.x.description);
+  const newVendor=it=>{const name=window.prompt('New vendor name',it.newPayee||rcPayeeName(it.x.description)||'');if(!name||!name.trim())return;const v=addVendorFromNarration(sid,name.trim(),it.x.description);
     mapAs(it,'Vendor Payment',{vendorOverride:v.name});toast('Vendor '+v.name+' added'+(v.ifsc?' with IFSC '+v.ifsc:'')+' — future payments to them match by themselves','success');};
   const onKey=e=>{if(e.target&&['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)){if(e.key==='Escape'){e.target.blur();}return;}
     if(e.key==='ArrowDown'){e.preventDefault();setSel(s=>Math.min(shown.length-1,s+1));}
@@ -253,7 +286,7 @@ function BankReconcileSheet({salon,period,onNavTab}){
           h('div',{className:'rc-row'},
             h('div',{style:{minWidth:0}},h('div',{style:{fontSize:11.5,color:'var(--text3)'}},x.date+(it.task==='bill'?' · Vendor Payment, no bill linked':it.task==='pay'?' · '+x.nature+', no employee linked':x.problem?' · '+x.problem:'')),
               h('div',{style:{fontWeight:600,fontSize:14,color:cr?'var(--green)':'var(--red)'}},(cr?'+ ':'− ')+M(x.credit||x.debit)),
-              h('div',{style:{fontSize:12,color:'var(--text2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},title:x.description},bankPayeeName(x.description)||x.description)),
+              h('div',{style:{fontSize:12,color:'var(--text2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},title:x.description},rcPayeeName(x.description)||x.description)),
             h('div',{style:{fontSize:18,color:'var(--text3)',textAlign:'center'}},s&&s.apply&&s.apply.plan&&s.apply.plan.lines&&s.apply.plan.lines.length>1?'⑂':s?'⇄':'?'),
             h('div',{style:{minWidth:0}},
               h('span',{style:{fontSize:11,padding:'1px 8px',borderRadius:999,background:p[2],color:p[1],fontWeight:600}},p[0]+(s?' '+Math.round(s.score*100)+'%':'')),
