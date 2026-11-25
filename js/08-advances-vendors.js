@@ -2631,14 +2631,19 @@ function BankPaymentSheet({period,salon,onNavTab}={}){
     if(tab==='vendor'&&combineVendor){
       const by=new Map();
       chosen.forEach(x=>{const k=String(x.vendor.id);const g=by.get(k);
-        if(g){g.amount+=Math.round(Number(amtFor0(x))||0);g.invoiceNos.push(x.invoiceNo||'—');}
-        else by.set(k,{__merged:true,vendor:x.vendor,invId:'V-'+k,amount:Math.round(Number(amtFor0(x))||0),invoiceNos:[x.invoiceNo||'—']});});
+        if(g){g.amount+=Math.round(Number(amtFor0(x))||0);g.invoiceNos.push(x.invoiceNo||'—');g.invIds.push(x.invId);}
+        else by.set(k,{__merged:true,vendor:x.vendor,invId:'V-'+k,amount:Math.round(Number(amtFor0(x))||0),invoiceNos:[x.invoiceNo||'—'],invIds:[x.invId]});});
       chosen=[...by.values()].map(g=>({...g,invoiceNo:g.invoiceNos.join(', ')}));
     }
     if(!chosen.length){bpError('Nothing to include — select at least one payee with complete bank details.');return;}
     if(!debitAccount){bpError('Enter the Debit Account Number (this outlet\'s own bank account) before generating the file.');return;}
     const label=tab==='salary'?'Salary':tab==='incentive'?'Incentive':'VendorPayments';
     if(!bankFileApprovalOk(salon&&salon.id,chosen.reduce((t,x)=>t+(Math.round(Number(amtFor(x))||0)),0),chosen.length,label+' '+(valueDate||'')))return;
+    // Remember each payout in this file, so Reconcile (js/72) matches the bank debit to it exactly.
+    try{if(typeof rcRecordPayouts==='function')rcRecordPayouts(salonId,chosen.map(x=>{const bank=tab==='vendor'?x.vendor:x;
+      return{kind:tab,amount:Math.round(Number(amtFor(x))||0),name:bank.accountHolder||bank.name||'',ifsc:String(bank.ifsc||'').toUpperCase().trim(),acct:String(bank.accountNo||'').replace(/\s/g,''),
+        vendorId:tab==='vendor'?x.vendor.id:'',invIds:tab==='vendor'?(x.invIds||[x.invId]).filter(i=>i&&!String(i).startsWith('V-')):[],empId:tab==='vendor'?'':(x.id||''),
+        year:tab==='vendor'?null:selYear,month:tab==='vendor'?null:selMonth,valueDate:valueDate||''};}));}catch(e){}
     const outletTag=salon?salon.name.split('—')[0].trim().replace(/\s+/g,''):'Outlet';
     const remarksFor=(x)=>tab==='salary'?'Salary '+MONTHS[selMonth]+' '+selYear:tab==='incentive'?'Incentive '+MONTHS[selMonth]+' '+selYear:'Payment against Inv# '+(x.invoiceNo||'—');
     if(tab==='vendor'&&combineVendor&&chosen.some(x=>x.invoiceNos&&x.invoiceNos.length>1))

@@ -267,6 +267,7 @@ const SALON_TABS=[
   {id:'vendors',label:'Vendors',icon:'🏭',group:'Money'},
   {id:'due-dates',label:'Due Dates',icon:'📌',group:'Money'},
   {id:'bank-statement',label:'Bank Statement',icon:'🏦',group:'Money'},
+  {id:'bank-reconcile',label:'Reconcile',icon:'🔁',group:'Money'},
   {id:'bank-payment',label:'Bank Payment',icon:'🏧',group:'Money'},
   {id:'recurring-expenses',label:'Recurring Expenses',icon:'🔁',group:'Money'},
   {id:'fixed-assets',label:'Fixed Assets',icon:'🏢',group:'Money'},
@@ -1014,6 +1015,7 @@ function App(){
     'collection':CollectionReco,
     'collection-sheet':CollectionSheetView,
     'bank-statement':BankStatement,
+    'bank-reconcile':function BankReconcileTab(p){return React.createElement(BankReconcileSheet,p);}, // js/72 loads after this file
     'bank-payment':BankPaymentSheet,
     'tally-export':TallyExportSheet,
     'reports':ReportsSheet,
