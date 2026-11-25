@@ -649,7 +649,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.11.25.261';
+const APP_VERSION='2026.11.25.262';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
@@ -1065,9 +1065,12 @@ async function cleanupUnusedFiles(){
   const{data:kv,error:e1}=await kvSelectAll(supa,'key,value',true);
   if(e1)throw e1;
   kv.forEach(r=>add(r.value));
-  const{data:bk,error:e2}=await supa.from('kv_backups').select('data');
-  if(e2)throw e2;
-  bk.forEach(b=>add(JSON.stringify(b.data)));
+  // Files any backup still points to. Each backup keeps its own list (file_refs, supabase/step21);
+  // reading every backup's full data in one request (18 MB+) timed out every day.
+  const{data:bk,error:e2}=await supa.from('kv_backups').select('id,file_refs');
+  if(e2)throw new Error((/file_refs/.test(e2.message||'')?'Run supabase/step21_backup_file_refs.sql first. ':'')+(e2.message||e2));
+  if(bk.some(b=>!Array.isArray(b.file_refs)))throw new Error('Some backups have no file list yet (run supabase/step21_backup_file_refs.sql); nothing deleted');
+  bk.forEach(b=>b.file_refs.forEach(r=>refs.add(r)));
   const{data:folders,error:e3}=await supa.storage.from(FILES_BUCKET).list('',{limit:1000});
   if(e3)throw e3;
   const remove=[];
