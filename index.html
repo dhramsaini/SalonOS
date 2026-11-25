@@ -698,6 +698,8 @@ kbd{background:var(--bg4);border:1px solid var(--border2);border-radius:4px;padd
   .topbar-right{flex-wrap:nowrap;padding:0;gap:6px;flex-shrink:0}
   .lbl-full{display:none}
   .lbl-short{display:inline!important}
+  .lbl-short.lbl-ok{display:none!important}
+  .topbar-right{gap:4px}
   .sidebar-hamburger{width:38px;height:38px;font-size:16px}
   .content{padding:12px 12px calc(16px + env(safe-area-inset-bottom))}
   .main.has-bottom-nav .content{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
@@ -912,7 +914,7 @@ body.light kbd{background:#fff}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous" type="text/x-lazy" data-lazy="xlsx"></script>
 <!-- App code, split by area (js/). Load order matters; ?v= is each file's content fingerprint (set by tools/bump-version.ps1), so a release only re-downloads the files that changed. -->
-<script src="js/01-foundation.js?v=851ed6570a"></script>
+<script src="js/01-foundation.js?v=e84b2e78ac"></script>
 <script src="js/02-shared.js?v=fa9a744c49"></script>
 <script src="js/03-admin.js?v=e1b5647f33"></script>
 <script src="js/04-outlet-staff.js?v=41a0217c97"></script>
