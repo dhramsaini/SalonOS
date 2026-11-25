@@ -1786,6 +1786,7 @@ const TALLY_NATURE_LEDGERS={
   'PF Payment':['PF Payable','Current Liabilities'],
   'PT Payment':['PT Payable','Duties & Taxes'],
   'Electricity Expenses':['Electricity Expenses','Indirect Expenses'],
+  'Water Expenses':['Water Expenses','Indirect Expenses'],
   'Drycleaning Expenses':['Drycleaning Expenses','Indirect Expenses'],
   'Telephone & Internet Expenses':['Telephone & Internet Expenses','Indirect Expenses'],
   'DG Rent':['DG Rent','Indirect Expenses'],

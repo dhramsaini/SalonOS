@@ -23,6 +23,7 @@ function RecurringExpensesSheet({salon}={}){
     if(expenseName==='Rent')return'Rent';
     if(expenseName==='Royalty')return'Royalty';
     if(expenseName==='Electricity Expenses')return'Electricity Expenses';
+    if(expenseName==='Water Expenses')return'Water Expenses';
     if(expenseName==='Telephone & Internet Expenses')return'Telephone & Internet Expenses';
     if(expenseName==='Uniform Expenses')return'Uniform Expenses';
     if(expenseName==='Maintenance Expenses'||expenseName==='Maintenance Bill')return'Maintenance Expenses';

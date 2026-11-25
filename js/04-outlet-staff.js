@@ -1373,6 +1373,8 @@ const EXPENSE_ROWS=[
   {name:'Packaging Material',group:'Packaging Material',biz:'restaurant'},
   {name:'Kitchen Consumables',group:'Kitchen Consumables',biz:'restaurant'},
   {name:'Pest Control',group:'Pest Control',biz:'restaurant'},
+  // Added later — appended, never inserted (rows are stored by position).
+  {name:'Water Expenses',group:'Water Expenses'},
 ];
 // Salon-only and restaurant-only rows are hidden on the other kind of outlet.
 function expenseRowVisibleFor(row,salonId){return !row||!row.biz||row.biz===bizKeyOf(salonId);}
@@ -1380,7 +1382,7 @@ function expenseRowVisibleFor(row,salonId){return !row||!row.biz||row.biz===bizK
 const VENDOR_ROWS=new Set(['Repair & Maintenance','Telephone & Internet Expenses','Electric Work','Drycleaning Expenses','Rent','Accessories','Tanker Cleaning']);
 // Expense rows that can only be entered on a day there's a real, unpaid vendor invoice (matched
 // by Category in Vendor Sheet → Outstanding Invoices) behind them.
-const INVOICE_GATED_EXPENSE_ROWS=['DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Rent'];
+const INVOICE_GATED_EXPENSE_ROWS=['DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Water Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Rent'];
 // Reads Daily Sales & Exp's saved data directly from storage (for a given outlet) and sums every
 // entry across a calendar month whose row belongs to the given group — this is how the P&L
 // (Monthly) pulls its real expense-line totals instead of a fabricated percentage-of-revenue
@@ -1797,6 +1799,7 @@ const PL_OPEX_LINES=[
   {name:'Daily Expenses',group:'Daily Expenses'},
   {name:'Royalty',group:'Royalty',noDaily:true,alsoVendorCat:'Royalty',vendorWinsOverRecurring:true},
   {name:'Electricity Expenses',group:'Electricity Expenses',noDaily:true,alsoVendorCat:'Electricity Expenses',vendorWinsOverRecurring:true},
+  {name:'Water Expenses',group:'Water Expenses',noDaily:true,alsoVendorCat:'Water Expenses',vendorWinsOverRecurring:true},
   {name:'DG Rent',group:'DG Rent',noDaily:true,alsoVendorCat:'DG Rent',vendorWinsOverRecurring:true},
   {name:'Diesel Expenses',group:'Diesel Expenses'},
   {name:'Telephone & Internet Expenses',group:'Telephone & Internet Expenses',noDaily:true,alsoVendorCat:'Telephone & Internet Expenses',vendorWinsOverRecurring:true},
@@ -1836,7 +1839,7 @@ const PL_OPEX_LINES=[
 // Daily Sales & Exp entries are its only route onto the P&L at all — stripping them would zero
 // it out completely every month instead of avoiding a double-count.
 const PL_OPEX_RECURRING_MAP={
-  'Rent':'Rent','Staff Room Rent':'Staff Room Rent','Royalty':'Royalty','Electricity Expenses':'Electricity Expenses',
+  'Rent':'Rent','Staff Room Rent':'Staff Room Rent','Royalty':'Royalty','Electricity Expenses':'Electricity Expenses','Water Expenses':'Water Expenses',
   'DG Rent':'DG Rent','Diesel Expenses':'Diesel Expenses','Telephone & Internet Expenses':'Telephone & Internet Expenses',
   'Marketing Expenses':'Marketing Expenses','Drycleaning Expenses':'Drycleaning Expenses','Professional Fee':'Professional Fee',
   'Maintenance Expenses':'Maintenance Bill','Bank Charges':'Bank Charges'
@@ -2181,7 +2184,7 @@ function autoRecurringInvoicesDue(salonId,asOf){
 }
 // Same mapping as the Recurring Expenses sheet uses for its payee vendor and standing REC- invoice.
 function recurringVendorCategoryFor(expenseName){
-  const same=['DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Rent','Royalty','Electricity Expenses','Telephone & Internet Expenses','Uniform Expenses'];
+  const same=['DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Rent','Royalty','Electricity Expenses','Water Expenses','Telephone & Internet Expenses','Uniform Expenses'];
   if(same.indexOf(expenseName)!==-1)return expenseName;
   if(expenseName==='Maintenance Expenses'||expenseName==='Maintenance Bill')return'Maintenance Expenses';
   if(expenseName==='Diesel Expenses')return'Utilities';

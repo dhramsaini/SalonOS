@@ -177,7 +177,7 @@ function saveBankLineMapping(sid,id,patch){
   const rows=bankRowsFor(sid);if(!rows.some(r=>r.id===id))return;
   safeLocalSet(outletKey('salonos_bank_statement_rows',sid),JSON.stringify(rows.map(r=>r.id===id?{...r,...patch}:r)));
 }
-const BANK_MAP_NATURES=['Collection','Cash Deposit','Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','EazyDiner Settlement','Ownly Settlement','Eatby Minutes Settlement','Bank Charges','Interest','Vendor Payment','Salary','Incentive','Daily Incentive','Advance Salary','TDS','GST','PF Payment','ESIC Payment','PT Payment','Electricity Expenses','Drycleaning Expenses','Telephone & Internet Expenses','DG Rent','Royalty','Rent','Tax Payment','Cash Withdrawal','Loan Principal','Loan Interest','Secured Loan','Unsecured Loan','Capital Introduced','Drawings','Fixed Asset Purchase','Fixed Asset Sale','Bank Charges GST','Fixed Deposit','Transfer','Refund','Other'];
+const BANK_MAP_NATURES=['Collection','Cash Deposit','Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','EazyDiner Settlement','Ownly Settlement','Eatby Minutes Settlement','Bank Charges','Interest','Vendor Payment','Salary','Incentive','Daily Incentive','Advance Salary','TDS','GST','PF Payment','ESIC Payment','PT Payment','Electricity Expenses','Water Expenses','Drycleaning Expenses','Telephone & Internet Expenses','DG Rent','Royalty','Rent','Tax Payment','Cash Withdrawal','Loan Principal','Loan Interest','Secured Loan','Unsecured Loan','Capital Introduced','Drawings','Fixed Asset Purchase','Fixed Asset Sale','Bank Charges GST','Fixed Deposit','Transfer','Refund','Other'];
 const BANK_CREDIT_NATURES=new Set(['Collection','Cash Deposit','Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','EazyDiner Settlement','Ownly Settlement','Eatby Minutes Settlement','Interest','Fixed Deposit','Transfer','Refund','Other','Secured Loan','Unsecured Loan','Capital Introduced','Fixed Asset Sale']);
 // Links a bank debit to vendor bills the same way Bank Statement's 🔗 Link does: a payment on each
 // bill (linkId bank-<row id>) and the bill keys on the bank line. allocations = [{id, amount}].
@@ -212,7 +212,7 @@ function linkBankLineToBills(sid,row,vendor,allocations,onMap){
 // Vendor bill entered from a bank debit (bill came late / was never entered). Same checks as
 // Bank Statement's "add invoice": month lock, duplicate number, approval limit. Saved unpaid — the
 // caller links it. form = {invoiceNo, invoiceDate (yyyy-mm-dd), amount, category, gstRate}.
-const BANK_BILL_CATEGORIES=['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Other'];
+const BANK_BILL_CATEGORIES=['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Water Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Other'];
 function createBillForBankLine(sid,vendor,row,form){
   const no=String(form.invoiceNo||'').trim(),amt=Math.round((Number(form.amount)||0)*100)/100;
   if(!no)return{error:'Enter the bill number.'};

@@ -3290,6 +3290,7 @@ function BankStatement({salon,onNavTab}={}){
     if(descLower.includes('esic'))return'ESIC Payment';
     if(descLower.includes('bescom'))return'Electricity Expenses';
     if(descLower.includes('electricity'))return'Electricity Expenses';
+    if(/bwssb|water supply|water bill|jal board|water tax/.test(descLower))return'Water Expenses';
     if(descLower.includes('dtax'))return'TDS';
     if(descLower.includes('airtel'))return'Telephone & Internet Expenses';
     if(descLower.includes('dg rent'))return'DG Rent';
@@ -3742,7 +3743,7 @@ function BankStatement({salon,onNavTab}={}){
     return true;
   });
   const totals=filtered.reduce((a,r)=>({debit:a.debit+r.debit,credit:a.credit+r.credit}),{debit:0,credit:0});
-  const natures=['','Collection','Cash Deposit','Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','EazyDiner Settlement','Ownly Settlement','Eatby Minutes Settlement','Bank Charges','Interest','Vendor Payment','Salary','Incentive','Daily Incentive','Advance Salary','TDS','GST','PF Payment','ESIC Payment','PT Payment','Electricity Expenses','Drycleaning Expenses','Telephone & Internet Expenses','DG Rent','Royalty','Rent','Tax Payment','Cash Withdrawal','Loan Principal','Loan Interest','Secured Loan','Unsecured Loan','Capital Introduced','Drawings','Fixed Asset Purchase','Fixed Asset Sale','Bank Charges GST','Fixed Deposit','Transfer','Refund','Other','Split'];
+  const natures=['','Collection','Cash Deposit','Card Settlement','UPI Settlement','Swiggy Settlement','Zomato Settlement','EazyDiner Settlement','Ownly Settlement','Eatby Minutes Settlement','Bank Charges','Interest','Vendor Payment','Salary','Incentive','Daily Incentive','Advance Salary','TDS','GST','PF Payment','ESIC Payment','PT Payment','Electricity Expenses','Water Expenses','Drycleaning Expenses','Telephone & Internet Expenses','DG Rent','Royalty','Rent','Tax Payment','Cash Withdrawal','Loan Principal','Loan Interest','Secured Loan','Unsecured Loan','Capital Introduced','Drawings','Fixed Asset Purchase','Fixed Asset Sale','Bank Charges GST','Fixed Deposit','Transfer','Refund','Other','Split'];
 
   // ── Reconciliation summary — how much of the ledger is actually mapped to Revenue (Card/UPI
   // Settlement + Cash Deposit + Collection, the Natures that feed P&L revenue via Collection Reco)
@@ -5336,7 +5337,7 @@ function BankStatement({salon,onNavTab}={}){
 // payment mode, active window) rather than just a name and a number. This is a commitments
 // register — "what's expected, from whom, how often" — separate from Daily Sales & Exp's actual
 // day-by-day entries. ──
-const RECURRING_EXPENSE_TYPES=['Rent','Staff Room Rent','Royalty','Electricity Expenses','DG Rent','Telephone & Internet Expenses','Marketing Expenses','Drycleaning Expenses','Professional Fee','Maintenance Bill','Software Subscription','Other'];
+const RECURRING_EXPENSE_TYPES=['Rent','Staff Room Rent','Royalty','Electricity Expenses','Water Expenses','DG Rent','Telephone & Internet Expenses','Marketing Expenses','Drycleaning Expenses','Professional Fee','Maintenance Bill','Software Subscription','Other'];
 const RECURRING_FREQUENCIES=['Monthly','Bi-Monthly','Quarterly','Half-Yearly','Yearly'];
 const RECURRING_FREQ_DIVISOR={Monthly:1,'Bi-Monthly':2,Quarterly:3,'Half-Yearly':6,Yearly:12};
 
