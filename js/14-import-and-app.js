@@ -1197,7 +1197,8 @@ function App(){
               onClick:()=>{if(cloudStatus.state==='error'){retryDirtyCloudKeys();addToast('Retrying cloud save…','info');}else addToast(cloudStatus.state==='saving'?'Saving to the cloud…':'All changes are saved to the cloud','success');}},
               React.createElement(IconSave,null),
               React.createElement('span',{className:'lbl-full'},cloudStatus.state==='error'?'NOT saved — retrying':cloudStatus.state==='saving'?'Saving…':'Saved to cloud'),
-              React.createElement('span',{className:'lbl-short'},cloudStatus.state==='error'?'Not saved':cloudStatus.state==='saving'?'Saving…':'Saved'),
+              // On phones a plain "Saved" is just the green dot (room for the outlet name); Saving… / Not saved always show.
+              React.createElement('span',{className:'lbl-short'+(cloudStatus.state==='error'||cloudStatus.state==='saving'?'':' lbl-ok')},cloudStatus.state==='error'?'Not saved':cloudStatus.state==='saving'?'Saving…':'Saved'),
               React.createElement('span',{className:'save-pulse-dot'+(saveActivity.pulsing||cloudStatus.state==='saving'?' active':'')})
             )
             :React.createElement('button',{className:'topbar-icon-btn',

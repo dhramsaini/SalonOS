@@ -691,7 +691,8 @@ kbd{background:var(--bg4);border:1px solid var(--border2);border-radius:4px;padd
   .show-phone{display:flex!important}
   .topbar{flex-wrap:nowrap;gap:8px;padding-left:10px;padding-right:10px;padding-bottom:8px;min-height:52px}
   .topbar-breadcrumb{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--text)}
-  .topbar-title{overflow:hidden;min-width:0;font-size:14px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;word-break:break-word}
+  .topbar-title{overflow:hidden;min-width:0;flex:1 1 auto;font-size:14px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow-wrap:normal;word-break:normal}
+  .lbl-short.lbl-ok{display:none}
   .topbar-title .tt-full{display:none}
   .topbar-title .tt-short{display:inline}
   .topbar-right{flex-wrap:nowrap;padding:0;gap:6px;flex-shrink:0}
@@ -911,7 +912,7 @@ body.light kbd{background:#fff}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous" type="text/x-lazy" data-lazy="xlsx"></script>
 <!-- App code, split by area (js/). Load order matters; ?v= is each file's content fingerprint (set by tools/bump-version.ps1), so a release only re-downloads the files that changed. -->
-<script src="js/01-foundation.js?v=370a01615a"></script>
+<script src="js/01-foundation.js?v=851ed6570a"></script>
 <script src="js/02-shared.js?v=fa9a744c49"></script>
 <script src="js/03-admin.js?v=e1b5647f33"></script>
 <script src="js/04-outlet-staff.js?v=41a0217c97"></script>
@@ -984,7 +985,7 @@ body.light kbd{background:#fff}
 <script src="js/70-bank-pnl-plus.js?v=c323d372c1"></script>
 <script src="js/71-bank-ledger.js?v=5292c8a924"></script>
 <script src="js/60-final-freeze.js?v=6543efc890"></script>
-<script src="js/14-import-and-app.js?v=fc2d2a259a"></script>
+<script src="js/14-import-and-app.js?v=b149d3931e"></script>
 <script>
 // ── Phone card view for list tables — marks read-only list tables (one record per row) so the
 // CSS above can show each row as a labelled card on phones. Editable grids (text/number inputs or
