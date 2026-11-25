@@ -48,7 +48,8 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   },[period&&period.mi,period&&period.fy]);
   const [showCols,setShowCols]=useState(5);
   const [pettyOpen,setPettyOpen]=useState(false); // ⚙ Cash limits (js/22-controls.js)
-  // Keyboard: Enter → same column, next row · Ctrl+S → confirm save · Alt+← / Alt+→ → previous / next day.
+  // Keyboard: Enter → same column, next row · Ctrl+S → confirm save · Alt+Shift+← / → → previous / next day
+  // (plain Alt+← is the app's "go back a screen").
   const dseKeysRef=useRef({});const dseRootRef=useRef(null);
   useEffect(()=>{
     const onKey=e=>{
@@ -56,7 +57,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
       if(document.querySelector('.modal-overlay'))return; // pop-ups handle their own keys
       const k=dseKeysRef.current;
       if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&(e.key==='s'||e.key==='S')){e.preventDefault();if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();setTimeout(()=>k.saveDay&&k.saveDay(),0);return;}
-      if(e.altKey&&!e.ctrlKey&&(e.key==='ArrowLeft'||e.key==='ArrowRight')&&k.viewDate&&k.setViewDate){
+      if(e.altKey&&e.shiftKey&&!e.ctrlKey&&(e.key==='ArrowLeft'||e.key==='ArrowRight')&&k.viewDate&&k.setViewDate){
         e.preventDefault();const d=new Date(k.viewDate+'T00:00:00');d.setDate(d.getDate()+(e.key==='ArrowLeft'?-1:1));let v=localIsoOf(d);
         if(k.periodCal){const lo=localIsoOf(new Date(k.periodCal.year,k.periodCal.month,1)),hi=localIsoOf(new Date(k.periodCal.year,k.periodCal.month+1,0));if(v<lo||v>hi)return;}
         k.setViewDate(v);return;}

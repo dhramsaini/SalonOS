@@ -852,7 +852,7 @@ function App(){
   };
   useEffect(()=>{
     const onKey=(e)=>{
-      if(e.altKey&&e.key==='ArrowLeft'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();goBack();}
+      if(e.altKey&&!e.shiftKey&&e.key==='ArrowLeft'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();goBack();} // Alt+Shift+← is Daily Sales' "previous day"
     };
     window.addEventListener('keydown',onKey);
     return ()=>window.removeEventListener('keydown',onKey);
