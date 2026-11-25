@@ -867,7 +867,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
   // editable afterward, in case the wrong day's column was clicked or the two genuinely differ.
   const openCreateInvoiceEntry=(ri,iso)=>{
     if(dseBlockIfLocked(iso))return;
-    const category=EXPENSE_ROWS[ri]?.name;
+    const category=EXPENSE_ROWS[ri]?.vendorCat||EXPENSE_ROWS[ri]?.name; // bill category (Water Bill row → Water Expenses bills)
     setInvForm({...INV_FORM_BLANK,newVendorCat:category||INV_FORM_BLANK.newVendorCat,bookingDate:iso,paymentDate:iso});
     setShowInvoiceForm({mode:'create',ri,iso,category});
   };
@@ -879,7 +879,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     const inv=loadVendorInvoices(salonId).find(x=>x.id===entry.invoiceId);
     if(!inv){dseToastErr('Could not find the linked invoice anymore — it may have been deleted in Vendor Sheet.');return;}
     const payment=(inv.payments||[]).find(p=>p.id===entry.paymentId);
-    const category=EXPENSE_ROWS[ri]?.name;
+    const category=EXPENSE_ROWS[ri]?.vendorCat||EXPENSE_ROWS[ri]?.name; // bill category (Water Bill row → Water Expenses bills)
     setInvForm({...INV_FORM_BLANK,newVendorCat:category||INV_FORM_BLANK.newVendorCat,
       vendorId:inv.vendorId||'',docNature:inv.docNature||'Tax Invoice',invoiceNo:inv.invoiceNo||'',
       invoiceDate:isoOfDmy(inv.invoiceDate)||localTodayIso(),
@@ -914,7 +914,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     if(!inv){dseToastErr('That invoice could not be found — refresh and try again.');return;}
     const paidSoFar=(inv.payments||[]).reduce((s,p)=>s+(Number(p.paidAmount)||0),0);
     const balance=Math.max(0,(Number(inv.amount)||0)-paidSoFar);
-    const category=EXPENSE_ROWS[ri]?.name;
+    const category=EXPENSE_ROWS[ri]?.vendorCat||EXPENSE_ROWS[ri]?.name; // bill category (Water Bill row → Water Expenses bills)
     setInvForm({...INV_FORM_BLANK,newVendorCat:category||INV_FORM_BLANK.newVendorCat,
       vendorId:inv.vendorId||'',docNature:inv.docNature||'Tax Invoice',invoiceNo:inv.invoiceNo||'',
       invoiceDate:isoOfDmy(inv.invoiceDate)||localTodayIso(),
@@ -1896,7 +1896,7 @@ function DailySalesSheet({salon,period,onRequestVendorPayment,user}={}){
     // alone decides which one is reachable, and the sub-modal needs to win.
     invModal&&(()=>{
       const entries=getInvEntries(invModal.iso,invModal.ri);
-      const category=EXPENSE_ROWS[invModal.ri]?.name;
+      const category=EXPENSE_ROWS[invModal.ri]?.vendorCat||EXPENSE_ROWS[invModal.ri]?.name;
       const vendors=loadVendors(salonId);
       const invoices=loadVendorInvoices(salonId);
       const vendorName=(id)=>{const v=vendors.find(x=>x.id===id);return v?v.name:id;};
