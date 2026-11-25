@@ -196,6 +196,9 @@ function rcBuild(sid,ym){
     // a bill proposed for this line isn't offered to the next one
     if(it.s&&it.s.apply&&it.s.apply.type==='link')it.s.apply.plan.allocations.forEach(a=>{left[a.id]=Math.round(((left[a.id]||0)-a.amount)*100)/100;});
     if(!it.s&&x.side==='Debit'&&rcPayeeName(d))it.newPayee=rcPayeeName(d);
+    // pay for a locked month can't be recorded (settleBankLineToEmployees refuses) — never "Sure"
+    if(it.s&&it.s.apply&&it.s.apply.type==='pay'&&it.s.apply.plan&&it.s.apply.plan.lines){const p=it.s.apply.plan;
+      if((monthLockRecordFor(sid,p.year,p.month)||{}).locked)it.s={...it.s,score:Math.min(it.s.score,0.7),conf:'mid',why:RPT_MONTHS[p.month]+' '+p.year+' is locked — unlock it (Salary Working) to link this line',reasons:[...(it.s.reasons||[]),'month locked']};}
   });
   items.forEach(it=>{const s=it.s;it.bucket=s?(s.score>=0.9?'sure':'check'):(it.newPayee?'new':'unknown');});
   // card / UPI settlements of the month, grouped by sale day
