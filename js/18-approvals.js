@@ -13,7 +13,7 @@
 // Every per-outlet setting the monthly incentive calculation reads (group variants are
 // '<key>__grp_<group>'). Per-employee actuals, rates, manual amounts and entries are not part of
 // the plan — those are the month's working itself.
-const INC_PLAN_BASES=['salonos_incentive_applicability','salonos_incentive_calc_mode','salonos_incentive_target_multipliers',
+const INC_PLAN_BASES=['salonos_incentive_applicability','salonos_incentive_desig_applicability','salonos_incentive_calc_mode','salonos_incentive_target_multipliers',
   'salonos_incentive_split_by_designation','salonos_incentive_plan_overrides','salonos_incentive_custom_plans',
   'salonos_service_incentive_slabs','salonos_manager_incentive_tiers','salonos_manager_incentive_inputs',
   'salonos_manager_incentive_collection_items','salonos_mgr_incentive_rule_type','salonos_mgr_incentive_rule_b',

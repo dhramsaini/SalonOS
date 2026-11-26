@@ -20,7 +20,7 @@ function ipLabel(y,m){return IP_MON[m]+' '+y;}
 function ipPrev(y,m){const d=new Date(y,m-1,1);return{y:d.getFullYear(),m:d.getMonth()};}
 function ipDmy(iso){return iso?String(iso).slice(0,10).split('-').reverse().join('/'):'';}
 const IP_CAT={service:'Service',membership:'Membership',product:'Product',manager:'Manager'};
-function ipEmps(sid,y,m){try{return(getEmployeesForMonth(y,m,sid)||[]).filter(e=>e.desig!=='Helper'&&e.desig!=='Housekeeper');}catch(e){return[];}}
+function ipEmps(sid,y,m){try{return(getEmployeesForMonth(y,m,sid)||[]).filter(e=>incDesigApplies(sid,e.desig));}catch(e){return[];}}
 // The settings the screen is about: the plan's saved copy once submitted, else today's ⚙ Rules.
 function ipShownSettings(sid,plan){return plan&&(plan.status==='Pending'||plan.status==='Approved')?(plan.settings||{}):captureIncPlanSettings(sid);}
 function ipWith(sid,settings,fn){return settings?withIncSettings(sid,settings,fn):fn();}

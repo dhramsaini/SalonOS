@@ -626,7 +626,7 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
   const openIwGenerate=()=>{setIwGenMonth(selMonth);setIwGenYear(selYear);setShowIwGenerate(true);};
   const runIwGenerate=()=>{
     setSelMonth(iwGenMonth);setSelYear(iwGenYear);setShowIwGenerate(false);
-    const n=getEmployeesForMonth(iwGenYear,iwGenMonth,salon?.id).filter(e=>e.desig!=='Helper'&&e.desig!=='Housekeeper').length;
+    const n=getEmployeesForMonth(iwGenYear,iwGenMonth,salon?.id).filter(e=>incDesigApplies(salon?.id,e.desig)).length;
     success('Incentive generated for '+MONTHS[iwGenMonth]+' '+iwGenYear+' — '+n+' employee'+(n===1?'':'s'));
   };
 
@@ -638,7 +638,7 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
         React.createElement('div',{className:'page-title'},'Incentive Working Sheet'),
         (()=>{const p=incPlanFor(salon?.id,selYear,selMonth);const ok=p&&p.status==='Approved';
           return React.createElement('div',{style:{fontSize:11.5,marginTop:4,color:ok?'var(--green)':'var(--orange)'}},ok?'✓ Worked out from the approved '+MONTHS[selMonth]+' Incentive Plan (approved by '+(p.approvedBy||'—')+')':p&&p.status==='Pending'?'⏳ '+MONTHS[selMonth]+' plan waiting for approval — using current settings':'⚠ No approved Incentive Plan for '+MONTHS[selMonth]+' — using current settings (Monthly Plan tab)');})(),
-        React.createElement('div',{className:'page-sub'},MONTHS[selMonth]+' '+selYear+' — enter each employee\'s Achieved figures below; Target and everything else calculates automatically · Excludes Helper & Housekeeper')
+        React.createElement('div',{className:'page-sub'},MONTHS[selMonth]+' '+selYear+' — enter each employee\'s Achieved figures below; Target and everything else calculates automatically · Designations switched on under “Incentive applies to these designations”')
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
@@ -752,6 +752,23 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
       )
     ),
 
+    // Designation-wise applicability — which designations get incentive at all
+    (()=>{const sid=salon?.id;const emps=(loadEmployees(sid)||[]).filter(e=>e&&e.status!=='Inactive');const cnt={};emps.forEach(e=>{const d=String(e.desig||'').trim();if(d)cnt[d]=(cnt[d]||0)+1;});
+      const list=[...new Set([...DESIGNATION_ORDER,...Object.keys(cnt)])].filter(d=>d);const on=d=>incDesigApplies(sid,d);
+      const flip=d=>{const m={...loadIncDesigApplicability(sid),[d]:!on(d)};saveIncDesigApplicability(sid,m);setActualsTick(t=>t+1);
+        try{logAuditEvent(sid,{entity:'Incentive',entityId:'designations',action:'Applicability changed',summary:d+': incentive '+(m[d]?'ON':'OFF')});}catch(e){}};
+      const all=v=>{const m={};list.forEach(d=>{m[d]=v;});saveIncDesigApplicability(sid,m);setActualsTick(t=>t+1);};
+      return React.createElement('div',{className:'card',style:{marginBottom:14}},
+        React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:2}},
+          React.createElement('div',{style:{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.08em',fontWeight:600,flex:1}},'Incentive applies to these designations'),
+          React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>all(true)},'All on'),React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>all(false)},'All off')),
+        React.createElement('div',{style:{fontSize:11.5,color:'var(--text3)',marginBottom:10}},'Switch a designation on to work out incentive for its employees too (Incentive Working, Incentive Payment, plans and team targets). A designation without a plan of its own follows the Hairdresser plan — give it its own rules with Advanced Settings → custom plan, or assign employees to a plan.'),
+        React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},list.map(d=>{const v=on(d);const plan=INCENTIVE_DESIGNATION_GROUP_MAP[d]||'Hairdresser';
+          return React.createElement('label',{key:d,title:'Plan: '+plan+(INCENTIVE_DESIGNATION_GROUP_MAP[d]?'':' (no plan of its own)'),
+            style:{display:'flex',alignItems:'center',gap:8,fontSize:12,fontWeight:600,cursor:'pointer',padding:'6px 10px',borderRadius:'var(--r)',
+              color:v?'var(--green)':'var(--text3)',background:v?'rgba(76,175,125,0.12)':'var(--bg3)',border:'1px solid '+(v?'rgba(76,175,125,0.4)':'var(--border)')}},
+            React.createElement('span',{role:'switch','aria-checked':v,className:'inc-toggle'+(v?' on':'')},React.createElement('input',{type:'checkbox',checked:v,onChange:()=>flip(d),style:{position:'absolute',opacity:0,width:0,height:0}})),
+            d,React.createElement('span',{style:{fontWeight:400,color:'var(--text3)'}},'· '+(cnt[d]||0)+(INCENTIVE_DESIGNATION_GROUP_MAP[d]?'':' · '+plan+' plan')));})));})(),
     typeof IncManualSetup==='function'&&React.createElement(IncManualSetup,{sid:salon?.id,year:selYear,month:selMonth,onChanged:()=>setActualsTick(t=>t+1)}),
 
     // ── Incentive Plans — the 4 built-in designation groups, plus any custom plans this outlet
@@ -1365,7 +1382,7 @@ function IncentivePaymentSheet({period,salon}={}){
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,
         React.createElement('div',{className:'page-title'},'Incentive Payment'),
-        React.createElement('div',{className:'page-sub'},MONTHS[selMonth]+' '+selYear+' — payout details sourced from Incentive Working · Excludes Helper & Housekeeper')
+        React.createElement('div',{className:'page-sub'},MONTHS[selMonth]+' '+selYear+' — payout details sourced from Incentive Working · Designations switched on under “Incentive applies to these designations”')
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
@@ -1541,7 +1558,7 @@ function IncentiveComparativeSheet({period,salon}={}){
     React.createElement('div',{className:'section-header'},
       React.createElement('div',null,
         React.createElement('div',{className:'page-title'},'Incentive Comparative Sheet'),
-        React.createElement('div',{className:'page-sub'},spanLabel+' · '+rangeLabel+' · Service / Membership / Product / Total Achieved vs Salary, alongside Incentive split by Service / Membership / Product / Manager / Total — colour-coded by achievement · Excludes Helper & Housekeeper')
+        React.createElement('div',{className:'page-sub'},spanLabel+' · '+rangeLabel+' · Service / Membership / Product / Total Achieved vs Salary, alongside Incentive split by Service / Membership / Product / Manager / Total — colour-coded by achievement · Designations switched on under “Incentive applies to these designations”')
       ),
       React.createElement('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selMonth,onChange:e=>setSelMonth(Number(e.target.value))},MONTHS.map((m,i)=>React.createElement('option',{key:m,value:i},m))),
@@ -1612,7 +1629,7 @@ function MembershipIncentiveRules({salon,selYear,selMonth,MONTHS,showAdvanced}){
   useEffect(()=>{setRuleTypeState(loadMemRuleType(salonId));},[salonId]);
   const setRuleType=(t)=>{setRuleTypeState(t);saveMemRuleType(salonId,t);};
 
-  const EMPLOYEES=getEmployeesForMonth(selYear,selMonth,salonId).filter(e=>e.desig!=='Helper'&&e.desig!=='Housekeeper');
+  const EMPLOYEES=getEmployeesForMonth(selYear,selMonth,salonId).filter(e=>incDesigApplies(salonId,e.desig));
 
   // ── Split by Designation — Membership's own toggle + which group's rate settings are being
   // edited in the settings box below (the employee-wise table further down always computes each

@@ -46,7 +46,7 @@ function IncManualSetup({sid,year,month,onChanged}){
   const cfg=imCfg(sid,year,month);const label=IM_MON[month]+' '+year;
   const locked=typeof isIWEffectiveLockedFor==='function'&&isIWEffectiveLockedFor(sid,year,month);
   const setC=p=>{imSetCfg(sid,year,month,{...cfg,...p});setT(t=>t+1);onChanged&&onChanged();};
-  let emps=[];try{emps=(getEmployeesForMonth(year,month,sid)||[]).filter(e=>e.desig!=='Helper'&&e.desig!=='Housekeeper');}catch(e){}
+  let emps=[];try{emps=(getEmployeesForMonth(year,month,sid)||[]).filter(e=>incDesigApplies(sid,e.desig));}catch(e){}
   const radio=(name,val,cur,lbl,on)=>h('label',{style:{display:'inline-flex',gap:5,alignItems:'center',fontSize:12.5,marginRight:12,cursor:locked?'not-allowed':'pointer'}},h('input',{type:'radio',name,checked:cur===val,disabled:locked,onChange:on}),lbl);
   return h('div',{className:'card',style:{marginBottom:14}},
     h('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:2,textTransform:'uppercase',letterSpacing:'0.08em',fontWeight:600}},'Manual Incentive'),

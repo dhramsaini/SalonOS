@@ -501,7 +501,7 @@ async function pwAutoEmail(salon,y,m){
 }
 function PwDownloadModal({salon,y,m,kind,preselected,onClose}){
   const h=React.createElement;const sid=salon.id;const extras=PW_EXTRAS.filter(x=>x.kinds.includes(kind)&&controlOn(x.ctl,sid));
-  const emps=kind==='salary'?getEmployeesForMonth(y,m,sid):getEmployeesForMonth(y,m,sid).filter(e=>e.desig!=='Helper'&&e.desig!=='Housekeeper');
+  const emps=kind==='salary'?getEmployeesForMonth(y,m,sid):getEmployeesForMonth(y,m,sid).filter(e=>incDesigApplies(sid,e.desig));
   const [pick,setPick]=React.useState(()=>new Set(extras.map(x=>x.key)));const [who,setWho]=React.useState(()=>new Set((preselected&&preselected.size?[...preselected]:emps.map(e=>e.id)).map(String)));
   const [prot,setProt]=React.useState(false);const [busy,setBusy]=React.useState('');const [msg,setMsg]=React.useState('');
   const go=async(email)=>{setBusy(email?'email':'dl');setMsg('');try{const {wb}=await pwBuild(salon,y,m,{kind,extras:[...pick],emp:who.size===emps.length?null:who,protect:prot});

@@ -1002,7 +1002,7 @@ const SALON_SCOPED_KEY_BASES=[
   'salonos_attendance_register_files','salonos_cash_register_files','salonos_cf_manual_overrides',
   'salonos_daily_sales_collection_entrydata','salonos_daily_sales_descdata','salonos_due_auto_overrides',
   'salonos_fixed_asset_blocks','salonos_fixed_assets','salonos_inc_times_format',
-  'salonos_incentive_applicability','salonos_incentive_calc_mode','salonos_incentive_rates',
+  'salonos_incentive_applicability','salonos_incentive_desig_applicability','salonos_incentive_calc_mode','salonos_incentive_rates',
   'salonos_incentive_target_multipliers','salonos_incentive_working_meta','salonos_iw_auto_locks',
   'salonos_manager_incentive_collection_items','salonos_manager_incentive_inputs','salonos_manager_incentive_tiers',
   'salonos_mem_incentive_rule_type','salonos_mem_rule_a_rows','salonos_mem_rule_a_settings',
@@ -3005,6 +3005,15 @@ function loadIncentiveApplicability(salonId){
   return{...INCENTIVE_APPLICABILITY_DEFAULTS};
 }
 function saveIncentiveApplicability(salonId,v){safeLocalSet(incApplicabilityKey(salonId),JSON.stringify(v));}
+// ── Designation-wise applicability — which designations get incentive worked out (Incentive
+// Working, payment sheet, plans, team targets, manual entry). {designation: true|false} per outlet;
+// a designation not set yet keeps the old rule: Helper and Housekeeper off, everyone else on. ──
+const INC_DESIG_DEFAULT_OFF=['Helper','Housekeeper'];
+function incDesigKey(salonId){return outletKey('salonos_incentive_desig_applicability',salonId);}
+function loadIncDesigApplicability(salonId){try{const v=JSON.parse(cachedLocalGet(incDesigKey(salonId))||'{}');return v&&typeof v==='object'?v:{};}catch(e){return{};}}
+function saveIncDesigApplicability(salonId,map){safeLocalSet(incDesigKey(salonId),JSON.stringify(map||{}));}
+function incDesigApplies(salonId,desig){const d=String(desig||'').trim();const m=loadIncDesigApplicability(salonId);
+  if(Object.prototype.hasOwnProperty.call(m,d))return !!m[d];return !INC_DESIG_DEFAULT_OFF.includes(d);}
 
 // ── Target Multipliers — how many ×Times of Salary each category's Target is, editable per
 // outlet (was hardcoded 5×/3×/2× for Service/Membership/Product). Drives svcTarget/memTarget/
@@ -3559,7 +3568,7 @@ function incWorkingsFor(salonId,year,month){
   return typeof withIncPlan==='function'?withIncPlan(salonId,year,month,()=>incWorkingsForLive(salonId,year,month)):incWorkingsForLive(salonId,year,month);
 }
 function incWorkingsForLive(salonId,year,month){
-  const EMPLOYEES=getEmployeesForMonth(year,month,salonId).filter(e=>e.desig!=='Helper'&&e.desig!=='Housekeeper').filter(e=>incShowEmployee(salonId,e,year,month));
+  const EMPLOYEES=getEmployeesForMonth(year,month,salonId).filter(e=>incDesigApplies(salonId,e.desig)).filter(e=>incShowEmployee(salonId,e,year,month));
   const actuals=loadIncentiveActuals(salonId);
   const rates=loadIncentiveRates(salonId);
   const activeModel=loadActiveIncentiveModel(salonId);

@@ -68,7 +68,7 @@ function ptTeamShares(sid,y,m){
   const ym=ptYm(y,m);const T=ptMonthGet(sid,ym,'_team');if(!ptOn('incTeam',sid)||!T||!(Number(T.target)>0)||!(Number(T.pool)>0))return null;
   const k=sid+'|'+ym;const memo=PT_TEAM_MEMO[k];if(memo&&Date.now()-memo.t<1500)return memo.v;
   let sales=0;try{const ds=JSON.parse(cachedLocalGet(outletKey('salonos_daily_sales_collection_data',sid))||'{}')||{};Object.keys(ds).forEach(d=>{if(d.startsWith(ym)){const v=ds[d]||{};sales+=[0,1,2,3,4].reduce((s,i)=>s+(Number(v[i])||0),0);}});}catch(e){}
-  const hit=sales>=Number(T.target);const E=(getEmployeesForMonth(y,m,sid)||[]).filter(e=>e.desig!=='Helper'&&e.desig!=='Housekeeper');let att={};try{att=loadAttendance(sid);}catch(e){}
+  const hit=sales>=Number(T.target);const E=(getEmployeesForMonth(y,m,sid)||[]).filter(e=>incDesigApplies(sid,e.desig));let att={};try{att=loadAttendance(sid);}catch(e){}
   const w=E.map(e=>{let d=1;if(T.by!=='equal'){try{d=Number(attSummaryFor(e,y,m,att[attMonthKey(e.id,y,m)]).totalDaysPayable)||0;}catch(x){d=0;}}return{id:e.id,w:d};});const tw=w.reduce((s,x)=>s+x.w,0);
   const shares={};if(hit&&tw>0)w.forEach(x=>{shares[x.id]=Math.round(Number(T.pool)*x.w/tw);});const v={sales,target:Number(T.target),pool:Number(T.pool),hit,shares};PT_TEAM_MEMO[k]={t:Date.now(),v};return v;
 }
