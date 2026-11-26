@@ -4349,6 +4349,10 @@ function BankStatement({salon,onNavTab}={}){
     // Controls → Map “sure” lines automatically on import
     if(controlOn('bankAutoMapImport',salonId))setTimeout(()=>{try{const r=autoMapBankLines(salonId,ids,(id,patch)=>setRows(p=>p.map(x=>x.id===id?{...x,...patch}:x)));
       if(r.done){setVendorInvoices(loadVendorInvoices(salonId));setMessage(m=>(m?m+' \u00b7 ':'')+r.done+' line'+(r.done===1?'':'s')+' mapped automatically ('+r.summary+') — review or undo them in the 🧩 mapping pop-up.');}}catch(e){}},400);
+    // Controls → Reconcile: apply “Sure” matches by themselves after an import (js/73); the screen's
+    // rows are reloaded from storage afterwards so nothing older is saved over them.
+    if(typeof rcAutoApplySure==='function'&&controlOn('rcAutoApply',salonId))setTimeout(()=>{try{const r=rcAutoApplySure(salonId,ids);
+      if(r.done){setRows(bankRowsFor(salonId));setVendorInvoices(loadVendorInvoices(salonId));setMessage(m=>(m?m+' · ':'')+r.done+' line'+(r.done===1?'':'s')+' reconciled automatically — see Reconcile → Recent changes.');}}catch(e){}},1200);
   },[rows]);
 
   return React.createElement('div',{className:'fade-in'},
