@@ -1811,7 +1811,7 @@ const PL_OPEX_LINES=[
   {name:'Professional Fee',group:'Professional Fee',noDaily:true,alsoVendorCat:'Professional Fee',vendorWinsOverRecurring:true},
   {name:'Repair & Maintenance Expenses',group:'Repair & Maintenance Expenses',alsoVendorCat:'Equipment',newMap:true},
   {name:'Uniform Expenses',group:'Uniform Expenses',alsoVendorCat:'Uniform Expenses'},
-  {name:'Maintenance Expenses',group:'Maintenance Expenses',noDaily:true,alsoVendorCat:'Maintenance Expenses',vendorWinsOverRecurring:true},
+  {name:'Maintenance Expenses',group:'Maintenance Expenses',noDaily:true,alsoVendorCat:'Maintenance Expenses',vendorWinsOverRecurring:true,billGstRcm:true},
   // Vendor bills only (Controls → pnlAllVendorBills) — categories that had no P&L line before.
   {name:'Housekeeping Expenses',group:'__vendor_housekeeping',noDaily:true,alsoVendorCat:'Housekeeping',newMap:true,vendorOnly:true},
   {name:'Utilities',group:'__vendor_utilities',noDaily:true,alsoVendorCat:'Utilities',newMap:true,vendorOnly:true},
@@ -2209,7 +2209,7 @@ function pnlAllBillsOn(sid){return typeof controlOn!=='function'||controlOn('pnl
 function plRecurringCountedIds(sid){const types=new Set(Object.values(PL_OPEX_RECURRING_MAP));return new Set(loadRecurringExpenses(sid).filter(it=>types.has(recurringExpenseNameOf(it))).map(it=>it.id));}
 // What a line's vendor bills add: {vendorAmt, add (bills + recurring estimate as the line's rule says),
 // vendorWins, bills (the invoices behind vendorAmt — Vendor, Invoice No, dates, amount)}.
-// Rent / Staff Room Rent (billGstRcm): the P&L takes each bill at Taxable Value + GST. A bill with no GST
+// Rent / Staff Room Rent / Maintenance (billGstRcm): the P&L takes each bill at Taxable Value + GST. A bill with no GST
 // on it, made for a Recurring Expense whose landlord charges no GST but Reverse Charge applies, gets the
 // 18% RCM added — the same Invoice Value the Recurring Expenses estimate uses (recurringExpenseMonthlyAmt).
 // Only the P&L figure changes; the bill itself is not touched.
