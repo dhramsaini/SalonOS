@@ -579,14 +579,15 @@ function cachedLocalRemove(key){
 // multi-background), which paints as one flat opaque colour no matter what scrolls behind it.
 // A button that opens a short menu (e.g. "Export ▾"), so related actions take one button's room.
 // items: [{label, onClick, title?, style?}] — falsy entries are skipped.
-function MenuButton({label,items,className,style,align}){
-  const h=React.createElement;const [open,setOpen]=useState(false);const ref=useRef(null);
+function MenuButton({label,items,className,style,align,fixed,title}){
+  const h=React.createElement;const [open,setOpen]=useState(false);const ref=useRef(null);const [pos,setPos]=useState(null);
+  useEffect(()=>{if(!open||!fixed)return;const c=()=>setOpen(false);window.addEventListener('scroll',c,true);window.addEventListener('resize',c);return()=>{window.removeEventListener('scroll',c,true);window.removeEventListener('resize',c);};},[open,fixed]);
   useEffect(()=>{if(!open)return;const off=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};const esc=e=>{if(e.key==='Escape')setOpen(false);};
     document.addEventListener('mousedown',off);document.addEventListener('keydown',esc);return()=>{document.removeEventListener('mousedown',off);document.removeEventListener('keydown',esc);};},[open]);
   const list=(items||[]).filter(Boolean);
   return h('span',{ref,style:{position:'relative',display:'inline-block'}},
-    h('button',{type:'button',className:className||'btn btn-ghost btn-sm',style,'aria-haspopup':'menu','aria-expanded':open,onClick:()=>setOpen(o=>!o)},label,' ▾'),
-    open&&h('div',{role:'menu',className:'menu-pop',style:{[align==='left'?'left':'right']:0}},
+    h('button',{type:'button',className:className||'btn btn-ghost btn-sm',style,title,'aria-haspopup':'menu','aria-expanded':open,onClick:e=>{if(fixed){const r=e.currentTarget.getBoundingClientRect();const below=window.innerHeight-r.bottom>220;setPos({top:below?r.bottom+4:undefined,bottom:below?undefined:window.innerHeight-r.top+4,right:window.innerWidth-r.right});}setOpen(o=>!o);}},label,fixed?'':' ▾'),
+    open&&h('div',{role:'menu',className:'menu-pop',style:fixed&&pos?{position:'fixed',top:pos.top,bottom:pos.bottom,right:pos.right,zIndex:1200}:{[align==='left'?'left':'right']:0}},
       list.map((it,i)=>h('button',{key:i,type:'button',role:it.checked!=null?'menuitemcheckbox':'menuitem','aria-checked':it.checked!=null?!!it.checked:undefined,className:'menu-item',title:it.title||'',style:it.style,
         onClick:()=>{if(!it.keepOpen)setOpen(false);it.onClick&&it.onClick();}},it.checked!=null?(it.checked?'☑ ':'☐ '):null,it.label))));
 }
@@ -680,7 +681,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.11.26.294';
+const APP_VERSION='2026.11.26.295';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);

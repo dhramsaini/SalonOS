@@ -2765,6 +2765,10 @@ function BankStatement({salon,onNavTab}={}){
   const [dragging,setDragging]=useState(false);
   const [search,setSearch]=useState('');
   const [selected,setSelected]=useState(()=>new Set());
+  // Lines shown 100 at a time (or all) — a long statement no longer draws every line and button at once.
+  const [bsPage,setBsPage]=useState(0);const [bsAll,setBsAll]=useState(false);const BS_PAGE=100;
+  const bsStartOf=list=>bsAll||list.length<=BS_PAGE?0:Math.min(bsPage,Math.ceil(list.length/BS_PAGE)-1)*BS_PAGE;
+  const bsSlice=list=>bsAll||list.length<=BS_PAGE?list:list.slice(bsStartOf(list),bsStartOf(list)+BS_PAGE);
   const [showRulesModal,setShowRulesModal]=useState(false);
   const fileRef=useRef(null);
   useEffect(()=>{safeLocalSet(outletKey('salonos_bank_statement_rows',salonId),JSON.stringify(rows));},[rows,salonId]);
@@ -4626,6 +4630,15 @@ function BankStatement({salon,onNavTab}={}){
           React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:10.5,padding:'3px 10px'},onClick:()=>{setColumnFilters({});setQuickFilters(new Set());}},'Clear all')
         ),
         React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:10}},'Vendor Name is matched automatically from the Description against your Vendor List — pick a different vendor to override it, choose "— No vendor —" to clear it, or "Auto: …" to go back to automatic matching; picking a vendor also sets Nature to "Vendor Payment". Nature has its own column for everything else — Salary, TDS, GST, Card/UPI Settlement, and so on. O/S Invoices shows that vendor\u2019s outstanding invoices, ready to link, or lets you add one on the spot if none exist yet. Date as per Cradlee is editable too. Changes are saved automatically in this browser. Click a cell — or drag across several — then Ctrl/Cmd+C to copy or Ctrl/Cmd+V to paste, exactly like Excel. The header row and the first two columns stay in view as you scroll — like Freeze Panes.'),
+        (()=>{const pages=Math.max(1,Math.ceil(filtered.length/BS_PAGE));const pg=Math.min(bsPage,pages-1);if(filtered.length<=BS_PAGE)return null;
+          const from=bsAll?1:pg*BS_PAGE+1,to=bsAll?filtered.length:Math.min(filtered.length,(pg+1)*BS_PAGE);
+          return React.createElement('div',{className:'pz-pager'},React.createElement('span',null,'Lines '+from+'–'+to+' of '+filtered.length),
+            !bsAll&&React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:pg===0,onClick:()=>setBsPage(0)},'« First'),
+            !bsAll&&React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:pg===0,onClick:()=>setBsPage(pg-1)},'‹ Previous'),
+            !bsAll&&React.createElement('span',null,'Page '+(pg+1)+' of '+pages),
+            !bsAll&&React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:pg>=pages-1,onClick:()=>setBsPage(pg+1)},'Next ›'),
+            !bsAll&&React.createElement('button',{className:'btn btn-ghost btn-sm',disabled:pg>=pages-1,onClick:()=>setBsPage(pages-1)},'Last »'),
+            React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setBsAll(a=>!a)},bsAll?'Show 100 at a time':'Show all'));})(),
         React.createElement('div',{className:'table-wrap',ref:bsWrapRef,style:{maxHeight:'70vh',overflowY:'auto'}},React.createElement('table',null,
           React.createElement('thead',null,React.createElement('tr',null,
             React.createElement('th',{style:{width:32,position:'sticky',top:0,left:0,zIndex:5,background:'var(--th-bg)'}},React.createElement('input',{type:'checkbox',
@@ -4649,7 +4662,7 @@ function BankStatement({salon,onNavTab}={}){
             }),
             React.createElement('th',{style:{position:'sticky',top:0,zIndex:4,background:'var(--th-bg)'}})
           )),
-          React.createElement('tbody',null,filtered.map((r,ri)=>React.createElement('tr',{key:r.id,style:selected.has(r.id)?{background:'rgba(47,95,224,0.06)'}:undefined},
+          React.createElement('tbody',null,bsSlice(filtered).map((r,ri0,_a,ri=ri0+bsStartOf(filtered))=>React.createElement('tr',{key:r.id,style:selected.has(r.id)?{background:'rgba(47,95,224,0.06)'}:undefined},
             React.createElement('td',{style:{position:'sticky',left:0,zIndex:2,background:'var(--bg2)'}},React.createElement('input',{type:'checkbox',checked:selected.has(r.id),onChange:()=>toggleSelect(r.id)})),
             React.createElement('td',{'data-xr':ri,'data-xc':0,style:{whiteSpace:'nowrap',position:'sticky',left:32,zIndex:2,borderRight:'2px solid var(--accent)',background:opaqueStickyBg(cellRange.isSelected(ri,0)?'rgba(47,95,224,0.35)':null)}},r.transactionDate),
             React.createElement('td',{'data-xr':ri,'data-xc':1,style:{whiteSpace:'nowrap',background:cellRange.isSelected(ri,1)?'rgba(47,95,224,0.12)':undefined}},r.valueDate),

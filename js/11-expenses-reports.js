@@ -75,12 +75,18 @@ function RecurringExpensesSheet({salon}={}){
         ?[...withoutOldTds,{id:tdsPaymentId,paidAmount:tdsAmt,paidDate:invoiceDateIso,mode:'TDS',ref:'',note:'TDS deducted at source ('+(rec.tdsSection||'—')+' @ '+(Number(rec.tdsRate)||0)+'%) — remitted to the government, not paid to the vendor'}]
         :withoutOldTds;
     };
+    // The month's auto invoice (REC-<id>-YYYY-MM, js/04 autoRecurringInvoicesDue) already books this bill —
+    // a standing REC-<id> invoice in the same month would count the rent twice (P&L and payables).
+    const twinOf=dmy=>{const p=parseInvoiceDateFlexible(dmy);return p?invoicesList.find(i=>i.invoiceNo===linkNo+'-'+p.y+'-'+String(p.m).padStart(2,'0')):null;};
     const idx=invoicesList.findIndex(i=>i.invoiceNo===linkNo&&i.vendorId===vendorId);
     if(idx>=0){
-      const next=[...invoicesList];
-      next[idx]={...next[idx],...payload,payments:withTdsPayment(next[idx].payments)};
+      const next=[...invoicesList];const old=next[idx];
+      // moving it into a month that already has its auto invoice: keep the old dates
+      const keepDates=twinOf(invoiceDate)&&(old.bookingDate||old.invoiceDate)!==invoiceDate?{invoiceDate:old.invoiceDate,bookingDate:old.bookingDate}:{};
+      next[idx]={...old,...payload,...keepDates,payments:withTdsPayment(old.payments)};
       return{invoices:next,created:false,updated:true};
     }
+    if(twinOf(invoiceDate))return{invoices:invoicesList,created:false,updated:false};
     return{invoices:[...invoicesList,{...payload,payments:withTdsPayment([])}],created:true,updated:false};
   };
 

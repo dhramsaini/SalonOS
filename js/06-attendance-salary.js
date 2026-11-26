@@ -1289,6 +1289,11 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
   const [cols,setCols]=useState(()=>loadSWCols(salon?.id));
   useEffect(()=>{saveSWCols(cols,salon?.id);},[cols,salon?.id]);
   const toggleCol=(k)=>setCols(p=>({...p,[k]:!p[k]}));
+  // Column views — Full (as set in Column Groups), Summary (pay and deductions only), Payment (summary + bank).
+  // Only changes what this screen shows on this device; the saved column settings stay as they are.
+  const [swView,setSwView]=useState(()=>{try{return localStorage.getItem('sos_sw_view')||'full';}catch(e){return'full';}});
+  const SW_SUMMARY_OFF=['serviceInc','memInc','prodInc','mgrInc','totalInc','penalties','nonPerfPenalty','prevMonthAdv','currMonthAdv','nextMonthAdv','grossCtc','bankDetails'];
+  const swColsView=swView==='full'?cols:{...cols,...Object.fromEntries(SW_SUMMARY_OFF.map(k=>[k,false])),...(swView==='payment'?{bankDetails:true}:{})};
   // Refresh — workings is recomputed fresh from storage on every render already; this just
   // forces a re-render, so any change made elsewhere since the page opened (Attendance edited,
   // an advance settled or added, a penalty entered, PT slabs updated) shows up immediately
@@ -1812,7 +1817,8 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
       React.createElement('div',{style:{fontSize:12.5,color:'var(--text3)'}},'Add employees in Master Salary first — Salary Working calculates automatically from there once they exist.')
     ),
 
-    React.createElement('div',{className:'card',style:{padding:0}},
+    React.createElement('div',{className:'pz-views'},React.createElement('span',null,'View:'),React.createElement('button',{key:'full',title:'Every column switched on in Column Groups',className:'btn btn-sm '+(swView==='full'?'btn-primary':'btn-ghost'),onClick:()=>{setSwView('full');try{localStorage.setItem('sos_sw_view','full');}catch(e){}}},'Full'),React.createElement('button',{key:'summary',title:'Pay, deductions and net only',className:'btn btn-sm '+(swView==='summary'?'btn-primary':'btn-ghost'),onClick:()=>{setSwView('summary');try{localStorage.setItem('sos_sw_view','summary');}catch(e){}}},'Summary'),React.createElement('button',{key:'payment',title:'Summary plus bank details',className:'btn btn-sm '+(swView==='payment'?'btn-primary':'btn-ghost'),onClick:()=>{setSwView('payment');try{localStorage.setItem('sos_sw_view','payment');}catch(e){}}},'Payment')),
+    ((cols)=>React.createElement('div',{className:'card',style:{padding:0}},
       React.createElement('div',{style:{overflowX:'auto'}},
         React.createElement('table',{style:{borderCollapse:'separate',borderSpacing:0,width:'100%'}},
           React.createElement('thead',null,React.createElement.apply(React,['tr',null].concat([
@@ -2002,7 +2008,7 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
         )
         )
       )
-    ),
+    ))(swColsView),
     // ── Next Month Advance pull-forward — date modal ──
     nextAdvPullModal&&React.createElement('div',{
       className:'modal-overlay',onClick:()=>setNextAdvPullModal(null),

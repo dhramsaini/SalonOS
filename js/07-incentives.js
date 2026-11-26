@@ -524,8 +524,11 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
   // Entry columns (Achieved, amounts typed by hand) always stay.
   const [iwHideEmpty,setIwHideEmpty]=useState(()=>{try{return localStorage.getItem('sos_iw_hide_empty')!=='0';}catch(e){return true;}});
   const iwAllZero=k=>visibleIncData.length>0&&visibleIncData.every(e=>!(Number(e[k])||0));
-  const iwColsView=iwHideEmpty?{...cols,svcPct:cols.svcPct&&!iwAllZero('svcPct'),memPct:cols.memPct&&!iwAllZero('memPct'),prodPct:cols.prodPct&&!iwAllZero('prodPct'),penalty:cols.penalty&&!iwAllZero('penaltyAmt'),advAdj:cols.advAdj&&!iwAllZero('advAdj'),ot:cols.ot&&!iwAllZero('otAmt')}:cols;
-  const iwHiddenN=['svcPct','memPct','prodPct','penalty','advAdj','ot'].filter(x=>cols[x]&&!iwColsView[x]).length;
+  const [iwPreset,setIwPreset]=useState(()=>{try{return localStorage.getItem('sos_iw_view_cols')||'full';}catch(e){return'full';}});
+  const iwColsBase=iwPreset==='full'?cols:{...cols,membership:false,product:false,svcPct:false,memPct:false,prodPct:false,penalty:false,advAdj:false,bankDetails:iwPreset==='payment'};
+  const iwColsView0=iwHideEmpty?{...cols,svcPct:cols.svcPct&&!iwAllZero('svcPct'),memPct:cols.memPct&&!iwAllZero('memPct'),prodPct:cols.prodPct&&!iwAllZero('prodPct'),penalty:cols.penalty&&!iwAllZero('penaltyAmt'),advAdj:cols.advAdj&&!iwAllZero('advAdj'),ot:cols.ot&&!iwAllZero('otAmt')}:cols;
+  const iwColsView=Object.fromEntries(Object.keys({...cols,...iwColsBase}).map(k=>{const v=cols[k];return[k,(typeof v==='boolean'||v==null)?!!(iwColsView0[k]&&iwColsBase[k]):v];}));
+  const iwHiddenN=['svcPct','memPct','prodPct','penalty','advAdj','ot'].filter(x=>cols[x]&&iwColsBase[x]&&!iwColsView0[x]).length;
   // What the Total row sums — the filtered view, further narrowed to just the selected rows
   // when a selection is active, so the row label ("Total" vs "Total (selected)") always matches
   // what the numbers actually add up.
@@ -1160,10 +1163,11 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
     typeof IncPlanInUseChip==='function'&&React.createElement(IncPlanInUseChip,{sid:salon?.id,y:selYear,m:selMonth}),
     typeof IncManualPanel==='function'&&React.createElement(IncManualPanel,{salon,year:selYear,month:selMonth,onChanged:()=>setActualsTick(t=>t+1),onOpenRules:()=>setShowSettings(true)}),
     typeof IncSimpleView==='function'&&React.createElement(IncSimpleView,{salon,year:selYear,month:selMonth,rows:incData,onChanged:()=>setActualsTick(t=>t+1)}),
+    !(typeof incViewIsSimple==='function'&&incViewIsSimple(salon?.id))&&React.createElement('div',{className:'pz-views'},React.createElement('span',null,'View:'),React.createElement('button',{key:'full',title:'Every column switched on in Incentive Rules & Settings',className:'btn btn-sm '+(iwPreset==='full'?'btn-primary':'btn-ghost'),onClick:()=>{setIwPreset('full');try{localStorage.setItem('sos_iw_view_cols','full');}catch(e){}}},'Full'),React.createElement('button',{key:'summary',title:'Service, totals and incentive amounts only',className:'btn btn-sm '+(iwPreset==='summary'?'btn-primary':'btn-ghost'),onClick:()=>{setIwPreset('summary');try{localStorage.setItem('sos_iw_view_cols','summary');}catch(e){}}},'Summary'),React.createElement('button',{key:'payment',title:'Summary plus bank details',className:'btn btn-sm '+(iwPreset==='payment'?'btn-primary':'btn-ghost'),onClick:()=>{setIwPreset('payment');try{localStorage.setItem('sos_iw_view_cols','payment');}catch(e){}}},'Payment')),
     (iwHiddenN>0||!iwHideEmpty)&&!(typeof incViewIsSimple==='function'&&incViewIsSimple(salon?.id))&&React.createElement('label',{style:{display:'inline-flex',gap:6,alignItems:'center',fontSize:12,color:'var(--text3)',margin:'0 0 6px',cursor:'pointer'}},React.createElement('input',{type:'checkbox',checked:iwHideEmpty,onChange:e=>{const v=e.target.checked;setIwHideEmpty(v);try{localStorage.setItem('sos_iw_hide_empty',v?'1':'0');}catch(x){}}}),'Hide empty columns'+(iwHideEmpty&&iwHiddenN?' ('+iwHiddenN+' hidden)':'')),
     ((cols)=>React.createElement('div',{className:'card',style:{padding:0,display:(typeof incViewIsSimple==='function'&&incViewIsSimple(salon?.id))?'none':undefined}},
       React.createElement('div',{style:{overflowX:'auto'}},
-        React.createElement('table',{style:{borderCollapse:'collapse',width:'100%',fontSize:12}},
+        React.createElement('table',{className:'iw-table',style:{borderCollapse:'collapse',width:'100%',fontSize:12}},
           // Group header row
           React.createElement('thead',null,
 React.createElement.apply(React,['tr',null].concat([

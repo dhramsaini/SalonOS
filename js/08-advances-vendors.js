@@ -1700,7 +1700,10 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
               React.createElement('th',{key:'paid'},'Total Paid'),React.createElement('th',{key:'bal'},'Balance'),React.createElement('th',{key:'attach'},'Attach'),React.createElement('th',{key:'status'},'Status'),React.createElement('th',{key:'actions'},'Actions')
             )),
             invFilters.filteredRows.length===0
-              ?React.createElement('tbody',null,React.createElement('tr',null,React.createElement('td',{colSpan:13,style:{textAlign:'center',padding:32,color:'var(--text3)'}},'No invoices found.')))
+              ?React.createElement('tbody',null,React.createElement('tr',null,React.createElement('td',{colSpan:13,style:{padding:0}},(()=>{
+                const on=[filterVendor&&'vendor: '+getVendorName(filterVendor),filterCat&&'category: '+filterCat,search&&'search: “'+search+'”',invView!=='all'&&'showing: '+({month:'invoices of '+viewMonthLabel,pending:'pending — all months',pendingMonth:'pending — '+viewMonthLabel}[invView]||invView),invFilters.hasActiveFilters&&'column filters'].filter(Boolean);
+                return typeof PresEmpty==='function'?React.createElement(PresEmpty,{icon:'🧾',title:on.length?'No bills match these filters':'No bills yet',text:on.length?'Filters on — '+on.join(' · '):'Add the first bill with “+ Add Invoice”.',
+                  actionLabel:on.length?'Clear all filters':null,onAction:()=>{setFilterVendor('');setFilterCat('');setSearch('');setInvView('all');if(invFilters.clearAll)invFilters.clearAll();}}):'No invoices found.';})())))
               :React.createElement('tbody',null,invFilters.filteredRows.map((inv,i)=>{
                 const paid=getPaid(inv);
                 const balance=getBalance(inv);
@@ -1780,10 +1783,12 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
                   // Actions
                   React.createElement('td',null,
                     React.createElement('div',{style:{display:'flex',gap:4}},
-                      React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setViewInv({inv,id:inv.id});setShowViewModal(true);}},'View'),
                       !pi&&!cleared&&(invoiceNeedsApproval(inv,salonId)?approvalCell(inv):React.createElement('button',{className:'btn btn-sm',style:{background:'rgba(76,175,125,0.15)',border:'1px solid rgba(76,175,125,0.4)',color:'var(--green)',padding:'4px 8px',borderRadius:'var(--r)',cursor:'pointer',fontSize:11,fontWeight:500},onClick:()=>{setPayForm({...BLANK_PAY,invoiceId:inv.id,paidAmount:balance});setMatchedBankRowId(null);setShowPayModal(true);}},'Pay')),
-                      React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>editInvoice(inv.id)},'Edit'),
-                      React.createElement('button',{'aria-label':'Delete',className:'btn btn-ghost btn-sm',style:{color:'var(--red)'},onClick:()=>deleteInvoice(inv.id)},React.createElement(IconTrash,{size:14}))
+                      // View / Edit / Delete in one ⋯ menu — the row keeps only its main action (Pay)
+                      React.createElement(MenuButton,{label:'⋯',fixed:true,title:'View, edit or delete this bill',className:'btn btn-ghost btn-sm',style:{padding:'2px 10px',fontSize:16,lineHeight:1},items:[
+                        {label:'👁 View',onClick:()=>{setViewInv({inv,id:inv.id});setShowViewModal(true);}},
+                        {label:'✎ Edit',onClick:()=>editInvoice(inv.id)},
+                        {label:'🗑 Delete',style:{color:'var(--red)'},onClick:()=>deleteInvoice(inv.id)}]})
                     )
                   )
                 );

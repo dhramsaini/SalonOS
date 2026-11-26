@@ -596,6 +596,10 @@ tbody tr:nth-child(n+11){animation-delay:0.16s}
 .role-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:20px;background:rgba(47,95,224,.12);color:var(--accent2);font-size:11px}
 .role-menu{border:1px solid rgba(47,95,224,.25);cursor:pointer;font-weight:600;white-space:nowrap}.role-menu:hover{background:rgba(47,95,224,.2)}
 /* js/74 presentation cards */
+table{font-variant-numeric:tabular-nums}
+.pz-pager,.pz-views{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--text3);margin:0 0 8px}.pz-views{margin-right:14px;display:inline-flex}
+.iw-table tbody td:not(.iw-name){background-color:transparent!important}.iw-table tbody td input{background:rgba(244,196,48,.10)}
+.table-wrap tbody tr:hover>td{background-color:rgba(47,95,224,.035)}
 .pz-card{padding:16px 18px}
 .pz-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
 .pz-title{font-size:15px;font-weight:700;color:var(--text)}
@@ -966,17 +970,17 @@ body.light kbd{background:#fff}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous" type="text/x-lazy" data-lazy="xlsx"></script>
 <!-- App code, split by area (js/). Load order matters; ?v= is each file's content fingerprint (set by tools/bump-version.ps1), so a release only re-downloads the files that changed. -->
-<script src="js/01-foundation.js?v=c9e9092eb5"></script>
+<script src="js/01-foundation.js?v=97e3aef98a"></script>
 <script src="js/02-shared.js?v=01b5c54988"></script>
 <script src="js/03-admin.js?v=60fd929259"></script>
 <script src="js/04-outlet-staff.js?v=a0c271e268"></script>
 <script src="js/05-daily-sales.js?v=84135ae45e"></script>
-<script src="js/06-attendance-salary.js?v=5c50e43035"></script>
-<script src="js/07-incentives.js?v=ef5850550f"></script>
-<script src="js/08-advances-vendors.js?v=be8582f8da"></script>
+<script src="js/06-attendance-salary.js?v=152bc580f0"></script>
+<script src="js/07-incentives.js?v=ef47867e03"></script>
+<script src="js/08-advances-vendors.js?v=9700fc8a6a"></script>
 <script src="js/09-registers-statutory.js?v=3965654911"></script>
-<script src="js/10-collections-bank.js?v=39ed7f9c97"></script>
-<script src="js/11-expenses-reports.js?v=c8454b617c"></script>
+<script src="js/10-collections-bank.js?v=3e0399a76c"></script>
+<script src="js/11-expenses-reports.js?v=a20cd8bc6b"></script>
 <script src="js/12-front-desk.js?v=7a2bea8f8a"></script>
 <script src="js/13-pnl.js?v=d4141e2c00"></script>
 <script src="js/13a-insights.js?v=264a925fa7"></script>
