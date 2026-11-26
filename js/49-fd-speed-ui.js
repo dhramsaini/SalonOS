@@ -142,8 +142,9 @@ function fdPrintCss(sid){if(!controlOn('billPrintDesign',sid))return FD_PRINT_OL
 function FdStorageMeter(){
   const h=React.createElement;const [s,setS]=useState(null);
   useEffect(()=>{let live=true;(async()=>{let ls=0;try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);ls+=(k?k.length:0)+((localStorage.getItem(k)||'').length);}}catch(e){}
-    const big=typeof bigStoreBytes==='function'?bigStoreBytes():0;let quota=0,usage=0;try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();quota=e.quota||0;usage=e.usage||0;}}catch(e){}if(live)setS({ls:ls*2,big:big*2,quota,usage,on:typeof bigStoreOn==='function'&&bigStoreOn()});})();return()=>{live=false;};},[]);
-  if(!s)return null;const mb=x=>(x/1048576).toFixed(1)+' MB';const pct=Math.min(100,Math.round(s.ls/(5*1048576)*100));
+    const big=typeof bigStoreBytes==='function'?bigStoreBytes():0;let quota=0,usage=0;try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();quota=e.quota||0;usage=e.usage||0;}}catch(e){}if(live)setS({ls,big:big*2,quota,usage,on:typeof bigStoreOn==='function'&&bigStoreOn()});})();return()=>{live=false;};},[]);
+  if(!s)return null;const mb=x=>(x/1048576).toFixed(1)+' MB';// Browsers allow about 5 million characters here, so it is measured in characters (not 2 bytes each).
+  const pct=Math.min(100,Math.round(s.ls/(5*1048576)*100));
   return h('div',{className:'card',style:{marginBottom:16}},h('div',{className:'card-title'},'💾 Storage on this device'),
     h('div',{style:{fontSize:12.5,marginBottom:6}},'Small store (settings and lists): '+mb(s.ls)+' of about 5 MB'),h('div',{style:{height:8,background:'var(--bg3)',borderRadius:4,overflow:'hidden'}},h('div',{style:{height:'100%',width:pct+'%',background:pct>80?'var(--red)':pct>60?'var(--orange)':'var(--green)'}})),
     h('div',{style:{fontSize:12.5,marginTop:8}},s.on?'Large store (bills, stock log, bookings, audit log): '+mb(s.big)+(s.quota?' · browser allows about '+mb(s.quota):''):'Large store not in use on this browser (private window or blocked) — everything is in the small store.'),

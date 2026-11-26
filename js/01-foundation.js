@@ -497,7 +497,9 @@ let _lastSavedAt=null;
 // IndexedDB (private window, blocked) and in the test/demo pages (their storage is in memory)
 // everything simply stays in localStorage, as before. lsGet/lsSet/lsRemove/lsKeys are the only
 // functions that touch the browser stores for app data. ──
-const BIG_KEY_RE=/^salonos_(billing_invoices|inventory_log|appointments_book|audit_log|booking_requests|stock_requests|spot_checks|open_tabs|booking_advances)_outlet_\d+$/;
+// Bank statement lines, deleted-line undo, month-end final copies, vendor invoices, collection rows,
+// bank mapping history, attendance and staff work reports joined on 26/11/2026 (moved on the next start).
+const BIG_KEY_RE=/^salonos_(billing_invoices|inventory_log|appointments_book|audit_log|booking_requests|stock_requests|spot_checks|open_tabs|booking_advances|bank_statement_rows|bank_deleted|final_snap|vendor_invoices|cradlee_collection_rows|bank_map_journal|attendance|staff_work_reports)_outlet_\d+$/;
 let _bigDb=null,_bigOn=false,_bigT=null,_bigChan=null;const _bigVals=Object.create(null);const _bigQ=new Set();
 function bigStoreOn(){return _bigOn;}
 function isBigKey(k){return _bigOn&&typeof k==='string'&&BIG_KEY_RE.test(k);}
@@ -678,7 +680,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.11.26.292';
+const APP_VERSION='2026.11.26.293';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
