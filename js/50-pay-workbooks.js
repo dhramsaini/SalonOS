@@ -402,8 +402,8 @@ function pwSheetReco(ws,c){
   ws.getRow(r).getCell(1).value='Ties to the P&L (Employee Cost)';ws.getRow(r).getCell(1).font={bold:true,color:{argb:'FF14335E'}};r++;
   const hd=ws.getRow(r);['Line','','This workbook','P&L','Check'].forEach((x,i)=>{hd.getCell(i+1).value=x;});pwHeader(hd);r++;
   const tie=(t,f,pl)=>{const R=ws.getRow(r);R.getCell(1).value=t;R.getCell(3).value=pwF(f);R.getCell(3).numFmt='#,##0';R.getCell(4).value=pl;R.getCell(4).numFmt='#,##0';R.getCell(4).font={color:PW_BLUE};R.getCell(5).value=pwCheck('C'+r,'D'+r);r++;};
-  if(sal){tie('Employee salary (gross + tea)',c.swTot('gross')+'+'+c.swTot('tea'),lineSum(l=>l.group==='Employee Salary'));tie('PF employer contribution',c.swTot('pfEr'),lineSum(l=>l.name==='PF Employer Contribution'));tie('ESIC employer contribution',c.swTot('esEr'),lineSum(l=>l.name==='ESIC Employer Contribution'));}
-  tie('Employee monthly incentive',pwRef(c.S.inc.name)+c.INC.T.L('tot')+c.INC.T.totalRow,lineSum(l=>l.group==='Employee Monthly Incentive'));
+  if(sal){tie('Employee salary (gross + tea)',c.swTot('gross')+'+'+c.swTot('tea'),lineSum(l=>l.group==='Employee Salary'&&l.name!==PL_OT_LINE));tie('PF employer contribution',c.swTot('pfEr'),lineSum(l=>l.name==='PF Employer Contribution'));tie('ESIC employer contribution',c.swTot('esEr'),lineSum(l=>l.name==='ESIC Employer Contribution'));}
+  tie('Employee monthly incentive (with overtime)',pwRef(c.S.inc.name)+c.INC.T.L('tot')+c.INC.T.totalRow,lineSum(l=>l.group==='Employee Monthly Incentive'||l.name===PL_OT_LINE));
   r++;ws.getRow(r).getCell(1).value='The P&L counts salary only once attendance is marked Final, and incentive only for the roles it maps; a difference here usually means one of those.';ws.getRow(r).getCell(1).font={italic:true,color:{argb:'FF6B7385'}};
   ws.getColumn(1).width=Math.max(ws.getColumn(1).width||0,30);
 }

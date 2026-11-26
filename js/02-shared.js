@@ -3853,17 +3853,23 @@ function salaryAttendanceReady(sid,year,month){
   return isManagerFinalMonth(sid,'attendance',year,month)||isMonthLockedFor(sid,year,month);
 }
 function swWorkingsFinalFor(sid,year,month){return salaryAttendanceReady(sid,year,month)?swWorkingsFor(sid,year,month):[];}
+const PL_OT_LINE='Overtime (OT)';
 function employeeCostFor(salonId,year,month){
   // Salary, Tea and PF/ESIC employer share count only once attendance is final; the employee list
   // itself is still used to place monthly incentives under the right role.
   const swReady=salaryAttendanceReady(salonId,year,month);
   const sw=swWorkingsFor(salonId,year,month).map(e=>swReady?e:{...e,grossAfterLop:0,arrears:0,extraEarn:0,extraDed:0,tea:0,pfEr:0,esicEr:0});
   const inc=incWorkingsFor(salonId,year,month);
-  const incByEmp={};inc.forEach(e=>{incByEmp[e.id]=e.totalInc;});
+  // Overtime (OT) is worked out in Incentive Working, but it is pay for extra hours, not an incentive:
+  // the P&L shows it under Employee Salary (its own "Overtime (OT)" line, any role, housekeeping
+  // included) and takes it out of Employee Monthly Incentive. The payout itself is unchanged.
+  const incByEmp={},otByEmp={};inc.forEach(e=>{const t=Number(e.totalInc)||0;const ot=Math.max(0,Math.min(Math.round(Number(e.otAmt)||0),t));otByEmp[e.id]=ot;incByEmp[e.id]=t-ot;});
   // "Salary" here is Gross Salary + Tea, matching Salary Working's own "Gross Salary" and "Tea"
   // columns — not just the base gross-after-LOP figure.
   const roleMap=PL_ROLE_MAP.filter(r=>!r.biz||r.biz===bizKeyOf(salonId));
   const salaryLines=roleMap.map(r=>({name:r.salaryLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+e.grossAfterLop+(e.arrears||0)+(e.extraEarn||0)-(e.extraDed||0)+e.tea,0),group:'Employee Salary'}));
+  const otAmt=sw.filter(e=>roleMap.some(r=>r.dept===e.dept)).reduce((s,e)=>s+(otByEmp[e.id]||0),0);
+  if(otAmt>0)salaryLines.push({name:PL_OT_LINE,amt:otAmt,group:'Employee Salary'});
   const incentiveLines=roleMap.filter(r=>r.incLabel&&!isRestaurantOutlet(salonId)).map(r=>({name:r.incLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+(incByEmp[e.id]||0),0),group:'Employee Monthly Incentive'}));
   const pfEr=sw.reduce((s,e)=>s+e.pfEr,0);
   const esicEr=sw.reduce((s,e)=>s+e.esicEr,0);
