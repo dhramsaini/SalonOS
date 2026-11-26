@@ -322,6 +322,8 @@ function IncPlanReminderStrip(){
   const now=new Date();const nx=new Date(now.getFullYear(),now.getMonth()+1,1);const ny=nx.getFullYear(),nm=nx.getMonth();
   let list=[];try{list=(typeof salonsForCurrentUser==='function'?salonsForCurrentUser(SALONS):SALONS)||[];}catch(e){}
   const nav=window.__salonosNav||{};const here=nav.activePage==='salon'&&nav.selectedSalon?nav.selectedSalon:null;
+  // Shown only where the plan matters: the Dashboard and the outlet's Incentive screens.
+  if(!(nav.activePage==='dashboard'||(here&&/incentive/.test(String(nav.salonTab||'')))))return null;
   if(here)list=list.filter(s=>String(s.id)===String(here.id));
   const hideKey='sos_ip_rem_hide_'+ipYm(ny,nm)+(here?'_'+here.id:'');try{const t=Number(localStorage.getItem(hideKey)||0);if(t&&Date.now()-t<7*864e5)return null;}catch(e){}
   const due=list.filter(s=>s&&ipOn('ipReminder',s.id)&&now.getDate()>=ipLim('ipReminder',25,s.id)&&!approvedIncPlanFor(s.id,ny,nm));if(!due.length)return null;

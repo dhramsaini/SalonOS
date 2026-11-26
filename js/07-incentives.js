@@ -520,6 +520,12 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
     {key:'paymentStatus',label:'Payment Status',get:e=>iwMetaFor(e.id).paymentStatus}
   ];
   const {filteredRows:visibleIncData,TH:filterTH,Portal:FilterPortal,hasActiveFilters,clearAll:clearAllFilters}=useExcelColumnFilter(incData,IW_FILTER_COLS);
+  // "Hide empty columns" (on by default): calculated columns that are 0 for everyone this month are left out.
+  // Entry columns (Achieved, amounts typed by hand) always stay.
+  const [iwHideEmpty,setIwHideEmpty]=useState(()=>{try{return localStorage.getItem('sos_iw_hide_empty')!=='0';}catch(e){return true;}});
+  const iwAllZero=k=>visibleIncData.length>0&&visibleIncData.every(e=>!(Number(e[k])||0));
+  const iwColsView=iwHideEmpty?{...cols,svcPct:cols.svcPct&&!iwAllZero('svcPct'),memPct:cols.memPct&&!iwAllZero('memPct'),prodPct:cols.prodPct&&!iwAllZero('prodPct'),penalty:cols.penalty&&!iwAllZero('penaltyAmt'),advAdj:cols.advAdj&&!iwAllZero('advAdj'),ot:cols.ot&&!iwAllZero('otAmt')}:cols;
+  const iwHiddenN=['svcPct','memPct','prodPct','penalty','advAdj','ot'].filter(x=>cols[x]&&!iwColsView[x]).length;
   // What the Total row sums — the filtered view, further narrowed to just the selected rows
   // when a selection is active, so the row label ("Total" vs "Total (selected)") always matches
   // what the numbers actually add up.
@@ -645,14 +651,15 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:selYear,onChange:e=>setSelYear(Number(e.target.value))},appYears().map(y=>React.createElement('option',{key:y},y))),
         React.createElement('button',{className:'btn btn-primary btn-sm',onClick:openIwGenerate},'🧮 Generate Incentive'),
         React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>setShowSettings(true)},'⚙ Incentive Rules & Settings'),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--green)',borderColor:'rgba(76,175,125,0.4)'},onClick:exportExcel},iwSelectedIds.size>0?'⬇ Export Selected ('+iwSelectedIds.size+')':'⬇ Export Excel'),
-        typeof pwDownloadIncentive==='function'&&controlOn('payWorkbooks',salon&&salon.id)&&React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Every employee with all the workings — sales, targets, rate slabs, manager pool, OT, penalties and advances — as live Excel formulas',onClick:()=>pwDownloadIncentive(salon,selYear,selMonth,(msg)=>iwError(msg),iwSelectedIds)},'⬇ Full workings (Excel)'),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',title:'Share the incentive workings — all or selected employees, and any of the workings',
-          onClick:()=>setShareWk({who:iwSelectedIds.size?'selected':'all',parts:{summary:true,service:true,membership:!!cols.membership,product:!!cols.product,manager:true,ot:!!cols.ot,deductions:true,statement:false}})},'📤 Share Workings'),
+        // Export / share and the two locks sit in menus, so the bar stays one tidy row.
+        React.createElement(MenuButton,{label:'⬇ Export & share',items:[
+          {label:iwSelectedIds.size>0?'Excel — selected ('+iwSelectedIds.size+')':'Excel',onClick:exportExcel},
+          typeof pwDownloadIncentive==='function'&&controlOn('payWorkbooks',salon&&salon.id)&&{label:'Full workings (Excel)',title:'Every employee with all the workings — sales, targets, rate slabs, manager pool, OT, penalties and advances — as live Excel formulas',onClick:()=>pwDownloadIncentive(salon,selYear,selMonth,(msg)=>iwError(msg),iwSelectedIds)},
+          {label:'Share workings…',title:'Share the incentive workings — all or selected employees, and any of the workings',
+            onClick:()=>setShareWk({who:iwSelectedIds.size?'selected':'all',parts:{summary:true,service:true,membership:!!cols.membership,product:!!cols.product,manager:true,ot:!!cols.ot,deductions:true,statement:false}})}]}),
         React.createElement(ShareReportButton,{title:iwReportTitle,subtitle:'Incentive Working',getBodyHtml:iwReportBodyHtml,getSheetRows:iwReportSheetRows,buildExcelBlob:iwBuildExcelBlob,landscape:true,watermark:iwMonthLocked?'FINAL':'DRAFT'}),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:doRefresh},'⟳ Refresh'),
-        !iwMonthLocked&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:lockIWMonth},'🔒 Lock Incentive Working'),
-        !iwMonthLocked&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:lockEntireMonthIW},'🔒 Lock Entire Month'),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:doRefresh,title:'Refresh'},'⟳'),
+        !iwMonthLocked&&React.createElement(MenuButton,{label:'🔒 Lock',items:[{label:'Lock Incentive Working',onClick:lockIWMonth},{label:'Lock Entire Month',title:'Locks every sheet of the month, same as Master Sheet → 🔒 Months',onClick:lockEntireMonthIW}]}),
         !iwMonthLocked&&React.createElement('button',{className:'btn btn-success btn-sm',onClick:approveAllIW},'✓ Approve All'),
         // ── Send Summary for Approval — see comment above sendIncentiveSummary. Deliberately kept
         // separate from the Approve/Lock controls to its left: those govern this working sheet's
@@ -1153,7 +1160,8 @@ function IncentiveWorkingCore({period,salon,user,rulesSignal}={}){
     typeof IncPlanInUseChip==='function'&&React.createElement(IncPlanInUseChip,{sid:salon?.id,y:selYear,m:selMonth}),
     typeof IncManualPanel==='function'&&React.createElement(IncManualPanel,{salon,year:selYear,month:selMonth,onChanged:()=>setActualsTick(t=>t+1),onOpenRules:()=>setShowSettings(true)}),
     typeof IncSimpleView==='function'&&React.createElement(IncSimpleView,{salon,year:selYear,month:selMonth,rows:incData,onChanged:()=>setActualsTick(t=>t+1)}),
-    React.createElement('div',{className:'card',style:{padding:0,display:(typeof incViewIsSimple==='function'&&incViewIsSimple(salon?.id))?'none':undefined}},
+    (iwHiddenN>0||!iwHideEmpty)&&!(typeof incViewIsSimple==='function'&&incViewIsSimple(salon?.id))&&React.createElement('label',{style:{display:'inline-flex',gap:6,alignItems:'center',fontSize:12,color:'var(--text3)',margin:'0 0 6px',cursor:'pointer'}},React.createElement('input',{type:'checkbox',checked:iwHideEmpty,onChange:e=>{const v=e.target.checked;setIwHideEmpty(v);try{localStorage.setItem('sos_iw_hide_empty',v?'1':'0');}catch(x){}}}),'Hide empty columns'+(iwHideEmpty&&iwHiddenN?' ('+iwHiddenN+' hidden)':'')),
+    ((cols)=>React.createElement('div',{className:'card',style:{padding:0,display:(typeof incViewIsSimple==='function'&&incViewIsSimple(salon?.id))?'none':undefined}},
       React.createElement('div',{style:{overflowX:'auto'}},
         React.createElement('table',{style:{borderCollapse:'collapse',width:'100%',fontSize:12}},
           // Group header row
@@ -1200,7 +1208,7 @@ React.createElement.apply(React,['tr',null].concat([
               React.createElement('td',{style:{padding:'8px 8px',borderBottom:'1px solid var(--border)'}},
                 React.createElement('input',{type:'checkbox',checked:iwSelectedIds.has(e.id),onChange:()=>iwToggleSelect(e.id)})
               ),
-              React.createElement('td',{style:{padding:'8px 12px',fontWeight:500,color:'var(--text)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',fontSize:12}},e.name),
+              React.createElement('td',{className:'iw-name',style:{padding:'8px 12px',fontWeight:500,color:'var(--text)',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap',fontSize:12,position:'sticky',left:0,zIndex:1,background:'var(--bg2)',boxShadow:'2px 0 4px rgba(0,0,0,0.06)'}},e.name),
               td2(e.desig,'var(--text3)'),td2(fmt(e.salary)),
               td2(fmt(e.svcTarget),undefined,false,'rgba(74,158,255,0.08)'),React.createElement('td',{key:'svcA',style:{padding:'4px 6px',borderBottom:'1px solid var(--border)',textAlign:'right',background:'rgba(244,196,48,0.22)'}},
                 e.fromReport?React.createElement('span',{title:'From Staff Work Report',style:{color:'var(--green)'}},fmt(e.svcActual)+' 🔗'):actualInput(e.id,'svcActual',e.svcActual,locked)),
@@ -1323,7 +1331,7 @@ React.createElement.apply(React,['tr',null].concat([
           )
         )
       )
-    ),
+    ))(iwColsView),
     FilterPortal()
   );
 }

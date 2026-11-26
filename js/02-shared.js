@@ -159,8 +159,9 @@ function DynamicDonutChart({segments,size=150,thickness=20,formatValue,centerLab
 // ── Draft / Final watermark — a faint repeating diagonal word over a working sheet (pointer
 // events pass through). Draft until the month is marked final (locked), then Final. ──
 function WatermarkOverlay({text,final}){
-  const col=final?'rgba(22,163,74,0.10)':'rgba(220,38,38,0.09)';
-  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="360" height="240"><text x="180" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="64" font-weight="700" fill="'+col+'" transform="rotate(-28 180 120)">'+text+'</text></svg>';
+  // Light and well spaced, so the figures under it stay easy to read.
+  const col=final?'rgba(22,163,74,0.05)':'rgba(220,38,38,0.045)';
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="720" height="460"><text x="360" y="250" text-anchor="middle" font-family="Arial,sans-serif" font-size="80" font-weight="700" letter-spacing="6" fill="'+col+'" transform="rotate(-24 360 230)">'+text+'</text></svg>';
   return React.createElement('div',{'aria-hidden':true,style:{position:'absolute',inset:0,pointerEvents:'none',zIndex:3,
     backgroundImage:'url("data:image/svg+xml;utf8,'+encodeURIComponent(svg)+'")',backgroundRepeat:'repeat'}});
 }

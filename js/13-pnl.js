@@ -379,7 +379,8 @@ function OutletPnLCore({salon,period,onNavTab}){
   const of=(v)=>cur.revenue?(v/cur.revenue*100):0;
   const delta=(now,then)=>then?((now-then)/Math.abs(then)*100):0;
   const money=(n)=>formatMoney(n,{dashZero:true});
-  const pct=(n)=>(n>0?'+':'')+n.toFixed(1)+'%';
+  // A huge % (last month nearly empty, e.g. +7957%) says little — show it as “81× higher” instead.
+  const pct=(n)=>n>=1000?Math.round(n/100+1)+'× higher':n<=-1000?'—':(n>0?'+':'')+n.toFixed(1)+'%';
 
   const compare=(sel)=>{
     if(budget){const b=budgetPlFor(sid,fy,cur);return b?sel(b):null;} // real budget (P&L → Budget)
@@ -1255,7 +1256,7 @@ function OutletPnLCore({salon,period,onNavTab}){
       if(!detail)return null;
       const grandTotal=(detail.recurringTotal+(detail.dailyExcluded?0:detail.dailyAmt)+detail.bankAmt+(detail.vendorAmt||0)+(detail.recoAmt||0))*(detail.isCredit?-1:1);
       return h('div',{className:'modal-overlay',onClick:()=>setOpexAnnexure(null)},
-        h('div',{className:'modal',style:{width:640,maxHeight:'82vh',overflowY:'auto'},onClick:e=>e.stopPropagation()},
+        h('div',{className:'modal',style:{width:860,maxWidth:'96vw',maxHeight:'86vh',overflowY:'auto'},onClick:e=>e.stopPropagation()},
           h('div',{className:'modal-title'},opexAnnexure+' — Annexure'),
           h('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:16}},
             PL_MONTHS[mi]+' '+(mi<9?fy.slice(0,4):'20'+fy.slice(5))+' · '+(salon?salon.name:'Outlet')+' · builds up from Recurring Expenses + Daily Sales & Exp'+(detail.bankAmt?' + Bank Statement':'')+(detail.vendorAmt?' + Vendor Sheet':'')),
@@ -1320,9 +1321,9 @@ function OutletPnLCore({salon,period,onNavTab}){
               h('table',null,
                 h('thead',null,h('tr',null,['Vendor','Invoice No','Invoice Date','Booked','Description','Amount'].map(hh=>h('th',{key:hh,style:hh==='Amount'?{textAlign:'right'}:undefined},hh)))),
                 h('tbody',null,detail.vendorBills.map((b,bi)=>h('tr',{key:bi},
-                  h('td',null,b.vendorName),h('td',null,b.invoiceNo),h('td',null,b.invoiceDate||'—'),h('td',null,b.bookingDate||'—'),
-                  h('td',{style:{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},title:b.desc||''},b.desc||'—'),
-                  h('td',{style:{textAlign:'right'}},'₹'+Math.round(b.amount).toLocaleString('en-IN'))))))),
+                  h('td',{style:{whiteSpace:'nowrap'}},b.vendorName),h('td',{style:{whiteSpace:'nowrap',fontSize:11.5}},b.invoiceNo),h('td',{style:{whiteSpace:'nowrap'}},b.invoiceDate||'—'),h('td',{style:{whiteSpace:'nowrap'}},b.bookingDate||'—'),
+                  h('td',{style:{maxWidth:240,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},title:b.desc||''},b.desc||'—'),
+                  h('td',{style:{textAlign:'right',whiteSpace:'nowrap',fontWeight:600}},'₹'+Math.round(b.amount).toLocaleString('en-IN'))))))),
             detail.dailyBillCash>0&&h('div',{style:{fontSize:11,color:'var(--text3)',marginBottom:6}},'₹'+Math.round(detail.dailyBillCash).toLocaleString('en-IN')+' paid in cash on these bills through Daily Sales & Exp is left out of the Daily figure above — counted once, through the bill.'),
             detail.recoAmt!==0&&h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:12.5,color:'var(--text2)',marginBottom:4}},
               h('span',null,'From Collection Reco (Net Bank Charges)'),

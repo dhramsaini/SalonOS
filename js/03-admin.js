@@ -1595,14 +1595,29 @@ function AppErrorsCard(){
     try{const supa=await getSupabaseClient();const{data,error}=await supa.from('client_errors').select('id,at,email,page,message').order('at',{ascending:false}).limit(50);if(error)throw error;setRows(data||[]);}
     catch(e){setRows([]);}
   })();},[]);
+  // “Mark fixed” only remembers which errors are dealt with (shared for every Super Admin); the error
+  // records themselves are kept. Fixed ones fold away under “Fixed (n)”.
+  const FIX_KEY='salonos_app_errors_fixed';
+  const [fixed,setFixed]=useState(()=>{try{return new Set(JSON.parse(cachedLocalGet(FIX_KEY)||'[]'));}catch(e){return new Set();}});
+  const [showFixed,setShowFixed]=useState(false);
   if(!rows||!rows.length)return null;
+  const save=n=>{setFixed(n);safeLocalSet(FIX_KEY,JSON.stringify([...n].slice(-500)));};
+  const mark=ids=>{const n=new Set(fixed);ids.forEach(id=>n.add(String(id)));save(n);};
+  const unmark=id=>{const n=new Set(fixed);n.delete(String(id));save(n);};
   const fmt=(ts)=>new Date(ts).toLocaleString('en-GB',DMY_DT);
+  const open=rows.filter(r=>!fixed.has(String(r.id))),done=rows.filter(r=>fixed.has(String(r.id)));
+  const row=(r,isFixed)=>React.createElement('div',{key:r.id,style:{padding:'7px 12px',borderBottom:'1px solid var(--border)',fontSize:12,display:'flex',gap:10,alignItems:'flex-start',opacity:isFixed?.55:1}},
+    React.createElement('div',{style:{flex:1,minWidth:0}},
+      React.createElement('div',{style:{color:isFixed?'var(--text2)':'var(--red)',wordBreak:'break-word',textDecoration:isFixed?'line-through':'none'}},r.message),
+      React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},fmt(r.at)+' · '+(r.email||'?')+(r.page?' · '+r.page:''))),
+    React.createElement('button',{className:'btn btn-ghost btn-sm',style:{flexShrink:0,padding:'2px 8px'},onClick:()=>isFixed?unmark(r.id):mark([r.id])},isFixed?'Undo':'✓ Mark fixed'));
   return React.createElement('div',{className:'card',style:{marginBottom:16}},
-    React.createElement('div',{className:'card-title'},'🐞 App errors (last '+rows.length+')'),
-    React.createElement('div',{style:{maxHeight:240,overflowY:'auto',border:'1px solid var(--border)',borderRadius:'var(--r)'}},
-      rows.map(r=>React.createElement('div',{key:r.id,style:{padding:'7px 12px',borderBottom:'1px solid var(--border)',fontSize:12}},
-        React.createElement('div',{style:{color:'var(--red)',wordBreak:'break-word'}},r.message),
-        React.createElement('div',{style:{fontSize:11,color:'var(--text3)'}},fmt(r.at)+' · '+(r.email||'?')+(r.page?' · '+r.page:''))))));
+    React.createElement('div',{className:'card-title',style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}},
+      React.createElement('span',null,'🐞 App errors — '+(open.length?open.length+' open':'none open')+(done.length?' · '+done.length+' fixed':'')),
+      open.length>1&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{if(window.confirm('Mark all '+open.length+' errors as fixed? (They stay in the list under “Fixed”.)'))mark(open.map(r=>r.id));}},'✓ Mark all fixed')),
+    open.length>0&&React.createElement('div',{style:{maxHeight:240,overflowY:'auto',border:'1px solid var(--border)',borderRadius:'var(--r)'}},open.map(r=>row(r,false))),
+    done.length>0&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginTop:6},onClick:()=>setShowFixed(v=>!v)},(showFixed?'▾':'▸')+' Fixed ('+done.length+')'),
+    showFixed&&done.length>0&&React.createElement('div',{style:{maxHeight:200,overflowY:'auto',border:'1px solid var(--border)',borderRadius:'var(--r)',marginTop:4}},done.map(r=>row(r,true))));
 }
 // ── AI Assistant (Super Admin) — each AI API key (Claude, ChatGPT, Gemini, Grok) is sent once to the ai-settings cloud
 // function, checked with a tiny request and stored server-side (public.app_secrets). It is never

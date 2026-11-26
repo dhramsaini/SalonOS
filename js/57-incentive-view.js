@@ -127,8 +127,16 @@ function IncSimpleView({salon,year,month,rows,onChanged}){
   return h('div',{style:{marginBottom:12}},
     ivOn('incSimpleView',sid)&&h('div',{style:{display:'flex',gap:6,alignItems:'center',marginBottom:8}},h('span',{style:{fontSize:12,color:'var(--text3)'}},'View:'),
       h('button',{className:'btn btn-sm '+(simple?'btn-primary':'btn-ghost'),onClick:()=>setView('simple')},'Simple'),h('button',{className:'btn btn-sm '+(!simple?'btn-primary':'btn-ghost'),onClick:()=>setView('detailed')},'Detailed')),
-    ivOn('incSourceLabel',sid)&&monthOver&&!anyReport&&W.length>0&&h('div',{style:{fontSize:12.5,color:'var(--orange,#c27711)',marginBottom:6}},'⚠ No CRADLE Staff Work report for '+IV_MON[month]+' — all sales are typed by hand. Import the report (Staff Work Report) so the figures come from billing.'),
-    tie&&h('div',{style:{fontSize:12.5,marginBottom:6,color:tie.flag?'var(--red)':'var(--text3)'}},(tie.flag?'⚠ ':'✓ ')+'Stylists’ sales '+ivM(tie.stylists)+' vs outlet '+ivM(tie.outlet)+' ('+tie.src+')'+(tie.pct!=null?' — difference '+ivM(tie.diff)+' ('+tie.pct+'%)':'')+(tie.flag?' — more than '+ivLim('incTieOut',5,sid)+'%, check before approving':'')),
+    // Checks before approving: one bar that opens to the list, instead of several red lines.
+    (()=>{const checks=[];
+      if(ivOn('incSourceLabel',sid)&&monthOver&&!anyReport&&W.length>0)checks.push({t:'No CRADLE Staff Work report for '+IV_MON[month]+' — all sales are typed by hand. Import the report (Staff Work Report) so the figures come from billing.',c:'var(--orange,#c27711)'});
+      const tieTxt=tie&&('Stylists’ sales '+ivM(tie.stylists)+' vs outlet '+ivM(tie.outlet)+' ('+tie.src+')'+(tie.pct!=null?' — difference '+ivM(tie.diff)+' ('+tie.pct+'%)':''));
+      if(tie&&tie.flag)checks.push({t:tieTxt+' — more than '+ivLim('incTieOut',5,sid)+'%, check before approving',c:'var(--red)'});
+      const ok=tie&&!tie.flag&&h('div',{style:{fontSize:12,marginBottom:6,color:'var(--text3)'}},'✓ '+tieTxt);
+      if(!checks.length)return ok||null;
+      return h('details',{className:'iv-checks',style:{marginBottom:8,border:'1px solid rgba(224,82,82,0.3)',background:'rgba(224,82,82,0.06)',borderRadius:'var(--r)',padding:'6px 10px'}},
+        h('summary',{style:{cursor:'pointer',fontSize:12.5,fontWeight:600,color:'var(--red)'}},'⚠ '+checks.length+' check'+(checks.length>1?'s':'')+' before approving'),
+        checks.map((x,i)=>h('div',{key:i,style:{fontSize:12.5,color:x.c,marginTop:5}},'• '+x.t)));})(),
     pools&&(pools.pool>0||pools.memPool>0)&&h('div',{style:{display:'flex',gap:10,flexWrap:'wrap',marginBottom:8}},
       pools.pool>0&&h('div',{className:'card',style:{padding:'8px 12px',margin:0,borderTop:'3px solid var(--orange)'}},h('div',{style:{fontSize:11,color:'var(--text3)'}},'Manager pool'),h('b',null,ivM(pools.pool)),h('div',{style:{fontSize:11.5,color:'var(--text2)'}},pools.mgr.filter(x=>x.mgr).map(x=>x.name+' '+ivM(x.mgr)).join(' · ')||'no shares set')),
       pools.memPool>0&&h('div',{className:'card',style:{padding:'8px 12px',margin:0,borderTop:'3px solid var(--purple)'}},h('div',{style:{fontSize:11,color:'var(--text3)'}},'Membership pool (Rule '+pools.type+')'),h('b',null,ivM(pools.memPool)),h('div',{style:{fontSize:11.5,color:'var(--text2)'}},'shared by managers by Share % — '+pools.mgr.map(x=>x.name+' '+ivM(x.mem)).join(' · ')))),

@@ -1646,23 +1646,14 @@ function SalaryWorkingCore({period,salon,onNavTab,user}={}){
           }catch(e){alert('Could not create payslips: '+(e.message||e));}
         }},swSelectedIds.size>0?'📄 Payslips ('+swSelectedIds.size+')':'📄 Payslips (PDF)'),
         CLOUD_SYNC_ENABLED&&React.createElement(WhatsAppSalaryNotifyButton,{salon,year:selYear,month:selMonth,workings:exportWorkings}),
-        React.createElement('select',{className:'form-control',style:{width:'auto'},value:'',title:'Generates a printable Challan from this month\'s Salary Working figures — opens in a new tab, ready to print or Save as PDF',onChange:e=>{if(e.target.value)generateChallan(e.target.value);e.target.value='';}},
-          React.createElement('option',{value:''},'🧾 Generate Challan…'),
-          React.createElement('option',{value:'esic'},'ESIC Challan'),
-          React.createElement('option',{value:'epf'},'EPF Challan'),
-          React.createElement('option',{value:'pt'},'PT Challan')
-        ),
-        React.createElement('select',{className:'form-control',style:{width:'auto'},value:'',title:'Downloads the same Challan as a formatted Excel workbook — colour-coded, with live SUM formulas in the total row (and the EPF sheet\'s EPS/EDLI/Admin split too)',onChange:e=>{if(e.target.value)generateChallanExcel(e.target.value);e.target.value='';}},
-          React.createElement('option',{value:''},'⬇ Challan (Excel)…'),
-          React.createElement('option',{value:'esic'},'ESIC Challan'),
-          React.createElement('option',{value:'epf'},'EPF Challan'),
-          React.createElement('option',{value:'pt'},'PT Challan')
-        ),
+        // ESIC / EPF / PT challans — print (opens a new tab) or formatted Excel, in one menu.
+        React.createElement(MenuButton,{label:'🧾 Challans',items:[
+          {label:'ESIC Challan — print',onClick:()=>generateChallan('esic')},{label:'EPF Challan — print',onClick:()=>generateChallan('epf')},{label:'PT Challan — print',onClick:()=>generateChallan('pt')},
+          {label:'ESIC Challan — Excel',onClick:()=>generateChallanExcel('esic')},{label:'EPF Challan — Excel',onClick:()=>generateChallanExcel('epf')},{label:'PT Challan — Excel',onClick:()=>generateChallanExcel('pt')}]}),
         ptApplies&&React.createElement('button',{className:'btn btn-ghost btn-sm',style:{color:'var(--orange)',borderColor:'rgba(255,159,67,0.4)'},onClick:()=>setShowPtSlabs(true)},'🧾 PT Slabs ('+ptState+')'),
         React.createElement(ShareReportButton,{title:swReportTitle,subtitle:'Salary Working',getBodyHtml:swReportBodyHtml,getSheetRows:swReportSheetRows,buildExcelBlob:swBuildExcelBlob,landscape:true,watermark:monthLocked?'FINAL':'DRAFT'}),
-        React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:doRefresh},'⟳ Refresh'),
-        !monthLocked&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:lockSalaryWorking},'🔒 Lock Salary Working'),
-        !monthLocked&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:lockEntireMonth},'🔒 Lock Entire Month'),
+        React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:doRefresh,title:'Refresh'},'⟳'),
+        !monthLocked&&React.createElement(MenuButton,{label:'🔒 Lock',items:[{label:'Lock Salary Working',onClick:lockSalaryWorking},{label:'Lock Entire Month',title:'Locks every sheet of the month, same as Master Sheet → 🔒 Months',onClick:lockEntireMonth}]}),
         !monthLocked&&React.createElement('button',{className:'btn btn-success btn-sm',onClick:approveAll},'✓ Approve All'),
         // ── Send Summary for Approval — see comment above sendSalarySummary. Deliberately kept
         // separate from the Approve/Lock controls to its left: those govern this working sheet's

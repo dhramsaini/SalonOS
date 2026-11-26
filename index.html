@@ -594,6 +594,7 @@ tbody tr:nth-child(n+11){animation-delay:0.16s}
 
 /* MULTI-USER COLLABORATION */
 .role-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:20px;background:rgba(47,95,224,.12);color:var(--accent2);font-size:11px}
+.role-menu{border:1px solid rgba(47,95,224,.25);cursor:pointer;font-weight:600;white-space:nowrap}.role-menu:hover{background:rgba(47,95,224,.2)}
 .review-note{width:100%;min-height:70px;resize:vertical}
 .access-banner{padding:10px 14px;border:1px solid var(--border);background:var(--bg3);border-radius:var(--r);margin-bottom:16px;font-size:12px;color:var(--text2)}
 .login-users{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
@@ -935,19 +936,19 @@ body.light kbd{background:#fff}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous" type="text/x-lazy" data-lazy="xlsx"></script>
 <!-- App code, split by area (js/). Load order matters; ?v= is each file's content fingerprint (set by tools/bump-version.ps1), so a release only re-downloads the files that changed. -->
-<script src="js/01-foundation.js?v=caffae8354"></script>
-<script src="js/02-shared.js?v=fb41bb4799"></script>
-<script src="js/03-admin.js?v=2badd26f84"></script>
+<script src="js/01-foundation.js?v=346fc26785"></script>
+<script src="js/02-shared.js?v=01b5c54988"></script>
+<script src="js/03-admin.js?v=1ed7327437"></script>
 <script src="js/04-outlet-staff.js?v=02a92e0fbb"></script>
 <script src="js/05-daily-sales.js?v=84135ae45e"></script>
-<script src="js/06-attendance-salary.js?v=6e97d5074a"></script>
-<script src="js/07-incentives.js?v=9e5a4a6790"></script>
+<script src="js/06-attendance-salary.js?v=5c50e43035"></script>
+<script src="js/07-incentives.js?v=ef5850550f"></script>
 <script src="js/08-advances-vendors.js?v=174dfc3b86"></script>
 <script src="js/09-registers-statutory.js?v=3965654911"></script>
 <script src="js/10-collections-bank.js?v=39ed7f9c97"></script>
 <script src="js/11-expenses-reports.js?v=c8454b617c"></script>
 <script src="js/12-front-desk.js?v=7a2bea8f8a"></script>
-<script src="js/13-pnl.js?v=b979692eb0"></script>
+<script src="js/13-pnl.js?v=53fedb41ed"></script>
 <script src="js/13a-insights.js?v=264a925fa7"></script>
 <script src="js/13b-whatsapp.js?v=fa00edfbfd"></script>
 <script src="js/13c-email.js?v=65b1b6607e"></script>
@@ -993,8 +994,8 @@ body.light kbd{background:#fff}
 <script src="js/54-advances-plus.js?v=0b449d1d80"></script>
 <script src="js/55-pay-tools.js?v=a70d525861"></script>
 <script src="js/56-incentive-guide.js?v=9ab73f0d68"></script>
-<script src="js/57-incentive-view.js?v=2b2581562e"></script>
-<script src="js/58-incentive-plan-plus.js?v=68143c26a9"></script>
+<script src="js/57-incentive-view.js?v=fb0420ff6d"></script>
+<script src="js/58-incentive-plan-plus.js?v=fc4b0cb008"></script>
 <script src="js/59-incentive-manual.js?v=7b03944494"></script>
 <script src="js/61-master-salary-plus.js?v=9fb03327eb"></script>
 <script src="js/62-salary-manual.js?v=4c5bdc7eaf"></script>
@@ -1010,7 +1011,7 @@ body.light kbd{background:#fff}
 <script src="js/72-bank-reconcile.js?v=2a7271f30a"></script>
 <script src="js/73-bank-reconcile-plus.js?v=82d4c6e4ba"></script>
 <script src="js/60-final-freeze.js?v=6543efc890"></script>
-<script src="js/14-import-and-app.js?v=8038a8694d"></script>
+<script src="js/14-import-and-app.js?v=cf4f6a09f7"></script>
 <script>
 // ── Phone card view for list tables — marks read-only list tables (one record per row) so the
 // CSS above can show each row as a labelled card on phones. Editable grids (text/number inputs or

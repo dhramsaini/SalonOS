@@ -1189,8 +1189,6 @@ function App(){
         React.createElement('div',{className:'topbar-right'},
           CLOUD_SYNC_ENABLED&&user&&accessibleSalons.length>0&&React.createElement(AskSalonOS,{user,salons:accessibleSalons,currentSalonId:activePage==='salon'&&selectedSalon?selectedSalon.id:null}),
           CLOUD_SYNC_ENABLED&&user&&React.createElement(AlertsBell,{user,salons:accessibleSalons,onOpen:openFromAlert}),
-          React.createElement('button',{className:'topbar-icon-btn hide-phone',title:'Reload the app',
-            onClick:()=>window.location.reload()},React.createElement(IconRefresh,null),React.createElement('span',null,'Refresh')),
           CLOUD_SYNC_ENABLED
             // Cloud mode: show whether edits have actually reached the cloud, not just this browser.
             ?React.createElement('button',{className:'topbar-icon-btn',
@@ -1216,9 +1214,6 @@ function App(){
           // (set via the period bar below) rather than being a second, independently-changeable
           // FY, so the two never show conflicting values. Elsewhere (Master Dashboard etc.) it's
           // the normal editable global-report FY selector.
-          React.createElement('button',{className:'theme-toggle hide-phone',onClick:()=>setTheme(theme==='light'?'dark':'light'),
-            title:theme==='light'?'Switch to dark':'Switch to light'},theme==='light'?React.createElement(IconMoon,null):React.createElement(IconSun,null),
-            React.createElement('span',null,theme==='light'?'Dark':'Light')),
           React.createElement('div',{className:'kbd-hint hide-phone',onClick:()=>setCmdOpen(true),title:'Search sheets, employees and vendors (Ctrl+F)'},
             React.createElement(IconSearch,{size:13}),
             React.createElement('span',null,'Search'),
@@ -1229,8 +1224,12 @@ function App(){
           React.createElement('div',{className:'hide-phone',style:{fontSize:12,color:'var(--text3)'}},new Date().toLocaleDateString('en-GB',DMY_WD)),
           (()=>{const c=!CLOUD_SYNC_ENABLED?'var(--green)':cloudStatus.state==='error'?'var(--red)':cloudStatus.state==='saving'?'var(--orange)':'var(--green)';
             return React.createElement('div',{className:'hide-phone',title:!CLOUD_SYNC_ENABLED?'Synced locally on this device':cloudStatus.state==='error'?'Cloud save failing — retrying':cloudStatus.state==='saving'?'Saving to the cloud…':'Live — synced with the cloud',style:{width:8,height:8,borderRadius:'50%',background:c,boxShadow:'0 0 6px '+c}});})(),
-          React.createElement('span',{className:'role-chip hide-phone'},roleLabelForUser(user)),
-          React.createElement('button',{className:'topbar-icon-btn hide-phone',onClick:logout},React.createElement(IconLogOut,null),React.createElement('span',null,'Sign Out')),
+          // Profile menu: Refresh, light / dark and Sign Out sit under the role chip, keeping the top bar short.
+          React.createElement('span',{className:'hide-phone'},React.createElement(MenuButton,{label:'👤 '+roleLabelForUser(user),className:'role-chip role-menu',items:[
+            {label:(user?.name||user?.email||'')+' · '+(user?.role||''),style:{color:'var(--text3)',cursor:'default',fontSize:11.5},keepOpen:true},
+            {label:'⟳ Refresh the app',onClick:()=>window.location.reload()},
+            {label:theme==='light'?'☾ Dark mode':'☀ Light mode',onClick:()=>setTheme(theme==='light'?'dark':'light')},
+            {label:'⎋ Sign Out',style:{color:'var(--red)'},onClick:logout}]})),
           // Phone: everything above folds into one ⋯ menu so the topbar stays a single row.
           React.createElement('button',{className:'topbar-icon-btn show-phone','aria-label':'More options','aria-expanded':phoneMenuOpen,style:{fontSize:18,padding:'4px 12px',minHeight:38},onClick:()=>setPhoneMenuOpen(o=>!o)},'⋯')
         ),
