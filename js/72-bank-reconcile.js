@@ -403,90 +403,187 @@ function BankReconcileSheet({salon,period,onNavTab}){
   const [ym,setYm]=useState(()=>cal?cal.year+'-'+String(cal.month+1).padStart(2,'0'):localIsoOf(new Date()).slice(0,7));
   const [tick,setTick]=useState(0);const [filter,setFilter]=useState('todo');const [q,setQ]=useState('');const [sel,setSel]=useState(0);const [open,setOpen]=useState(null);
   const [side,setSide]=useState('all'); // all / Debit / Credit
-  const [rule,setRule]=useState(null);const [busy,setBusy]=useState(false);const [showSet,setShowSet]=useState(false);const searchRef=useRef(null);const listRef=useRef(null);
+  const [typeF,setTypeF]=useState(null); // salary / vendor / settle / other
+  const [panel,setPanel]=useState(null);const [checked,setChecked]=useState(()=>new Set());const [skipped,setSkipped]=useState(()=>new Set());
+  const [rule,setRule]=useState(null);const [busy,setBusy]=useState(false);const [showSet,setShowSet]=useState(false);const searchRef=useRef(null);const listRef=useRef(null);const touch=useRef(null);
+  const [phone,setPhone]=useState(()=>typeof matchMedia==='function'&&matchMedia('(max-width:640px)').matches);
+  useEffect(()=>{if(typeof matchMedia!=='function')return;const mq=matchMedia('(max-width:640px)');const f=()=>setPhone(mq.matches);mq.addEventListener?mq.addEventListener('change',f):mq.addListener(f);return()=>{mq.removeEventListener?mq.removeEventListener('change',f):mq.removeListener(f);};},[]);
   const data=useMemo(()=>sid==null?null:rcBuild(sid,ym),[sid,ym,tick,storeVersion()]);
   const months=useMemo(()=>{const s=new Set();bankRowsFor(sid).forEach(r=>{const k=rcMonthKey(r&&r.transactionDate);if(k)s.add(k);});s.add(ym);return[...s].sort().reverse();},[sid,tick]);
   useEffect(()=>{const el=listRef.current&&listRef.current.querySelector('[data-rc-sel="1"]');if(el&&el.scrollIntoView)el.scrollIntoView({block:'nearest'});},[sel,filter]);
+  useEffect(()=>{setChecked(new Set());setSkipped(new Set());},[ym,sid]);
   if(!data)return null;
   const M=n=>rupee0(n);
+  const user=typeof currentSessionUser==='function'?currentSessionUser():null;const isSA=typeof isSuperAdminUser==='function'&&isSuperAdminUser(user);
+  const so=rcSignedOff(sid,ym);const locked=rcLocked(sid,ym);
+  // what a line is about, for the summary strip and its filter
+  const typeOf=it=>{const t=it.s&&it.s.apply&&it.s.apply.type;const n=it.x.nature;
+    if(it.task==='pay'||t==='pay'||t==='advance'||/^(Salary|Incentive|Advance Salary)$/.test(n))return'salary';
+    if(it.task==='bill'||t==='link'||n==='Vendor Payment')return'vendor';
+    if(it.x.side==='Credit'&&(/Settlement$/.test(n)||/Settlement/.test((it.s&&it.s.label)||'')))return'settle';return'other';};
+  const rowType=r=>{const n=String(r.nature||'');if(/^(Salary|Incentive|Advance Salary|Daily Incentive)$/.test(n))return'salary';if(n==='Vendor Payment'||r.linkedInvoice&&!String(r.linkedInvoice).startsWith('due|'))return'vendor';if(Number(r.credit)>0&&/Settlement$/.test(n))return'settle';return'other';};
   const count=b=>data.items.filter(i=>i.bucket===b).length;
   const total=data.all.length,doneN=data.done.length,pct=total?Math.round(doneN/total*100):100;
   const qq=q.trim().toLowerCase();
   const RANK={sure:0,check:1,new:2,unknown:3};
-  const shown=data.items.filter(i=>(filter==='todo'||i.bucket===filter)&&(side==='all'||i.x.side===side)&&(!qq||(i.x.description+' '+(i.s?i.s.label:'')+' '+(i.x.debit||i.x.credit)).toLowerCase().includes(qq)))
+  const shown=filter==='done'?[]:data.items.filter(i=>(filter==='todo'||i.bucket===filter)&&(side==='all'||i.x.side===side)&&(!typeF||typeOf(i)===typeF)&&!(phone&&skipped.has(i.x.id))&&(!qq||(i.x.description+' '+(i.s?i.s.label:'')+' '+(i.x.debit||i.x.credit)).toLowerCase().includes(qq)))
     .sort((a,b)=>RANK[a.bucket]-RANK[b.bucket]||String(toISO(a.x.date)||'').localeCompare(String(toISO(b.x.date)||''))); // Sure first, then by date
   const cur=shown[Math.min(sel,shown.length-1)];
   const bal=rcBalanceCheck(data.all);const acc=rcAccuracy(sid);
   const refresh=()=>setTick(t=>t+1);
   const ok=(it,s)=>{if(!s)return;const e=rcApply(sid,it,s);if(e){toastErr(e);return false;}const r=rcRuleFor(sid,it,s);if(r)setRule(r);toast('Reconciled · '+s.label,'success');setOpen(null);refresh();return true;};
-  const okAll=()=>{const L=data.items.filter(i=>i.bucket==='sure'&&i.s);if(!L.length)return;if(!window.confirm('Apply the '+L.length+' “Sure” matches?'))return;setBusy(true);
-    let n=0;const errs=[];L.forEach(it=>{const e=rcApply(sid,it,it.s);if(e)errs.push((it.x.date||'')+' '+M(it.x.debit||it.x.credit)+': '+e);else n++;});setBusy(false);refresh();
+  const applyMany=(L,what)=>{if(!L.length)return;if(locked){toastErr('This month is signed off — reopen it first.');return;}if(!window.confirm('Apply '+L.length+' '+what+'?'))return;setBusy(true);
+    let n=0;const errs=[];L.forEach(it=>{const e=rcApply(sid,it,it.s);if(e)errs.push((it.x.date||'')+' '+M(it.x.debit||it.x.credit)+': '+e);else n++;});setBusy(false);setChecked(new Set());refresh();
     toast(n+' line'+(n===1?'':'s')+' reconciled'+(errs.length?' · '+errs.length+' skipped':''),errs.length?'warning':'success');if(errs.length)window.alert('Not applied:\n\n'+errs.slice(0,12).join('\n'));};
-  const mapAs=(it,nature,extra)=>{const row=bankRowsFor(sid).find(r=>r.id===it.x.id);if(!row)return;journalBankMapping(sid,row,'Reconcile: '+nature);saveBankLineMapping(sid,row.id,{nature,aiTagged:false,...(extra||{})});
+  const okAll=()=>applyMany(data.items.filter(i=>i.bucket==='sure'&&i.s&&!i.dup),'“Sure” matches');
+  const mapAs=(it,nature,extra)=>{if(locked){toastErr('This month is signed off — reopen it first.');return;}const row=bankRowsFor(sid).find(r=>r.id===it.x.id);if(!row)return;journalBankMapping(sid,row,'Reconcile: '+nature);saveBankLineMapping(sid,row.id,{nature,aiTagged:false,...(extra||{})});
     if(it.s)try{noteBankFeedback(sid,it.x,typeof suggestionNature==='function'?(suggestionNature(it.s)||it.s.label):it.s.label,false);}catch(e){}toast('Mapped as '+nature,'success');setOpen(null);refresh();};
+  const mapMany=nature=>{const L=data.items.filter(i=>checked.has(i.x.id));if(!L.length||locked)return;if(!window.confirm('Map '+L.length+' ticked line'+(L.length===1?'':'s')+' as '+nature+'?'))return;
+    L.forEach(it=>{const row=bankRowsFor(sid).find(r=>r.id===it.x.id);if(!row)return;journalBankMapping(sid,row,'Reconcile: '+nature);saveBankLineMapping(sid,row.id,{nature,aiTagged:false,...(/Settlement$/.test(nature)?{cradleeDate:bmapPrevDay(row.transactionDate)}:{})});});
+    toast(L.length+' line'+(L.length===1?'':'s')+' mapped as '+nature,'success');setChecked(new Set());refresh();};
   const newVendor=it=>{const name=window.prompt('New vendor name',it.newPayee||rcPayeeName(it.x.description)||'');if(!name||!name.trim())return;const v=addVendorFromNarration(sid,name.trim(),it.x.description);
     mapAs(it,'Vendor Payment',{vendorOverride:v.name});toast('Vendor '+v.name+' added'+(v.ifsc?' with IFSC '+v.ifsc:'')+' — future payments to them match by themselves','success');};
+  const toggleCheck=id=>setChecked(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
+  const sendOwner=()=>{const t=rcExceptionsText(sid,ym,data,salon);const ph=(outletSettings(sid)||{}).ownerPhone;window.open(typeof waPhoneOk==='function'&&waPhoneOk(ph)?waLink(ph,t):'https://wa.me/?text='+encodeURIComponent(t),'_blank');};
+  const openTally=()=>{const p=rcYmParts(ym);if(typeof showUnmappedLinesPopup!=='function'){toastErr('The mapping pop-up isn’t available here.');return;}
+    showUnmappedLinesPopup(sid,()=>unmappedBankLinesFor(sid,p.year,p.month),'Map bank lines — '+rcYmLabel(ym),'Use “Pull from Tally” here to copy the ledgers already entered in Tally for this month.',onNavTab,{year:p.year,month:p.month});};
+  const signOff=()=>{if(data.items.length&&!window.confirm(data.items.length+' line'+(data.items.length===1?' is':'s are')+' not reconciled yet. Sign off '+rcYmLabel(ym)+' anyway?'))return;
+    rcSetSignoff(sid,ym,{by:(user&&(user.name||user.email))||'',at:new Date().toISOString(),open:data.items.length});toast(rcYmLabel(ym)+' signed off','success');refresh();};
+  const reopen=()=>{if(!isSA){toastErr('Only a Super Admin can reopen a signed-off month.');return;}if(!window.confirm('Reopen '+rcYmLabel(ym)+' for changes?'))return;rcSetSignoff(sid,ym,null);refresh();};
   const onKey=e=>{if(e.target&&['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)){if(e.key==='Escape'){e.target.blur();}return;}
     if(e.key==='ArrowDown'){e.preventDefault();setSel(s=>Math.min(shown.length-1,s+1));}
     else if(e.key==='ArrowUp'){e.preventDefault();setSel(s=>Math.max(0,s-1));}
     else if(e.key==='Enter'&&cur){e.preventDefault();if(cur.s&&cur.bucket==='sure')ok(cur,cur.s);else setOpen(o=>o===cur.x.id?null:cur.x.id);}
+    else if(e.key===' '&&cur){e.preventDefault();toggleCheck(cur.x.id);}
     else if(e.key==='/'){e.preventDefault();searchRef.current&&searchRef.current.focus();}
     else if(e.key==='Escape')setOpen(null);};
   const pill=(b)=>({sure:['Sure','var(--green)','rgba(46,160,90,0.12)'],check:['Check','#b26a00','rgba(224,165,48,0.15)'],new:['New payee','var(--accent)','rgba(47,95,224,0.1)'],unknown:['Unknown','var(--text3)','var(--bg3)']})[b];
+  const EDGE={sure:'var(--green)',check:'#e0a530',new:'var(--accent)',unknown:'var(--border2)'};
   const chip=t=>h('span',{key:t,style:{display:'inline-block',fontSize:11,padding:'1px 8px',borderRadius:999,margin:'4px 4px 0 0',background:'var(--bg3)',color:'var(--text2)'}},t);
-  const F=[['todo','To review',data.items.length],['sure','Sure',count('sure')],['check','Check',count('check')],['new','New payee',count('new')],['unknown','Unknown',count('unknown')]];
+  const F=[['todo','To review',data.items.length],['sure','Sure',count('sure')],['check','Check',count('check')],['new','New payee',count('new')],['unknown','Unknown',count('unknown')],['done','Done',doneN]];
+  // #12 · summary by type (linked / open amounts); a click filters the list
+  const sumOf=k=>{const D=data.done.filter(r=>rowType(r)===k),O=data.items.filter(i=>typeOf(i)===k);const amt=r=>Number(r.debit)||Number(r.credit)||0;
+    return{done:D.reduce((t,r)=>t+amt(r),0),open:O.reduce((t,i)=>t+(i.x.debit||i.x.credit),0),nOpen:O.length};};
+  const ST=[['salary','👤 Salary & incentive'],['vendor','🏭 Vendors'],['settle','💳 Card / UPI'],['other','📄 Other']];
+  const balB=typeof rcBalanceBreaks==='function'?rcBalanceBreaks(data.all).length:0;const noSales=data.settlements.filter(g=>g.day&&!(g.sales>0)).length;
+  const P=[[ 'outlets','🏬 All outlets'],['expected','📅 Expected'],['bills','🧾 Unpaid bills'],['breaks','⚖ Balance breaks'+(balB?' '+balB:'')],['sales','📥 Sales not imported'+(noSales?' '+noSales:'')],['deposits','💵 Cash deposits'],['loans','🏦 Loans'],['payees','👥 Set up payees'],['recent','↶ Recent changes']];
+  const panelBody={outlets:()=>h(RcAllOutlets,{ym,onDone:refresh}),expected:()=>h(RcExpected,{sid,ym}),bills:()=>h(RcUnpaidBills,{sid,onNavTab}),breaks:()=>h(RcBreaks,{lines:data.all}),
+    sales:()=>h(RcMissingSales,{data,onNavTab}),deposits:()=>h(RcDeposits,{sid,ym,lines:data.all}),loans:()=>h(RcLoans,{sid,onNavTab}),payees:()=>h(RcPayeeSetup,{sid,onDone:refresh}),recent:()=>h(RcRecent,{sid,onDone:refresh})};
+  // the review panel under a line (matches, why, other choices)
+  const reviewBody=(it)=>{const x=it.x,s=it.s,cr=x.side==='Credit';return h(React.Fragment,null,
+    h('div',{style:{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.04em',margin:'6px 0 2px'}},'Why'),
+    h('ul',{style:{margin:'0 0 6px 18px',padding:0,fontSize:12,color:'var(--text2)'}},rcExplain(sid,it).map((l,k)=>h('li',{key:k},l))),
+    (it.alts||[]).length>0&&h('div',{style:{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.04em',margin:'6px 0 4px'}},'Matches'),
+    (it.alts&&it.alts.length?it.alts:(s?[s]:[])).slice(0,4).map((a,k)=>h('div',{key:k,style:{display:'flex',gap:8,alignItems:'center',padding:'4px 0',borderBottom:'1px dashed var(--border)'}},
+      h('span',{style:{fontSize:11,minWidth:38,color:a.score>=0.9?'var(--green)':'#b26a00',fontWeight:600}},Math.round(a.score*100)+'%'),
+      h('div',{style:{flex:1,minWidth:0}},h('div',{style:{fontSize:12.5}},a.label),h('div',{style:{fontSize:11.5,color:'var(--text3)'}},[a.why,...(a.reasons||[])].filter(Boolean).join(' · '))),
+      h('button',{className:'btn btn-primary btn-sm',disabled:locked,onClick:()=>{if(a!==s&&s)try{noteBankFeedback(sid,x,typeof suggestionNature==='function'?(suggestionNature(s)||s.label):s.label,false);}catch(e){}ok(it,a);}},'Use this'))),
+    h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginTop:8,alignItems:'center'}},
+      !cr&&h('button',{className:'btn btn-ghost btn-sm',disabled:locked,onClick:()=>newVendor(it)},'＋ New vendor'),
+      !cr&&RC_DEBIT_CHOICES.map(([n,l])=>h('button',{key:n,className:'btn btn-ghost btn-sm',disabled:locked,onClick:()=>mapAs(it,n)},l)),
+      cr&&RC_CREDIT_CHOICES.map(([n,l])=>h('button',{key:n,className:'btn btn-ghost btn-sm',disabled:locked,onClick:()=>mapAs(it,n,/Settlement$/.test(n)?{cradleeDate:bmapPrevDay(x.date)}:undefined)},l)),
+      h('select',{className:'form-control',style:{width:'auto',padding:'3px 8px',fontSize:12},value:'',disabled:locked,onChange:e=>{if(e.target.value)mapAs(it,e.target.value);}},
+        h('option',{value:''},'Other nature…'),(typeof BANK_MAP_NATURES!=='undefined'?BANK_MAP_NATURES:[]).filter(n=>cr?BANK_CREDIT_NATURES.has(n):!BANK_CREDIT_NATURES.has(n)||n==='Transfer'||n==='Other'||n==='Refund').map(n=>h('option',{key:n,value:n},n))),
+      h('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},onClick:()=>onNavTab&&onNavTab('bank-statement')},'Split / link by hand in Bank Statement →')));};
+  const natureList=(typeof BANK_MAP_NATURES!=='undefined'?BANK_MAP_NATURES:[]);
+  // done lines (#25 reconciled-by stamp)
+  const J=bankMapJournal(sid);const lastBy={};J.forEach(e=>{if(!e.undone)lastBy[e.rowId]=e;});
+  const doneRows=filter==='done'?data.done.filter(r=>(side==='all'||(side==='Credit')===(Number(r.credit)>0))&&(!typeF||rowType(r)===typeF)&&(!qq||String(r.description||'').toLowerCase().includes(qq))):[];
+  const mappedTo=r=>{if(Array.isArray(r.linkedEmployeePay)&&r.linkedEmployeePay.length)return r.linkedEmployeePay.map(l=>l.employeeName+' · '+(RPT_MONTHS[l.month]||'').slice(0,3)).join(', ');
+    if(r.linkedInvoice)return String(r.linkedInvoice).startsWith('due|')?'Due Date register':String(r.linkedInvoice).split(',').map(k=>k.split('|')[1]||k).join(', ');
+    if(r.vendorOverride&&!String(r.vendorOverride).startsWith('EMP:'))return r.vendorOverride;if(r.cradleeDate)return'Sale day '+r.cradleeDate;return'';};
   return h('div',{className:'fade-in',onKeyDown:onKey,tabIndex:-1,style:{outline:'none'}},
     h('div',{className:'section-header'},
-      h('div',null,h('div',{className:'page-title'},'Bank Reconcile'),h('div',{className:'page-sub'},'Each bank line with its best match — bills, salary, incentive, Bank Payment files, recurring payees. OK applies it the same way Bank Statement does (and can be undone there).')),
+      h('div',null,h('div',{className:'page-title'},'Bank Reconcile'),h('div',{className:'page-sub'},'Each bank line with its best match — bills, salary, incentive, challans, transfers, Bank Payment files, recurring payees. OK applies it the same way Bank Statement does (and can be undone).')),
       h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
         h('select',{className:'form-control',style:{width:'auto'},value:ym,onChange:e=>{setYm(e.target.value);setSel(0);setOpen(null);}},months.map(k=>h('option',{key:k,value:k},(RPT_MONTHS[Number(k.slice(5,7))-1]||'')+' '+k.slice(0,4)))),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>onNavTab&&onNavTab('bank-statement')},'🏦 Bank Statement'),
-        h('button',{className:'btn btn-primary btn-sm',disabled:busy||!count('sure'),onClick:okAll,title:'Applies every “Sure” match'},'✓ OK all Sure ('+count('sure')+')'))),
+        h(MenuButton,{label:'⋯ More',items:[
+          {label:'⬇ Excel of the month',onClick:()=>rcExportMonth(sid,ym,salon)},
+          {label:'🖨 Month-end certificate',onClick:()=>rcCertificate(sid,ym,data,salon)},
+          {label:'📤 Exceptions to the owner (WhatsApp)',onClick:sendOwner},
+          {label:'🔗 Map with Tally ledgers',onClick:openTally},
+          so?(isSA&&{label:'🔓 Reopen the month',onClick:reopen}):{label:'✔ Sign off the month',onClick:signOff}]}),
+        h('button',{className:'btn btn-primary btn-sm',disabled:busy||locked||!count('sure'),onClick:okAll,title:'Applies every “Sure” match (possible duplicates are left out)'},'✓ OK all Sure ('+count('sure')+')'))),
+    so&&h('div',{className:'notice-line',style:{background:'rgba(46,160,90,0.08)',border:'1px solid rgba(46,160,90,0.35)',borderRadius:'var(--r)',padding:'6px 10px',marginBottom:10,fontSize:12.5,display:'flex',gap:8,alignItems:'center'}},
+      h('span',{style:{flex:1}},'✔ '+rcYmLabel(ym)+' signed off by '+(so.by||'—')+' on '+new Date(so.at).toLocaleString('en-GB')+(locked?' — no changes in Reconcile until a Super Admin reopens it.':'')),
+      isSA&&h('button',{className:'btn btn-ghost btn-sm',onClick:reopen},'Reopen')),
     // progress
     h('div',{className:'card',style:{padding:'12px 16px',marginBottom:12}},
       h('div',{style:{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}},
         h('div',{style:{flex:1,minWidth:180,height:10,background:'var(--bg3)',borderRadius:999,overflow:'hidden'}},h('div',{style:{width:pct+'%',height:'100%',background:'var(--green)',transition:'width .4s'}})),
         h('b',null,pct+'% reconciled'),h('span',{style:{fontSize:12.5,color:'var(--text2)'}},doneN+' of '+total+' lines · '+data.items.length+' to review'),
-        bal&&h('span',{title:'Each line’s closing balance should equal the one before plus credit / minus debit',style:{fontSize:12,color:bal.gaps?'var(--red)':'var(--green)'}},bal.gaps?'⚠ Balance breaks in '+bal.gaps+' place'+(bal.gaps===1?'':'s')+' — lines may be missing from the statement':'✓ Statement balance runs through'),
+        bal&&h('button',{type:'button',className:'btn btn-ghost btn-sm',title:'Each line’s closing balance should equal the one before plus credit / minus debit',onClick:()=>setPanel(p=>p==='breaks'?null:'breaks'),style:{fontSize:12,color:bal.gaps?'var(--red)':'var(--green)'}},bal.gaps?'⚠ Balance breaks in '+bal.gaps+' place'+(bal.gaps===1?'':'s')+' — see where':'✓ Statement balance runs through'),
         acc&&h('span',{style:{fontSize:12,color:'var(--text3)'},title:'Suggestions accepted vs changed this month'},'Suggestions right '+acc.pct+'% ('+acc.n+')')),
+      // summary strip
+      h('div',{className:'rc-summary'},ST.map(([k,l])=>{const v=sumOf(k);return h('button',{key:k,type:'button',className:'rc-sum'+(typeF===k?' on':''),onClick:()=>{setTypeF(t=>t===k?null:k);setSel(0);}},
+        h('div',{style:{fontSize:11.5,color:'var(--text3)'}},l),h('div',{style:{fontWeight:700,fontSize:13.5}},M(v.done)),h('div',{style:{fontSize:11,color:v.nOpen?'#b26a00':'var(--green)'}},v.nOpen?v.nOpen+' open · '+M(v.open):'✓ all done'));})),
       h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}},F.map(([k,l,n])=>h('button',{key:k,type:'button',className:'tab-group-chip'+(filter===k?' on':''),onClick:()=>{setFilter(k);setSel(0);}},l+' '+n)),
         h('span',{style:{width:1,background:'var(--border)',margin:'0 2px'}}),
         [['all','All'],['Debit','Debits'],['Credit','Credits']].map(([k,l])=>h('button',{key:k,type:'button',className:'tab-group-chip'+(side===k?' on':''),onClick:()=>{setSide(k);setSel(0);}},l+(k==='all'?'':' '+data.items.filter(i=>i.x.side===k).length))),
         h('button',{type:'button',className:'tab-group-chip'+(showSet?' on':''),onClick:()=>setShowSet(v=>!v),title:'Card / UPI credits checked against the day’s sales'},'Card / UPI settled '+data.settlements.reduce((t,g)=>t+g.n,0)+(data.settlements.some(g=>g.status!=='ok')?' · ⚠ '+data.settlements.filter(g=>g.status!=='ok').length:'')),
-        h('input',{ref:searchRef,className:'form-control',style:{width:200,marginLeft:'auto',padding:'4px 10px'},placeholder:'Search ( / )',value:q,onChange:e=>{setQ(e.target.value);setSel(0);}}))),
+        h('input',{ref:searchRef,className:'form-control',style:{width:200,marginLeft:'auto',padding:'4px 10px'},placeholder:'Search ( / )',value:q,onChange:e=>{setQ(e.target.value);setSel(0);}})),
+      // panels
+      h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}},P.map(([k,l])=>h('button',{key:k,type:'button',className:'tab-group-chip'+(panel===k?' on':''),onClick:()=>setPanel(p=>p===k?null:k)},l)))),
+    panel&&panelBody[panel]&&h(RcPanel,{title:(P.find(p=>p[0]===panel)||['',''])[1],onClose:()=>setPanel(null)},panelBody[panel]()),
     rule&&h('div',{className:'notice-line',style:{background:'rgba(47,95,224,0.08)',border:'1px solid rgba(47,95,224,0.3)',borderRadius:'var(--r)',padding:'6px 10px',marginBottom:10,fontSize:12.5,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
       h('span',{style:{flex:1}},'🔁 Always map payments to ',h('b',null,rule.payee),' as ',h('b',null,rule.nature+(rule.vendorOverride?' · '+rule.vendorOverride:'')),'?'),
       h('button',{className:'btn btn-primary btn-sm',onClick:()=>{addBankRule(sid,{side:'Debit',sig:'',contains:rule.payee,nature:rule.nature,vendorOverride:rule.vendorOverride||'',dateMode:'setdt'});setRule(null);toast('Rule added — new lines map by themselves on import','success');}},'Add rule'),
       h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setRule(null)},'Not now')),
-    showSet&&h('div',{className:'card',style:{padding:'10px 14px',marginBottom:12}},
-      h('div',{style:{fontWeight:600,fontSize:13,marginBottom:6}},'Card / UPI settlements by sale day'),
+    showSet&&h(RcPanel,{title:'Card / UPI settlements by sale day',onClose:()=>setShowSet(false)},
       (()=>{const S=data.settlements.reduce((t,g)=>t+g.sales,0),B=data.settlements.reduce((t,g)=>t+g.bank,0);if(!B)return null;const p=S>0?(S-B)/S*100:null;const okm=p!=null&&p>=-3&&p<=4.5;
         return h('div',{style:{fontSize:12.5,marginBottom:8,padding:'6px 10px',borderRadius:'var(--r)',background:okm?'rgba(46,160,90,0.08)':'rgba(224,165,48,0.12)'}},
           'Month: Cradlee card + UPI sales ',h('b',null,M(S)),' · bank credits ',h('b',null,M(B)),p!=null?' · difference '+M(S-B)+' ('+p.toFixed(1)+'%)':'',
           okm?' ✓':' — '+(S<B*0.9?'sales look incomplete: import the missing days’ Cradlee collection (Collection → Import Collection Data)':'check Collection Reco'));})(),
-      data.settlements.length?h('div',{className:'table-wrap',style:{margin:0}},h('table',{className:'rc-table'},
-        h('thead',null,h('tr',null,['Sale day','Type','Lines','Sales (Cradlee)','Bank credits','Charges / short','Check'].map((t,k)=>h('th',{key:k,className:k>=3&&k<=5?'num':''},t)))),
-        h('tbody',null,data.settlements.map(g=>{const okk=g.status==='ok';return h('tr',{key:g.kind+g.day},h('td',null,g.day||'—'),h('td',null,g.nature),h('td',{style:{color:'var(--text3)'}},g.n),
-          h('td',{className:'num'},g.sales>0?M(g.sales):'—'),h('td',{className:'num',style:{fontWeight:600}},M(g.bank)),
-          h('td',{className:'num',style:{color:g.diff<-1?'var(--red)':'var(--text2)'}},g.sales>0?M(g.diff)+(g.pct!=null?' ('+g.pct.toFixed(2)+'%)':''):'—'),
-          h('td',{style:{color:okk?'var(--green)':'#b26a00',whiteSpace:'nowrap'}},okk?'✓ matches':'⚠ '+g.status));}))))
+      data.settlements.length?rcTable(['Sale day','Type','Lines','Sales (Cradlee)','Bank credits','Charges / short','Check'],data.settlements.map(g=>[g.day||'—',g.nature,g.n,g.sales>0?M(g.sales):'—',h('b',null,M(g.bank)),
+        h('span',{style:{color:g.diff<-1?'var(--red)':'var(--text2)'}},g.sales>0?M(g.diff)+(g.pct!=null?' ('+g.pct.toFixed(2)+'%)':''):'—'),h('span',{style:{color:g.status==='ok'?'var(--green)':'#b26a00',whiteSpace:'nowrap'}},g.status==='ok'?'✓ matches':'⚠ '+g.status)]),[3,4,5])
         :h('div',{style:{fontSize:12.5,color:'var(--text3)'}},'None this month.'),
-      h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Each day’s card / UPI credits against that day’s sales in Cradlee: a difference of up to 4.5% is the bank / gateway charges. Bank more than sales, or a bigger shortfall, needs a look in Collection Reco.')),
+      h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Each day’s card / UPI credits against that day’s sales in Cradlee: up to 4.5% short is the bank / gateway charges.')),
+    // #5 · bulk actions on ticked lines
+    checked.size>0&&h('div',{className:'notice-line',style:{background:'rgba(47,95,224,0.08)',border:'1px solid rgba(47,95,224,0.3)',borderRadius:'var(--r)',padding:'6px 10px',marginBottom:10,fontSize:12.5,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+      h('b',null,checked.size+' ticked'),
+      h('button',{className:'btn btn-primary btn-sm',disabled:locked,onClick:()=>applyMany(data.items.filter(i=>checked.has(i.x.id)&&i.s),'ticked lines with their best match')},'✓ OK ticked'),
+      h('select',{className:'form-control',style:{width:'auto',padding:'3px 8px',fontSize:12},value:'',disabled:locked,onChange:e=>{if(e.target.value)mapMany(e.target.value);}},h('option',{value:''},'Map ticked as…'),natureList.map(n=>h('option',{key:n,value:n},n))),
+      h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setChecked(new Set())},'Clear')),
     // the lines
+    filter==='done'?h('div',{className:'card',style:{padding:0}},doneRows.length?h('div',{className:'table-wrap',style:{margin:0}},h('table',{className:'rc-table'},
+        h('thead',null,h('tr',null,['Date','Narration','Debit','Credit','Nature','Mapped to','Reconciled by'].map((t,k)=>h('th',{key:k,className:k===2||k===3?'num':''},t)))),
+        h('tbody',null,doneRows.map(r=>{const j=lastBy[r.id];return h('tr',{key:r.id},h('td',{style:{whiteSpace:'nowrap'}},r.transactionDate),h('td',{className:'rc-narr'},h('div',{style:{fontWeight:600}},rcPayeeName(r.description)||'—'),h('div',{className:'rc-desc'},r.description)),
+          h('td',{className:'num',style:{color:'var(--red)'}},Number(r.debit)>0?M(r.debit):''),h('td',{className:'num',style:{color:'var(--green)'}},Number(r.credit)>0?M(r.credit):''),h('td',null,r.nature||'—'),h('td',null,mappedTo(r)||'—'),
+          h('td',{style:{fontSize:11.5,color:'var(--text3)',whiteSpace:'nowrap'}},j?(j.lastBy||j.by||'')+' · '+new Date(j.lastAt||j.at).toLocaleDateString('en-GB'):'on import / Bank Statement'));}))))
+      :h('div',{style:{padding:'28px 16px',textAlign:'center',color:'var(--text3)',fontSize:13}},'No reconciled lines in this filter.'))
+    // #28 · phone: one card per line — swipe right = OK, left = skip
+    :phone?h('div',{ref:listRef},!shown.length&&h('div',{className:'card',style:{padding:'24px 14px',textAlign:'center',color:'var(--text3)',fontSize:13}},data.items.length?'Nothing in this filter.':'✓ Every bank line of this month is reconciled.'),
+      shown.map((it,i)=>{const x=it.x,s=it.s,p=pill(it.bucket),cr=x.side==='Credit',isOpen=open===x.id;
+        return h('div',{key:x.id,className:'card rc-card',style:{borderLeft:'4px solid '+EDGE[it.bucket]},
+          onTouchStart:e=>{touch.current={x:e.touches[0].clientX,id:x.id};},
+          onTouchEnd:e=>{const t=touch.current;touch.current=null;if(!t||t.id!==x.id)return;const dx=e.changedTouches[0].clientX-t.x;
+            if(dx>80&&s&&!locked)ok(it,s);else if(dx<-80)setSkipped(p=>new Set([...p,x.id]));}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',gap:8}},h('span',{style:{fontSize:11.5,color:'var(--text3)'}},x.date),h('span',{style:{fontWeight:700,color:cr?'var(--green)':'var(--red)'}},(cr?'+ ':'− ')+M(x.credit||x.debit))),
+          h('div',{style:{fontWeight:600,marginTop:2}},rcPayeeName(x.description)||x.description.slice(0,40)),
+          h('div',{style:{fontSize:12.5,marginTop:4}},h('span',{style:{fontSize:11,padding:'1px 8px',borderRadius:999,background:p[2],color:p[1],fontWeight:600,marginRight:6}},p[0]+(s?' '+Math.round(s.score*100)+'%':'')),s?s.label:(it.newPayee?it.newPayee+' — new payee':'No match')),
+          h('div',{style:{display:'flex',gap:6,marginTop:8}},s&&h('button',{className:'btn btn-primary btn-sm',disabled:locked,onClick:()=>ok(it,s)},'OK'),h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setOpen(isOpen?null:x.id)},isOpen?'Close':'Review'),
+            h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setSkipped(p=>new Set([...p,x.id]))},'Skip')),
+          isOpen&&h('div',{style:{marginTop:8,paddingTop:6,borderTop:'1px solid var(--border)'}},reviewBody(it)));}),
+      skipped.size>0&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setSkipped(new Set())},'Show '+skipped.size+' skipped'),
+      h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Swipe a card right to OK it, left to skip it.'))
     // Statement first (date, narration, ref, debit, credit, balance), then the mapping columns.
-    h('div',{className:'card',ref:listRef,style:{padding:0}},
+    :h('div',{className:'card',ref:listRef,style:{padding:0}},
       !shown.length&&h('div',{style:{padding:'28px 16px',textAlign:'center',color:'var(--text3)',fontSize:13}},data.items.length?'Nothing in this filter.':'✓ Every bank line of this month is reconciled.'),
       shown.length>0&&h('div',{className:'table-wrap',style:{margin:0}},h('table',{className:'rc-table'},
         h('thead',null,
-          h('tr',{className:'rc-band'},h('th',{colSpan:6},'Bank statement'),h('th',{colSpan:3,className:'rc-map'},'Mapping')),
-          h('tr',null,h('th',null,'Date'),h('th',null,'Narration'),h('th',null,'Ref no.'),h('th',{className:'num'},'Debit'),h('th',{className:'num'},'Credit'),h('th',{className:'num'},'Balance'),
+          h('tr',{className:'rc-band'},h('th',{colSpan:7},'Bank statement'),h('th',{colSpan:3,className:'rc-map'},'Mapping')),
+          h('tr',null,h('th',{style:{width:28}},h('input',{type:'checkbox',checked:shown.length>0&&shown.every(i=>checked.has(i.x.id)),onChange:e=>setChecked(e.target.checked?new Set(shown.map(i=>i.x.id)):new Set())})),
+            h('th',null,'Date'),h('th',null,'Narration'),h('th',null,'Ref no.'),h('th',{className:'num'},'Debit'),h('th',{className:'num'},'Credit'),h('th',{className:'num'},'Balance'),
             h('th',{className:'rc-map'},'Mapped to'),h('th',null,'Match'),h('th',null,''))),
         h('tbody',null,shown.map((it,i)=>{const x=it.x;const s=it.s;const p=pill(it.bucket);const isSel=cur===it;const isOpen=open===x.id;const cr=x.side==='Credit';const row=it.row||{};
           const status=it.task==='bill'?'Vendor Payment · no bill linked':it.task==='pay'?x.nature+' · no employee linked':x.problem||'';
           return h(React.Fragment,{key:x.id},
             h('tr',{'data-rc-sel':isSel?'1':'0',onClick:()=>setSel(i),className:isSel?'rc-sel':''},
+              h('td',{style:{boxShadow:'inset 4px 0 0 '+EDGE[it.bucket]}},h('input',{type:'checkbox',checked:checked.has(x.id),onClick:e=>e.stopPropagation(),onChange:()=>toggleCheck(x.id)})),
               h('td',{style:{whiteSpace:'nowrap'}},x.date),
-              h('td',{className:'rc-narr'},h('div',{style:{fontWeight:600,color:'var(--text)'}},rcPayeeName(x.description)||'—'),h('div',{className:'rc-desc',title:x.description},x.description),status&&h('div',{style:{fontSize:11,color:'#b26a00',marginTop:2}},status)),
+              h('td',{className:'rc-narr'},h('div',{style:{fontWeight:600,color:'var(--text)'}},rcPayeeName(x.description)||'—'),h('div',{className:'rc-desc',title:x.description},x.description),status&&h('div',{style:{fontSize:11,color:'#b26a00',marginTop:2}},status),
+                it.dup&&h('div',{style:{fontSize:11,color:'var(--red)',marginTop:2}},'⚠ possible duplicate of '+it.dup[0].transactionDate)),
               h('td',{style:{fontSize:11.5,color:'var(--text3)',whiteSpace:'nowrap'}},row.refNo||'—'),
               h('td',{className:'num',style:{color:'var(--red)',fontWeight:600}},cr?'':M(x.debit)),
               h('td',{className:'num',style:{color:'var(--green)',fontWeight:600}},cr?M(x.credit):''),
@@ -496,20 +593,8 @@ function BankReconcileSheet({salon,period,onNavTab}){
                 :h('div',{style:{fontSize:12.5,color:'var(--text2)'}},it.newPayee?it.newPayee+' isn’t a vendor or employee yet':'No match found')),
               h('td',{style:{whiteSpace:'nowrap'}},h('span',{style:{fontSize:11,padding:'2px 8px',borderRadius:999,background:p[2],color:p[1],fontWeight:600}},p[0]+(s?' '+Math.round(s.score*100)+'%':''))),
               h('td',{style:{textAlign:'right',whiteSpace:'nowrap'}},
-                s&&it.bucket==='sure'?h('button',{className:'btn btn-primary btn-sm',onClick:e=>{e.stopPropagation();ok(it,s);}},'OK')
+                s&&it.bucket==='sure'?h('button',{className:'btn btn-primary btn-sm',disabled:locked,onClick:e=>{e.stopPropagation();ok(it,s);}},'OK')
                   :h('button',{className:'btn btn-ghost btn-sm',onClick:e=>{e.stopPropagation();setSel(i);setOpen(isOpen?null:x.id);}},isOpen?'Close':s?'Review':'Choose'))),
-          isOpen&&h('tr',null,h('td',{colSpan:9,style:{padding:'4px 14px 12px 14px',background:'var(--bg3)'}},
-            (it.alts||[]).length>0&&h('div',{style:{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.04em',margin:'6px 0 4px'}},'Matches'),
-            (it.alts&&it.alts.length?it.alts:(s?[s]:[])).slice(0,4).map((a,k)=>h('div',{key:k,style:{display:'flex',gap:8,alignItems:'center',padding:'4px 0',borderBottom:'1px dashed var(--border)'}},
-              h('span',{style:{fontSize:11,minWidth:38,color:a.score>=0.9?'var(--green)':'#b26a00',fontWeight:600}},Math.round(a.score*100)+'%'),
-              h('div',{style:{flex:1,minWidth:0}},h('div',{style:{fontSize:12.5}},a.label),h('div',{style:{fontSize:11.5,color:'var(--text3)'}},[a.why,...(a.reasons||[])].filter(Boolean).join(' · '))),
-              h('button',{className:'btn btn-primary btn-sm',onClick:()=>{if(a!==s&&s)try{noteBankFeedback(sid,x,typeof suggestionNature==='function'?(suggestionNature(s)||s.label):s.label,false);}catch(e){}ok(it,a);}},'Use this'))),
-            h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginTop:8,alignItems:'center'}},
-              !cr&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>newVendor(it)},'＋ New vendor'),
-              !cr&&RC_DEBIT_CHOICES.map(([n,l])=>h('button',{key:n,className:'btn btn-ghost btn-sm',onClick:()=>mapAs(it,n)},l)),
-              cr&&RC_CREDIT_CHOICES.map(([n,l])=>h('button',{key:n,className:'btn btn-ghost btn-sm',onClick:()=>mapAs(it,n,/Settlement$/.test(n)?{cradleeDate:bmapPrevDay(x.date)}:undefined)},l)),
-              h('select',{className:'form-control',style:{width:'auto',padding:'3px 8px',fontSize:12},value:'',onChange:e=>{if(e.target.value)mapAs(it,e.target.value);}},
-                h('option',{value:''},'Other nature…'),(typeof BANK_MAP_NATURES!=='undefined'?BANK_MAP_NATURES:[]).filter(n=>cr?BANK_CREDIT_NATURES.has(n):!BANK_CREDIT_NATURES.has(n)||n==='Transfer'||n==='Other'||n==='Refund').map(n=>h('option',{key:n,value:n},n))),
-              h('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},onClick:()=>onNavTab&&onNavTab('bank-statement')},'Split / link by hand in Bank Statement →')))));}))))),
-    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'Keys: ↑ ↓ move · Enter OK (Sure) or open · / search · Esc close. Every change shows in Bank Statement → Undo.'));
+          isOpen&&h('tr',null,h('td',{colSpan:10,style:{padding:'4px 14px 12px 14px',background:'var(--bg3)'}},reviewBody(it))));}))))),
+    h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'Keys: ↑ ↓ move · Enter OK (Sure) or open · Space tick · / search · Esc close. Every change can be undone in ↶ Recent changes.'));
 }

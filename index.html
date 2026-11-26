@@ -458,6 +458,10 @@ tbody tr:nth-child(n+11){animation-delay:0.16s}
 .rc-table .rc-desc{font-size:11px;color:var(--text3);word-break:break-word;margin-top:1px}
 .rc-table tbody tr.rc-sel td{background:rgba(47,95,224,0.06)}
 .rc-table tbody tr:hover td{background:rgba(47,95,224,0.035)}
+.rc-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px}
+.rc-sum{text-align:left;border:1px solid var(--border);background:var(--bg2);border-radius:var(--r);padding:7px 10px;cursor:pointer;font-family:inherit;color:var(--text)}
+.rc-sum.on{border-color:var(--accent);background:rgba(47,95,224,0.06)}
+.rc-card{padding:10px 12px;margin-bottom:8px;touch-action:pan-y}
 /* Toggle switch (Incentive Working → designations) */
 .inc-toggle{position:relative;display:inline-block;width:30px;height:17px;border-radius:999px;background:var(--border2);transition:background .15s;flex-shrink:0}
 .inc-toggle::after{content:'';position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s}
@@ -931,7 +935,7 @@ body.light kbd{background:#fff}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous" type="text/x-lazy" data-lazy="xlsx"></script>
 <!-- App code, split by area (js/). Load order matters; ?v= is each file's content fingerprint (set by tools/bump-version.ps1), so a release only re-downloads the files that changed. -->
-<script src="js/01-foundation.js?v=8f836ed6a2"></script>
+<script src="js/01-foundation.js?v=5165a253d7"></script>
 <script src="js/02-shared.js?v=bcd722d6d1"></script>
 <script src="js/03-admin.js?v=e1b5647f33"></script>
 <script src="js/04-outlet-staff.js?v=cc1f8d58df"></script>
@@ -1003,7 +1007,7 @@ body.light kbd{background:#fff}
 <script src="js/69-vendor-plus.js?v=593db26496"></script>
 <script src="js/70-bank-pnl-plus.js?v=c323d372c1"></script>
 <script src="js/71-bank-ledger.js?v=5292c8a924"></script>
-<script src="js/72-bank-reconcile.js?v=6e3d4d42a9"></script>
+<script src="js/72-bank-reconcile.js?v=2a7271f30a"></script>
 <script src="js/73-bank-reconcile-plus.js?v=82d4c6e4ba"></script>
 <script src="js/60-final-freeze.js?v=6543efc890"></script>
 <script src="js/14-import-and-app.js?v=2f0531023d"></script>
