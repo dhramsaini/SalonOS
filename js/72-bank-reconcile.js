@@ -403,6 +403,7 @@ function BankReconcileSheet({salon,period,onNavTab}){
   const [ym,setYm]=useState(()=>cal?cal.year+'-'+String(cal.month+1).padStart(2,'0'):localIsoOf(new Date()).slice(0,7));
   const [tick,setTick]=useState(0);const [filter,setFilter]=useState('todo');const [q,setQ]=useState('');const [sel,setSel]=useState(0);const [open,setOpen]=useState(null);
   const [side,setSide]=useState('all'); // all / Debit / Credit
+  const [view,setView]=useState(()=>{try{return localStorage.getItem('sos_rc_view')==='review'?'review':'classic';}catch(e){return'classic';}}); /* classic, or the For review layout (js/75) */
   const [typeF,setTypeF]=useState(null); // salary / vendor / settle / other
   const [panel,setPanel]=useState(null);const [checked,setChecked]=useState(()=>new Set());const [skipped,setSkipped]=useState(()=>new Set());
   const [rule,setRule]=useState(null);const [busy,setBusy]=useState(false);const [showSet,setShowSet]=useState(false);const searchRef=useRef(null);const listRef=useRef(null);const touch=useRef(null);
@@ -414,6 +415,8 @@ function BankReconcileSheet({salon,period,onNavTab}){
   useEffect(()=>{setChecked(new Set());setSkipped(new Set());},[ym,sid]);
   if(!data)return null;
   const M=n=>rupee0(n);
+  const rv=view==='review'&&!phone&&typeof RcReviewTable==='function';
+  const pickView=v=>{setView(v);setOpen(null);try{localStorage.setItem('sos_rc_view',v);}catch(e){}};
   const user=typeof currentSessionUser==='function'?currentSessionUser():null;const isSA=typeof isSuperAdminUser==='function'&&isSuperAdminUser(user);
   const so=rcSignedOff(sid,ym);const locked=rcLocked(sid,ym);
   // what a line is about, for the summary strip and its filter
@@ -496,6 +499,9 @@ function BankReconcileSheet({salon,period,onNavTab}){
     h('div',{className:'section-header'},
       h('div',null,h('div',{className:'page-title'},'Bank Reconcile'),h('div',{className:'page-sub'},'Each bank line with its best match — bills, salary, incentive, challans, transfers, Bank Payment files, recurring payees. OK applies it the same way Bank Statement does (and can be undone).')),
       h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
+        !phone&&typeof RcReviewTable==='function'&&h('div',{className:'pz-views',style:{margin:0}},h('span',null,'View:'),
+          h('button',{type:'button',className:'btn btn-sm '+(view!=='review'?'btn-primary':'btn-ghost'),title:'Bank statement and mapping side by side',onClick:()=>pickView('classic')},'Classic'),
+          h('button',{type:'button',className:'btn btn-sm '+(view==='review'?'btn-primary':'btn-ghost'),title:'One line per entry with Match / Add, matches open under the line',onClick:()=>pickView('review')},'For review')),
         h('select',{className:'form-control',style:{width:'auto'},value:ym,onChange:e=>{setYm(e.target.value);setSel(0);setOpen(null);}},months.map(k=>h('option',{key:k,value:k},(RPT_MONTHS[Number(k.slice(5,7))-1]||'')+' '+k.slice(0,4)))),
         h('button',{className:'btn btn-ghost btn-sm',onClick:()=>onNavTab&&onNavTab('bank-statement')},'🏦 Bank Statement'),
         h(MenuButton,{label:'⋯ More',items:[
@@ -509,6 +515,7 @@ function BankReconcileSheet({salon,period,onNavTab}){
       h('span',{style:{flex:1}},'✔ '+rcYmLabel(ym)+' signed off by '+(so.by||'—')+' on '+new Date(so.at).toLocaleString('en-GB')+(locked?' — no changes in Reconcile until a Super Admin reopens it.':'')),
       isSA&&h('button',{className:'btn btn-ghost btn-sm',onClick:reopen},'Reopen')),
     // progress
+    rv?h(RcReviewTop,{data,M,pct,doneN,total,count,filter,setFilter,setSel,side,setSide,typeF,setTypeF,q,setQ,searchRef,P,panel,setPanel,showSet,setShowSet,so,bal,acc}):
     h('div',{className:'card',style:{padding:'12px 16px',marginBottom:12}},
       h('div',{style:{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}},
         h('div',{style:{flex:1,minWidth:180,height:10,background:'var(--bg3)',borderRadius:999,overflow:'hidden'}},h('div',{style:{width:pct+'%',height:'100%',background:'var(--green)',transition:'width .4s'}})),
@@ -568,6 +575,7 @@ function BankReconcileSheet({salon,period,onNavTab}){
       skipped.size>0&&h('button',{className:'btn btn-ghost btn-sm',onClick:()=>setSkipped(new Set())},'Show '+skipped.size+' skipped'),
       h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Swipe a card right to OK it, left to skip it.'))
     // Statement first (date, narration, ref, debit, credit, balance), then the mapping columns.
+    :rv?h(RcReviewTable,{sid,data,shown,cur,setSel,open,setOpen,checked,toggleCheck,setChecked,locked,ok,mapAs,newVendor,onNavTab,listRef,M})
     :h('div',{className:'card',ref:listRef,style:{padding:0}},
       !shown.length&&h('div',{style:{padding:'28px 16px',textAlign:'center',color:'var(--text3)',fontSize:13}},data.items.length?'Nothing in this filter.':'✓ Every bank line of this month is reconciled.'),
       shown.length>0&&h('div',{className:'table-wrap',style:{margin:0}},h('table',{className:'rc-table'},
