@@ -230,11 +230,30 @@ function rcBuild(sid,ym){
     if(it.s&&it.s.apply&&it.s.apply.type==='pay'&&it.s.apply.plan&&it.s.apply.plan.lines){const p=it.s.apply.plan;
       if((monthLockRecordFor(sid,p.year,p.month)||{}).locked)it.s={...it.s,why:RPT_MONTHS[p.month]+' '+p.year+' is locked — OK links the bank line only (Salary / Incentive Working stay as they are)',reasons:[...(it.s.reasons||[]),'month locked']};}
   });
-  items.forEach(it=>{const s=it.s;it.bucket=s?(s.score>=0.9?'sure':'check'):(it.newPayee?'new':'unknown');});
+  // #3 · two (or three) payments to one employee in a month that together make that month's net pay
+  const byEmp={};items.forEach(it=>{if(it.payee&&it.x.side==='Debit'&&!(it.s&&it.s.apply&&it.s.apply.type==='pay'&&it.s.score>=0.8)){const k=it.payee.e.id+'|'+it.payee.pm.year+'|'+it.payee.pm.month;(byEmp[k]=byEmp[k]||[]).push(it);}});
+  Object.values(byEmp).forEach(g=>{if(g.length<2)return;const {e,pm}=g[0].payee;const du=rcDues(sid,e,pm.year,pm.month,rows);
+    for(const k of ['sal','inc']){const tot=g.reduce((t,i)=>t+i.x.debit,0);if(du[k]>0&&Math.abs(tot-du[k])<=1){
+      g.forEach(it=>{const other=g.filter(o=>o!==it).map(o=>o.x.date+' '+M(o.x.debit)).join(', ');
+        it.s={score:0.82,conf:'mid',label:(k==='sal'?'Salary ':'Incentive ')+RPT_MONTHS[pm.month].slice(0,3)+' '+pm.year+' · '+e.name+' (part)',why:'With '+other+' this makes the '+(k==='sal'?'net pay':'incentive')+' of '+M(du[k])+'. Mark it Paid in '+(k==='sal'?'Salary':'Incentive')+' Working once both are linked.',
+          reasons:['payments add up to net','2+ transfers'],apply:{type:'pay',plan:{year:pm.year,month:pm.month,lines:[{employeeId:e.id,employeeName:e.name,salaryAmt:k==='sal'?it.x.debit:0,incentiveAmt:k==='inc'?it.x.debit:0}]}}};it.alts.unshift(it.s);});break;}}});
+  // #9 · possible duplicates: same amount and payee within 3 days (also when Controls' duplicate warning is off)
+  let dupMap={};try{dupMap=bankDuplicateMap(sid,rows)||{};}catch(e){}
+  const tOf=r=>{const i=toISO(r.transactionDate||r.date);return i?new Date(i+'T00:00:00').getTime():0;};
+  items.forEach(it=>{const x=it.x;let dl=dupMap[x.id];
+    if(!dl){const amt=x.debit||x.credit;const pn=rcPayeeName(x.description);const t=tOf(x);
+      dl=pn?inMonth.filter(r=>r.id!==x.id&&Math.abs((x.side==='Debit'?Number(r.debit):Number(r.credit))-amt)<=0.5&&rcPayeeName(r.description)===pn&&Math.abs(tOf(r)-t)<=3*864e5):[];}
+    if(dl&&dl.length){it.dup=dl;if(it.s)it.s={...it.s,score:Math.min(it.s.score,0.7),reasons:[...(it.s.reasons||[]),'possible duplicate of '+dl[0].transactionDate+' '+M(Number(dl[0].debit)||Number(dl[0].credit))]};}});
+  // #8 · "Sure" from the score set in Controls; vendor bill links can be kept to Check
+  const sureAt=rcSureAt(sid);const vSure=typeof controlOn!=='function'||controlOn('rcVendorSure',sid);
+  items.forEach(it=>{const s=it.s;let sc=s?s.score:0;if(s&&!vSure&&s.apply&&s.apply.type==='link')sc=Math.min(sc,sureAt-0.01);
+    it.bucket=s?(sc>=sureAt?'sure':'check'):(it.newPayee?'new':'unknown');});
   // card / UPI settlements of the month, grouped by sale day
   return{items,done,settlements:rcSettlementCheck(sid,done),all:inMonth};
 }
 
+// Score at which a match is "Sure" (Controls → rcSureLimit, default 90%).
+function rcSureAt(sid){try{if(typeof controlOn==='function'&&controlOn('rcSureLimit',sid)){const v=Number(controlLimit('rcSureLimit',sid))||90;return Math.min(0.99,Math.max(0.5,v/100));}}catch(e){}return 0.9;}
 const RC_DUE_KW={'PF Challan':/epfo|\bpf\b|provident/,'ESIC Challan':/esic/,'PT Payment':/\bpt\b|prof(essional)? ?tax|ptax/,'TDS Payment':/\btds\b|cbdt|oltas|itns|income tax/};
 const RC_DUE_NATURE={'PF Challan':'PF Payment','ESIC Challan':'ESIC Payment','PT Payment':'PT Payment','TDS Payment':'TDS'};
 // The other side of an inter-outlet transfer: same amount, opposite side, within a day, not mapped yet.
@@ -283,12 +302,40 @@ function rcCreditAlts(sid,it,bs,rows,ctx){
     if(bd){ctx.claimed[kind+'|'+bd.dmy]=1;alts.push({score:0.92,conf:'high',label:n+' · sales of '+bd.dmy,why:M(bd.tot)+' '+kind.toUpperCase()+' sales that day, less '+(bd.fee*100).toFixed(2)+'% charges',reasons:['payout from '+(rcParse(d).name||'card network'),'= day sales less charges'],apply:{type:'patch',patch:{nature:n,cradleeDate:bd.dmy}}});}
     else{const pd=bmapPrevDay(x.date);alts.push({score:0.74,conf:'mid',label:n+(pd?' · '+pd:''),why:'Payout from '+(rcParse(d).name||'a card network')+' — no day’s sales match the amount; sale date taken as the day before',reasons:['card network payout'],apply:{type:'patch',patch:{nature:n,cradleeDate:pd}}});}}
   if(!x.nature&&/chq dep|cheque dep|\bclg\b|clearing|chq\/|\/chq/.test(lo))alts.push({score:0.75,conf:'mid',label:'Collection (cheque)',why:'Cheque deposited'+(rcParse(d).name?' from '+rcParse(d).name:''),reasons:['cheque deposit'],apply:{type:'patch',patch:{nature:'Collection'}}});
+  // #22 · delivery-app payouts (restaurants): Swiggy (Bundl Technologies), Zomato, EazyDiner
+  if(!x.nature){const ag=/swiggy|bundl tech/.test(lo)?'Swiggy Settlement':/zomato/.test(lo)?'Zomato Settlement':/eazydiner|eazy diner/.test(lo)?'EazyDiner Settlement':'';
+    if(ag)alts.push({score:0.93,conf:'high',label:ag,why:'Payout from '+ag.replace(' Settlement','')+' — checked against the app’s orders in Swiggy, Zomato & Other Apps',reasons:['delivery app payout'],apply:{type:'patch',patch:{nature:ag}}});}
+  // #23 · cash deposit: the Bank Deposit entered in Daily Sales & Exp on the day (or up to 3 days before)
+  if(!x.nature&&/cash dep|by cash|csh dep|\bcdm\b|cash deposit|cash-dep|bna/.test(lo)){const dep=rcDseDeposits(sid);const iso=toISO(x.date)||'';let hit=null;
+    for(let k=0;k<=3&&!hit;k++){const d0=new Date(iso+'T00:00:00');d0.setDate(d0.getDate()-k);const di=localIsoOf(d0);if(dep[di]&&Math.abs(dep[di]-x.credit)<=1)hit=di;}
+    alts.push(hit?{score:0.96,conf:'high',label:'Cash Deposit',why:'Equals the Bank Deposit of '+M(x.credit)+' in Daily Sales & Exp on '+hit.split('-').reverse().join('/'),reasons:['= Daily Sales deposit'],apply:{type:'patch',patch:{nature:'Cash Deposit'}}}
+      :{score:0.78,conf:'mid',label:'Cash Deposit',why:'No Bank Deposit of this amount in Daily Sales & Exp in the 3 days before — check the cash register',reasons:['cash deposit narration','not in Daily Sales'],apply:{type:'patch',patch:{nature:'Cash Deposit'}}});}
+  // #21 · a client paying their unpaid bills (name or mobile number in the narration)
+  if(!x.nature){const c=rcClientDue(sid,d,x.credit);
+    if(c)alts.push({score:c.exact?0.88:0.7,conf:'mid',label:'Customer payment · '+c.name,why:c.exact?'Equals '+(c.bills.length>1?c.bills.length+' unpaid bills':'unpaid bill')+' '+c.bills.map(b=>b.no).join(', ')+' — record the receipt in Billing':'Client has '+M(c.total)+' unpaid ('+c.bills.length+' bill'+(c.bills.length===1?'':'s')+')',
+      reasons:[c.by,'unpaid bills'],apply:{type:'patch',patch:{nature:'Collection',mapNote:'Client '+c.name+': bills '+c.bills.map(b=>b.no).join(', ')}}});}
   // the same payer mapped the same way in other months (loans from a director, rent deposits …)
   if(!x.nature){const pn=rcPayeeName(d);if(pn){const by={};rows.forEach(r=>{if(r&&r.id!==x.id&&Number(r.credit)>0&&r.nature&&rcPayeeName(r.description)===pn)(by[r.nature]=by[r.nature]||new Set()).add(rcMonthKey(r.transactionDate));});
     const top=Object.entries(by).sort((a,b)=>b[1].size-a[1].size)[0];
     if(top)alts.push({score:top[1].size>=2?0.88:0.72,conf:'mid',label:top[0],why:'Money from '+pn+' was mapped as '+top[0]+' before ('+top[1].size+' month'+(top[1].size===1?'':'s')+')',reasons:['same payer before'],apply:{type:'patch',patch:{nature:top[0]}},recurringCr:true});
     else if(x.credit>=50000&&!RC_PAYOUT_RE.test(d))it.newPayee=pn;}}
   alts.sort((a,b)=>b.score-a.score);it.s=alts[0]||null;
+}
+// Bank Deposit (cash taken to the bank) per day from Daily Sales & Exp — row 11 of the sales rows.
+function rcDseDeposits(sid){const out={};try{const D=JSON.parse(cachedLocalGet(outletKey('salonos_daily_sales_collection_data',sid))||'{}')||{};
+  Object.keys(D).forEach(iso=>{const v=Number((D[iso]||{})[11])||0;if(v>0)out[iso]=v;});}catch(e){}return out;}
+// A client named (or whose mobile is) in the narration, with unpaid Billing bills.
+function rcClientDue(sid,desc,amt){
+  if(typeof fdClients!=='function'||typeof fdBills!=='function'||typeof fdBillDue!=='function')return null;
+  const D=String(desc||'');const digits=rcDigits(D);const pn=rcParse(D).name||D;let best=null;
+  const bills=(typeof fdBillsRO==='function'?fdBillsRO(sid):fdBills(sid)).filter(b=>fdBillDue(b)>0.5);if(!bills.length)return null;
+  const byPhone={};bills.forEach(b=>{const p=String(b.phone||'').replace(/\D/g,'').slice(-10);if(p.length===10)(byPhone[p]=byPhone[p]||[]).push(b);});
+  fdClients(sid).forEach(c=>{if(!c||c.erased)return;const p=String(c.phone||'').replace(/\D/g,'').slice(-10);const L=byPhone[p];if(!L)return;
+    const byNum=p.length===10&&digits.includes(p);const n=rcNameScore(c.name||'',pn,4);if(!byNum&&n<1)return;
+    const total=L.reduce((t,b)=>t+fdBillDue(b),0);const one=L.find(b=>Math.abs(fdBillDue(b)-amt)<=1);const exact=!!one||Math.abs(total-amt)<=1;
+    const cand={name:c.name||p,by:byNum?'mobile no. in narration':'client name',total,exact,bills:(one?[one]:L).map(b=>({no:b.invoiceNo||b.no||b.id,due:fdBillDue(b)}))};
+    if(!best||(exact&&!best.exact))best=cand;});
+  return best;
 }
 // Card / UPI settlements of the month by sale day, against that day's Cradlee sales.
 function rcSettlementCheck(sid,lines){
@@ -301,7 +348,18 @@ function rcSettlementCheck(sid,lines){
     .sort((a,b)=>String(toISO(b.day)||'').localeCompare(String(toISO(a.day)||''))||a.kind.localeCompare(b.kind));
 }
 // Applies one suggestion; '' when done, else the reason. Remembers what was accepted.
+// ── Month sign-off (Controls → rcSignOff): {ym:{by,at}} per outlet ──
+function rcLoadSignoffs(sid){try{return JSON.parse(cachedLocalGet(outletKey('salonos_bank_reco_signoff',sid))||'{}')||{};}catch(e){return{};}}
+function rcSignedOff(sid,ym){return rcLoadSignoffs(sid)[ym]||null;}
+function rcSetSignoff(sid,ym,rec){const S=rcLoadSignoffs(sid);if(rec)S[ym]=rec;else delete S[ym];safeLocalSet(outletKey('salonos_bank_reco_signoff',sid),JSON.stringify(S));
+  try{logAuditEvent(sid,{entity:'Bank Reconcile',entityId:ym,action:rec?'Month signed off':'Month reopened',summary:ym+(rec?' signed off by '+rec.by:' reopened')});}catch(e){}}
+function rcLocked(sid,ym){return !!(rcSignedOff(sid,ym)&&(typeof controlOn!=='function'||controlOn('rcSignOff',sid)));}
 function rcApply(sid,it,s){
+  if(rcLocked(sid,rcMonthKey(it.x.date)))return'This month is signed off in Reconcile — a Super Admin can reopen it.';
+  // #24 · a second person above the limit (Controls → rcApproveAbove)
+  const amt0=it.x.debit||it.x.credit;
+  if(typeof controlOn==='function'&&controlOn('rcApproveAbove',sid)&&amt0>(Number(controlLimit('rcApproveAbove',sid))||100000)
+    &&!requireApproval({control:'rcApproveAbove',sid,key:sid+'|rc|'+it.x.id+'|'+s.label,summary:'Reconcile '+(it.x.date||'')+' '+rupee0(amt0)+' as '+s.label}))return'Sent for approval — apply it again once a Super Admin approves.';
   const rows=bankRowsFor(sid);const row=rows.find(r=>r.id===it.x.id)||it.row;let err='';
   try{
     if(s.apply.type==='link'){err=linkBankLineToBills(sid,row,s.apply.plan.vendor,s.apply.plan.allocations.map(a=>({id:a.id,amount:a.amount,tds:a.tds})));if(!err)journalBankMapping(sid,row,'Reconcile: linked to '+s.apply.plan.allocations.map(a=>a.invoiceNo).join(', '));}
