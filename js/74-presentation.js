@@ -18,7 +18,16 @@ function PresEmpty({icon,title,text,actionLabel,onAction}){
     text&&h('div',{className:'pz-empty-text'},text),actionLabel&&onAction&&h('button',{className:'btn btn-primary btn-sm',style:{marginTop:10},onClick:onAction},actionLabel));
 }
 const PZ_M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-function pzPl(sid,y,m){try{const f=calToFYMI(y,m);return plBuild(sid,f.fy,f.mi);}catch(e){return null;}}
+// A month's P&L for these cards, kept until any saved value changes (storeVersion) — the cards
+// only read it, and several of them ask for the same months.
+let _pzMemo=new Map(),_pzMemoV=-1;
+function pzPl(sid,y,m){try{const f=calToFYMI(y,m);
+  if((typeof _lsOverlay!=='undefined'&&_lsOverlay)||(typeof FF_LIVE!=='undefined'&&FF_LIVE))return plBuild(sid,f.fy,f.mi);
+  if(_pzMemoV!==storeVersion()){_pzMemo=new Map();_pzMemoV=storeVersion();}
+  const k=sid+'|'+y+'|'+m;if(_pzMemo.has(k))return _pzMemo.get(k);const d=plBuild(sid,f.fy,f.mi);_pzMemo.set(k,d);return d;}catch(e){return null;}}
+// false on the first draw, true just after: the screen shows first and these cards fill in a moment later.
+function usePzReady(){const [r,setR]=useState(false);useEffect(()=>{const t=setTimeout(()=>setR(true),30);return()=>clearTimeout(t);},[]);return r;}
+function pzWaiting(label){return React.createElement('div',{className:'card pz-card',style:{marginBottom:16,color:'var(--text3)',fontSize:12.5}},label+'…');}
 function pzLine(d,si,name){const S=d&&d.sections&&d.sections[si];const l=S&&S.lines.find(x=>x.name===name);return l?Number(l.amt)||0:0;}
 // Where the money went: products, staff, rent & fixed, other, profit (each as ₹ and % of revenue).
 function pzSplit(d){
@@ -60,11 +69,13 @@ function pzClose(sid,y,m){
 function MonthPulseCard({salon,period,onNavTab}){
   const h=React.createElement;const sid=salon&&salon.id;const ver=typeof storeVersion==='function'?storeVersion():0;
   const c=periodToCalendar(period)||{year:new Date().getFullYear(),month:new Date().getMonth()};
-  const data=useMemo(()=>{if(sid==null)return null;
+  const ready=usePzReady();
+  const data=useMemo(()=>{if(sid==null||!ready)return null;
     const months=[];for(let i=5;i>=0;i--){const d=new Date(c.year,c.month-i,1);months.push({y:d.getFullYear(),m:d.getMonth()});}
     const pls=months.map(x=>({...x,d:pzPl(sid,x.y,x.m)}));
     return{pls,cur:pls[5].d,prev:pls[4].d,close:pzClose(sid,c.year,c.month)};
-  },[sid,c.year,c.month,ver]);
+  },[sid,c.year,c.month,ver,ready]);
+  if(!ready&&sid!=null)return pzWaiting('Loading this month at a glance');
   if(!data||!data.cur)return null;
   const d=data.cur,p=data.prev;const go=t=>onNavTab&&onNavTab(t);
   const staff=(d.sections[2]||{}).tot||0;const rent=pzLine(d,3,'Rent')+pzLine(d,3,'Staff Room Rent')+pzLine(d,3,'Maintenance Expenses');
@@ -132,8 +143,10 @@ function OutletScorecard({salons,onOpen}){
 function PnlTrendCard({sid,fy,mi}){
   const h=React.createElement;const ver=typeof storeVersion==='function'?storeVersion():0;
   const cal=periodToCalendar({fy,mi});
-  const data=useMemo(()=>{if(sid==null||!cal)return null;const out=[];for(let i=11;i>=0;i--){const d=new Date(cal.year,cal.month-i,1);const pl=pzPl(sid,d.getFullYear(),d.getMonth());out.push({m:d.getMonth(),y:d.getFullYear(),pl});}return out;},[sid,fy,mi,ver]);
+  const ready=usePzReady();
+  const data=useMemo(()=>{if(sid==null||!cal||!ready)return null;const out=[];for(let i=11;i>=0;i--){const d=new Date(cal.year,cal.month-i,1);const pl=pzPl(sid,d.getFullYear(),d.getMonth());out.push({m:d.getMonth(),y:d.getFullYear(),pl});}return out;},[sid,fy,mi,ver,ready]);
   const [open,setOpen]=useState(()=>{try{return localStorage.getItem('sos_pl_trend')!=='0';}catch(e){return true;}});
+  if(!ready&&sid!=null&&cal)return pzWaiting('Loading the 12-month trend');
   if(!data)return null;const cur=data[11].pl;if(!data.some(x=>x.pl&&x.pl.revenue))return null;
   const toggle=()=>{setOpen(o=>{try{localStorage.setItem('sos_pl_trend',o?'0':'1');}catch(e){}return!o;});};
   const max=Math.max(1,...data.map(x=>x.pl?Math.max(x.pl.revenue,x.pl.direct+x.pl.opex):0));

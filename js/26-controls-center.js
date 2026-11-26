@@ -355,7 +355,9 @@ function loadControls(){
   return _controlsParsed;
 }
 function saveControls(c){safeLocalSet(CONTROLS_KEY,JSON.stringify(c||{}));}
-function controlDef(id){return CONTROL_DEFS.find(d=>d.id===id);}
+// Looked up by id from a map (rebuilt if the list grows) — controlOn() runs thousands of times a screen.
+let _ctlDefMap=null,_ctlDefN=-1;
+function controlDef(id){if(_ctlDefN!==CONTROL_DEFS.length){_ctlDefMap=new Map();CONTROL_DEFS.forEach(d=>{if(d&&!_ctlDefMap.has(d.id))_ctlDefMap.set(d.id,d);});_ctlDefN=CONTROL_DEFS.length;}return _ctlDefMap.get(id);}
 // Outlet override wins; then the all-outlets switch; then the rule's default.
 // Role-wise rule (only for chosen roles / not for exempt people) → a temporary switch → outlet
 // override → all-outlets switch → default. The first two need Controls → ctlRoleRules / ctlTemporary.
@@ -365,7 +367,18 @@ function controlTempFor(c,sid){
   const act=c.temp.filter(x=>x&&(!x.from||x.from<=t)&&(!x.to||t<=x.to));
   return act.find(x=>sid!=null&&x.sid!=null&&String(x.sid)===String(sid))||act.find(x=>x.sid==null)||null;
 }
+// controlOn() answers are kept until any saved value changes (storeVersion), the signed-in user
+// changes, or a minute passes (temporary switches are dated) — screens ask the same few switches
+// thousands of times while they draw.
+let _ctlMemo=new Map(),_ctlMemoV=-1,_ctlMemoU=null,_ctlMemoT=0;
 function controlOn(id,sid){
+  if(typeof _lsOverlay!=='undefined'&&_lsOverlay)return controlOnNow(id,sid);
+  let u=null;try{u=sessionStorage.getItem('salonos_user');}catch(e){}const now=Date.now();
+  if(_ctlMemoV!==storeVersion()||_ctlMemoU!==u||now-_ctlMemoT>60000){_ctlMemo=new Map();_ctlMemoV=storeVersion();_ctlMemoU=u;_ctlMemoT=now;}
+  const k=id+'|'+(sid==null?'':sid);const hit=_ctlMemo.get(k);if(hit!==undefined)return hit;
+  const v=controlOnNow(id,sid);_ctlMemo.set(k,v);return v;
+}
+function controlOnNow(id,sid){
   const d=controlDef(id);if(!d)return true;
   const c=loadControls()[id]||{};
   if(((c.roles&&c.roles.length)||(c.exempt&&c.exempt.length))&&controlRawOn('ctlRoleRules')){const u=currentSessionUser();

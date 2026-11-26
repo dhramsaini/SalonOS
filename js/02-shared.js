@@ -3711,19 +3711,29 @@ function incWorkingsForLive(salonId,year,month){
 // keyed per employee/month/category — tracks each bucket's Payment Status independently once
 // it's been settled from here. Either way, there's exactly one source of truth for whether an
 // employee's been paid, never reconstructed by scanning Bank Statement rows.
+// Net pay / incentive by employee for an outlet-month, kept until any saved value changes —
+// Bank Statement asks for them on every redraw (each key typed in its search box).
+let _outMemo=new Map(),_outMemoV=-1;
+function _outstandingMap(kind,salonId,year,month){
+  const live=(typeof _lsOverlay!=='undefined'&&_lsOverlay)||(typeof FF_LIVE!=='undefined'&&FF_LIVE);
+  const build=()=>{const m=new Map();(kind==='sal'?swWorkingsFor(salonId,year,month):incWorkingsFor(salonId,year,month)).forEach(x=>{if(x&&!m.has(x.id))m.set(x.id,kind==='sal'?x.net:(x.totalInc||0));});return m;};
+  if(live)return build();
+  if(_outMemoV!==storeVersion()){_outMemo=new Map();_outMemoV=storeVersion();}
+  const k=kind+'|'+salonId+'|'+year+'|'+month;let m=_outMemo.get(k);if(!m){m=build();_outMemo.set(k,m);}return m;
+}
 function employeeSalaryOutstandingFor(salonId,employeeId,year,month){
   const meta=loadSWMeta(salonId);
   const m=meta[attMonthKey(employeeId,year,month)];
   if(m&&m.paymentStatus==='Paid')return 0;
-  const w=swWorkingsFor(salonId,year,month).find(x=>x.id===employeeId);
-  return w?Math.max(0,w.net):0;
+  const M=_outstandingMap('sal',salonId,year,month);
+  return M.has(employeeId)?Math.max(0,Number(M.get(employeeId))||0):0;
 }
 function employeeIncentiveOutstandingFor(salonId,employeeId,year,month){
   const meta=loadIWMeta(salonId);
   const m=meta[attMonthKey(employeeId,year,month)];
   if(m&&m.paymentStatus==='Paid')return 0;
-  const w=incWorkingsFor(salonId,year,month).find(x=>x.id===employeeId);
-  return w?Math.max(0,w.totalInc||0):0;
+  const M=_outstandingMap('inc',salonId,year,month);
+  return M.has(employeeId)?Math.max(0,Number(M.get(employeeId))||0):0;
 }
 // The four DSE-synced "M.Ship Pro. And Daily Incentive" categories, plus "Other" for any Daily
 // Incentive entry whose Service Type was typed in free-hand and doesn't match one of the four
