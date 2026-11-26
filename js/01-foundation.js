@@ -12,13 +12,17 @@ function excelCellDate(v){return new Date(v.getTime()+60000);}
 // decimals: number of fraction digits (default 0)
 // dashZero: show '—' instead of '₹0' when the amount is zero (default false)
 // "-₹1,32,837" (sign before the ₹, Indian digit grouping) — '₹'+n.toLocaleString() gave "₹-132,837".
-function rupee(n){const v=Number(n)||0;return(v<0?'-':'')+'₹'+Math.abs(v).toLocaleString('en-IN',{maximumFractionDigits:2});}
+// One Intl.NumberFormat per style, reused: toLocaleString() with options builds a new one on every
+// call, and screens format thousands of amounts per redraw. Output is identical.
+const _NF_RUPEE=new Intl.NumberFormat('en-IN',{maximumFractionDigits:2}),_NF_RUPEE0=new Intl.NumberFormat('en-IN'),_NF_DEC={};
+function rupee(n){const v=Number(n)||0;return(v<0?'-':'')+'₹'+_NF_RUPEE.format(Math.abs(v));}
 // Whole rupees, minus sign first ("-₹500", never "₹-500") — shared by the screens' own money helpers.
-function rupee0(n){const v=Math.round(Number(n)||0);return(v<0?'-':'')+'₹'+Math.abs(v).toLocaleString('en-IN');}
+function rupee0(n){const v=Math.round(Number(n)||0);return(v<0?'-':'')+'₹'+_NF_RUPEE0.format(Math.abs(v));}
 function formatMoney(n,{decimals=0,dashZero=false}={}){
   const num=Number(n||0);
   if(dashZero&&num===0)return '—';
-  return (num<0?'-':'')+'₹'+Math.abs(num).toLocaleString('en-IN',{minimumFractionDigits:decimals,maximumFractionDigits:decimals});
+  let f=_NF_DEC[decimals];if(!f){try{f=_NF_DEC[decimals]=new Intl.NumberFormat('en-IN',{minimumFractionDigits:decimals,maximumFractionDigits:decimals});}catch(e){f=null;}}
+  return (num<0?'-':'')+'₹'+(f?f.format(Math.abs(num)):Math.abs(num).toLocaleString('en-IN',{minimumFractionDigits:decimals,maximumFractionDigits:decimals}));
 }
 
 // ── Button interactions — ripple + success/error flash, shared by every .btn in the app ──
@@ -681,7 +685,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.11.26.301';
+const APP_VERSION='2026.11.26.302';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);
@@ -1600,7 +1604,10 @@ function DmyDateInput(props){
       onChange:e=>{const iso=e.target.value;setText(isoToDmyText(iso));setBad(false);send(iso,e);},
       style:{position:'absolute',right:0,bottom:0,width:1,height:1,opacity:0,pointerEvents:'none',border:0,padding:0}}));
 }
-function dmyDatesOn(){try{return typeof controlOn!=='function'||controlOn('dmyDates');}catch(e){return true;}}
+// Asked for every element drawn — worked out once per saved-data version (or every 30 seconds).
+let _dmyV=-1,_dmyT=0,_dmyOn=true;
+function dmyDatesOn(){if(typeof controlOn!=='function')return true;const v=typeof storeVersion==='function'?storeVersion():0,t=Date.now();
+  if(v!==_dmyV||t-_dmyT>30000){_dmyV=v;_dmyT=t;try{_dmyOn=typeof controlOn!=='function'||controlOn('dmyDates');}catch(e){_dmyOn=true;}}return _dmyOn;}
 // Text shown on screen: 2026-09-04 → 04/09/2026 and 17 Oct 2026 → 17/10/2026 (not inside inputs or code).
 const DMY_MON={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',sept:'09',oct:'10',nov:'11',dec:'12'};
 const DMY_TEST=/\d{4}-\d\d-\d\d|\d (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{4}/;
