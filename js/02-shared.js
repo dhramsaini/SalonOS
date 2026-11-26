@@ -433,6 +433,8 @@ const RESTAURANT_VENDOR_CATEGORIES=['Food & Raw Material Purchase','Liquor Purch
 // outlet — or, with no outlet given, whenever any restaurant outlet exists.
 // The category a new vendor / bill starts on: Purchase of Cosmetic for a salon, Food & Raw Material for a restaurant.
 function defaultVendorCategoryFor(salonId){return salonId!=null&&salonId!==''&&isRestaurantOutlet(salonId)?'Food & Raw Material Purchase':'Purchase of Cosmetic';}
+// The vendor / bill categories offered everywhere (Vendors, Add Vendor, bank-line New vendor); restaurants get theirs too.
+const VENDOR_BASE_CATEGORIES=['Purchase of Cosmetic','Housekeeping','Equipment','Utilities','Rent','DG Rent','Drycleaning Expenses','Professional Fee','Staff Room Rent','Royalty','Electricity Expenses','Water Expenses','Uniform Expenses','Telephone & Internet Expenses','Maintenance Expenses','Marketing','Other'];
 function withBizCategories(list,salonId){
   const rest=salonId!=null&&salonId!==''?isRestaurantOutlet(salonId):SALONS.some(s=>s.businessType==='Restaurant');
   if(!rest)return list;
