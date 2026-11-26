@@ -348,7 +348,7 @@ function CashFlowSheet({salon,period}={}){
   );
 }
 
-function OutletPnLCore({salon,period}){
+function OutletPnLCore({salon,period,onNavTab}){
   const {toast}=useToast();
   const sid=Number(salon&&salon.id)||1;
   const [fy,setFy]=useState((period&&period.fy)||'2025-26');
@@ -1886,7 +1886,7 @@ function OutletPnLSheet({salon,period,onNavTab}={}){
   const curFyMi=cal?calToFYMI(cal.year,cal.month):{fy:(period&&period.fy)||'2025-26',mi:(period&&typeof period.mi==='number')?period.mi:3};
   return React.createElement('div',{className:'fade-in'},
     tabBar,
-    React.createElement('div',{style:{display:subTab==='pnl'?'block':'none'}},React.createElement(AiExplainPnlCard,{salon,period}),typeof PnlVendorBillCheck==='function'&&React.createElement(PnlVendorBillCheck,{salon,period,onNavTab}),React.createElement(OutletPnLCore,{salon,period})),
+    React.createElement('div',{style:{display:subTab==='pnl'?'block':'none'}},React.createElement(AiExplainPnlCard,{salon,period}),typeof PnlVendorBillCheck==='function'&&React.createElement(PnlVendorBillCheck,{salon,period,onNavTab}),React.createElement(OutletPnLCore,{salon,period,onNavTab})),
     subTab==='variance'&&React.createElement('div',null,
       React.createElement('div',{className:'section-header'},
         React.createElement('div',null,
