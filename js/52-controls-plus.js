@@ -205,11 +205,13 @@ function ScreenSettingsButton({tab,salon,salons}){
 
 function ControlsCenterCard({salons,screen,screenSid}){
   const h=React.createElement;const {toast}=useToast();
-  const u=currentSessionUser();const isSA=isSuperAdminUser(u);const canEdit=isSA||(!!screen&&ctlScreenEditor(u));const lockSid=screen&&!isSA&&screenSid!=null?String(screenSid):null;
+  const u=currentSessionUser();const isSA=isSuperAdminUser(u);const pickSid=!!screen&&!isSA&&screenSid==null;
   const [c,setC]=useState(()=>loadControls());const [open,setOpen]=useState(null);const [panel,setPanel]=useState(null);const [tab,setTab]=useState('rules');const [,tick]=useState(0);
   // a direct link (#controls/<id>) opens on that switch: its area, searched by its name
   const [focus]=useState(()=>{if(screen)return null;const d=controlDef(linkTake('ctl'));if(!d)return null;const a=controlLayout().find(a=>a.list.some(x=>x.defs.some(z=>z.id===d.id)));return{d,area:a&&a.key};});
   const [cq,setCq]=useState(()=>focus?focus.d.label:'');const [flt,setFlt]=useState('all');const [viewSid,setViewSid]=useState('');
+  // An Accountant changes one outlet at a time: the open outlet, or (Dashboard / Reports) the one picked here.
+  const lockSid=screen&&!isSA?(screenSid!=null?String(screenSid):(viewSid||null)):null;const canEdit=isSA||(!!screen&&ctlScreenEditor(u)&&!!lockSid);
   const [area,setAreaRaw]=useState(()=>{if(focus&&focus.area)return focus.area;try{return localStorage.getItem('salonos_ctl_area')||'checks';}catch(e){return'checks';}});const setArea=k=>{setAreaRaw(k);try{localStorage.setItem('salonos_ctl_area',k);}catch(e){}};
   const [wide,setWide]=useState(()=>window.innerWidth>=860);useEffect(()=>{const f=()=>setWide(window.innerWidth>=860);window.addEventListener('resize',f);return()=>window.removeEventListener('resize',f);},[]);
   const outlets=(salons||[]).filter(s=>s&&s.id!=null&&s.status!=='Inactive');const oname=s=>String(s.name).split('—')[0].trim();
@@ -458,11 +460,11 @@ function ControlsCenterCard({salons,screen,screenSid}){
   if(screen){const ids=ctlScreenIds(screen);const groups=[];
     L.forEach(a=>a.list.forEach(x=>{const defs=x.defs.filter(d=>ids.has(d.id)&&qOk(d));if(defs.length)groups.push(subCard(x.title,defs,a.icon+' '+a.title));}));
     return h('div',null,
-      h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:10,lineHeight:1.6}},'The switches that act on this screen. '+(lockSid?'Changes here apply to '+(viewing?oname(viewing):'this outlet')+' only; limits and all-outlet choices stay with the Super Admin.':'Pick an outlet to change it alone, or leave “all outlets”.')),
+      h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:10,lineHeight:1.6}},'The switches that act on this screen. '+(pickSid&&!lockSid?'Pick an outlet first — an Accountant changes one outlet at a time.':lockSid?'Changes here apply to '+(viewing?oname(viewing):'this outlet')+' only; limits and all-outlet choices stay with the Super Admin.':'Pick an outlet to change it alone, or leave “all outlets”.')),
       h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',margin:'0 0 10px'}},
         h('input',{className:'form-control',style:{flex:'1 1 200px'},placeholder:'🔍 Search these '+ids.size+' switches…',value:cq,onChange:e=>setCq(e.target.value)}),
-        !lockSid&&outlets.length>1&&h('select',{className:'form-control',style:{width:'auto'},value:viewSid,onChange:e=>setViewSid(e.target.value)},
-          h('option',{value:''},'Showing: all outlets'),outlets.map(s=>h('option',{key:s.id,value:s.id},'Showing: '+oname(s))))),
+        (isSA||pickSid)&&outlets.length>1&&h('select',{className:'form-control',style:{width:'auto'},value:viewSid,onChange:e=>setViewSid(e.target.value)},
+          h('option',{value:''},pickSid?'Pick an outlet…':'Showing: all outlets'),outlets.map(s=>h('option',{key:s.id,value:s.id},'Showing: '+oname(s))))),
       groups.length?groups:h('div',{style:{fontSize:12.5,color:'var(--text3)'}},'No switch matches.'),
       isSA&&h('div',{style:{marginTop:6}},h('a',{href:'#',style:{fontSize:12},onClick:e=>{e.preventDefault();const nav=window.__salonosNav;if(nav)nav.setActivePage('settings');}},'Open all Controls →')));}
   const TABS=[['rules','Rules'],...(F('ctlCompare')||F('ctlHealth')?[['checkup','Check-up']]:[]),...(F('ctlSets')||F('ctlCopyOutlet')||F('ctlExport')?[['sets','Sets & export']]:[]),
