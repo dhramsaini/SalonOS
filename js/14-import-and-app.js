@@ -1067,7 +1067,9 @@ function App(){
           selectedSalon&&defaultPeriods[selectedSalon.id]?React.createElement('span',{className:'badge badge-green'},'Default'):null,
           React.createElement('button',{className:'btn btn-ghost btn-sm',style:{marginLeft:'auto'},onClick:()=>setGateFor(selectedSalon)},'Change period'),
           selectedSalon&&defaultPeriods[selectedSalon.id]?React.createElement('button',{className:'btn btn-ghost btn-sm',
-            onClick:()=>{pgSave(null,selectedSalon.id);setDefaultPeriods(prev=>{const n={...prev};delete n[selectedSalon.id];return n;});addToast('Default cleared for this outlet — it will ask for a period again','info')}},'Clear default'):null
+            onClick:()=>{pgSave(null,selectedSalon.id);setDefaultPeriods(prev=>{const n={...prev};delete n[selectedSalon.id];return n;});addToast('Default cleared for this outlet — it will ask for a period again','info')}},'Clear default'):null,
+          // ⚙ Settings: this screen's switches (Super Admin / Accountant only — js/52)
+          typeof ScreenSettingsButton==='function'?React.createElement(ScreenSettingsButton,{key:'ss-'+salonTab,tab:salonTab,salon:selectedSalon,salons:SALONS}):null
         ),
         // Phone: one big "current sheet" button opening the full-screen sheet picker, instead of a
         // 27-tab strip that shows two tabs at a time.

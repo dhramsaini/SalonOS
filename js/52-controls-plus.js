@@ -33,7 +33,7 @@ const CTL_WHERE_ID={bankTallyLedger:'bank-statement',vpCrossDup:'vendors',vpTdsL
   poApproval:'vendors',invoiceApproval:'vendors',bankFileApproval:'bank-payment',deleteApproval:'vendors',vendorBankApproval:'vendors',paymentRun:'bank-payment',
   bankAgeingBoard:'page:dashboard',mappingSla:'page:dashboard',bankUnmappedNudge:'page:dashboard',bankDailyDigest:'page:dashboard',bankOnePagerReminder:'page:dashboard',cashForecastAlert:'page:dashboard',payWbAllOutlets:'page:reports',geminiModelList:'page:settings'};
 const CTL_WHERE_AREA={frontdesk:'billing',clients:'clients',stock:'inventory',checks:'daily-sales',bank:'bank-statement',staff:'salary-working',close:'page:dashboard',app:'page:dashboard',ctl:'page:settings'};
-const CTL_WHERE_SECTION={'Appointments':'appointments','Messages & privacy':'clients','Full workings Excel':'salary-working','Employees':'master-salary','Advances':'advance'};
+const CTL_WHERE_SECTION={'Reconcile screen':'bank-reconcile','Appointments':'appointments','Messages & privacy':'clients','Full workings Excel':'salary-working','Employees':'master-salary','Advances':'advance'};
 const CTL_TAB_LABEL={'billing':'Billing','appointments':'Appointments','clients':'Clients','inventory':'Inventory','daily-sales':'Daily Sales & Exp','attendance':'Attendance','salary-working':'Salary Working','incentive-working':'Incentive Working','master-salary':'Master Salary','vendors':'Vendors','advance':'Advances','bank-statement':'Bank Statement','bank-payment':'Bank Payment','collection':'Collection Reco','page:dashboard':'Dashboard','page:reports':'Reports Hub','page:settings':'Master Settings'};
 const CTL_SAMPLE={dupEmployee:'“PAN ABCDE1234F is already on Priya Sharma (E1) — Save anyway?”',dupVendor:'“The name looks like existing vendor “L’Oréal India Pvt Ltd” (V1)”',
   sameBillNewNumber:'“A bill of ₹28,320 from this vendor is already entered as No. LOR/26/4471 dated 04/09/2026 — the same bill under a new number?”',
@@ -96,9 +96,11 @@ function ctlAlert(entries){
 }
 // The one way Controls change from this page: history, locks, second Super Admin and owner alerts.
 // changes: {id: newRecord}. Returns {applied:[ids], held:[ids]}.
-async function ctlCommit(changes,note){
-  const u=currentSessionUser();if(!isSuperAdminUser(u)){window.alert('Only a Super Admin can change controls.');return{applied:[],held:[]};}
-  const cur=loadControls();const ids=Object.keys(changes).filter(id=>JSON.stringify(cur[id]||{})!==JSON.stringify(changes[id]||{}));if(!ids.length)return{applied:[],held:[]};
+async function ctlCommit(changes,note,opts){
+  const u=currentSessionUser();const scr=opts&&opts.screen?ctlScreenIds(opts.screen):null;
+  const cur=loadControls();const ids=Object.keys(changes).filter(id=>JSON.stringify(cur[id]||{})!==JSON.stringify(changes[id]||{}));
+  if(!isSuperAdminUser(u)&&!(scr&&ctlScreenEditor(u)&&ids.every(id=>scr.has(id)))){window.alert('Only a Super Admin can change controls'+(scr?' (an Accountant can change the ones for this screen)':'')+'.');return{applied:[],held:[]};}
+  if(!ids.length)return{applied:[],held:[]};
   if(controlRawOn('ctlLocks')){const locked=ids.filter(id=>(cur[id]||{}).locked);if(locked.length&&!(await ctlReauth('Locked switch'+(locked.length>1?'es':'')+': '+locked.map(id=>(controlDef(id)||{}).label||id).join(', '))))return{applied:[],held:[]};}
   const two=controlRawOn('ctlTwoPerson');const held=[],applied=[],alerts=[];
   ids.forEach(id=>{const d=controlDef(id);if(!d)return;const before=ctlEffSnapshot(cur,d),after=ctlEffSnapshot({...cur,[id]:changes[id]},d);
@@ -178,18 +180,41 @@ function ctlBackup(){const blob=new Blob([JSON.stringify({app:'SalonOS',kind:'co
   const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='SalonOS Controls backup '+ctlToday()+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);}
 
 // ═════════════════════════════ the page ═════════════════════════════
-function ControlsCenterCard({salons}){
+// ── Settings for one screen: the switches that act on an outlet screen, opened from that screen's ⚙ Settings
+// button. Shown to Super Admin and Accountant only; an Accountant changes them for the open outlet only. ──
+const CTL_SCREEN_ROLES=['Super Admin','Accountant'];
+function ctlScreenEditor(u){return !!u&&(isSuperAdminUser(u)||CTL_SCREEN_ROLES.includes(u.role));}
+let _ctlWhereMap=null;
+function ctlWhereMap(){if(_ctlWhereMap)return _ctlWhereMap;const m={};controlLayout().forEach(a=>a.list.forEach(x=>x.defs.forEach(d=>{if(!m[d.id])m[d.id]=CTL_WHERE_ID[d.id]||CTL_WHERE_SECTION[x.title]||CTL_WHERE_AREA[a.key]||'page:dashboard';})));return(_ctlWhereMap=m);}
+function ctlScreenIds(tab){const m=ctlWhereMap();return new Set(Object.keys(m).filter(id=>m[id]===tab));}
+function ScreenSettingsButton({tab,salon,salons}){
+  const h=React.createElement;const [open,setOpen]=useState(false);const u=currentSessionUser();
+  const n=useMemo(()=>ctlScreenIds(tab).size,[tab]);
+  useEffect(()=>{if(!open)return;const k=e=>{if(e.key==='Escape')setOpen(false);};window.addEventListener('keydown',k);return()=>window.removeEventListener('keydown',k);},[open]);
+  if(!ctlScreenEditor(u)||!n)return null;
+  const label=CTL_TAB_LABEL[tab]||tab;
+  return h(React.Fragment,null,
+    h('button',{type:'button',className:'btn btn-ghost btn-sm',title:'Settings for '+label+' ('+n+' switch'+(n===1?'':'es')+')',onClick:()=>setOpen(true)},'⚙ Settings'),
+    open&&h('div',{className:'modal-overlay',onClick:e=>{if(e.target===e.currentTarget)setOpen(false);}},
+      h('div',{className:'modal',style:{maxWidth:900,width:'96vw',maxHeight:'90vh',overflow:'auto'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:8}},
+          h('div',{style:{fontSize:16,fontWeight:700}},'⚙ Settings — '+label),
+          h('button',{className:'btn btn-ghost btn-sm','aria-label':'Close',onClick:()=>setOpen(false)},'✕')),
+        h(ControlsCenterCard,{salons:salons||SALONS,screen:tab,screenSid:salon?salon.id:null}))));
+}
+
+function ControlsCenterCard({salons,screen,screenSid}){
   const h=React.createElement;const {toast}=useToast();
-  const u=currentSessionUser();const canEdit=isSuperAdminUser(u);
+  const u=currentSessionUser();const isSA=isSuperAdminUser(u);const canEdit=isSA||(!!screen&&ctlScreenEditor(u));const lockSid=screen&&!isSA&&screenSid!=null?String(screenSid):null;
   const [c,setC]=useState(()=>loadControls());const [open,setOpen]=useState(null);const [panel,setPanel]=useState(null);const [tab,setTab]=useState('rules');const [,tick]=useState(0);
   // a direct link (#controls/<id>) opens on that switch: its area, searched by its name
-  const [focus]=useState(()=>{const d=controlDef(linkTake('ctl'));if(!d)return null;const a=controlLayout().find(a=>a.list.some(x=>x.defs.some(z=>z.id===d.id)));return{d,area:a&&a.key};});
+  const [focus]=useState(()=>{if(screen)return null;const d=controlDef(linkTake('ctl'));if(!d)return null;const a=controlLayout().find(a=>a.list.some(x=>x.defs.some(z=>z.id===d.id)));return{d,area:a&&a.key};});
   const [cq,setCq]=useState(()=>focus?focus.d.label:'');const [flt,setFlt]=useState('all');const [viewSid,setViewSid]=useState('');
   const [area,setAreaRaw]=useState(()=>{if(focus&&focus.area)return focus.area;try{return localStorage.getItem('salonos_ctl_area')||'checks';}catch(e){return'checks';}});const setArea=k=>{setAreaRaw(k);try{localStorage.setItem('salonos_ctl_area',k);}catch(e){}};
   const [wide,setWide]=useState(()=>window.innerWidth>=860);useEffect(()=>{const f=()=>setWide(window.innerWidth>=860);window.addEventListener('resize',f);return()=>window.removeEventListener('resize',f);},[]);
   const outlets=(salons||[]).filter(s=>s&&s.id!=null&&s.status!=='Inactive');const oname=s=>String(s.name).split('—')[0].trim();
   const F=id=>controlRawOn(id);const refresh=()=>{setC(loadControls());tick(x=>x+1);};
-  const commit=async(changes,note,msg)=>{if(!canEdit){toast('Only a Super Admin can change controls','error');return;}const r=await ctlCommit(changes,note);refresh();if(r.applied.length&&msg)toast(msg,'success');return r;};
+  const commit=async(changes,note,msg)=>{if(!canEdit){toast('Only a Super Admin can change controls','error');return;}const r=await ctlCommit(changes,note,screen?{screen}:undefined);refresh();if(r.applied.length&&msg)toast(msg,'success');return r;};
   const upd=(id,patch)=>commit({[id]:{...(c[id]||{}),...patch}});
   const allOn=d=>typeof (c[d.id]||{}).on==='boolean'?c[d.id].on:d.def;
   const outletState=(d,sid)=>{const o=(c[d.id]||{}).outlets||{};return typeof o[String(sid)]==='boolean'?(o[String(sid)]?'on':'off'):'same';};
@@ -211,7 +236,7 @@ function ControlsCenterCard({salons}){
     case 'noisy':return noisy(d);case 'never':return never(d);case 'new':return !!isNew(d);default:return true;}};
   const qOk=d=>!cq.trim()||(d.label+' '+(d.hint||'')+' '+d.group).toLowerCase().includes(cq.trim().toLowerCase());
   const vis=d=>fltOk(d)&&qOk(d);const searching=!!cq.trim()||flt!=='all';
-  const viewing=F('ctlOutletView')&&viewSid?outlets.find(s=>String(s.id)===String(viewSid)):null;
+  const viewing=lockSid?(outlets.find(s=>String(s.id)===lockSid)||null):((F('ctlOutletView')||screen)&&viewSid?outlets.find(s=>String(s.id)===String(viewSid)):null);
   const bulk=(defs,mode)=>{if(!canEdit){toast('Only a Super Admin can change controls','error');return;}
     const what=mode==='rec'?'the recommended setting':mode==='on'?'ON':'OFF';const scope=viewing?oname(viewing):'all outlets';
     if(!window.confirm('Set all '+defs.length+' switches in “'+cur.title+'” to '+what+' for '+scope+'?'+(mode==='rec'&&!viewing?'\n\nOutlet-wise choices are cleared; limits stay.':'')))return;
@@ -271,12 +296,12 @@ function ControlsCenterCard({salons}){
             F('ctlHitStats')&&!st&&h('span',null,'Not counted'),
             last&&h('span',null,'Changed by '+last.by+' · '+ctlWhen(last.at)+' (',last.summary,') ',canEdit&&h('a',{href:'#',onClick:e=>{e.preventDefault();undo(last);}},'Undo')))),
         h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginLeft:'auto'}},
-          d.limit!=null&&h('label',{style:{fontSize:11.5,color:'var(--text3)',display:'flex',alignItems:'center',gap:4}},d.limitLabel||'Limit ₹',h('input',{type:'number',min:0,className:'form-control',style:{width:88,padding:'3px 6px'},disabled:!canEdit,defaultValue:x.limit!=null?x.limit:d.limit,onBlur:e=>{if(String(e.target.value)!==String(x.limit!=null?x.limit:d.limit))upd(d.id,{limit:e.target.value});}})),
-          F('ctlShowMe')&&h('button',{className:'btn btn-ghost btn-sm',title:'Open '+whereLabel(d),onClick:()=>showMe(d)},'Show me'),
+          d.limit!=null&&h('label',{style:{fontSize:11.5,color:'var(--text3)',display:'flex',alignItems:'center',gap:4}},d.limitLabel||'Limit ₹',h('input',{type:'number',min:0,className:'form-control',style:{width:88,padding:'3px 6px'},disabled:!canEdit||!!lockSid,title:lockSid?'Only a Super Admin can change limits':undefined,defaultValue:x.limit!=null?x.limit:d.limit,onBlur:e=>{if(String(e.target.value)!==String(x.limit!=null?x.limit:d.limit))upd(d.id,{limit:e.target.value});}})),
+          !screen&&F('ctlShowMe')&&h('button',{className:'btn btn-ghost btn-sm',title:'Open '+whereLabel(d),onClick:()=>showMe(d)},'Show me'),
           F('ctlTemporary')&&h('button',{className:'btn btn-ghost btn-sm',title:'On or off for a date range',onClick:()=>setPanel(panel==='t'+d.id?null:'t'+d.id)},'⏱'),
           F('ctlRoleRules')&&h('button',{className:'btn btn-ghost btn-sm',title:'Only for some roles / not for some people',onClick:()=>setPanel(panel==='r'+d.id?null:'r'+d.id)},'👤'),
-          F('ctlLocks')&&canEdit&&h('button',{className:'btn btn-ghost btn-sm',title:x.locked?'Unlock (needs your authenticator code)':'Lock this switch',onClick:()=>upd(d.id,{locked:!x.locked})},x.locked?'🔓':'🔒'),
-          outlets.length>1&&!viewing&&h('button',{className:'btn btn-ghost btn-sm',style:{whiteSpace:'nowrap'},title:'Set a different choice for any outlet',onClick:()=>setOpen(open===d.id?null:d.id)},(over?'On in '+nOn+' of '+outlets.length+' outlets':'Outlet-wise')+(open===d.id?' ▴':' ▾')),
+          F('ctlLocks')&&isSA&&h('button',{className:'btn btn-ghost btn-sm',title:x.locked?'Unlock (needs your authenticator code)':'Lock this switch',onClick:()=>upd(d.id,{locked:!x.locked})},x.locked?'🔓':'🔒'),
+          outlets.length>1&&!viewing&&!lockSid&&h('button',{className:'btn btn-ghost btn-sm',style:{whiteSpace:'nowrap'},title:'Set a different choice for any outlet',onClick:()=>setOpen(open===d.id?null:d.id)},(over?'On in '+nOn+' of '+outlets.length+' outlets':'Outlet-wise')+(open===d.id?' ▴':' ▾')),
           viewing&&outletState(d,viewing.id)!=='same'&&h('a',{href:'#',style:{fontSize:11},onClick:e=>{e.preventDefault();setOutlet(d,viewing.id,'same');}},'same as all'),
           h('span',{style:{fontSize:11,fontWeight:600,color:on?'var(--green)':'var(--text3)',width:24,textAlign:'right'}},on?'On':'Off'),sw(on,toggle,!canEdit))),
       open===d.id&&!viewing&&h('div',{style:{marginTop:8,background:'var(--bg3)',borderRadius:'var(--r)',padding:'6px 10px'}},
@@ -430,6 +455,16 @@ function ControlsCenterCard({salons}){
     recent.map(a=>h('div',{key:a.id,style:{fontSize:12,color:'var(--text2)',padding:'3px 0'}},
       h('span',{style:{fontWeight:600,color:a.status==='rejected'?'var(--red)':'var(--green)'}},a.status==='rejected'?'Rejected':a.status==='used'?'Approved · used':'Approved'),' — ',a.summary.split('\n')[0],' · ',sname(a.sid),' · by ',a.decidedBy||'—')));
 
+  if(screen){const ids=ctlScreenIds(screen);const groups=[];
+    L.forEach(a=>a.list.forEach(x=>{const defs=x.defs.filter(d=>ids.has(d.id)&&qOk(d));if(defs.length)groups.push(subCard(x.title,defs,a.icon+' '+a.title));}));
+    return h('div',null,
+      h('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:10,lineHeight:1.6}},'The switches that act on this screen. '+(lockSid?'Changes here apply to '+(viewing?oname(viewing):'this outlet')+' only; limits and all-outlet choices stay with the Super Admin.':'Pick an outlet to change it alone, or leave “all outlets”.')),
+      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',margin:'0 0 10px'}},
+        h('input',{className:'form-control',style:{flex:'1 1 200px'},placeholder:'🔍 Search these '+ids.size+' switches…',value:cq,onChange:e=>setCq(e.target.value)}),
+        !lockSid&&outlets.length>1&&h('select',{className:'form-control',style:{width:'auto'},value:viewSid,onChange:e=>setViewSid(e.target.value)},
+          h('option',{value:''},'Showing: all outlets'),outlets.map(s=>h('option',{key:s.id,value:s.id},'Showing: '+oname(s))))),
+      groups.length?groups:h('div',{style:{fontSize:12.5,color:'var(--text3)'}},'No switch matches.'),
+      isSA&&h('div',{style:{marginTop:6}},h('a',{href:'#',style:{fontSize:12},onClick:e=>{e.preventDefault();const nav=window.__salonosNav;if(nav)nav.setActivePage('settings');}},'Open all Controls →')));}
   const TABS=[['rules','Rules'],...(F('ctlCompare')||F('ctlHealth')?[['checkup','Check-up']]:[]),...(F('ctlSets')||F('ctlCopyOutlet')||F('ctlExport')?[['sets','Sets & export']]:[]),
     ...(F('ctlHistory')?[['hist','History']]:[]),...(F('ctlWhatsNew')?[['new','What’s new']]:[]),['appr','Approvals'+((pend.length+cpend.length)?' ('+(pend.length+cpend.length)+')':'')]];
   const t=TABS.some(x=>x[0]===tab)?tab:'rules';
