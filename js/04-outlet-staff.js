@@ -140,6 +140,7 @@ function OutletDashboard({salon,period,onNavTab}){
     React.createElement(OutletSetupChecklist,{salon,onNavTab}),
     React.createElement(DataGapsCard,{salon,onNavTab}),
     React.createElement(BudgetPaceStrip,{salon}),
+    typeof MonthPulseCard==='function'&&React.createElement(MonthPulseCard,{salon,period,onNavTab}), // js/74: the month at a glance
     React.createElement(YoyCard,{salon,period}),
     // Header
     React.createElement('div',{className:'section-header'},
@@ -2213,13 +2214,29 @@ function plRecurringCountedIds(sid){const types=new Set(Object.values(PL_OPEX_RE
 // on it, made for a Recurring Expense whose landlord charges no GST but Reverse Charge applies, gets the
 // 18% RCM added — the same Invoice Value the Recurring Expenses estimate uses (recurringExpenseMonthlyAmt).
 // Only the P&L figure changes; the bill itself is not touched.
+// ── Reverse charge (RCM): a bill with no GST on it where the business itself pays the GST to the
+// government (not to the vendor) — e.g. rent from a landlord who isn't GST-registered. On when the bill
+// says so (“GST payable under reverse charge”, inv.rcm true; false switches it off), else when the bill
+// came from a Recurring Expense with GST not applicable and Reverse Charge ticked. 18% of the taxable
+// value: CGST 9% + SGST 9%, or IGST 18% when the vendor is in another state. Electricity never has RCM. ──
+const RCM_RATE=0.18;
+function invRcmFor(sid,inv,recList){
+  if(!inv||inv.docNature==='Performa Invoice'||inv.docNature==='Credit Note'||inv.docNature==='Debit Note')return null;
+  if((Number(inv.igst)||0)+(Number(inv.cgst)||0)+(Number(inv.sgst)||0)>0)return null;
+  let on=inv.rcm===true;
+  if(!on&&inv.rcm!==false&&inv.recurringId){const it=(recList||loadRecurringExpenses(sid)).find(x=>x.id===inv.recurringId);on=!!(it&&!it.gstApplicable&&it.gstReverseChargeApplicable&&it.expenseName!=='Electricity Expenses');}
+  if(!on)return null;
+  const taxable=Number(inv.taxable)||Number(inv.amount)||0;const amt=Math.round(taxable*RCM_RATE*100)/100;if(!amt)return null;
+  let inter=false;try{const v=(loadVendors(sid)||[]).find(x=>x.id===inv.vendorId);inter=typeof gstSupplyTypeFor==='function'&&gstSupplyTypeFor(sid,v&&v.gst)==='inter';}catch(e){}
+  const half=Math.round(amt*50)/100;
+  return{amt,taxable,igst:inter?amt:0,cgst:inter?0:half,sgst:inter?0:Math.round((amt-half)*100)/100};
+}
 function plBillGstRcm(sid,rows){
   if(!rows.length)return rows;const invs=loadVendorInvoices(sid),rec=loadRecurringExpenses(sid);
   return rows.map(r=>{const inv=invs.find(x=>x.id===r.id);if(!inv)return r;
-    const gst=(Number(inv.igst)||0)+(Number(inv.cgst)||0)+(Number(inv.sgst)||0);if(gst>0)return r;
-    const it=inv.recurringId?rec.find(x=>x.id===inv.recurringId):null;if(!it||it.gstApplicable||!it.gstReverseChargeApplicable)return r;
-    const taxable=Number(inv.taxable)||Number(inv.amount)||0;const whole=Number(inv.amount)||taxable;
-    const share=whole>0?r.amount/whole:1;const rcm=Math.round(taxable*0.18*share*100)/100;if(!rcm)return r;
+    const info=invRcmFor(sid,inv,rec);if(!info)return r;
+    const whole=Number(inv.amount)||info.taxable;
+    const share=whole>0?r.amount/whole:1;const rcm=Math.round(info.amt*share*100)/100;if(!rcm)return r;
     return{...r,amount:Math.round((r.amount+rcm)*100)/100,rcm,desc:(r.desc?r.desc+' · ':'')+'+ GST 18% under reverse charge ₹'+Math.round(rcm).toLocaleString('en-IN')};});
 }
 function plVendorFor(sid,l,year,month,used,recurringAmt){

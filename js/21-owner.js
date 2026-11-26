@@ -18,7 +18,7 @@ function accountantChallanText(sid,y,m){
     if(pt)lines.push('Professional Tax: '+opsMoney(pt)+' — due '+ptDueDayFor(outletSettings(sid).state)+' '+nm);
     if(tds)lines.push('TDS on salary: '+opsMoney(tds)+' — due 7 '+nm);
   }else lines.push('(Salary not final yet — PF / ESIC / PT / TDS follow once attendance is marked Month Final)');
-  try{const g=gstSummaryFor(sid,y,m);if(outletSettings(sid).gstApplicable||g.gross)lines.push('GST (GSTR-3B): output '+opsMoney(g.cgst+g.sgst)+', input '+opsMoney(g.itcTotal)+', net payable '+opsMoney(g.net)+' — due 20 '+nm);}catch(e){}
+  try{const g=gstSummaryFor(sid,y,m);if(outletSettings(sid).gstApplicable||g.gross)lines.push('GST (GSTR-3B): output '+opsMoney(g.cgst+g.sgst)+', input '+opsMoney(g.itcTotal)+', net payable '+opsMoney(g.net)+(g.rcm&&g.rcm.amt?' + reverse charge '+opsMoney(g.rcm.amt)+' = '+opsMoney(g.cash):'')+' — due 20 '+nm);}catch(e){}
   lines.push('Files: Salary Working → Statutory Files (PF ECR / ESIC / PT / TDS) and P&L → GST Summary.');
   return lines.join('\n');
 }
@@ -52,7 +52,7 @@ async function buildAuditPack(salon,y,m){
     vl.push([vn(i.vendorId),i.invoiceNo||'',i.invoiceDate||'',Number(i.amount)||0,Number(i.taxable)||0,Number(i.cgst)||0,Number(i.sgst)||0,Number(i.igst)||0,pd,(Number(i.amount)||0)-pd,(i.payments||[]).map(x=>x.paidDate+' '+x.mode+' '+x.paidAmount).join('; ')]);});
   await add('06_Vendor_Ledger_'+tag+'.xlsx','Vendor bills',vl);
   const g=gstSummaryFor(sid,y,m);
-  await add('07_GST_Summary_'+tag+'.xlsx','GST summary',[['Particulars','Amount'],['Sales incl. GST',Math.round(g.gross)],['Taxable',Math.round(g.taxable)],['CGST',Math.round(g.cgst)],['SGST',Math.round(g.sgst)],['Input tax credit',Math.round(g.itcTotal)],['Net payable',Math.round(g.net)]]);
+  await add('07_GST_Summary_'+tag+'.xlsx','GST summary',[['Particulars','Amount'],['Sales incl. GST',Math.round(g.gross)],['Taxable',Math.round(g.taxable)],['CGST',Math.round(g.cgst)],['SGST',Math.round(g.sgst)],['Input tax credit',Math.round(g.itcTotal)],['Net payable on sales',Math.round(g.net)],['GST payable under reverse charge',Math.round((g.rcm&&g.rcm.amt)||0)],['Total GST to pay in cash',Math.round(g.cash!=null?g.cash:g.net)]]);
   if(salaryAttendanceReady(sid,y,m)){
     const sw=swWorkingsFor(sid,y,m);
     await add('08_Salary_'+tag+'.xlsx','Salary working',[['Employee','Days','Gross','PF','ESIC','PT','TDS','Advance','Net'],...sw.map(w=>[w.name,w.totalDays,Math.round(w.grossAfterLop),w.pfEmp,w.esicEmp,w.ptAmt,w.tdsAmt,w.advAdj,Math.round(w.net)])]);

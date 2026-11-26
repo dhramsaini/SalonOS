@@ -54,6 +54,8 @@ async function buildGstReturnsWorkbook(sid,salon,year,month){
     K.band(ws,4,'3.1 (a) Outward taxable supplies',COLS);K.head(ws,5,['Nature of supply','','Taxable value ₹','IGST ₹','CGST ₹','SGST ₹'],3);
     K.put(ws,6,1,'Outward taxable supplies (other than zero rated, nil, exempted)');ws.mergeCells(6,1,6,2);
     K.put(ws,6,3,{f:G1+'C10',r:R2(g.taxable)},'#,##0.00');K.put(ws,6,4,{f:G1+'D10',r:0},'#,##0.00');K.put(ws,6,5,{f:G1+'E10',r:R2(g.cgst)},'#,##0.00');K.put(ws,6,6,{f:G1+'F10',r:R2(g.sgst)},'#,##0.00');K.style(ws,6,COLS,'total');B.liab=6;
+    K.put(ws,7,1,'3.1 (d) Inward supplies liable to reverse charge (rent etc.)');ws.mergeCells(7,1,7,2);const rc=g.rcm||{taxable:0,igst:0,cgst:0,sgst:0};
+    K.put(ws,7,3,R2(rc.taxable),'#,##0.00');K.put(ws,7,4,R2(rc.igst),'#,##0.00');K.put(ws,7,5,R2(rc.cgst),'#,##0.00');K.put(ws,7,6,R2(rc.sgst),'#,##0.00');K.style(ws,7,COLS);
     K.band(ws,8,'4. Eligible input tax credit',COLS);K.head(ws,9,['Details','','','IGST ₹','CGST ₹','SGST ₹'],4);
     K.put(ws,10,1,'(A)(5) All other ITC — vendor tax invoices');ws.mergeCells(10,1,10,3);K.put(ws,10,4,{f:I+'G'+IT.row,r:R2(g.itc.igst)},'#,##0.00');K.put(ws,10,5,{f:I+'H'+IT.row,r:R2(g.itc.cgst)},'#,##0.00');K.put(ws,10,6,{f:I+'I'+IT.row,r:R2(g.itc.sgst)},'#,##0.00');K.style(ws,10,COLS);
     K.put(ws,11,1,'(B)(2) Reversed — input credit blocked for this outlet');ws.mergeCells(11,1,11,3);['D','E','F'].forEach((c,j)=>K.put(ws,11,4+j,g.blocked?{f:c+'10',r:0}:0,'#,##0.00'));K.style(ws,11,COLS);
@@ -64,7 +66,7 @@ async function buildGstReturnsWorkbook(sid,salon,year,month){
     row(17,'Paid from IGST credit',{f:'MIN(D12,D16)',r:0},{f:'MIN(D12-D17,E16)',r:0},{f:'MIN(D12-D17-E17,F16)',r:0});
     row(18,'Paid from CGST credit',0,{f:'MIN(E12,E16-E17)',r:0},0);
     row(19,'Paid from SGST credit',0,0,{f:'MIN(F12,F16-F17)',r:0});
-    row(20,'Paid in cash',{f:'D16-D17-D18-D19',r:0},{f:'E16-E17-E18-E19',r:0},{f:'F16-F17-F18-F19',r:0},'grand');B.cash=20;
+    row(20,'Paid in cash (incl. reverse charge, row 7)',{f:'D16-D17-D18-D19+D7',r:0},{f:'E16-E17-E18-E19+E7',r:0},{f:'F16-F17-F18-F19+F7',r:0},'grand');B.cash=20;
     row(21,'Credit carried to next month',{f:'D12-D17-E17-F17',r:0},{f:'E12-E18',r:0},{f:'F12-F19',r:0});
     K.note(ws,23,'Interest at 18% a year applies to cash paid after the 20th. Check the figures against the portal’s auto-filled GSTR-3B before you submit.',COLS);
     ws.columns=[{width:30},{width:10},{width:16},{width:14},{width:14},{width:14}];K.setup(ws,false,0);}

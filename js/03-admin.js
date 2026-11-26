@@ -443,6 +443,7 @@ function MasterDashboardOverview({selFY,setSelFY,FYS,accessibleSalons}){
   return React.createElement('div',{className:'fade-in'},
     React.createElement('div',{className:'page-title'},'Master Dashboard'),
     React.createElement('div',{className:'page-sub'},'Consolidated analytics across all outlets — FY '+selFY),
+    typeof OutletScorecard==='function'&&React.createElement(OutletScorecard,{salons:accessibleSalons,onOpen:(s,t)=>{const nav=window.__salonosNav;if(nav&&nav.openFromAlert)nav.openFromAlert(s,t);}}), // js/74
     React.createElement('div',{style:{display:'flex',gap:10,marginBottom:20,flexWrap:'wrap'}},
       React.createElement('select',{className:'form-control',style:{width:'auto'},value:selOutlet,onChange:e=>setSelOutlet(e.target.value)},
         React.createElement('option',{value:'all'},'All Outlets'),

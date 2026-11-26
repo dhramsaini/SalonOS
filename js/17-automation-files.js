@@ -119,7 +119,11 @@ function gstSummaryFor(sid,year,month){
   const n=v=>Number(v)||0;
   const itc={taxable:inv.reduce((t,i)=>t+n(i.taxable),0),igst:inv.reduce((t,i)=>t+n(i.igst),0),cgst:inv.reduce((t,i)=>t+n(i.cgst),0),sgst:inv.reduce((t,i)=>t+n(i.sgst),0),count:inv.length};
   const itcTotal=blocked?0:itc.igst+itc.cgst+itc.sgst;
-  return{source:plRevenueSourceFor(sid,year,month),gross,taxable,cgst:tax/2,sgst:tax/2,itc,itcTotal,blocked,net:Math.max(0,tax-itcTotal),credit:Math.max(0,itcTotal-tax)};
+  // Reverse charge (invRcmFor, js/04): GST on bills like rent from unregistered landlords — always paid in cash.
+  const rec=loadRecurringExpenses(sid);const rcmList=(loadVendorInvoices(sid)||[]).filter(i=>i&&invoiceBookMonthOf(i)===ym).map(i=>({i,r:typeof invRcmFor==='function'?invRcmFor(sid,i,rec):null})).filter(x=>x.r);
+  const rcm={count:rcmList.length,taxable:rcmList.reduce((t,x)=>t+x.r.taxable,0),amt:rcmList.reduce((t,x)=>t+x.r.amt,0),igst:rcmList.reduce((t,x)=>t+x.r.igst,0),cgst:rcmList.reduce((t,x)=>t+x.r.cgst,0),sgst:rcmList.reduce((t,x)=>t+x.r.sgst,0),bills:rcmList};
+  const net=Math.max(0,tax-itcTotal);
+  return{source:plRevenueSourceFor(sid,year,month),gross,taxable,cgst:tax/2,sgst:tax/2,itc,itcTotal,blocked,net,credit:Math.max(0,itcTotal-tax),rcm,cash:net+rcm.amt};
 }
 function GstSummarySheet({salon,period}={}){
   const h=React.createElement;
@@ -130,7 +134,7 @@ function GstSummarySheet({salon,period}={}){
   const label=AF_MONTHS[cal.month]+' '+cal.year;
   const row=(l,v,b)=>h('tr',null,h('td',{style:b?{fontWeight:700}:null},l),h('td',{style:{textAlign:'right',fontWeight:b?700:400}},v));
   const rows=[['Particulars','Amount'],['Sales incl. GST ('+(g.source==='dse'?'Daily Sales & Exp':'Collection Reco')+')',Math.round(g.gross)],['Taxable value (÷ 1.05)',Math.round(g.taxable)],['Output CGST 2.5%',Math.round(g.cgst)],['Output SGST 2.5%',Math.round(g.sgst)],
-    ['Input tax — vendor tax invoices ('+g.itc.count+')',Math.round(g.itc.igst+g.itc.cgst+g.itc.sgst)],['Input credit usable'+(g.blocked?' (blocked for this outlet)':''),Math.round(g.itcTotal)],['Net GST payable (cash)',Math.round(g.net)],['Credit carried forward',Math.round(g.credit)]];
+    ['Input tax — vendor tax invoices ('+g.itc.count+')',Math.round(g.itc.igst+g.itc.cgst+g.itc.sgst)],['Input credit usable'+(g.blocked?' (blocked for this outlet)':''),Math.round(g.itcTotal)],['Net GST payable on sales (cash)',Math.round(g.net)],['GST payable under reverse charge — '+g.rcm.count+' bill'+(g.rcm.count===1?'':'s')+' (rent etc., 18% of '+Math.round(g.rcm.taxable).toLocaleString('en-IN')+')',Math.round(g.rcm.amt)],['Total GST to pay in cash by the 20th',Math.round(g.cash)],['Credit carried forward',Math.round(g.credit)]];
   return h('div',null,
     h('div',{className:'section-header'},
       h('div',null,h('div',{className:'page-title'},'GST Summary'),h('div',{className:'page-sub'},'GSTR-3B working for '+label+' — outward tax at 5% (same ÷ 1.05 the P&L uses) less input from vendor tax invoices booked this month')),
@@ -138,7 +142,11 @@ function GstSummarySheet({salon,period}={}){
         h(XlReportButton,{label:'⬇ GSTR-1 / 3B working (Excel)',title:'B2C and SAC tables, input credit register with GSTINs, and the 3B set-off',build:()=>buildGstReturnsWorkbook(sid,salon,cal.year,cal.month)}),
         h('button',{className:'btn btn-ghost btn-sm',onClick:async()=>{try{await afDownloadXlsx('GST Summary',rows,'GST_Summary_'+String(salon&&salon.name||'Outlet').split('—')[0].trim().replace(/[^A-Za-z0-9]+/g,'_')+'_'+cal.year+'-'+String(cal.month+1).padStart(2,'0')+'.xlsx');}catch(e){toast(e.message,'error');}}},'⬇ Excel'))),
     !outletSettings(sid).gstApplicable&&h('div',{className:'help-note',style:{marginBottom:12}},'This outlet is not marked GST applicable in Master Sheet — figures shown for reference.'),
-    h('div',{className:'card',style:{maxWidth:640}},h('table',null,h('tbody',null,rows.slice(1).map((r,i)=>h(React.Fragment,{key:i},row(r[0],afMoney(r[1]),i===6)))))),
+    h('div',{className:'card',style:{maxWidth:640}},h('table',null,h('tbody',null,rows.slice(1).map((r,i)=>h(React.Fragment,{key:i},row(r[0],afMoney(r[1]),i===8)))))),
+    g.rcm.count>0&&h('div',{className:'card',style:{maxWidth:640,marginTop:12}},h('div',{className:'card-title'},'Reverse charge bills — '+label),
+      h('table',null,h('thead',null,h('tr',null,['Vendor','Bill','Taxable','CGST','SGST','IGST'].map(x=>h('th',{key:x,style:x==='Vendor'||x==='Bill'?undefined:{textAlign:'right'}},x)))),
+        h('tbody',null,g.rcm.bills.map(({i,r},k)=>{const v=(loadVendors(sid)||[]).find(x=>x.id===i.vendorId);return h('tr',{key:k},h('td',null,v?v.name:'—'),h('td',null,i.invoiceNo||'—'),h('td',{style:{textAlign:'right'}},afMoney(r.taxable)),h('td',{style:{textAlign:'right'}},afMoney(r.cgst)),h('td',{style:{textAlign:'right'}},afMoney(r.sgst)),h('td',{style:{textAlign:'right'}},afMoney(r.igst)));}))),
+      h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:6}},'Paid in cash in GSTR-3B Table 3.1(d) — input credit can’t be used for it. The vendor is paid the bill amount only.')),
     h('div',{style:{fontSize:11.5,color:'var(--text3)',marginTop:8}},'Check against the GST portal before filing — invoices without Taxable / CGST / SGST / IGST filled in Vendors don’t count as input.'),
     h(Gstr2bCheck,{sid,cal}));
 }

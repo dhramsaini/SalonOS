@@ -972,6 +972,7 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
     // eslint-disable-next-line
   },[invForm.vendorId,invForm.docNature,showInvModal,editInvoiceId]);
   const [filterVendor,setFilterVendor]=useState('');
+  const [filterCat,setFilterCat]=useState(''); // Invoices & Payments: category filter (the bill's own category, else its vendor's)
   const [vendorSearch,setVendorSearch]=useState('');
   const [outstandingSearch,setOutstandingSearch]=useState('');
   const [performaSearch,setPerformaSearch]=useState('');
@@ -1447,11 +1448,14 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
   const inView=inv=>invView==='month'?inPeriod(inv)
     :invView==='pending'?isPendingInv(inv)
     :invView==='pendingMonth'?isPendingInv(inv)&&inPeriod(inv):true;
+  const invCatOf=inv=>{if(inv.category)return inv.category;const v=vendors.find(x=>x.id===inv.vendorId);return(v&&v.cat)||'Other';};
+  const invCats=[...new Set(invoices.map(invCatOf))].sort((a,b)=>a.localeCompare(b));
   const filteredInv=invoices.filter(inv=>{
     if(!inView(inv))return false;
     const matchV=!filterVendor||inv.vendorId===filterVendor;
+    const matchC=!filterCat||invCatOf(inv)===filterCat;
     const matchS=!search||getVendorName(inv.vendorId).toLowerCase().includes(search.toLowerCase())||inv.invoiceNo.toLowerCase().includes(search.toLowerCase());
-    return matchV&&matchS;
+    return matchV&&matchC&&matchS;
   });
   const INV_FILTER_COLS=[
     {key:'invoiceNo',label:'Invoice No',get:inv=>inv.invoiceNo||'(blank)'},
@@ -1653,7 +1657,12 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         React.createElement('select',{className:'form-control',style:{width:'auto'},value:filterVendor,onChange:e=>setFilterVendor(e.target.value)},
           React.createElement('option',{value:''},'All Vendors'),
           vendors.map(v=>React.createElement('option',{key:v.id,value:v.id},v.name))
-        )
+        ),
+        React.createElement('select',{className:'form-control',style:{width:'auto'},value:filterCat,onChange:e=>setFilterCat(e.target.value),title:'Show one category of bills — the bill’s own category, else its vendor’s'},
+          React.createElement('option',{value:''},'All Categories'),
+          invCats.map(c=>React.createElement('option',{key:c,value:c},c+' ('+invoices.filter(i=>invCatOf(i)===c&&inView(i)).length+')'))
+        ),
+        (filterVendor||filterCat||search)&&React.createElement('button',{className:'btn btn-ghost btn-sm',onClick:()=>{setFilterVendor('');setFilterCat('');setSearch('');}},'✕ Clear')
       ),
       React.createElement('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:12}},
         React.createElement('span',{style:{fontSize:12,color:'var(--text3)',marginRight:4}},'Show:'),
@@ -2220,6 +2229,17 @@ function VendorSheet({salon,period,pendingVendorCategory,pendingVendorPaymentDat
         ),
         invSupply&&React.createElement('div',{style:{fontSize:11.5,color:'var(--accent)',margin:'2px 0 6px'}},'ℹ '+gstSupplyNote(invSupply)),
         React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)',marginTop:-6,marginBottom:14}},'Auto-calculated: Taxable Value + IGST + CGST + SGST + Freight + Round Off'),
+        // Reverse charge: no GST on the bill, but 18% is payable by the outlet to the government (js/04 invRcmFor).
+        invForm.docNature==='Tax Invoice'&&!((Number(invForm.igst)||0)+(Number(invForm.cgst)||0)+(Number(invForm.sgst)||0))&&typeof invRcmFor==='function'&&(()=>{
+          const info=invRcmFor(salonId,{...invForm,rcm:invForm.rcm});const auto=!!(invForm.recurringId&&invRcmFor(salonId,{...invForm,rcm:undefined}));
+          return React.createElement('div',{style:{background:info?'rgba(224,138,18,0.08)':'var(--bg3)',border:'1px solid '+(info?'rgba(224,138,18,0.4)':'var(--border)'),borderRadius:'var(--r)',padding:'10px 12px',marginBottom:14}},
+            React.createElement('label',{style:{display:'flex',gap:8,alignItems:'center',fontSize:12.5,fontWeight:600,cursor:'pointer'}},
+              React.createElement('input',{type:'checkbox',checked:!!info,onChange:e=>setInvForm(f=>({...f,rcm:e.target.checked}))}),
+              'GST payable under reverse charge (vendor charges no GST)'),
+            info&&React.createElement('div',{style:{fontSize:12,marginTop:6,color:'var(--text2)'}},
+              'Reverse charge GST payable by you: ',React.createElement('b',null,'₹'+info.amt.toLocaleString('en-IN',{maximumFractionDigits:2})),
+              ' (18% of ₹'+Math.round(info.taxable).toLocaleString('en-IN')+(info.igst?' · IGST ':' · CGST ₹'+info.cgst.toLocaleString('en-IN')+' + SGST ₹'+info.sgst.toLocaleString('en-IN'))+(info.igst?'₹'+info.igst.toLocaleString('en-IN'):'')+')'),
+            info&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:3}},'Paid to the government in GSTR-3B (GST Summary), not to the vendor. The P&L counts it as part of the cost.'+(auto&&invForm.rcm===undefined?' Set from the Recurring Expense.':'')));})(),
         typeof InvTdsBlock==='function'&&React.createElement(InvTdsBlock,{sid:salonId,form:invForm,setForm:setInvForm,vendors,isEdit:editInvoiceId!==null,
           total:(Number(invForm.taxable)||0)+(Number(invForm.igst)||0)+(Number(invForm.cgst)||0)+(Number(invForm.sgst)||0)+(Number(invForm.freight)||0)+(Number(invForm.roundOff)||0)}),
         invForm.docNature!=='Performa Invoice'&&(()=>{

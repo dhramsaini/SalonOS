@@ -1004,10 +1004,11 @@ function OutletPnLCore({salon,period,onNavTab}){
         h('button',{onClick:()=>setOpen({})},'Collapse all'))),
 
     h('div',{className:'grid4',style:{marginBottom:16}},
-      metric('Revenue',money(cur.revenue),prevRev?pct(delta(cur.revenue,prevRev))+' vs '+cmp.toLowerCase():'—','var(--blue)'),
-      metric('Gross profit',money(gp),of(gp).toFixed(1)+'% of revenue','var(--teal)'),
-      metric('EBITDA',money(ebit),of(ebit).toFixed(1)+'% margin',ebit>0?'var(--green)':'var(--red)'),
-      metric('Profit before tax',money(pbt),margin.toFixed(1)+'% net margin'+(prevPbt?' · '+pct(delta(pbt,prevPbt)):''),pbt>0?'var(--green)':'var(--red)')),
+      metric('Revenue',rupeeL(cur.revenue),prevRev?pct(delta(cur.revenue,prevRev))+' vs '+cmp.toLowerCase():'—','var(--blue)'),
+      metric('Gross profit',rupeeL(gp),of(gp).toFixed(1)+'% of revenue','var(--teal)'),
+      metric('EBITDA',rupeeL(ebit),of(ebit).toFixed(1)+'% margin',ebit>0?'var(--green)':'var(--red)'),
+      metric('Profit before tax',rupeeL(pbt),margin.toFixed(1)+'% net margin'+(prevPbt?' · '+pct(delta(pbt,prevPbt)):''),pbt>0?'var(--green)':'var(--red)')),
+    typeof PnlTrendCard==='function'&&h(PnlTrendCard,{sid,fy,mi}), // js/74: 12-month trend and cost split
 
     h('div',{className:'two-col',style:{display:'grid',gridTemplateColumns:'minmax(0,2.1fr) minmax(0,1fr)',gap:16,alignItems:'start'}},
       h('div',{className:'card',style:{padding:0,overflow:'hidden'}},
