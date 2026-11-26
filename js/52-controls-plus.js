@@ -34,7 +34,7 @@ const CTL_WHERE_ID={bankTallyLedger:'bank-statement',vpCrossDup:'vendors',vpTdsL
   bankAgeingBoard:'page:dashboard',mappingSla:'page:dashboard',bankUnmappedNudge:'page:dashboard',bankDailyDigest:'page:dashboard',bankOnePagerReminder:'page:dashboard',cashForecastAlert:'page:dashboard',payWbAllOutlets:'page:reports',geminiModelList:'page:settings'};
 const CTL_WHERE_AREA={frontdesk:'billing',clients:'clients',stock:'inventory',checks:'daily-sales',bank:'bank-statement',staff:'salary-working',close:'page:dashboard',app:'page:dashboard',ctl:'page:settings'};
 const CTL_WHERE_SECTION={'Reconcile screen':'bank-reconcile','Appointments':'appointments','Messages & privacy':'clients','Full workings Excel':'salary-working','Employees':'master-salary','Advances':'advance'};
-const CTL_TAB_LABEL={'billing':'Billing','appointments':'Appointments','clients':'Clients','inventory':'Inventory','daily-sales':'Daily Sales & Exp','attendance':'Attendance','salary-working':'Salary Working','incentive-working':'Incentive Working','master-salary':'Master Salary','vendors':'Vendors','advance':'Advances','bank-statement':'Bank Statement','bank-payment':'Bank Payment','collection':'Collection Reco','page:dashboard':'Dashboard','page:reports':'Reports Hub','page:settings':'Master Settings'};
+const CTL_TAB_LABEL={'bank-reconcile':'Reconcile','billing':'Billing','appointments':'Appointments','clients':'Clients','inventory':'Inventory','daily-sales':'Daily Sales & Exp','attendance':'Attendance','salary-working':'Salary Working','incentive-working':'Incentive Working','master-salary':'Master Salary','vendors':'Vendors','advance':'Advances','bank-statement':'Bank Statement','bank-payment':'Bank Payment','collection':'Collection Reco','page:dashboard':'Dashboard','page:reports':'Reports Hub','page:settings':'Master Settings'};
 const CTL_SAMPLE={dupEmployee:'“PAN ABCDE1234F is already on Priya Sharma (E1) — Save anyway?”',dupVendor:'“The name looks like existing vendor “L’Oréal India Pvt Ltd” (V1)”',
   sameBillNewNumber:'“A bill of ₹28,320 from this vendor is already entered as No. LOR/26/4471 dated 04/09/2026 — the same bill under a new number?”',
   repeatExpense:'“The same ₹1,500 is entered under “Pentry Expenses” on 11/10/2026”',extraZeroCheck:'“₹9,000 is 22.4× the usual “Pentry Expenses” of ₹402 — an extra zero?”',
@@ -192,7 +192,7 @@ function ScreenSettingsButton({tab,salon,salons}){
   const n=useMemo(()=>ctlScreenIds(tab).size,[tab]);
   useEffect(()=>{if(!open)return;const k=e=>{if(e.key==='Escape')setOpen(false);};window.addEventListener('keydown',k);return()=>window.removeEventListener('keydown',k);},[open]);
   if(!ctlScreenEditor(u)||!n)return null;
-  const label=CTL_TAB_LABEL[tab]||tab;
+  const label=CTL_TAB_LABEL[tab]||((typeof SALON_TABS!=='undefined'&&SALON_TABS.find(t=>t.id===tab))||{}).label||tab;
   return h(React.Fragment,null,
     h('button',{type:'button',className:'btn btn-ghost btn-sm',title:'Settings for '+label+' ('+n+' switch'+(n===1?'':'es')+')',onClick:()=>setOpen(true)},'⚙ Settings'),
     open&&h('div',{className:'modal-overlay',onClick:e=>{if(e.target===e.currentTarget)setOpen(false);}},
