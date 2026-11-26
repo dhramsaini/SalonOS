@@ -3585,8 +3585,21 @@ function BankStatement({salon,onNavTab}={}){
   // table is being filtered) and the "link the rest with Vendor Sheet automatically" rule. Declared
   // here, before anything reads them: the Vendor Name filter used to read them before they existed
   // and the whole screen went blank.
-  const [vendors]=useState(()=>loadVendors(salonId));
+  const [vendors,setVendorsBS]=useState(()=>loadVendors(salonId));
   const [employees]=useState(()=>loadEmployees(salonId));
+  // “+ Add new vendor” from a bank line: saves to the Master Vendor List and picks it for that line.
+  const [addVendorRow,setAddVendorRow]=useState(null);const [addVendorForm,setAddVendorForm]=useState({name:'',gst:'',cat:'',phone:''});
+  const openAddVendor=row=>{setAddVendorForm({name:'',gst:'',cat:'',phone:''});setAddVendorRow(row);};
+  const saveAddVendor=(thenInvoice)=>{
+    const f=addVendorForm,row=addVendorRow;if(!row)return;const name=String(f.name||'').trim();
+    if(!name){faError('Enter the vendor name.');return;}
+    const list=loadVendors(salonId)||[];if(list.some(v=>String(v.name||'').trim().toLowerCase()===name.toLowerCase())){faError('“'+name+'” is already in the vendor list — pick it from the list instead.');return;}
+    const gst=String(f.gst||'').trim().toUpperCase();if(gst&&!/^[0-9]{2}[A-Z0-9]{13}$/.test(gst)){faError('GSTIN should be 15 characters, e.g. 29ABCDE1234F1Z5 — or leave it blank.');return;}
+    const v={id:nextPrefixedId(list,'V',3),name,address:'',gst,cat:String(f.cat||'').trim()||'Other',contact:'',phone:String(f.phone||'').trim(),terms:'30 days',status:'Active',tdsApplicable:false,tdsSection:'',tdsRate:''};
+    const next=[...list,v];saveVendors(next,salonId);setVendorsBS(next);updateVendorPick(row.id,v.name);setAddVendorRow(null);
+    try{logAuditEvent(salonId,{entity:'Vendor',entityId:v.id,action:'Created',summary:'Vendor “'+name+'” added from Bank Statement'});}catch(e){}
+    if(thenInvoice)openAddInvoiceModal(row,v);
+  };
   const autoVendorNameFor=(r)=>{
     const desc=String(r.description||'');
     const nature=r.nature||'';
@@ -4684,11 +4697,12 @@ function BankStatement({salon,onNavTab}={}){
                 React.createElement('select',{
                   className:'form-control',
                   value:r.vendorOverride!=null?r.vendorOverride:'',
-                  onChange:e=>updateVendorPick(r.id,e.target.value),
+                  onChange:e=>{if(e.target.value==='__add__'){openAddVendor(r);return;}updateVendorPick(r.id,e.target.value);},
                   style:{padding:'6px 8px',fontSize:11}
                 },
                   React.createElement('option',{value:''},'Auto: '+(autoName||'no match')),
                   React.createElement('option',{value:'__none__'},'— No vendor —'),
+                  !isEmployeeNature&&React.createElement('option',{value:'__add__'},'+ Add new vendor…'),
                   // Salary/Incentive/Daily Incentive/Advance Salary rows only ever settle against
                   // an employee, never a vendor — so the Vendors group is hidden entirely for
                   // those Natures instead of padding the list with irrelevant options.
@@ -4775,7 +4789,8 @@ function BankStatement({salon,onNavTab}={}){
                 const openInv=vendorInvoices.filter(inv=>inv.vendorId===vendor.id&&invBalance(inv)>0);
                 if(openInv.length){
                   const openTotal=openInv.reduce((s,inv)=>s+invBalance(inv),0);
-                  body=React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:10.5},title:'View and link '+vendor.name+'\u2019s open invoices',onClick:()=>openLinkModal(r)},openInv.length+' open · '+money(openTotal));
+                  body=React.createElement('div',{style:{display:'flex',gap:4,alignItems:'center'}},React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:10.5},title:'View and link '+vendor.name+'\u2019s open invoices',onClick:()=>openLinkModal(r)},openInv.length+' open · '+money(openTotal)),
+                    React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:10.5,padding:'3px 7px'},title:'Add a new bill for '+vendor.name+' for this payment',onClick:()=>openAddInvoiceModal(r,vendor)},'+ Invoice'));
                 }else{
                   body=React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:10.5},title:'No outstanding invoice for '+vendor.name+' — add one for this payment',onClick:()=>openAddInvoiceModal(r,vendor)},'+ Add Invoice');
                 }
@@ -4790,7 +4805,7 @@ function BankStatement({salon,onNavTab}={}){
                 // build the employee list by hand instead of forcing a pick in the column above.
                 body=React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:10.5},title:'No single employee matched — add each employee this payment covers',onClick:()=>openEmployeePayModal(r,null)},'👥 Split Between Employees');
               }else{
-                body=React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)'}},'— Pick a vendor —');
+                body=Number(r.debit)>0?React.createElement('button',{className:'btn btn-ghost btn-sm',style:{fontSize:10.5},title:'Not in the vendor list? Add the vendor (and its bill) for this payment',onClick:()=>openAddVendor(r)},'+ Add vendor'):React.createElement('div',{style:{fontSize:10.5,color:'var(--text3)'}},'— Pick a vendor —');
               }
               return React.createElement('td',{'data-xr':ri,'data-xc':10,style:{minWidth:170,background:cellRange.isSelected(ri,10)?'rgba(47,95,224,0.12)':undefined}},body);
             })(),
@@ -5142,6 +5157,19 @@ function BankStatement({salon,onNavTab}={}){
         )
       )
     ),
+    addVendorRow&&React.createElement('div',{className:'modal-overlay',onClick:()=>setAddVendorRow(null)},
+      React.createElement('div',{className:'modal',style:{maxWidth:460},onClick:e=>e.stopPropagation()},
+        React.createElement('div',{className:'modal-title'},'+ New vendor'),
+        React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginBottom:10}},addVendorRow.transactionDate+' · '+money(Number(addVendorRow.debit)||0)+' · '+String(addVendorRow.description||'').slice(0,90)),
+        React.createElement('div',{className:'form-group'},React.createElement('label',null,'Vendor name *'),React.createElement('input',{className:'form-control',autoFocus:true,value:addVendorForm.name,onChange:e=>setAddVendorForm(f=>({...f,name:e.target.value}))})),
+        React.createElement('div',{className:'form-group'},React.createElement('label',null,'GSTIN (if registered)'),React.createElement('input',{className:'form-control',value:addVendorForm.gst,placeholder:'29ABCDE1234F1Z5',onChange:e=>setAddVendorForm(f=>({...f,gst:e.target.value}))})),
+        React.createElement('div',{className:'form-group'},React.createElement('label',null,'Category'),React.createElement('input',{className:'form-control',list:'bs-vendor-cats',value:addVendorForm.cat,placeholder:'e.g. Purchase of Cosmetic, Rent, Maintenance Expenses',onChange:e=>setAddVendorForm(f=>({...f,cat:e.target.value}))}),
+          React.createElement('datalist',{id:'bs-vendor-cats'},[...new Set(vendors.map(v=>v.cat).filter(Boolean))].sort().map(c=>React.createElement('option',{key:c,value:c})))),
+        React.createElement('div',{className:'form-group'},React.createElement('label',null,'Phone'),React.createElement('input',{className:'form-control',value:addVendorForm.phone,onChange:e=>setAddVendorForm(f=>({...f,phone:e.target.value}))})),
+        React.createElement('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}},
+          React.createElement('button',{className:'btn btn-ghost',onClick:()=>setAddVendorRow(null)},'Cancel'),
+          React.createElement('button',{className:'btn btn-ghost',onClick:()=>saveAddVendor(false)},'Save vendor'),
+          React.createElement('button',{className:'btn btn-primary',onClick:()=>saveAddVendor(true)},'Save and add invoice')))),
     addInvoiceRow&&React.createElement('div',{className:'modal-overlay',onClick:()=>setAddInvoiceRow(null)},
       React.createElement('div',{className:'modal',style:{width:460},onClick:e=>e.stopPropagation()},
         React.createElement('div',{className:'modal-title'},'Add Invoice for '+addInvoiceRow.vendor.name),
