@@ -2242,7 +2242,7 @@ function plBillGstRcm(sid,rows){
 function plVendorFor(sid,l,year,month,used,recurringAmt){
   const cat=l.alsoVendorCat;
   if(!cat||(l.newMap&&!pnlAllBillsOn(sid)))return{vendorAmt:0,add:recurringAmt,vendorWins:false,bills:[]};
-  const rows=keep=>{const r=vendorInvoiceCategoryBreakupFor(sid,year,month,cat,used,keep);return plBillGstRcm(sid,r); // reverse-charge GST is a cost on every line, as in the Recurring Expenses estimate},sum=r=>Math.round(r.reduce((t,x)=>t+x.amount,0)*100)/100;
+  const rows=keep=>{const r=vendorInvoiceCategoryBreakupFor(sid,year,month,cat,used,keep);return plBillGstRcm(sid,r); /* reverse-charge GST is a cost on every line, as in the Recurring Expenses estimate */},sum=r=>Math.round(r.reduce((t,x)=>t+x.amount,0)*100)/100;
   if(l.vendorSplitRecurring){
     const oneR=rows(inv=>!inv.recurringId),recR=rows(inv=>!!inv.recurringId),one=sum(oneR),rec=sum(recR);
     return{vendorAmt:one+rec,add:one+(rec>0?rec:recurringAmt),vendorWins:rec>0,bills:[...oneR,...recR]};
