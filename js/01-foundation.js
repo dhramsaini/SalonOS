@@ -244,6 +244,7 @@ function useExcelCellRange(wrapRef){
     return (td.innerText||td.textContent||'').trim();
   };
   const setNativeValue=(el,value)=>{
+    if(el.tagName==='SELECT'&&typeof el.__lzWake==='function')el.__lzWake(); /* LazySelect: load the full list first */
     const proto=el.tagName==='TEXTAREA'?window.HTMLTextAreaElement.prototype:el.tagName==='SELECT'?window.HTMLSelectElement.prototype:window.HTMLInputElement.prototype;
     const setter=Object.getOwnPropertyDescriptor(proto,'value')&&Object.getOwnPropertyDescriptor(proto,'value').set;
     if(setter)setter.call(el,value);else el.value=value;
@@ -583,6 +584,22 @@ function cachedLocalRemove(key){
 // multi-background), which paints as one flat opaque colour no matter what scrolls behind it.
 // A button that opens a short menu (e.g. "Export ▾"), so related actions take one button's room.
 // items: [{label, onClick, title?, style?}] — falsy entries are skipped.
+// A <select> that draws only its chosen option until it is clicked, tapped or focused, then the
+// full list (for long tables: 100 rows × 30+ options each slowed Bank Statement down). Looks and
+// behaves like a normal select; once opened it stays a normal select.
+function LazySelect(props){
+  const h=React.createElement;const [open,setOpen]=useState(false);
+  const {children,...rest}=props;
+  if(open)return h('select',rest,children);
+  const wake=()=>{ReactDOM.flushSync(()=>setOpen(true));};
+  const val=String(rest.value==null?'':rest.value);let first=null,hit=null;
+  const walk=list=>React.Children.forEach(list,c=>{if(hit||!c||typeof c!=='object')return;
+    if(c.type==='option'){const v=c.props.value!=null?String(c.props.value):String(c.props.children);if(first==null)first=c;if(v===val)hit=c;}
+    else if(c.type==='optgroup')walk(c.props.children);});
+  walk(children);
+  const on=k=>e=>{wake();if(rest[k])rest[k](e);};
+  return h('select',{...rest,ref:el=>{if(el)el.__lzWake=wake;},onMouseDown:on('onMouseDown'),onFocus:on('onFocus'),onTouchStart:on('onTouchStart'),onKeyDown:on('onKeyDown')},hit||first);
+}
 function MenuButton({label,items,className,style,align,fixed,title}){
   const h=React.createElement;const [open,setOpen]=useState(false);const ref=useRef(null);const [pos,setPos]=useState(null);
   useEffect(()=>{if(!open||!fixed)return;const c=()=>setOpen(false);window.addEventListener('scroll',c,true);window.addEventListener('resize',c);return()=>{window.removeEventListener('scroll',c,true);window.removeEventListener('resize',c);};},[open,fixed]);
@@ -685,7 +702,7 @@ try{
 function appYears(){const out=[];for(let y=2023;y<=new Date().getFullYear()+1;y++)out.push(y);return out;}
 // Bumped with every release, together with version.json next to this file — the app compares the
 // two to offer "A new version is available — Update now" instead of people running stale code.
-const APP_VERSION='2026.11.26.302';
+const APP_VERSION='2026.11.26.303';
 const SUPABASE_URL='https://cuvcxxjbcmctsajhctju.supabase.co';
 const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dmN4eGpiY21jdHNhamhjdGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTQ5NTYsImV4cCI6MjEwMjEzMDk1Nn0.lyBbyZcX9vP8XoJ0ADoZ8K3JTwSqQeIvMEY66lqXMow';
 const CLOUD_SYNC_ENABLED=!!(SUPABASE_URL&&SUPABASE_ANON_KEY);

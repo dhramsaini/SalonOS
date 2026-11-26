@@ -4694,7 +4694,7 @@ function BankStatement({salon,onNavTab}={}){
               const sortedEmployees=employees.slice().sort((a,b)=>a.name.localeCompare(b.name));
               const isEmployeeNature=r.nature==='Salary'||r.nature==='Incentive'||r.nature==='Daily Incentive'||r.nature==='Advance Salary';
               return React.createElement('td',{'data-xr':ri,'data-xc':7,style:{minWidth:190,background:cellRange.isSelected(ri,7)?'rgba(47,95,224,0.12)':undefined}},
-                React.createElement('select',{
+                React.createElement(LazySelect,{
                   className:'form-control',
                   value:r.vendorOverride!=null?r.vendorOverride:'',
                   onChange:e=>{if(e.target.value==='__add__'){openAddVendor(r);return;}updateVendorPick(r.id,e.target.value);},
@@ -4712,7 +4712,7 @@ function BankStatement({salon,onNavTab}={}){
                 )
               );
             })(),
-            React.createElement('td',{'data-xr':ri,'data-xc':8,style:{minWidth:165,background:cellRange.isSelected(ri,8)?'rgba(47,95,224,0.12)':undefined}},React.createElement('div',{style:{display:'flex',alignItems:'center',gap:4}},r.aiTagged&&React.createElement('span',{title:'Suggested by AI — change it if it’s wrong',style:{fontSize:12}},'🤖'),React.createElement('select',{className:'form-control',value:r.nature,onChange:e=>{update(r.id,'nature',e.target.value);if(r.aiTagged)update(r.id,'aiTagged',false);},style:{padding:'6px 8px',fontSize:11}},natures.map(n=>React.createElement('option',{key:n,value:n},n||'Select Nature')))),typeof BankLedgerField==='function'&&React.createElement(BankLedgerField,{sid:salonId,row:r,onSet:v=>update(r.id,'tallyLedger',v)})),
+            React.createElement('td',{'data-xr':ri,'data-xc':8,style:{minWidth:165,background:cellRange.isSelected(ri,8)?'rgba(47,95,224,0.12)':undefined}},React.createElement('div',{style:{display:'flex',alignItems:'center',gap:4}},r.aiTagged&&React.createElement('span',{title:'Suggested by AI — change it if it’s wrong',style:{fontSize:12}},'🤖'),React.createElement(LazySelect,{className:'form-control',value:r.nature,onChange:e=>{update(r.id,'nature',e.target.value);if(r.aiTagged)update(r.id,'aiTagged',false);},style:{padding:'6px 8px',fontSize:11}},natures.map(n=>React.createElement('option',{key:n,value:n},n||'Select Nature')))),typeof BankLedgerField==='function'&&React.createElement(BankLedgerField,{sid:salonId,row:r,onSet:v=>update(r.id,'tallyLedger',v)})),
             React.createElement('td',{'data-xr':ri,'data-xc':9,style:{minWidth:150,background:cellRange.isSelected(ri,9)?'rgba(47,95,224,0.12)':undefined}},React.createElement('input',{type:'date',className:'form-control',value:toISO(r.cradleeDate),onChange:e=>update(r.id,'cradleeDate',e.target.value?fmtDate(e.target.value):''),style:{padding:'6px 8px',fontSize:11}})),
             (()=>{
               // "O/S Invoices" — reads the vendor OR employee resolved from the column above.

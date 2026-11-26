@@ -76,6 +76,29 @@ if(_ffSW)swWorkingsFor=function(sid,y,m){return ffFrozen('sw',sid,y,m,()=>_ffSW(
 if(_ffIW)incWorkingsFor=function(sid,y,m){return ffFrozen('iw',sid,y,m,()=>_ffIW(sid,y,m));};
 if(_ffPL)plBuild=function(sid,fy,mi){const c=typeof periodToCalendar==='function'?periodToCalendar({fy,mi}):null;if(!c)return _ffPL(sid,fy,mi);return ffFrozen('pl',sid,c.year,c.month,()=>_ffPL(sid,fy,mi));};
 
+// ── Worked-out months kept until something changes ──
+// Salary Working, Incentive Working and the P&L of a month are asked for many times while screens
+// draw (the Dashboard alone builds 18 P&Ls). Each result is kept until any saved value changes
+// (storeVersion), the day changes or another user signs in, and every caller gets its own copy
+// (structuredClone), exactly as the saved final figures above are handed out. Not used while a
+// live figure is being worked out (ffLive) or under a plan snapshot (_lsOverlay).
+const FF_MEMO={v:-1,day:'',u:null,m:new Map()};
+function ffMemo(kind,key,fn){
+  if(FF_LIVE||(typeof _lsOverlay!=='undefined'&&_lsOverlay)||typeof structuredClone!=='function')return fn();
+  let u=null;try{u=sessionStorage.getItem('salonos_user');}catch(e){}const day=new Date().toDateString();
+  if(FF_MEMO.v!==storeVersion()||FF_MEMO.day!==day||FF_MEMO.u!==u){FF_MEMO.v=storeVersion();FF_MEMO.day=day;FF_MEMO.u=u;FF_MEMO.m=new Map();}
+  const k=kind+'|'+key;const hit=FF_MEMO.m.get(k);
+  if(hit){try{return structuredClone(hit.val);}catch(e){return fn();}}
+  const v0=storeVersion();const val=fn();
+  if(storeVersion()!==v0)return val; /* something was saved while it was worked out (e.g. final figures) — keep nothing */
+  try{FF_MEMO.m.set(k,{val:structuredClone(val)});}catch(e){}
+  return val;
+}
+{const sw0=swWorkingsFor,iw0=incWorkingsFor,pl0=plBuild;
+  if(typeof sw0==='function')swWorkingsFor=function(sid,y,m){return ffMemo('sw',sid+'|'+y+'|'+m,()=>sw0(sid,y,m));};
+  if(typeof iw0==='function')incWorkingsFor=function(sid,y,m){return ffMemo('iw',sid+'|'+y+'|'+m,()=>iw0(sid,y,m));};
+  if(typeof pl0==='function')plBuild=function(sid,fy,mi){return ffMemo('pl',sid+'|'+fy+'|'+mi,()=>pl0(sid,fy,mi));};}
+
 // Save the figures the moment a month becomes final; drop them when it is opened again.
 if(typeof setMonthLockFor==='function'){const _o=setMonthLockFor;
   setMonthLockFor=function(sid,y,m,locked){const r=_o.apply(this,arguments);
