@@ -3865,8 +3865,12 @@ function employeeCostFor(salonId,year,month){
   // "Salary" here is Gross Salary + Tea, matching Salary Working's own "Gross Salary" and "Tea"
   // columns — not just the base gross-after-LOP figure.
   const roleMap=PL_ROLE_MAP.filter(r=>!r.biz||r.biz===bizKeyOf(salonId));
-  const salaryLines=roleMap.map(r=>({name:r.salaryLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+e.grossAfterLop+(e.arrears||0)+(e.extraEarn||0)-(e.extraDed||0)+e.tea,0),group:'Employee Salary'}));
-  const incentiveLines=roleMap.filter(r=>r.incLabel&&!isRestaurantOutlet(salonId)).map(r=>({name:r.incLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+(incByEmp[e.id]||0),0),group:'Employee Monthly Incentive',_opt:r.incOnlyIfAny})).filter(l=>!l._opt||l.amt).map(({_opt,...l})=>l);
+  // Overtime goes only under Employee Monthly Incentive: overtime from phone check-ins (Pay tools, js/55)
+  // sits in Salary Working's other earnings, so the P&L takes it out of the salary line and adds it to
+  // the incentive line of the same role. (Restaurants have no incentive lines — it stays in salary there.)
+  const salOt=e=>swReady&&!isRestaurantOutlet(salonId)?Math.round(Number(e.payExtra&&e.payExtra.parts&&e.payExtra.parts.ot)||0):0;
+  const salaryLines=roleMap.map(r=>({name:r.salaryLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+e.grossAfterLop+(e.arrears||0)+(e.extraEarn||0)-salOt(e)-(e.extraDed||0)+e.tea,0),group:'Employee Salary'}));
+  const incentiveLines=roleMap.filter(r=>r.incLabel&&!isRestaurantOutlet(salonId)).map(r=>({name:r.incLabel,amt:sw.filter(e=>e.dept===r.dept).reduce((s,e)=>s+(incByEmp[e.id]||0)+salOt(e),0),group:'Employee Monthly Incentive',_opt:r.incOnlyIfAny})).filter(l=>!l._opt||l.amt).map(({_opt,...l})=>l);
   // Anyone in Incentive Working whose role has no line above (or who is not in Salary Working) — so the
   // P&L's Employee Monthly Incentive always adds up to Incentive Working's Grand Total Incentive.
   if(!isRestaurantOutlet(salonId)){const counted=new Set(sw.filter(e=>roleMap.some(r=>r.incLabel&&r.dept===e.dept)).map(e=>e.id));const other=inc.filter(e=>!counted.has(e.id)).reduce((s,e)=>s+(incByEmp[e.id]||0),0);if(other)incentiveLines.push({name:'Other Staff Monthly Incentive',amt:other,group:'Employee Monthly Incentive'});}
