@@ -1796,8 +1796,8 @@ function netBankChargesFor(salonId,year,month){
 // real invoice exists for the month, the Recurring Expenses estimate is still used as the fallback,
 // so the line never just goes blank the way it used to whenever an invoice hadn't been booked yet.
 const PL_OPEX_LINES=[
-  {name:'Rent',group:'Rent',noDaily:true,alsoVendorCat:'Rent',vendorWinsOverRecurring:true},
-  {name:'Staff Room Rent',group:'Staff Room Rent',noDaily:true,alsoVendorCat:'Staff Room Rent',vendorWinsOverRecurring:true},
+  {name:'Rent',group:'Rent',noDaily:true,alsoVendorCat:'Rent',vendorWinsOverRecurring:true,billGstRcm:true},
+  {name:'Staff Room Rent',group:'Staff Room Rent',noDaily:true,alsoVendorCat:'Staff Room Rent',vendorWinsOverRecurring:true,billGstRcm:true},
   {name:'Daily Expenses',group:'Daily Expenses'},
   {name:'Royalty',group:'Royalty',noDaily:true,alsoVendorCat:'Royalty',vendorWinsOverRecurring:true},
   {name:'Electricity Expenses',group:'Electricity Expenses',noDaily:true,alsoVendorCat:'Electricity Expenses',vendorWinsOverRecurring:true},
@@ -2209,10 +2209,23 @@ function pnlAllBillsOn(sid){return typeof controlOn!=='function'||controlOn('pnl
 function plRecurringCountedIds(sid){const types=new Set(Object.values(PL_OPEX_RECURRING_MAP));return new Set(loadRecurringExpenses(sid).filter(it=>types.has(recurringExpenseNameOf(it))).map(it=>it.id));}
 // What a line's vendor bills add: {vendorAmt, add (bills + recurring estimate as the line's rule says),
 // vendorWins, bills (the invoices behind vendorAmt — Vendor, Invoice No, dates, amount)}.
+// Rent / Staff Room Rent (billGstRcm): the P&L takes each bill at Taxable Value + GST. A bill with no GST
+// on it, made for a Recurring Expense whose landlord charges no GST but Reverse Charge applies, gets the
+// 18% RCM added — the same Invoice Value the Recurring Expenses estimate uses (recurringExpenseMonthlyAmt).
+// Only the P&L figure changes; the bill itself is not touched.
+function plBillGstRcm(sid,rows){
+  if(!rows.length)return rows;const invs=loadVendorInvoices(sid),rec=loadRecurringExpenses(sid);
+  return rows.map(r=>{const inv=invs.find(x=>x.id===r.id);if(!inv)return r;
+    const gst=(Number(inv.igst)||0)+(Number(inv.cgst)||0)+(Number(inv.sgst)||0);if(gst>0)return r;
+    const it=inv.recurringId?rec.find(x=>x.id===inv.recurringId):null;if(!it||it.gstApplicable||!it.gstReverseChargeApplicable)return r;
+    const taxable=Number(inv.taxable)||Number(inv.amount)||0;const whole=Number(inv.amount)||taxable;
+    const share=whole>0?r.amount/whole:1;const rcm=Math.round(taxable*0.18*share*100)/100;if(!rcm)return r;
+    return{...r,amount:Math.round((r.amount+rcm)*100)/100,rcm,desc:(r.desc?r.desc+' · ':'')+'+ GST 18% under reverse charge ₹'+Math.round(rcm).toLocaleString('en-IN')};});
+}
 function plVendorFor(sid,l,year,month,used,recurringAmt){
   const cat=l.alsoVendorCat;
   if(!cat||(l.newMap&&!pnlAllBillsOn(sid)))return{vendorAmt:0,add:recurringAmt,vendorWins:false,bills:[]};
-  const rows=keep=>vendorInvoiceCategoryBreakupFor(sid,year,month,cat,used,keep),sum=r=>Math.round(r.reduce((t,x)=>t+x.amount,0)*100)/100;
+  const rows=keep=>{const r=vendorInvoiceCategoryBreakupFor(sid,year,month,cat,used,keep);return l.billGstRcm?plBillGstRcm(sid,r):r;},sum=r=>Math.round(r.reduce((t,x)=>t+x.amount,0)*100)/100;
   if(l.vendorSplitRecurring){
     const oneR=rows(inv=>!inv.recurringId),recR=rows(inv=>!!inv.recurringId),one=sum(oneR),rec=sum(recR);
     return{vendorAmt:one+rec,add:one+(rec>0?rec:recurringAmt),vendorWins:rec>0,bills:[...oneR,...recR]};
